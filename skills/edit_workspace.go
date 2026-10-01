@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -275,14 +276,26 @@ func editWorkspace(ctx context.Context, s *fwd.Session, raw json.RawMessage) (re
 		if in.ConfirmName != target.Name {
 			return refuse(fmt.Sprintf("confirm_name must be the workspace's exact name; network %s is named %q", in.NetworkID, target.Name))
 		}
+		// only the login's own workspaces: the creator Forward records must be this login. A workspace made by someone else is left alone (an organization administrator does that in Forward).
+		me, merr := session(ctx, s)
+		if merr != nil {
+			return result.Result{}, fmt.Errorf("reading this login to check it created the workspace: %w", merr)
+		}
+		if !strings.EqualFold(target.Creator, me.User.Username) && !strings.EqualFold(target.Creator, me.User.Email) {
+			return refuse(fmt.Sprintf("workspace %s was created by %q, not by this login; this skill deletes only workspaces its own login created", in.NetworkID, target.Creator))
+		}
 		ch := result.Change{Action: "delete_workspace", Target: "workspace " + in.NetworkID, Before: map[string]any{"name": target.Name, "parent_id": string(target.ParentID), "creator": target.Creator, "created_at": target.CreatedAt},
 			Reversible: false, Undo: "none: its snapshots, sources and endpoints are deleted with it; create a new workspace to start again"}
-		limits := []string{"deleting a workspace removes its own snapshots, sources and endpoints; the parent network is not touched. Confirm the name and the creator before applying"}
+		limits := []string{"deleting a workspace removes its own snapshots, sources and endpoints; the parent network is not touched",
+			"checked before deleting: the network is a workspace (it has a parent), its recorded creator is this login, and confirm_name is its exact name; a production network is never deleted"}
 		if !in.Apply {
 			return result.Build(editWorkspaceName, result.OK, fmt.Sprintf("Dry run: would delete workspace %q (network %s, created by %s). Nothing was changed; run again with apply=true", target.Name, in.NetworkID, target.Creator),
 				result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: evd(map[string]any{"workspace": in.NetworkID, "name": target.Name})})
 		}
 		if derr := s.DeleteNetwork(ctx, in.NetworkID); derr != nil {
+			if errors.Is(derr, fwd.ErrDeletionRefused) {
+				return refuse("the host running this skill does not allow deleting networks (" + derr.Error() + ")")
+			}
 			return result.Result{}, fmt.Errorf("the delete failed, nothing is known to have changed: %w", derr)
 		}
 		ch.Applied = true

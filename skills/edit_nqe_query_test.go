@@ -29,12 +29,27 @@ func libraryRoutes(prior string, held bool) map[string]fwdtest.Handler {
 			return 200, map[string]any{"queries": []any{anchor, map[string]any{"path": "/Team/q", "lastCommitId": "c1", "queryId": "Q_1"}}}
 		},
 		"GET /api/nqe/repos/org/commits/c1/queries": func(*http.Request, []byte) (int, any) {
+			if state == "" {
+				return 404, map[string]any{"message": "no such query"}
+			}
 			return 200, map[string]any{"sourceCode": state, "queryId": "Q_1"}
 		},
+		"GET /api/users/current/nqe/changes": fwdtest.Const(200, map[string]any{"changes": []any{}}),
+		// Forward's rules: a path in HEAD cannot be added (409), only edited with a basis; a new one is added
 		"POST /api/users/current/nqe/changes": func(r *http.Request, body []byte) (int, any) {
-			if r.URL.Query().Get("action") == "addQuery" {
-				pending, deleted = strings.TrimSuffix(strings.TrimPrefix(string(body), `{"sourceCode":"`), `"}`), false
-			} else {
+			switch r.URL.Query().Get("action") {
+			case "addQuery":
+				if state != "" {
+					return 409, map[string]any{"message": "path already exists in HEAD", "reason": "ADD_QUERY_ALREADY_EXISTS"}
+				}
+				pending, deleted = stageSource(body), false
+			case "editQuery":
+				if state == "" || !strings.Contains(string(body), `"basis":{"queryId":"Q_1","commitId":"c1"}`) {
+					return 409, map[string]any{"message": "bad edit", "reason": "PATH_MISSING_IN_HEAD"}
+				}
+				pending, deleted = stageSource(body), false
+			case "bulkDiscard":
+			default:
 				pending, deleted = "", true
 			}
 			return 200, map[string]any{}
@@ -82,6 +97,13 @@ func TestEditNQEQueryApplyCommitsThenReadsItBack(t *testing.T) {
 	r, _ = mustRun(t, "edit-nqe-query", libraryRoutes("", false), `{"path":"/Team/q","source":"`+goodQuery+`","apply":true}`)
 	if r.Status != result.Failed {
 		t.Fatalf("a library that does not hold the query must be failed: %s", r.Status)
+	}
+}
+
+func TestEditNQEQueryChangesAnExistingQueryWithEditNotAdd(t *testing.T) {
+	r, srv := mustRun(t, "edit-nqe-query", libraryRoutes("old source", true), `{"path":"/Team/q","source":"`+goodQuery+`","apply":true}`)
+	if r.Status != result.OK || !r.Changes[0].Applied || writes(srv) != 2 {
+		t.Fatalf("an existing query is edited (Forward refuses adding it): %s %s writes=%d", r.Status, r.Finding, writes(srv))
 	}
 }
 

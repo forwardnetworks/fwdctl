@@ -292,3 +292,54 @@ func TestCollectionLogsViewTreatsA406AsNoLogNotAnError(t *testing.T) {
 		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
 }
+
+// platformRoutes serves two processed snapshots (s1 older, s2 newest) and the all-devices NQE per snapshot: synthetic Juniper devices where, in s2 only, two
+// on the upgraded version fail to parse.
+func platformRoutes() map[string]fwdtest.Handler {
+	dev := func(name, stage, reason, os, ver string) map[string]any {
+		return map[string]any{"device": name, "stage": stage, "reason": reason, "vendor": "JUNIPER", "os": os, "osVersion": ver, "model": "M1"}
+	}
+	routes := cfRoutes("PROCESSED", map[string]any{"numSuccessfulDevices": 5}, nil)
+	routes[snapsPath] = fwdtest.Snapshots(
+		fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"),
+		fwdtest.Snap("s2", "PROCESSED", "COLLECTION", "2026-09-02T00:00:00.000Z"))
+	routes["GET /api/snapshots/s2/metrics"] = fwdtest.Const(200, map[string]any{"numSuccessfulDevices": 3, "deviceProcessingFailures": map[string]any{"PARSER_EXCEPTION": 2}})
+	routes["GET /api/snapshots/s1/metrics"] = fwdtest.Const(200, map[string]any{"numSuccessfulDevices": 5})
+	routes[nqePath] = func(r *http.Request, body []byte) (int, any) {
+		if !strings.Contains(string(body), "// all devices") {
+			return 400, map[string]any{"message": "unexpected query"}
+		}
+		var rows []map[string]any
+		if r.URL.Query().Get("snapshotId") == "s1" {
+			rows = []map[string]any{dev("a1", "ok", "", "JUNOS", "21.4"), dev("a2", "ok", "", "JUNOS", "21.4"), dev("a3", "ok", "", "JUNOS", "21.4"),
+				dev("b1", "ok", "", "JUNOS", "22.1"), dev("b2", "collection", "DeviceCollectionError.CONNECTION_REFUSED", "JUNOS", "22.1")}
+		} else {
+			rows = []map[string]any{dev("a1", "ok", "", "JUNOS", "21.4"), dev("a2", "processing", "DeviceProcessingError.PARSER_EXCEPTION", "JUNOS", "23.2"),
+				dev("a3", "processing", "DeviceProcessingError.PARSER_EXCEPTION", "JUNOS", "23.2"), dev("b1", "ok", "", "JUNOS", "22.1"), dev("b2", "ok", "", "JUNOS", "22.1")}
+		}
+		return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
+	}
+	return routes
+}
+
+func TestCollectionDevicesRollsFailuresUpByPlatformWithRates(t *testing.T) {
+	r, _ := collect(t, platformRoutes(), `{"network_id":"n1","view":"platforms"}`)
+	groups := r.Evidence[0].Detail["groups"].([]map[string]any)
+	if r.Status != result.Failed || len(groups) != 1 || groups[0]["group"] != "JUNIPER JUNOS 23.2" || groups[0]["failed"] != 2 || groups[0]["failure_rate"] != "100%" {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, groups)
+	}
+}
+
+func TestCollectionDevicesComparesWithThePreviousSnapshot(t *testing.T) {
+	r, _ := collect(t, platformRoutes(), `{"network_id":"n1","view":"changes"}`)
+	if len(r.Evidence) == 0 {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+	d := r.Evidence[0].Detail
+	if r.Status != result.Failed || d["new_failure_count"] != 2 || d["recovered_count"] != 1 || d["new_after_os_version_change"] != 2 || d["compared_with"] != "s1" {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, d)
+	}
+	if !strings.Contains(r.Finding, "2 of the new failures are on a device whose OS version changed") {
+		t.Errorf("%s", r.Finding)
+	}
+}

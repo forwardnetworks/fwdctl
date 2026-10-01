@@ -1,12 +1,16 @@
 package skills_test
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 func wsRoutes(created *bool) map[string]fwdtest.Handler {
@@ -80,5 +84,66 @@ func TestEditWorkspaceAddsAnEndpointThatHasNoCredentialInTheParentAsItIs(t *test
 	r, _ := mustRun(t, "edit-workspace", wsRoutes(&created), `{"network_id":"11","add_endpoints":{"endpoints":[{"name":"ep2"}]}}`)
 	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "no credential id in the parent either") {
 		t.Fatalf("%s %v", r.Status, r.Limits)
+	}
+}
+
+func runWithDeleter(t *testing.T, routes map[string]fwdtest.Handler, del fwd.NetworkDeleter, in string) result.Result {
+	t.Helper()
+	sess, _ := fwdtest.New(t, routes)
+	sess.NetworkDeleter = del
+	r, err := skills.Run(context.Background(), "edit-workspace", sess, json.RawMessage(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestEditWorkspaceDeletesOnlyTheLoginsOwnWorkspaceThroughTheInjectedDeleter(t *testing.T) {
+	deleted := false
+	routes := wsRoutes(new(bool))
+	routes["GET /api/users/current"] = fwdtest.Const(200, map[string]any{"user": map[string]any{"id": "u1", "username": "me@example.test", "email": "me@example.test"}, "roles": map[string]any{"org": []string{"ADMIN"}, "network": map[string]string{}}})
+	listed := routes["GET /api/networks"]
+	routes["GET /api/networks"] = func(r *http.Request, b []byte) (int, any) {
+		code, v := listed(r, b)
+		ns := v.([]any)
+		var out []any
+		for _, n := range ns {
+			m := n.(map[string]any)
+			if m["id"] == "11" {
+				m["creator"] = "me@example.test"
+				if deleted {
+					continue
+				}
+			}
+			out = append(out, n)
+		}
+		return code, out
+	}
+	calls := 0
+	del := func(_ context.Context, id string) error { calls++; deleted = true; return nil }
+	in := `{"network_id":"11","delete_workspace":true,"confirm_name":"ws-old"`
+	r := runWithDeleter(t, routes, del, in+`}`)
+	if r.Status != result.OK || r.Mode != result.ModeDryRun || calls != 0 || !strings.Contains(strings.Join(r.Limits, " "), "recorded creator is this login") {
+		t.Fatalf("dry run: %s %s calls=%d", r.Status, r.Finding, calls)
+	}
+	r = runWithDeleter(t, routes, del, in+`,"apply":true}`)
+	if r.Status != result.OK || calls != 1 || !r.Changes[0].Applied {
+		t.Fatalf("apply: %s %s calls=%d", r.Status, r.Finding, calls)
+	}
+	// a host that forbids deletion: a refusal, not an error, and nothing deleted
+	deleted = false
+	r = runWithDeleter(t, routes, func(context.Context, string) error { return fwd.ErrDeletionRefused }, in+`,"apply":true}`)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "does not allow deleting networks") || deleted {
+		t.Fatalf("refused: %s %s", r.Status, r.Finding)
+	}
+}
+
+func TestEditWorkspaceRefusesAWorkspaceSomeoneElseCreated(t *testing.T) {
+	routes := wsRoutes(new(bool))
+	routes["GET /api/users/current"] = fwdtest.Const(200, map[string]any{"user": map[string]any{"id": "u1", "username": "me@example.test", "email": "me@example.test"}, "roles": map[string]any{"org": []string{}, "network": map[string]string{}}})
+	calls := 0
+	r := runWithDeleter(t, routes, func(context.Context, string) error { calls++; return nil }, `{"network_id":"11","delete_workspace":true,"confirm_name":"ws-old","apply":true}`)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "created by") || calls != 0 {
+		t.Fatalf("%s %s calls=%d", r.Status, r.Finding, calls)
 	}
 }

@@ -65,6 +65,10 @@
       "type": "string",
       "minLength": 1,
       "description": "with typecheck: also type against this snapshot's data model"
+    },
+    "network_id": {
+      "type": "string",
+      "minLength": 1
     }
   }
 }

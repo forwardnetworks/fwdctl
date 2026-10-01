@@ -47,29 +47,45 @@ func (s *Session) OrgQueryAt(ctx context.Context, path, commitID string) (*OrgQu
 	return nil, nil
 }
 
-// SaveOrgQuery adds or replaces a query and commits it to the organization's library. When the commit fails the draft is removed again so
+// SaveOrgQuery adds or replaces a query and commits it to the organization's library. When the staging or the commit fails the draft is discarded again so
 // nothing half-finished stays in the workspace.
 func (s *Session) SaveOrgQuery(ctx context.Context, path, source, title, body string) error {
-	if _, err := s.Client.NQERepository.AddQuery(ctx, path, source); err != nil {
+	if mine, err := s.DraftsAt(ctx, []string{path}); err != nil {
 		return err
+	} else if len(mine) > 0 {
+		return errors.New("you already have an uncommitted change at " + path + " in the NQE editor; commit or discard it there first (cleaning up here would drop it)")
 	}
-	_, err := s.Client.NQERepository.Commit(ctx, forward.NQECommitRequest{Paths: []string{path}, Message: &forward.NQECommitMessage{Title: title, Body: body}})
-	if err != nil {
-		if _, derr := s.Client.NQERepository.DeleteQuery(ctx, path); derr != nil {
-			return errors.Join(err, errors.New("the uncommitted draft could not be removed either: "+derr.Error()))
-		}
-		return err
+	if err := s.StageOrgQuery(ctx, path, source); err != nil {
+		return errors.Join(err, s.discardAfter(ctx, path))
+	}
+	if _, err := s.Client.NQERepository.Commit(ctx, forward.NQECommitRequest{Paths: []string{path}, Message: &forward.NQECommitMessage{Title: title, Body: body}}); err != nil {
+		return errors.Join(err, s.discardAfter(ctx, path))
+	}
+	return nil
+}
+
+// discardAfter drops the draft at path after a failure; its own failure is returned so the caller can say a draft may remain.
+func (s *Session) discardAfter(ctx context.Context, paths ...string) error {
+	if err := s.DiscardOrgDrafts(ctx, paths); err != nil {
+		return errors.New("the uncommitted draft could not be discarded either (check the NQE editor): " + err.Error())
 	}
 	return nil
 }
 
 // DeleteOrgQuery removes a query from the organization's library and commits the removal.
 func (s *Session) DeleteOrgQuery(ctx context.Context, path, title, body string) error {
+	if mine, err := s.DraftsAt(ctx, []string{path}); err != nil {
+		return err
+	} else if len(mine) > 0 {
+		return errors.New("you already have an uncommitted change at " + path + " in the NQE editor; commit or discard it there first (cleaning up here would drop it)")
+	}
 	if _, err := s.Client.NQERepository.DeleteQuery(ctx, path); err != nil {
 		return err
 	}
-	_, err := s.Client.NQERepository.Commit(ctx, forward.NQECommitRequest{Paths: []string{path}, Message: &forward.NQECommitMessage{Title: title, Body: body}})
-	return err
+	if _, err := s.Client.NQERepository.Commit(ctx, forward.NQECommitRequest{Paths: []string{path}, Message: &forward.NQECommitMessage{Title: title, Body: body}}); err != nil {
+		return errors.Join(err, s.discardAfter(ctx, path))
+	}
+	return nil
 }
 
 // OrgQueryByID reads a committed organization query's source by its stable id ("Q_..."), or nil when there is none.
@@ -123,12 +139,12 @@ func (s *Session) SaveOrgQueryInNewDirectories(ctx context.Context, dirs []strin
 		var errs []error
 		errs = append(errs, cause)
 		if queryAdded {
-			if _, derr := s.Client.NQERepository.DeleteQuery(ctx, path); derr != nil {
+			if derr := s.DiscardOrgDrafts(ctx, []string{path}); derr != nil {
 				errs = append(errs, errors.New("the uncommitted query draft could not be removed: "+derr.Error()))
 			}
 		}
 		for i := len(added) - 1; i >= 0; i-- {
-			if _, derr := s.Client.NQERepository.DeleteDirectory(ctx, added[i]); derr != nil {
+			if derr := s.DiscardOrgDrafts(ctx, []string{added[i]}); derr != nil {
 				errs = append(errs, errors.New("the uncommitted directory draft "+added[i]+" could not be removed: "+derr.Error()))
 			}
 		}
@@ -158,11 +174,58 @@ func (s *Session) NQEHead(ctx context.Context) (string, error) {
 	return string(h), err
 }
 
-// StageOrgQuery stages a query's new source in the caller's workspace (a draft: nothing is committed or visible to the organization until a commit).
-// Forward has no discard, so a staged draft is undone by staging the committed source again.
+// StageOrgQuery stages a query's new source in the caller's workspace as a draft (nothing is committed or visible to the organization until a commit). A path that is
+// in the library's head is edited (Forward's editQuery, which needs the query's id and the head commit as its basis); a new path is added. Forward refuses adding a
+// path that exists, which is why the two are different calls.
 func (s *Session) StageOrgQuery(ctx context.Context, path, source string) error {
-	_, err := s.Client.NQERepository.AddQuery(ctx, path, source)
+	head, err := s.NQEHead(ctx)
+	if err != nil {
+		return err
+	}
+	q, _, err := s.Client.NQERepository.GetQuery(ctx, head, path)
+	switch {
+	case err == nil:
+		_, err = s.Client.NQERepository.EditQuery(ctx, path, source, forward.NQEDraftBasis{QueryID: string(q.QueryID), CommitID: head})
+		return err
+	case forwardNotFound(err):
+		_, err = s.Client.NQERepository.AddQuery(ctx, path, source)
+		return err
+	}
 	return err
+}
+
+// DiscardOrgDrafts drops the caller's drafts at (and under) paths. A path with no draft is not an error.
+func (s *Session) DiscardOrgDrafts(ctx context.Context, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	_, err := s.Client.NQERepository.DiscardChanges(ctx, paths)
+	return err
+}
+
+// DraftsAt names the paths among paths where the caller already has an uncommitted change (an add, edit or delete), so a skill can refuse to stage over, or discard, work
+// that is not its own.
+func (s *Session) DraftsAt(ctx context.Context, paths []string) ([]string, error) {
+	drafts, _, err := s.Client.NQERepository.ListDrafts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	want := map[string]bool{}
+	for _, p := range paths {
+		want[p] = true
+	}
+	var out []string
+	for _, d := range drafts {
+		for _, c := range []string{d.Path, d.Directory + d.Name} {
+			if c != "" && want[c] {
+				out = append(out, c)
+			}
+		}
+		if d.Basis != nil && want[d.Basis.Path] {
+			out = append(out, d.Basis.Path)
+		}
+	}
+	return out, nil
 }
 
 // CommitOrgPaths commits every staged change at paths as ONE commit and returns the new head commit id (the commit call returns none, so it is read back).

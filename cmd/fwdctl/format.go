@@ -232,9 +232,10 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 			fwd.MetaFromError(&meta, err)
 		}
 		meta.Mode = map[bool]string{true: "async", false: "sync"}[*asyncRun]
-		// Forward caches an execution by a normalised form of the query (a comment, an unused let and useLatestDataFiles were all measured to reuse it): a wall time far below
-		// the execution time Forward recorded means the result came from the cache
-		if meta.MillisExecuting != nil && *meta.MillisExecuting > 2000 && time.Since(started).Milliseconds()*5 < *meta.MillisExecuting {
+		// Forward caches an execution by a normalised form of the query (a comment, an unused let and useLatestDataFiles were all measured to reuse it; a filter on a changing
+		// constant was measured NOT to be folded away, so it makes a new execution). A real execution takes at least the time Forward recorded for it, so a wall time below that
+		// means the result came from the cache (measured: a hit took 43.7s against 114.6s recorded; a cold run 165-175s against 115-117s, polling and transfer included)
+		if meta.MillisExecuting != nil && *meta.MillisExecuting > 2000 && time.Since(started).Milliseconds()*10 < *meta.MillisExecuting*9 {
 			meta.LikelyCached = true
 		}
 		b, _ := json.MarshalIndent(struct {

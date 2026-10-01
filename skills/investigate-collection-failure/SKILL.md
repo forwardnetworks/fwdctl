@@ -37,6 +37,13 @@ file region for a parser exception, so go on to `inspect-device-files` for the d
 The snapshot's metrics count every failed device, but the model lists only devices Forward built a
 record for; when the two differ, the limits say so.
 
+**view platforms** (takes `failure`, `device`, `limit`, `offset`). Failures rolled up by vendor, OS and OS version against **all** devices of that platform in the snapshot (failed, total, failure rate, error types),
+worst first. A rate near 100% on one OS version while the rest of the vendor is clean points at that version's parser or support, not at credentials or the network. Devices Forward could not identify are
+grouped as one platform of their own.
+
+**view changes** (takes `limit`, `offset`; `snapshot_id` picks the newer snapshot). The same device read on the newest processed snapshot before it: new failures, recovered devices, devices still failing,
+failures whose type changed, and how many new failures are on a device whose OS version changed between the two snapshots (a lead for a parser or support gap, not proof).
+
 **view slow.** Forward's per-device collection metrics: collection duration, the slowest command and its duration, source and device type,
 jump server, and the merged collection-and-processing error (so every error class, not only failures), slowest first, with the median, p95
 and max. Forward keeps one slowest command per device, not every command, and saves nothing for an imported, forked or partially collected

@@ -64,10 +64,20 @@ func truthy(v string) bool {
 type Session struct {
 	Client *forward.Client
 
+	// NetworkDeleter, when set, performs every network deletion a skill asks for instead of the direct SDK call. A host that must route destructive calls through its own vetted
+	// path sets it (and may return ErrDeletionRefused to forbid deletion); fwdctl leaves it nil and the SDK deletes directly.
+	NetworkDeleter NetworkDeleter
+
 	mu       sync.Mutex
 	ops      []result.Operation
 	insecure bool
 }
+
+// NetworkDeleter deletes a network by id. It is the one seam through which this module deletes a network.
+type NetworkDeleter func(ctx context.Context, networkID string) error
+
+// ErrDeletionRefused is what a NetworkDeleter returns to say the host does not allow deleting networks; skills report it as a refusal, not an error.
+var ErrDeletionRefused = errors.New("network deletion is not allowed by the host running this skill")
 
 // Insecure reports whether TLS verification is off for this session.
 func (s *Session) Insecure() bool { return s.insecure }

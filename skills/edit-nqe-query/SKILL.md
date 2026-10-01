@@ -45,6 +45,8 @@ go with their last query, so the undo of a `create_directory` save is deleting t
 Without `apply: true` nothing is changed. The skill reads the library, and returns `mode: dry_run` with one change whose `before` is the
 current source (empty when the path is new) and `after` the new one. Show it to the person who asked before applying.
 
+`network_id` is accepted and unused: the NQE library is organization-wide, so the same inputs work as for `find-nqe-query`.
+
 ## Procedure
 
 1. Check the source offline (`fwdctl nqe lint`). A query with errors is **failed** and is not saved; use `author-nqe-query` to fix it.

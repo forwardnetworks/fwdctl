@@ -121,27 +121,28 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	limits := []string{"the commit is visible to everyone in the organization and is ONE commit for all paths; Forward has no optimistic-concurrency check, so this skill compares the head to the basis before it commits (a commit landing in between is not caught)"}
 	var tc map[string]any
 	if in.Typecheck {
-		restore := func() error {
-			var errs []error
-			for _, pth := range paths {
-				p := prior[pth]
-				if p.exists {
-					if err := s.StageOrgQuery(ctx, pth, p.src); err != nil {
-						errs = append(errs, fmt.Errorf("%s: %w", pth, err))
-					}
-				}
-			}
-			return errors.Join(errs...)
+		if mine, derr := s.DraftsAt(ctx, paths); derr != nil {
+			return result.Result{}, fmt.Errorf("reading your uncommitted NQE changes failed, so nothing was staged: %w", derr)
+		} else if len(mine) > 0 {
+			return fail(fmt.Sprintf("you already have uncommitted changes in the NQE editor at %s; commit or discard them there first, because staging and cleaning up would overwrite or drop them. Nothing was changed", strings.Join(mine, ", ")),
+				map[string]any{"head_commit_id": head, "drafts_at": mine})
 		}
+		discard := func() error { return s.DiscardOrgDrafts(ctx, paths) }
 		for _, c := range in.Changes {
 			if err := s.StageOrgQuery(ctx, c.Path, c.Source); err != nil {
-				_ = restore()
-				return result.Result{}, fmt.Errorf("staging %s failed: %w", c.Path, err)
+				derr := discard()
+				msg := fmt.Sprintf("staging %s failed: %v", c.Path, err)
+				if derr != nil {
+					msg += "; discarding the drafts failed too, check the NQE editor for uncommitted changes of yours: " + derr.Error()
+				} else {
+					msg += "; the drafts staged so far were discarded, nothing is left in your workspace"
+				}
+				return result.Result{}, errors.New(msg)
 			}
 		}
 		dr, derr := s.NQECommitDryRun(ctx, paths, in.SnapshotID)
-		if rerr := restore(); rerr != nil {
-			limits = append(limits, "the staged drafts could not all be restored ("+rerr.Error()+"): check the NQE editor for uncommitted changes of yours at these paths")
+		if rerr := discard(); rerr != nil {
+			limits = append(limits, "the staged drafts could not be discarded ("+rerr.Error()+"): check the NQE editor for uncommitted changes of yours at these paths")
 		}
 		if derr != nil {
 			return result.Result{}, fmt.Errorf("Forward's typecheck failed: %w", derr)
@@ -155,7 +156,7 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 			}
 		}
 		tc = map[string]any{"new_errors": errs, "new_error_count": n, "uses_count": len(dr.Uses), "unauthorized": append(append([]string{}, dr.UnauthorizedQueryChanges...), dr.UnauthorizedAccessSettingChanges...)}
-		limits = append(limits, "typecheck staged your changes as drafts in your workspace and restored them (Forward has no discard); new_errors include queries that import the changed ones; uses_count counts the checks and dashboards that consume them")
+		limits = append(limits, "typecheck staged your changes as drafts in your workspace, asked Forward, and discarded them; new_errors include queries that import the changed ones; uses_count counts the checks and dashboards that consume them")
 		if len(dr.UnauthorizedQueryChanges)+len(dr.UnauthorizedAccessSettingChanges) > 0 {
 			return fail("Forward says this login may not commit some of these changes; nothing was changed", map[string]any{"typecheck": tc, "head_commit_id": head})
 		}
@@ -180,19 +181,32 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	if h2, err := s.NQEHead(ctx); err != nil || h2 != basis {
 		return fail(fmt.Sprintf("The library head moved from %s while planning (now %s); nothing was committed", basis, h2), map[string]any{"head_commit_id": h2, "basis_commit_id": basis})
 	}
+	if mine, derr := s.DraftsAt(ctx, paths); derr != nil {
+		return result.Result{}, fmt.Errorf("reading your uncommitted NQE changes failed, so nothing was staged: %w", derr)
+	} else if len(mine) > 0 {
+		return fail(fmt.Sprintf("you already have uncommitted changes in the NQE editor at %s; commit or discard them there first. Nothing was committed", strings.Join(mine, ", ")),
+			map[string]any{"head_commit_id": head, "drafts_at": mine})
+	}
 	for _, c := range in.Changes {
 		if err := s.StageOrgQuery(ctx, c.Path, c.Source); err != nil {
-			return result.Result{}, fmt.Errorf("staging %s failed, nothing was committed (earlier drafts may remain in your workspace): %w", c.Path, err)
+			msg := fmt.Sprintf("staging %s failed, nothing was committed", c.Path)
+			if derr := s.DiscardOrgDrafts(ctx, paths); derr != nil {
+				msg += "; the drafts staged so far could not be discarded, check the NQE editor: " + derr.Error()
+			} else {
+				msg += "; the drafts staged so far were discarded"
+			}
+			return result.Result{}, fmt.Errorf("%s: %w", msg, err)
 		}
 	}
 	newHead, err := s.CommitOrgPaths(ctx, paths, title, "")
 	if err != nil {
-		for _, pth := range paths {
-			if p := prior[pth]; p.exists {
-				_ = s.StageOrgQuery(ctx, pth, p.src)
-			}
+		msg := "the commit failed, nothing was committed"
+		if derr := s.DiscardOrgDrafts(ctx, paths); derr != nil {
+			msg += "; the staged drafts could not be discarded, check the NQE editor: " + derr.Error()
+		} else {
+			msg += "; the staged drafts were discarded"
 		}
-		return result.Result{}, fmt.Errorf("the commit failed, nothing was committed (drafts restored where possible): %w", err)
+		return result.Result{}, fmt.Errorf("%s: %w", msg, err)
 	}
 	for i := range changes {
 		changes[i].Applied = true

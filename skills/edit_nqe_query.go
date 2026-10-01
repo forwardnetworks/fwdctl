@@ -32,6 +32,8 @@ type editNQEQueryInput struct {
 	// Typecheck stages the changes as drafts, has Forward type them and every importer, and restores the drafts.
 	Typecheck  bool   `json:"typecheck"`
 	SnapshotID string `json:"snapshot_id"`
+	// NetworkID is accepted so this skill takes the inputs find-nqe-query does; the library is organization-wide and it is not used.
+	NetworkID string `json:"network_id"`
 }
 
 // missingParents lists the enclosing directories of path (root excluded, parents first) that no committed query lives under. A library directory exists

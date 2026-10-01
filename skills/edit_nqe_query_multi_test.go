@@ -1,6 +1,7 @@
 package skills_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,9 +13,29 @@ import (
 const goodQueryB = "foreach d in network.devices select {n: d.name, v: d.platform.vendor}"
 
 // multiLibrary holds /Team/a and /Team/b; staging records drafts, a commit applies them to the next head (c2) and Forward's typecheck says errs.
+var failStage = map[string]bool{}
+
+// stageSource reads the source out of an add or edit body.
+func stageSource(body []byte) string {
+	var b struct {
+		SourceCode string `json:"sourceCode"`
+	}
+	_ = json.Unmarshal(body, &b)
+	return b.SourceCode
+}
+
+// drafts is the fake library's workspace, reachable from the tests that put a draft there first or read what is left.
+var drafts = map[string]string{}
+
 func multiLibrary(head *string, dry map[string]any) (map[string]fwdtest.Handler, map[string]string, *[]string) {
 	state := map[string]string{"/Team/a": "foreach d in network.devices select {a: d.name}", "/Team/b": "foreach d in network.devices select {b: d.name}"}
-	draft := map[string]string{}
+	draft := drafts
+	for k := range draft {
+		delete(draft, k)
+	}
+	for k := range failStage {
+		delete(failStage, k)
+	}
 	var log []string
 	src := func(r *http.Request, _ []byte) (int, any) {
 		return 200, map[string]any{"sourceCode": state[r.URL.Query().Get("path")], "queryId": "Q_x"}
@@ -25,9 +46,51 @@ func multiLibrary(head *string, dry map[string]any) (map[string]fwdtest.Handler,
 			map[string]any{"path": "/Team/a", "lastCommitId": "c1", "queryId": "Q_a"}, map[string]any{"path": "/Team/b", "lastCommitId": "c1", "queryId": "Q_b"}}}),
 		"GET /api/nqe/repos/org/commits/c1/queries": src,
 		"GET /api/nqe/repos/org/commits/c2/queries": src,
+		"GET /api/users/current/nqe/changes": func(*http.Request, []byte) (int, any) {
+			var cs []any
+			for p := range draft {
+				cs = append(cs, map[string]any{"type": "QUERY_EDIT", "basis": map[string]any{"queryId": "Q_x", "commitId": "c1", "path": p}})
+			}
+			return 200, map[string]any{"changes": cs}
+		},
+		"DELETE /api/users/current/nqe/changes": func(r *http.Request, _ []byte) (int, any) {
+			delete(draft, r.URL.Query().Get("path"))
+			log = append(log, "discard "+r.URL.Query().Get("path"))
+			return 204, nil
+		},
+		// Forward's rules: addQuery refuses a path that is in HEAD (409), editQuery needs one that is and a basis, bulkDiscard drops drafts at the paths.
 		"POST /api/users/current/nqe/changes": func(r *http.Request, body []byte) (int, any) {
-			draft[r.URL.Query().Get("path")] = strings.TrimSuffix(strings.TrimPrefix(string(body), `{"sourceCode":"`), `"}`)
-			log = append(log, "stage "+r.URL.Query().Get("path"))
+			path := r.URL.Query().Get("path")
+			_, exists := state[path]
+			switch r.URL.Query().Get("action") {
+			case "addQuery":
+				if exists {
+					return 409, map[string]any{"message": "Attempted to add a query at " + path + ", but that path already exists in HEAD.", "reason": "ADD_QUERY_ALREADY_EXISTS"}
+				}
+				draft[path] = stageSource(body)
+				log = append(log, "add "+path)
+			case "editQuery":
+				if !exists {
+					return 409, map[string]any{"message": "no such query in HEAD", "reason": "PATH_MISSING_IN_HEAD"}
+				}
+				if !strings.Contains(string(body), `"basis":{"queryId":"Q_x","commitId":"c1"}`) {
+					return 400, map[string]any{"message": "'basis' is required: " + string(body)}
+				}
+				if failStage[path] {
+					return 500, map[string]any{"message": "boom"}
+				}
+				draft[path] = stageSource(body)
+				log = append(log, "edit "+path)
+			case "bulkDiscard":
+				for p := range draft {
+					if strings.Contains(string(body), `"`+p+`"`) {
+						delete(draft, p)
+					}
+				}
+				log = append(log, "bulkDiscard")
+			default:
+				return 400, map[string]any{"message": "unexpected action " + r.URL.Query().Get("action")}
+			}
 			return 200, map[string]any{}
 		},
 		"POST /api/nqe/repos/org/commits": func(r *http.Request, _ []byte) (int, any) {
@@ -99,5 +162,35 @@ func TestEditNQEQueriesRefusesWhenTheHeadMovedPastTheBasis(t *testing.T) {
 	r, _ := mustRun(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"basis_commit_id":"c1","apply":true}`)
 	if r.Status != result.Failed || !strings.Contains(r.Finding, "someone committed since") || len(*log) != 0 {
 		t.Fatalf("%s %s %v", r.Status, r.Finding, *log)
+	}
+}
+
+func TestEditNQEQueriesTypecheckEditsExistingPathsAndLeavesNoDraftBehind(t *testing.T) {
+	head := "c1"
+	routes, _, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	r, _ := mustRun(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true}`)
+	got := strings.Join(*log, ",")
+	if r.Status != result.OK || !strings.Contains(got, "edit /Team/a") || strings.Contains(got, "add ") || len(drafts) != 0 {
+		t.Fatalf("%s %s log=%s drafts=%v", r.Status, r.Finding, got, drafts)
+	}
+}
+
+func TestEditNQEQueriesAFailedStagingDiscardsWhatWasStaged(t *testing.T) {
+	head := "c1"
+	routes, _, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	failStage["/Team/b"] = true
+	_, _, err := runSkill(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true}`)
+	if err == nil || !strings.Contains(err.Error(), "discarded") || len(drafts) != 0 || strings.Contains(strings.Join(*log, ","), "commit") {
+		t.Fatalf("err=%v drafts=%v log=%v", err, drafts, *log)
+	}
+}
+
+func TestEditNQEQueriesRefusesToStageOverADraftThatIsNotItsOwn(t *testing.T) {
+	head := "c1"
+	routes, _, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	drafts["/Team/a"] = "someone's work in the editor"
+	r, srv := mustRun(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true}`)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "already have uncommitted changes") || writes(srv) != 0 || len(*log) != 0 || drafts["/Team/a"] == "" {
+		t.Fatalf("%s %s writes=%d drafts=%v", r.Status, r.Finding, writes(srv), drafts)
 	}
 }

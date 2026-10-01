@@ -23,8 +23,10 @@ func (s *Session) CreateWorkspace(ctx context.Context, parentID string, req forw
 
 // DeleteNetwork deletes a network and returns its last representation. Callers must only pass a workspace they created.
 func (s *Session) DeleteNetwork(ctx context.Context, networkID string) error {
-	_, _, err := s.Client.Networks.Delete(ctx, networkID)
-	return err
+	if s.NetworkDeleter != nil {
+		return s.NetworkDeleter(ctx, networkID)
+	}
+	return s.deleteNetworkDirect(ctx, networkID)
 }
 
 // AddEndpoints adds endpoints of one type to a network.

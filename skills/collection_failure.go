@@ -31,6 +31,9 @@ type collectionInput struct {
 	Device  string `json:"device"`
 	Limit   int    `json:"limit"`
 	Offset  int    `json:"offset"`
+	// GroupBy and CompareTo are set by the platforms and changes views; they are not inputs.
+	GroupBy   string `json:"-"`
+	CompareTo string `json:"-"`
 }
 
 func sum(m map[string]int) int {
@@ -60,9 +63,9 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	switch in.View {
-	case "", "summary", "devices", "neighbors", "slow", "logs":
+	case "", "summary", "devices", "platforms", "changes", "neighbors", "slow", "logs":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be summary, devices, neighbors, slow or logs", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be summary, devices, platforms, changes, neighbors, slow or logs", ErrInvalidInput)
 	}
 	view := in.View
 	if view == "" {
@@ -71,6 +74,8 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 	if err := rejectForeignInputs(raw, collectionFailureName, "view", view, map[string][]string{
 		"summary":   {"collector_task_id"},
 		"devices":   {"failure", "device", "limit", "offset"},
+		"platforms": {"failure", "device", "limit", "offset"},
+		"changes":   {"limit", "offset"},
 		"neighbors": {"limit", "offset"},
 		"slow":      {"device", "limit", "offset"},
 		"logs":      {"failure", "device", "limit", "offset"},
@@ -101,6 +106,12 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 	switch view {
 	case "devices":
 		return failureDevices(ctx, s, in, cx)
+	case "platforms":
+		in.GroupBy = "os_version"
+		return failureRollup(ctx, s, in, cx)
+	case "changes":
+		in.CompareTo = "previous"
+		return failureCompare(ctx, s, in, cx)
 	case "neighbors":
 		return unmodelledNeighbors(ctx, s, in, cx)
 	case "slow":

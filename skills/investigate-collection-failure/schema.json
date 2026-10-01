@@ -1,15 +1,49 @@
 {
   "type": "object",
-  "required": ["network_id"],
+  "required": [
+    "network_id"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "snapshot_id": { "type": "string", "minLength": 1 },
-    "view": { "enum": ["summary", "devices", "neighbors", "slow", "logs"], "default": "summary" },
-    "collector_task_id": { "type": "string", "minLength": 1 },
-    "failure": { "type": "string", "minLength": 1 },
-    "device": { "type": "string", "minLength": 1 },
-    "limit": { "type": "integer", "minimum": 1 },
-    "offset": { "type": "integer", "minimum": 0 }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "view": {
+      "enum": [
+        "summary",
+        "devices",
+        "platforms",
+        "changes",
+        "neighbors",
+        "slow",
+        "logs"
+      ],
+      "default": "summary"
+    },
+    "collector_task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "failure": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    }
   }
 }
