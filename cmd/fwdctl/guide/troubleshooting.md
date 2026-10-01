@@ -5,6 +5,7 @@
 | `error: FORWARD_URL ... is not set` | Export `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD`. |
 | `401` or `403` | Wrong credentials, or the login lacks access. An API token's access key and secret work as username and password. |
 | certificate error | Forward uses a certificate your machine does not trust. Prefer adding the CA to the system store. `FORWARD_INSECURE=true` turns verification off (every result records it). |
+| a long query ends at 120 seconds ("context deadline exceeded") | One HTTP call may take 120s by default. Skills and `fwdctl nqe run` now fall back to Forward's asynchronous execution API when the synchronous call is cut off (wait up to 10 minutes; `FORWARD_NQE_WAIT=20m` changes it). `FORWARD_NQE_MODE=async` always uses the execution API, `sync` never falls back. `fwdctl nqe run --timeout 600s` (or `FORWARD_TIMEOUT=600s`) raises the per-call limit instead. |
 | `unknown` and the limits say no processed snapshot | Nothing has been collected, or the newest snapshot is still processing. Run `inspect-snapshots`, then `investigate-collection-failure`. |
 | `unknown` after an empty result | An empty answer is not evidence. Read `limits`: the filter may match nothing, or the data may be absent. |
 | `invalid input: $.x ...` | The input does not match the skill's schema. `fwdctl run <skill> --help` lists the inputs. |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -48,33 +49,44 @@ func MetaFromError(m *NQEMeta, err error) {
 // RunNQEAsync runs a query through Forward's asynchronous execution API, waits for it and reads every row (up to maxRows). It returns the execution key,
 // outcome and Forward's own execution time with the rows. timeout bounds the wait (0 means 10 minutes).
 func (s *Session) RunNQEAsync(ctx context.Context, networkID string, r NQERun, maxRows int, timeout time.Duration) ([]map[string]any, int64, NQEMeta, error) {
-	meta := NQEMeta{Mode: "async", Diagnostics: []QueryDiagnostic{}}
-	if (r.Query == "") == (r.QueryID == "") {
-		return nil, 0, meta, errors.New("pass exactly one of query or queryId")
+	ctx, cancel, meta, err := s.startAndWait(ctx, networkID, r, timeout)
+	if cancel != nil {
+		defer cancel()
 	}
-	snap, err := s.Snapshot(ctx, networkID, r.SnapshotID)
 	if err != nil {
 		return nil, 0, meta, err
 	}
+	return s.readExecution(ctx, networkID, meta, maxRows)
+}
+
+// startAndWait starts an asynchronous execution and waits until it has completed OK. The returned context carries the wait's deadline and its cancel func must be called.
+func (s *Session) startAndWait(ctx context.Context, networkID string, r NQERun, timeout time.Duration) (context.Context, context.CancelFunc, NQEMeta, error) {
+	meta := NQEMeta{Mode: "async", Diagnostics: []QueryDiagnostic{}}
+	if (r.Query == "") == (r.QueryID == "") {
+		return ctx, nil, meta, errors.New("pass exactly one of query or queryId")
+	}
+	snap, err := s.Snapshot(ctx, networkID, r.SnapshotID)
+	if err != nil {
+		return ctx, nil, meta, err
+	}
 	if !IsReady(snap) {
-		return nil, 0, meta, fmt.Errorf("snapshot %s is %s: %w", r.SnapshotID, StateOf(snap), ErrSnapshotNotReady)
+		return ctx, nil, meta, fmt.Errorf("snapshot %s is %s: %w", r.SnapshotID, StateOf(snap), ErrSnapshotNotReady)
 	}
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	ex, _, err := s.Client.NQE.Start(ctx, networkID, r.SnapshotID, forward.NQEExecutionRequest{Query: r.Query, QueryID: r.QueryID, CommitID: r.CommitID, Parameters: r.Parameters})
 	if err != nil {
 		MetaFromError(&meta, err)
-		return nil, 0, meta, err
+		return ctx, cancel, meta, err
 	}
 	meta.ExecutionKey = ex.ExecutionKey
 	for {
 		cur, _, serr := s.Client.NQE.Status(ctx, networkID, meta.ExecutionKey)
 		if serr != nil {
 			MetaFromError(&meta, serr)
-			return nil, 0, meta, serr
+			return ctx, cancel, meta, serr
 		}
 		meta.Status, meta.Outcome, meta.MillisExecuting, meta.RowsProduced = cur.Status, cur.Outcome, cur.MillisExecuting, cur.RowsProduced
 		switch strings.ToUpper(cur.Status) {
@@ -85,25 +97,52 @@ func (s *Session) RunNQEAsync(ctx context.Context, networkID string, r NQERun, m
 				}
 				err := fmt.Errorf("the execution %s completed with outcome %s", meta.ExecutionKey, cur.Outcome)
 				meta.Error = err.Error()
-				return nil, 0, meta, err
+				return ctx, cancel, meta, err
 			}
-			return s.readExecution(ctx, networkID, meta, maxRows)
+			return ctx, cancel, meta, nil
 		case "FAILED", "CANCELED", "TIMED_OUT":
 			if cur.Error != nil {
 				meta.Diagnostics = append(meta.Diagnostics, QueryDiagnostic{Message: cur.Error.Message})
 			}
 			err := fmt.Errorf("the execution %s ended %s", meta.ExecutionKey, cur.Status)
 			meta.Error = err.Error()
-			return nil, 0, meta, err
+			return ctx, cancel, meta, err
 		}
 		select {
 		case <-ctx.Done():
 			err := fmt.Errorf("the execution %s did not finish within %s: %w", meta.ExecutionKey, timeout, ctx.Err())
 			meta.Error = err.Error()
-			return nil, 0, meta, err
+			return ctx, cancel, meta, err
 		case <-time.After(1 * time.Second):
 		}
 	}
+}
+
+// runNQEPageAsync reads one page of a query through the asynchronous execution API. RunNQE falls back to it when the synchronous call is cut off by the HTTP timeout: the
+// query then runs (or, if the first attempt finished meanwhile, is served from Forward's cache) without holding one request open.
+func (s *Session) runNQEPageAsync(ctx context.Context, networkID string, r NQERun, limit int) ([]forward.NQERecord, int64, error) {
+	ctx, cancel, meta, err := s.startAndWait(ctx, networkID, r, s.NQEWait)
+	if cancel != nil {
+		defer cancel()
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	lim, off := int32(limit), int32(r.Offset)
+	page, _, err := s.Client.NQE.Result(ctx, networkID, meta.ExecutionKey, forward.NQEResultOptions{Limit: &lim, Offset: &off})
+	if err != nil {
+		return nil, 0, err
+	}
+	return page.Items, page.TotalNumItems, nil
+}
+
+// isClientTimeout reports whether err is the HTTP client's timeout (or a cancelled deadline) rather than an answer from Forward.
+func isClientTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ne net.Error
+	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) || strings.Contains(err.Error(), "Client.Timeout")
 }
 
 func (s *Session) readExecution(ctx context.Context, networkID string, meta NQEMeta, maxRows int) ([]map[string]any, int64, NQEMeta, error) {

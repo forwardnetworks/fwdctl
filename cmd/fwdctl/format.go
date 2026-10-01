@@ -158,7 +158,7 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 	paramsFile := fs.String("params", "", "JSON file with the query's parameters, an object of name to typed value")
 	asyncRun := fs.Bool("async", false, "run through Forward's asynchronous execution API (the execution key and outcome are in --meta)")
 	metaOut := fs.String("meta", "", "write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr")
-	waitMax := fs.Duration("timeout", 10*time.Minute, "with --async: how long to wait for the execution")
+	waitMax := fs.Duration("timeout", 10*time.Minute, "how long to wait: the whole synchronous request (response included; the default HTTP limit is 120s), or with --async the execution")
 	var paramKV paramList
 	fs.Var(&paramKV, "param", "one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params")
 	if err := fs.Parse(args); err != nil {
@@ -194,6 +194,7 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 		fmt.Fprintf(stderr, "error: %v\n", perr)
 		return usage
 	}
+	requestTimeout = *waitMax
 	sess, err := session()
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)

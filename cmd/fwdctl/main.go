@@ -44,6 +44,9 @@ var (
 
 const usage = 64
 
+// requestTimeout, when set (by nqe run --timeout), is how long one HTTP call may take; it replaces the default 120s that otherwise ends a long synchronous query.
+var requestTimeout time.Duration
+
 var exitFor = map[result.Status]int{result.OK: 0, result.Failed: 1, result.Unknown: 2, result.Error: 3}
 
 func main() {
@@ -64,7 +67,11 @@ func main() {
 	}
 	autoUpdate(cmd, os.Stderr)
 	code := run(args, os.Stdin, os.Stdout, os.Stderr, func() (*fwd.Session, error) {
-		return fwd.NewSession(fwd.ConfigFromEnv())
+		cfg := fwd.ConfigFromEnv()
+		if requestTimeout > 0 {
+			cfg.Timeout = requestTimeout
+		}
+		return fwd.NewSession(cfg)
 	})
 	updateNotice(cmd, os.Stderr)
 	os.Exit(code)

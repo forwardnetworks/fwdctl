@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 )
@@ -55,10 +56,24 @@ func (s *Session) RunNQE(ctx context.Context, networkID string, r NQERun) (NQEOu
 		limit = DefaultNQELimit
 	}
 	lim := int32(limit)
-	res, _, err := s.Client.NQE.Run(ctx, networkID, r.SnapshotID, forward.NQEQueryRequest{
-		Query: r.Query, QueryID: r.QueryID, CommitID: r.CommitID, Parameters: r.Parameters,
-		Options: nqeOptions(&lim, r.Offset),
-	})
+	var items []forward.NQERecord
+	var total int64
+	mode := strings.ToLower(s.NQEMode)
+	if mode == "async" {
+		items, total, err = s.runNQEPageAsync(ctx, networkID, r, limit)
+	} else {
+		var res *forward.NQEResult
+		res, _, err = s.Client.NQE.Run(ctx, networkID, r.SnapshotID, forward.NQEQueryRequest{
+			Query: r.Query, QueryID: r.QueryID, CommitID: r.CommitID, Parameters: r.Parameters,
+			Options: nqeOptions(&lim, r.Offset),
+		})
+		if err == nil {
+			items, total = res.Items, res.TotalNumItems
+		} else if mode != "sync" && isClientTimeout(err) {
+			// the synchronous request was cut off by the HTTP timeout: run it as an asynchronous execution (served from Forward's cache if the first attempt finished meanwhile)
+			items, total, err = s.runNQEPageAsync(ctx, networkID, r, limit)
+		}
+	}
 	if err != nil {
 		// Forward refuses NQE on a snapshot it cannot read; the SDK classifies every such refusal, on any route.
 		// None of them is zero rows.
@@ -68,7 +83,7 @@ func (s *Session) RunNQE(ctx context.Context, networkID string, r NQERun) (NQEOu
 		}
 		return NQEOutcome{}, err
 	}
-	out := NQEOutcome{Items: res.Items, Total: res.TotalNumItems, PredictedSnapshot: IsPredicted(snap)}
+	out := NQEOutcome{Items: items, Total: total, PredictedSnapshot: IsPredicted(snap)}
 	if out.Total < int64(len(out.Items)) {
 		out.Total = int64(len(out.Items))
 	}

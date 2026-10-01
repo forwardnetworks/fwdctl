@@ -60,10 +60,20 @@ func Snap(id, state, trigger, processed string) map[string]any {
 // to it. An unrouted request answers 599 so a skill that makes an unplanned call fails loudly.
 func New(t *testing.T, routes map[string]Handler) (*fwd.Session, *Server) {
 	t.Helper()
+	return NewWith(t, routes, nil)
+}
+
+// NewWith is New with the chance to adjust the session's config (an HTTP client with a short timeout, an NQE mode) before it is built.
+func NewWith(t *testing.T, routes map[string]Handler, adjust func(*fwd.Config)) (*fwd.Session, *Server) {
+	t.Helper()
 	s := &Server{routes: routes}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
-	sess, err := fwd.NewSession(fwd.Config{BaseURL: s.URL, Username: "k", Password: "s", HTTPClient: s.Client()})
+	cfg := fwd.Config{BaseURL: s.URL, Username: "k", Password: "s", HTTPClient: s.Client()}
+	if adjust != nil {
+		adjust(&cfg)
+	}
+	sess, err := fwd.NewSession(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

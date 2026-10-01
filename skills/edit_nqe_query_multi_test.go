@@ -46,7 +46,13 @@ func multiLibrary(head *string, dry map[string]any) (map[string]fwdtest.Handler,
 			map[string]any{"path": "/Team/a", "lastCommitId": "c0", "queryId": "Q_a"}, map[string]any{"path": "/Team/b", "lastCommitId": "c0", "queryId": "Q_b"}}}),
 		"GET /api/nqe/repos/org/commits/c1/queries": src,
 		"GET /api/nqe/repos/org/commits/c2/queries": src,
-		"GET /api/users/current/nqe/changes": func(*http.Request, []byte) (int, any) {
+		"GET /api/users/current/nqe/changes": func(r *http.Request, _ []byte) (int, any) {
+			if p := r.URL.Query().Get("path"); p != "" {
+				if src, ok := draft[p]; ok {
+					return 200, map[string]any{"sourceCode": src}
+				}
+				return 404, map[string]any{"message": "No draft query at " + p}
+			}
 			var cs []any
 			for p := range draft {
 				cs = append(cs, map[string]any{"type": "QUERY_EDIT", "basis": map[string]any{"queryId": "Q_x", "commitId": "c1", "path": p}})
@@ -218,5 +224,29 @@ func TestFindNQEDescribesALibraryCommitFromTheHeadListingAndHistory(t *testing.T
 	r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","commit_id":"c9"}`)
 	if r.Status != result.Unknown {
 		t.Fatalf("a commit no query last changed in is unknown, not empty-ok: %s", r.Status)
+	}
+}
+
+func TestEditNQEQueryDiscardsOneOfYourOwnDraftsAndNothingElse(t *testing.T) {
+	head := "c1"
+	routes, _, log := multiLibrary(&head, map[string]any{})
+	drafts["/Team/a"] = "work in progress A"
+	drafts["/Team/b"] = "work in progress B"
+	in := `{"path":"/Team/a","discard_draft":true`
+	r, srv := mustRun(t, "edit-nqe-query", routes, in+`}`)
+	if r.Status != result.OK || r.Mode != result.ModeDryRun || writes(srv) != 0 || r.Changes[0].Before.(map[string]any)["source"] != "work in progress A" || len(drafts) != 2 {
+		t.Fatalf("dry run: %s %s writes=%d drafts=%v", r.Status, r.Finding, writes(srv), drafts)
+	}
+	r, _ = mustRun(t, "edit-nqe-query", routes, in+`,"apply":true}`)
+	if r.Status != result.OK || !r.Changes[0].Applied || len(drafts) != 1 || drafts["/Team/b"] == "" || strings.Contains(strings.Join(*log, ","), "bulkDiscard") {
+		t.Fatalf("apply: %s %s drafts=%v log=%v", r.Status, r.Finding, drafts, *log)
+	}
+	// nothing there: a no-op; combined with a source: refused
+	r, _ = mustRun(t, "edit-nqe-query", routes, in+`,"apply":true}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "nothing to discard") {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	if _, _, err := runSkill(t, "edit-nqe-query", routes, `{"path":"/Team/a","discard_draft":true,"source":"x"}`); err == nil {
+		t.Errorf("discard_draft takes only path")
 	}
 }

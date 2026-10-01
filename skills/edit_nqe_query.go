@@ -32,6 +32,8 @@ type editNQEQueryInput struct {
 	// Typecheck stages the changes as drafts, has Forward type them and every importer, and restores the drafts.
 	Typecheck  bool   `json:"typecheck"`
 	SnapshotID string `json:"snapshot_id"`
+	// DiscardDraft drops the caller's own uncommitted draft at exactly path (nothing else; nothing committed changes).
+	DiscardDraft bool `json:"discard_draft"`
 	// NetworkID is accepted so this skill takes the inputs find-nqe-query does; the library is organization-wide and it is not used.
 	NetworkID string `json:"network_id"`
 }
@@ -67,6 +69,12 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	in.Path = strings.TrimSpace(in.Path)
 	if in.Path == "" || !strings.HasPrefix(in.Path, "/") || strings.Contains(in.Path, "..") || len(in.Path) > 300 || strings.HasSuffix(in.Path, "/") {
 		return result.Result{}, fmt.Errorf("%w: path is required and is the query's path in the library, starting with / (for example /Team/BGP neighbors down); a query at the root is /Name", ErrInvalidInput)
+	}
+	if in.DiscardDraft {
+		if in.Delete || in.CreateDirectory || in.Source != "" {
+			return result.Result{}, fmt.Errorf("%w: discard_draft takes only path (and apply)", ErrInvalidInput)
+		}
+		return discardNQEDraft(ctx, s, in)
 	}
 	if in.Delete && in.CreateDirectory {
 		return result.Result{}, fmt.Errorf("%w: create_directory applies to saving a query", ErrInvalidInput)
@@ -205,4 +213,51 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 
 func dirEv(d map[string]any) []result.Evidence {
 	return []result.Evidence{result.NewEvidence(result.EvState, "orgQuery", nil, d, "")}
+}
+
+// discardNQEDraft drops the login's own uncommitted draft at one exact path, which is how a stray draft left in the NQE editor is removed. It never touches what is committed
+// and never discards more than that one path. The draft's source is recorded in before so the discard can be undone by saving it again.
+func discardNQEDraft(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (result.Result, error) {
+	cx := result.Context{Scope: "account", State: "current"}
+	mode := result.ModeDryRun
+	if in.Apply {
+		mode = result.ModeApplied
+	}
+	d, err := s.DraftAt(ctx, in.Path)
+	if err != nil {
+		return result.Result{}, err
+	}
+	if d == nil {
+		return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("You have no uncommitted draft at %s; nothing to discard", in.Path), result.Deterministic, cx,
+			result.Options{Mode: mode, Limits: []string{"the NQE workspace of this login was read (ListDrafts); a path with no draft is left as it is"},
+				Evidence: []result.Evidence{result.NewEvidence(result.EvState, "nqeDrafts", nil, map[string]any{"path": in.Path, "draft": nil}, "")}})
+	}
+	before := map[string]any{"draft": d.Type, "path": in.Path}
+	if d.Source != "" {
+		before["source"] = d.Source
+	}
+	ch := result.Change{Action: "discard_draft", Target: "uncommitted " + strings.ToLower(strings.TrimPrefix(d.Type, "QUERY_")) + " at " + in.Path, Before: before, Reversible: d.Source != "",
+		Undo: "save the source in before again with edit-nqe-query (path and source)"}
+	if d.Source == "" {
+		ch.Undo = "none: Forward returned no source for the draft, so it cannot be restored"
+	}
+	limits := []string{"only your own uncommitted draft at exactly this path is dropped; what is committed in the library is not touched, and no other path is discarded",
+		"the draft may be someone else's work if the login is shared (a team login): check before applying"}
+	ev := []result.Evidence{result.NewEvidence(result.EvState, "nqeDrafts", nil, map[string]any{"path": in.Path, "draft": d.Type}, "")}
+	if !in.Apply {
+		return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Dry run: would discard your uncommitted %s at %s. Nothing was changed; run again with apply=true", strings.ToLower(strings.TrimPrefix(d.Type, "QUERY_")), in.Path),
+			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: ev})
+	}
+	if err := s.DiscardOrgDraft(ctx, in.Path); err != nil {
+		return result.Result{}, fmt.Errorf("the discard failed, nothing is known to have changed: %w", err)
+	}
+	ch.Applied = true
+	if left, rerr := s.DraftAt(ctx, in.Path); rerr != nil {
+		return result.Result{}, fmt.Errorf("the discard was sent but reading your drafts back failed, so it is not proven: %w", rerr)
+	} else if left != nil {
+		return result.Build(editNQEQueryName, result.Failed, fmt.Sprintf("Forward accepted the discard but a draft is still listed at %s", in.Path), result.Deterministic, cx,
+			result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, Evidence: ev})
+	}
+	return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Discarded your uncommitted %s at %s (read back: gone)", strings.ToLower(strings.TrimPrefix(d.Type, "QUERY_")), in.Path),
+		result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, Evidence: ev})
 }

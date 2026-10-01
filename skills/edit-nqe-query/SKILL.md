@@ -27,11 +27,17 @@ false). See `schema.json`.
 commit title), optional `basis_commit_id` (the library head the edits were made against: the plan and the apply refuse if the head is another commit, and say so) and `typecheck: true`
 (optionally with `snapshot_id`). The dry run lints every source offline, compares each with what is committed, writes nothing and says so when dependents were **not** typechecked. With
 `typecheck: true` it **stages the changes as drafts in your workspace, has Forward type every changed query and every query that imports one (and counts the checks and dashboards that
-use them), then restores the drafts** (Forward has no discard; restoring stages the committed source again, which is not proven to leave no pending-change marker, so look at the NQE
-editor if the limits say a restore failed). Any new error, or a change this login may not commit, is **failed** and nothing is committed. `apply: true` re-reads the head, commits all
+use them), then discards the drafts** (Forward's discard drops them: the skill refuses to stage when you already have an uncommitted draft at one of the paths, since cleaning up would drop
+it, and says when a discard failed so you can look at the NQE editor). Any new error, or a change this login may not commit, is **failed** and nothing is committed. `apply: true` re-reads the head, commits all
 paths as ONE commit, reads each path back at the new head, and returns `previous_commit_id` and `commit_id` in the evidence (the commit call itself returns none; the head is read
 afterwards). Forward has no optimistic-concurrency check, so a commit landing between the head check and the commit is not caught. This form edits and adds; it does not delete or
 create directories.
+
+## Discarding a stray draft
+
+`discard_draft: true` with `path` drops **your own uncommitted draft at exactly that path** (an add or an edit left in the NQE editor), nothing else, never a bulk discard and never anything committed.
+Dry run by default; the draft's source is recorded in the change so the discard can be undone by saving it again; the apply reads your drafts back and reports failed if one is still listed. On a shared
+login the draft may be a colleague's: check first. A path with no draft is a no-op.
 
 ## Directories
 

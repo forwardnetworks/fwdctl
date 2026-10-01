@@ -33,6 +33,9 @@ type Config struct {
 	// HTTPClient is optional. When set it is used as is and Insecure is ignored.
 	HTTPClient *http.Client
 	Timeout    time.Duration
+	// NQEMode and NQEWait set the Session fields of the same name (FORWARD_NQE_MODE and FORWARD_NQE_WAIT).
+	NQEMode string
+	NQEWait time.Duration
 	// Insecure turns TLS certificate verification OFF, for self-signed installations. Otherwise the connection is
 	// verified against the system trust store: a certificate is trusted by default or it is not. Insecure is never
 	// the default, and every result records that it was used (see Session.Insecure).
@@ -42,14 +45,24 @@ type Config struct {
 	Hooks []forward.Hook
 }
 
-// ConfigFromEnv reads FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD.
+// ConfigFromEnv reads FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD, FORWARD_INSECURE and FORWARD_TIMEOUT.
 func ConfigFromEnv() Config {
-	return Config{
+	c := Config{
 		BaseURL:  strings.TrimSpace(os.Getenv("FORWARD_URL")),
 		Username: strings.TrimSpace(os.Getenv("FORWARD_USERNAME")),
 		Password: os.Getenv("FORWARD_PASSWORD"),
 		Insecure: truthy(os.Getenv("FORWARD_INSECURE")),
 	}
+	// FORWARD_TIMEOUT (a Go duration, for example 600s) raises or lowers the time one HTTP call may take, response body included; the default is DefaultTimeout.
+	if d, err := time.ParseDuration(strings.TrimSpace(os.Getenv("FORWARD_TIMEOUT"))); err == nil && d > 0 {
+		c.Timeout = d
+	}
+	// FORWARD_NQE_MODE is auto (default), sync or async; FORWARD_NQE_WAIT bounds an asynchronous execution's wait.
+	c.NQEMode = strings.ToLower(strings.TrimSpace(os.Getenv("FORWARD_NQE_MODE")))
+	if d, err := time.ParseDuration(strings.TrimSpace(os.Getenv("FORWARD_NQE_WAIT"))); err == nil && d > 0 {
+		c.NQEWait = d
+	}
+	return c
 }
 
 func truthy(v string) bool {
@@ -67,6 +80,11 @@ type Session struct {
 	// NetworkDeleter, when set, performs every network deletion a skill asks for instead of the direct SDK call. A host that must route destructive calls through its own vetted
 	// path sets it (and may return ErrDeletionRefused to forbid deletion); fwdctl leaves it nil and the SDK deletes directly.
 	NetworkDeleter NetworkDeleter
+
+	// NQEMode is how a query runs: "" or "auto" (synchronously; if the HTTP timeout cuts the request off, as an asynchronous execution), "sync" (never falls back) or
+	// "async" (always through the execution API, for networks whose queries are known to be long). NQEWait bounds the wait for an asynchronous execution (default 10 minutes).
+	NQEMode string
+	NQEWait time.Duration
 
 	mu       sync.Mutex
 	ops      []result.Operation
@@ -113,7 +131,7 @@ func NewSession(cfg Config) (*Session, error) {
 			return nil, err
 		}
 	}
-	s := &Session{insecure: cfg.Insecure && cfg.HTTPClient == nil}
+	s := &Session{insecure: cfg.Insecure && cfg.HTTPClient == nil, NQEMode: cfg.NQEMode, NQEWait: cfg.NQEWait}
 	c, err := forward.NewClient(forward.Config{
 		BaseURL: cfg.BaseURL, Username: cfg.Username, Password: cfg.Password, HTTPClient: hc,
 		UserAgent: "fwdctl",

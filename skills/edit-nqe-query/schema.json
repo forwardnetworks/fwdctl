@@ -69,6 +69,10 @@
     "network_id": {
       "type": "string",
       "minLength": 1
+    },
+    "discard_draft": {
+      "type": "boolean",
+      "default": false
     }
   }
 }

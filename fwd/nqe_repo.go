@@ -329,3 +329,33 @@ func (s *Session) OrgCommitChanges(ctx context.Context, commitID string) (*OrgCo
 	}
 	return info, nil
 }
+
+// OrgDraft is the caller's uncommitted change at one path.
+type OrgDraft struct {
+	Type   string // QUERY_ADD | QUERY_EDIT | QUERY_DELETE
+	Source string // the draft's source, when Forward returns one
+}
+
+// DraftAt reads the caller's own uncommitted change at exactly path, or nil when there is none.
+func (s *Session) DraftAt(ctx context.Context, path string) (*OrgDraft, error) {
+	list, _, err := s.Client.NQERepository.ListDrafts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range list {
+		if d.Path == path || d.Directory+d.Name == path || (d.Basis != nil && d.Basis.Path == path) {
+			out := &OrgDraft{Type: d.Type}
+			if q, _, gerr := s.Client.NQERepository.GetDraft(ctx, path); gerr == nil && q != nil {
+				out.Source = q.SourceCode
+			}
+			return out, nil
+		}
+	}
+	return nil, nil
+}
+
+// DiscardOrgDraft drops the caller's draft at exactly path (never a bulk discard, never anything under it).
+func (s *Session) DiscardOrgDraft(ctx context.Context, path string) error {
+	_, err := s.Client.NQERepository.DiscardChange(ctx, path)
+	return err
+}
