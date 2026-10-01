@@ -21,6 +21,10 @@ newest **processed, collected** one (what the other skills read by default), and
 `network_id`. Optional: `snapshot_id` (describe that one), `limit` (default 10, at most 100) and `offset` to page the list.
 See `schema.json`.
 
+**Without `network_id`** the skill answers one organization-wide question: which snapshots are in progress (UNPACKING, PROCESSING, RESTORING; UNPROCESSED snapshots, which are not being worked on, are counted separately) in **any** network this login sees, with network, snapshot,
+state and kind. A network that cannot be read is named and "nothing is processing" is then **unknown**, not ok. It reads every network's snapshot list just now: a moment in time, used before a change that must not overlap processing.
+`snapshot_id`, `kind`, `limit` and `offset` need a `network_id`.
+
 ## Procedure
 
 1. List the network's snapshots, newest first.

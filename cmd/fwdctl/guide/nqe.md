@@ -98,6 +98,7 @@ Runs the query on Forward against a snapshot: compile errors with positions, row
 ## 3b. All the rows, as a table or CSV: `fwdctl nqe run`
 
     fwdctl nqe run --network <id> --file q.nqe --format table            # every row, paged for you (at most --max, default 50000)
+    fwdctl nqe run --network <id> --file q.nqe --offset 200 --limit 100 --meta run.json   # ONE page: rows 200-299, with offset, limit and total in run.json (add --async to page an execution)
     fwdctl nqe run --network <id> --file q.nqe --count-by vrf --format csv   # how many rows per value of a field
     fwdctl nqe run --network <id> --query-id Q_... --async --meta run.json   # execution key, outcome, Forward's timing and any diagnostics in run.json
     fwdctl nqe bundle --query-id Q_... --commit-id C --override /Lib/Mod=local.nqe > inline.nqe   # ONE query: the entry + every library module it imports at C, local files substituted

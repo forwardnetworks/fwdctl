@@ -128,3 +128,21 @@ func TestCollectionStatusRunningSaysTaskElapsedProgressAndARoughEstimateAndCanWa
 		t.Errorf("a wait that ends with the collection still running says so: %v", r.Limits)
 	}
 }
+
+func TestCollectionStatusFallsBackToTheNewestSnapshotsResultWhenNoTaskIsInTheWindow(t *testing.T) {
+	routes := func(collected bool) map[string]fwdtest.Handler {
+		return map[string]fwdtest.Handler{
+			tasksPath:                       fwdtest.Const(200, []any{}),
+			"GET /api/snapshots/s9/metrics": fwdtest.Const(200, map[string]any{"numSuccessfulDevices": 12}),
+			nqePath:                         fwdtest.Const(200, map[string]any{"items": []any{map[string]any{"collected": true}, map[string]any{"collected": collected}}, "totalNumItems": 2}),
+		}
+	}
+	r := colStatusWithSnapshot(t, "COLLECTION", routes(true))
+	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "newest collected snapshot's own result") {
+		t.Fatalf("a healthy newest snapshot is judged from its own result: %s %s %v", r.Status, r.Finding, r.Limits)
+	}
+	r = colStatusWithSnapshot(t, "COLLECTION", routes(false))
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "1 of 2 cloud account(s) were not collected") {
+		t.Fatalf("an uncollected cloud account is a failure: %s %s", r.Status, r.Finding)
+	}
+}

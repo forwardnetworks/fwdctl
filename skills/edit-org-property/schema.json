@@ -32,6 +32,18 @@
     "apply": {
       "type": "boolean",
       "default": false
+    },
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reprocess_snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "window_minutes": {
+      "type": "integer",
+      "minimum": 1
     }
   }
 }

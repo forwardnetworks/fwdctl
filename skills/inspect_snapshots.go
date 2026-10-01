@@ -33,6 +33,12 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
+	if in.NetworkID == "" {
+		if in.SnapshotID != "" || in.Kind != "" || in.Limit != 0 || in.Offset != 0 {
+			return result.Result{}, fmt.Errorf("%w: without network_id this skill answers one question, which snapshots are in progress anywhere; snapshot_id, kind, limit and offset need a network_id", ErrInvalidInput)
+		}
+		return busyAcrossOrg(ctx, s, result.Context{Scope: "account", State: "current"})
+	}
 	all, err := s.Snapshots(ctx, in.NetworkID)
 	if err != nil {
 		return result.Result{}, err

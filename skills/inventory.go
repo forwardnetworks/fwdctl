@@ -97,6 +97,24 @@ where hostName == "" || host.name == hostName
 select { Device: device.name, Host: host.name, Type: host.hostType, Addresses: host.addresses, MAC: host.macAddress, Interfaces: host.interfaces }
 order by Device asc natural, Host asc natural;
 `
+	// invCloudAccounts is one row per cloud account with the collected flag, so a VPC list with no instances can be judged: an account Forward collected that is empty, or an
+	// account it never collected.
+	invCloudAccounts = `@query
+query(accountName: String) =
+foreach account in network.cloudAccounts
+where accountName == "" || account.name == accountName
+select {
+  Account: account.name,
+  ID: account.id,
+  Cloud: account.cloudType,
+  Collected: account.collected,
+  "Cloud setup": account.cloudSetupId,
+  VPCs: length(account.vpcs),
+  Subnets: sum(foreach vpc in account.vpcs select length(vpc.subnets)),
+  Instances: sum(foreach vpc in account.vpcs select length(vpc.computeInstances))
+}
+order by Account asc natural;
+`
 	invCloud = `@query
 query(accountName: String, vpcName: String) =
 foreach account in network.cloudAccounts
@@ -106,6 +124,7 @@ where vpcName == "" || vpc.name == vpcName
 select {
   Account: account.name,
   Cloud: account.cloudType,
+  Collected: account.collected,
   VPC: vpc.name,
   ID: vpc.id,
   Regions: vpc.cloudRegions,
@@ -255,6 +274,8 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		query, params["deviceName"], params["vrfName"] = invVRFs, in.Device, in.Name
 	case "hosts":
 		query, params["deviceName"], params["hostName"] = invHosts, in.Device, in.Name
+	case "cloud_accounts":
+		query, params["accountName"] = invCloudAccounts, in.Account
 	case "cloud", "cloud_routes", "cloud_security", "cloud_gateways":
 		query = map[string]string{"cloud": invCloud, "cloud_routes": invCloudRoutes, "cloud_security": invCloudSecurity, "cloud_gateways": invCloudGateways}[in.Kind]
 		params["accountName"], params["vpcName"] = in.Account, in.Name
@@ -291,8 +312,23 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		limits = append(limits, fmt.Sprintf("%d %s match; rows %d-%d shown. Page with offset=%d.", out.Total, noun(in.Kind), in.Offset+1, end, end))
 	}
 	detail := map[string]any{"kind": in.Kind, "filters": filters, "total": out.Total, "offset": in.Offset, "returned": len(out.Items), "rows": fwd.Records(out.Items)}
-	return result.Build(inventoryName, result.OK, fmt.Sprintf("%d %s returned (%d match)", len(out.Items), noun(in.Kind), out.Total),
-		result.Deterministic, cx, result.Options{Limits: limits, NextActions: inventoryNext(in.Kind),
+	finding := fmt.Sprintf("%d %s returned (%d match)", len(out.Items), noun(in.Kind), out.Total)
+	next := inventoryNext(in.Kind)
+	if in.Kind == "cloud_accounts" {
+		notCollected := 0
+		for _, r := range detail["rows"].([]map[string]any) {
+			if c, ok := r["Collected"].(bool); ok && !c {
+				notCollected++
+			}
+		}
+		if notCollected > 0 {
+			finding += fmt.Sprintf("; %d account(s) were NOT collected", notCollected)
+			limits = append(limits, "an account with Collected false was not collected in this snapshot: its VPCs and instances are absent or empty because Forward has no data for it, not because the account is empty")
+			next = []string{"inspect-collection", "investigate-collection-failure"}
+		}
+	}
+	return result.Build(inventoryName, result.OK, finding,
+		result.Deterministic, cx, result.Options{Limits: limits, NextActions: next,
 			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", fwd.SnapshotIDPtr(snap), detail,
 				fmt.Sprintf("%s: %d of %d", in.Kind, len(out.Items), out.Total))}})
 }
@@ -300,6 +336,8 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 // noun is what a kind's rows are called in a sentence.
 func noun(kind string) string {
 	switch kind {
+	case "cloud_accounts":
+		return "cloud accounts"
 	case "cloud":
 		return "cloud VPCs"
 	case "cloud_routes":
@@ -318,6 +356,8 @@ func inventoryNext(kind string) []string {
 		return []string{"inspect-vulnerabilities", "investigate-collection-failure"}
 	case "interfaces", "hosts":
 		return []string{"investigate-reachability"}
+	case "cloud_accounts":
+		return []string{"inspect-collection", "investigate-collection-failure"}
 	}
 	return []string{"check-network-compliance"}
 }

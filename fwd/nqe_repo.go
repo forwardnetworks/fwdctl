@@ -359,3 +359,17 @@ func (s *Session) DiscardOrgDraft(ctx context.Context, path string) error {
 	_, err := s.Client.NQERepository.DiscardChange(ctx, path)
 	return err
 }
+
+// OrgQueryPathByID finds the head path of a saved query by its id ("" when the head has none).
+func (s *Session) OrgQueryPathByID(ctx context.Context, queryID string) (string, error) {
+	list, _, err := s.Client.NQERepository.ListHeadQueries(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, q := range list {
+		if string(q.QueryID) == queryID {
+			return strings.TrimSpace(q.Path), nil
+		}
+	}
+	return "", nil
+}

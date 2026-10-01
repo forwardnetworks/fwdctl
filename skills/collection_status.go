@@ -175,13 +175,44 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 
 	// Which kind of snapshot is the newest decides what silence means: an IMPORT or REPROCESS snapshot was never collected by Forward.
 	origin, originID := "", ""
+	var newest *forward.Snapshot
 	if sn, err := s.NewestSnapshot(ctx, in.NetworkID); err != nil {
 		limits = append(limits, "the newest snapshot could not be read, so whether Forward collected it is unknown: "+err.Error())
 	} else if sn != nil {
+		newest = sn
 		origin, originID = snapshotOrigin(*sn), string(sn.ID)
 		detail["newest_snapshot"] = map[string]any{"id": originID, "kind": kindOf(*sn), "origin": origin}
 		if origin == "unknown" {
 			limits = append(limits, "the newest snapshot reports no processing trigger, so whether Forward collected it or it was imported is unknown")
+		}
+	}
+	// No recent collector task (Forward lists only the organization's newest ones): fall back to what the newest collected snapshot recorded, which is how a collection a few
+	// days old is still judged. It is the snapshot's own result, not a current task, and says so.
+	if len(tasks) == 0 && terr == nil && origin == "collection" && newest != nil && fwd.IsReady(newest) {
+		if m, merr := s.SnapshotMetrics(ctx, string(newest.ID)); merr != nil {
+			limits = append(limits, "the newest snapshot's collection counts could not be read: "+merr.Error())
+		} else {
+			signals++
+			snapInfo := map[string]any{"snapshot": string(newest.ID), "created_at": newest.CreatedAt, "devices_collected": m.SuccessfulDevices, "collection_failed": m.FailedDevices, "processing_failed": m.ProcessingFailedDevices}
+			if rows, _, _, qerr := s.RunNQEAll(ctx, in.NetworkID, string(newest.ID), cloudAccountFlags, 5000); qerr == nil && len(rows) > 0 {
+				collected := 0
+				for _, r := range rows {
+					if c, ok := r["collected"].(bool); ok && c {
+						collected++
+					}
+				}
+				snapInfo["cloud_accounts"], snapInfo["cloud_accounts_collected"] = len(rows), collected
+				if collected < len(rows) {
+					failed = append(failed, fmt.Sprintf("%d of %d cloud account(s) were not collected in the newest snapshot", len(rows)-collected, len(rows)))
+				}
+			}
+			detail["newest_snapshot_result"] = snapInfo
+			limits = append(limits, "no recent collector task was in Forward's window, so this reads the newest collected snapshot's own result (devices and cloud accounts as that snapshot recorded them), which may be days old")
+			if m.FailedDevices+m.ProcessingFailedDevices > 0 {
+				failed = append(failed, fmt.Sprintf("the newest collected snapshot has %d device(s) that failed collection and %d that failed processing", m.FailedDevices, m.ProcessingFailedDevices))
+			} else if m.SuccessfulDevices > 0 {
+				positive = true
+			}
 		}
 	}
 	running0, _ := detail["running"].(bool)
@@ -294,3 +325,7 @@ func runningFinding(detail map[string]any) string {
 	}
 	return finding
 }
+
+// cloudAccountFlags reads each cloud account's collected flag in a snapshot.
+const cloudAccountFlags = `foreach account in network.cloudAccounts
+select { collected: account.collected }`

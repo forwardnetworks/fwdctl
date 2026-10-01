@@ -28,7 +28,8 @@ reads and never judges: a row is a fact about the collected network, not a verdi
 | `vlans` | device, VLAN name, VLAN id range | `device`, `name` (VLAN) |
 | `vrfs` | device, VRF name, type, interface count | `device`, `name` (VRF) |
 | `hosts` | device, host name, type, addresses, MAC, interfaces | `device`, `name` (host) |
-| `cloud` | account, cloud, VPC name and id, regions, CIDR blocks, subnet and instance counts | `account`, `name` (VPC) |
+| `cloud_accounts` | one row per cloud account: name, id, cloud, **collected** (true/false), cloud setup, VPC, subnet and instance counts | `account` |
+| `cloud` | account, cloud, whether the account was collected, VPC name and id, regions, CIDR blocks, subnet and instance counts | `account`, `name` (VPC) |
 | `cloud_routes` | per VPC: route table, region, prefixes, route type, next hop, priority, whether inactive | `account`, `name` (VPC) |
 | `cloud_security` | per VPC: security group, direction, action, source and destination prefixes, protocol, ports | `account`, `name` (VPC) |
 | `cloud_gateways` | per VPC: VPC peerings, VPN connections (up or down), internet and NAT gateways | `account`, `name` (VPC) |
@@ -46,6 +47,10 @@ Optional: `snapshot_id` (default: newest processed, collected), `limit` (default
    - Zero rows: **unknown**. The entity may not exist, or the filter may be wrong (names are matched exactly); the skill
      cannot tell which. For `summary`, zero devices means an empty or unmodeled network, not "nothing to report".
 4. On a predicted snapshot the limits say the rows describe a prediction, not collected state.
+
+**cloud_accounts.** Read this before trusting an empty cloud result: a VPC list whose VPCs all hold zero instances is either an account Forward collected that is truly empty, or one it never collected (or that failed). `collected` is the flag in
+Forward's cloud model; an account with `collected: false` was not collected in this snapshot. The model carries only that flag, not an error text or the regions or projects: for the reason, read the network's cloud setup in the collection sources
+(`inspect-collection` view `config`) and `investigate-collection-failure`. `cloud` rows carry the same `collected` flag.
 
 **cloud kinds.** `cloud` lists the VPCs or VNets; the three `cloud_*` kinds read what a cloud connectivity question needs from Forward's cloud model (NQE `network.cloudAccounts`): routes and their next hops, security group rules, and the gateways and peerings that join a VPC to anything else. Network ACLs, cloud firewalls, transit gateways, direct-connect gateways, load balancers and floating (public) IPs are in the same model but have no kind here: read them with `author-nqe-query`. These kinds were run read-only against a live Azure network (rows and counts returned); AWS and GCP rows are unverified. In `cloud_security` an empty prefix, protocol or port list on a rule appears to mean the rule does not constrain that field (any), which is unverified: check it in Forward before concluding a rule allows or blocks everything. Whether the path search (`investigate-reachability`) can trace between two cloud instances is not established here: say so rather than assume it; compare the instance subnets' route table (`cloud_routes`), the security groups on both ends (`cloud_security`) and the gateways (`cloud_gateways`).
 

@@ -121,19 +121,48 @@ func (s *Session) startAndWait(ctx context.Context, networkID string, r NQERun, 
 // runNQEPageAsync reads one page of a query through the asynchronous execution API. RunNQE falls back to it when the synchronous call is cut off by the HTTP timeout: the
 // query then runs (or, if the first attempt finished meanwhile, is served from Forward's cache) without holding one request open.
 func (s *Session) runNQEPageAsync(ctx context.Context, networkID string, r NQERun, limit int) ([]forward.NQERecord, int64, error) {
-	ctx, cancel, meta, err := s.startAndWait(ctx, networkID, r, s.NQEWait)
+	items, total, _, err := s.runNQEPageAsyncMeta(ctx, networkID, r, limit, s.NQEWait)
+	return items, total, err
+}
+
+// runNQEPageAsyncMeta is runNQEPageAsync that also returns the execution's meta (key, outcome, Forward's execution time).
+func (s *Session) runNQEPageAsyncMeta(ctx context.Context, networkID string, r NQERun, limit int, timeout time.Duration) ([]forward.NQERecord, int64, NQEMeta, error) {
+	ctx, cancel, meta, err := s.startAndWait(ctx, networkID, r, timeout)
 	if cancel != nil {
 		defer cancel()
 	}
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, meta, err
 	}
 	lim, off := int32(limit), int32(r.Offset)
 	page, _, err := s.Client.NQE.Result(ctx, networkID, meta.ExecutionKey, forward.NQEResultOptions{Limit: &lim, Offset: &off})
 	if err != nil {
-		return nil, 0, err
+		MetaFromError(&meta, err)
+		return nil, 0, meta, err
 	}
-	return page.Items, page.TotalNumItems, nil
+	return page.Items, page.TotalNumItems, meta, nil
+}
+
+// RunNQEPage reads ONE page (limit rows from offset) of a query, synchronously or, with async, through the execution API (timeout bounds the wait). It returns the rows, the
+// total Forward reports and, for async, the execution meta. Paging the same query twice with consecutive offsets is how a caller checks the pages join into the full result.
+func (s *Session) RunNQEPage(ctx context.Context, networkID string, r NQERun, limit, offset int, async bool, timeout time.Duration) ([]map[string]any, int64, NQEMeta, error) {
+	r.Limit, r.Offset = limit, offset
+	if async {
+		snap, err := s.Snapshot(ctx, networkID, r.SnapshotID)
+		if err != nil {
+			return nil, 0, NQEMeta{Mode: "async", Diagnostics: []QueryDiagnostic{}}, err
+		}
+		if !IsReady(snap) {
+			return nil, 0, NQEMeta{Mode: "async", Diagnostics: []QueryDiagnostic{}}, fmt.Errorf("snapshot %s is %s: %w", r.SnapshotID, StateOf(snap), ErrSnapshotNotReady)
+		}
+		items, total, meta, err := s.runNQEPageAsyncMeta(ctx, networkID, r, limit, timeout)
+		return Records(items), total, meta, err
+	}
+	out, err := s.RunNQE(ctx, networkID, r)
+	if err != nil {
+		return nil, 0, NQEMeta{Mode: "sync", Diagnostics: []QueryDiagnostic{}}, err
+	}
+	return Records(out.Items), out.Total, NQEMeta{Mode: "sync", Diagnostics: []QueryDiagnostic{}}, nil
 }
 
 // isClientTimeout reports whether err is the HTTP client's timeout (or a cancelled deadline) rather than an answer from Forward.

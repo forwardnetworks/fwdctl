@@ -158,10 +158,16 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 	paramsFile := fs.String("params", "", "JSON file with the query's parameters, an object of name to typed value")
 	asyncRun := fs.Bool("async", false, "run through Forward's asynchronous execution API (the execution key and outcome are in --meta)")
 	metaOut := fs.String("meta", "", "write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr")
+	pageOffset := fs.Int("offset", 0, "read one page: skip this many rows (with --limit; the page, the total and the offset are in --meta)")
+	pageLimit := fs.Int("limit", 0, "read one page of at most this many rows instead of every row (0: every row, up to --max)")
 	waitMax := fs.Duration("timeout", 10*time.Minute, "how long to wait: the whole synchronous request (response included; the default HTTP limit is 120s), or with --async the execution")
 	var paramKV paramList
 	fs.Var(&paramKV, "param", "one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params")
 	if err := fs.Parse(args); err != nil {
+		return usage
+	}
+	if *pageOffset < 0 || *pageLimit < 0 || (*pageOffset > 0 && *pageLimit == 0) {
+		fmt.Fprintln(stderr, "error: --offset needs --limit, and neither may be negative")
 		return usage
 	}
 	if *network == "" || !validFormat(*format) {
@@ -219,7 +225,13 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 	var total int64
 	var truncated bool
 	meta := fwd.NQEMeta{Mode: "sync", Diagnostics: []fwd.QueryDiagnostic{}}
-	if *asyncRun {
+	paged := *pageLimit > 0
+	if paged {
+		var pm fwd.NQEMeta
+		rows, total, pm, err = sess.RunNQEPage(context.Background(), *network, run, *pageLimit, *pageOffset, *asyncRun, *waitMax)
+		meta = pm
+		truncated = false
+	} else if *asyncRun {
 		rows, total, meta, err = sess.RunNQEAsync(context.Background(), *network, run, *max, *waitMax)
 		truncated = int64(len(rows)) < total
 	} else {
@@ -244,10 +256,12 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 			ElapsedSeconds float64 `json:"elapsed_seconds"`
 			Rows           int     `json:"rows"`
 			Total          int64   `json:"total"`
+			Offset         int     `json:"offset"`
+			Limit          int     `json:"limit,omitempty"`
 			SnapshotID     string  `json:"snapshot_id"`
 			QueryID        string  `json:"query_id,omitempty"`
 			CommitID       string  `json:"commit_id,omitempty"`
-		}{meta, time.Since(started).Seconds(), len(rows), total, snap, *queryID, *commitID}, "", "  ")
+		}{meta, time.Since(started).Seconds(), len(rows), total, *pageOffset, *pageLimit, snap, *queryID, *commitID}, "", "  ")
 		if *metaOut == "-" {
 			fmt.Fprintln(stderr, string(b))
 		} else {
@@ -276,7 +290,9 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 		fmt.Fprintf(stderr, ", query %s at commit %s", *queryID, c)
 	}
 	fmt.Fprintln(stderr)
-	if truncated {
+	if paged {
+		fmt.Fprintf(stderr, "page: rows %d-%d of %d (offset %d, limit %d)\n", *pageOffset, *pageOffset+len(rows), total, *pageOffset, *pageLimit)
+	} else if truncated {
 		fmt.Fprintf(stderr, "note: %d rows exist; the first %d are shown (--max raises the bound)\n", total, len(rows))
 	}
 	if *countBy != "" {

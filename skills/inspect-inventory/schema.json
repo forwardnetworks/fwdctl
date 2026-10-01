@@ -1,16 +1,63 @@
 {
   "type": "object",
-  "required": ["network_id", "kind"],
+  "required": [
+    "network_id",
+    "kind"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "snapshot_id": { "type": "string", "minLength": 1 },
-    "kind": { "enum": ["summary", "devices", "interfaces", "vlans", "vrfs", "hosts", "cloud", "cloud_routes", "cloud_security", "cloud_gateways", "ip_owner"] },
-    "device": { "type": "string", "minLength": 1 },
-    "account": { "type": "string", "minLength": 1 },
-    "name": { "type": "string", "minLength": 1 },
-    "ips": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "description": "kind ip_owner, required: the IPv4 addresses whose owning interface to find" },
-    "limit": { "type": "integer", "minimum": 1 },
-    "offset": { "type": "integer", "minimum": 0 }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "summary",
+        "devices",
+        "interfaces",
+        "vlans",
+        "vrfs",
+        "hosts",
+        "cloud_accounts",
+        "cloud",
+        "cloud_routes",
+        "cloud_security",
+        "cloud_gateways",
+        "ip_owner"
+      ]
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1
+    },
+    "account": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ips": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "description": "kind ip_owner, required: the IPv4 addresses whose owning interface to find"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    }
   }
 }

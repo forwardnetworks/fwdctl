@@ -42,6 +42,17 @@ only) and what it is used for come from Forward's source (`OrgProperty`), embedd
 
 The classification is a draft that an owner reviews (`knowledge/orgprops-risk.json`). A property this build does not know is never `safe`.
 
+## Guarded window (an experiment on how snapshots are processed)
+
+For a property that changes how snapshots are **computed** (a parsing mode, for example), give `reprocess_snapshot_id`, `network_id` (that snapshot's network), `value` and optionally `window_minutes` (default 30, at most 240).
+The window sets the value, reprocesses that ONE snapshot, waits for it to finish, and **always puts the original value back** (an override is set back to its value; no override is cleared), also when the reprocess fails,
+the wait runs out or the call is cancelled. A restore that itself fails is reported loudly with the value to set by hand.
+
+The property is **organization-wide**, so the window **refuses to start** while any snapshot in **any** network is UNPACKING, PROCESSING or RESTORING, or while an enabled collection schedule may fire before the window ends
+(a time-of-day schedule is computed from its times, days and zone, the organization's zone when it names none; a periodic schedule is due at the network's last collection plus its period, and with no known last collection it
+blocks). Anything that cannot be read blocks: unknown is never a pass. The dry run lists every blocker and writes nothing. After the window it reports any snapshot elsewhere that began processing during it. Use
+`inspect-snapshots` with no `network_id` to see what is processing now.
+
 ## Dry run
 
 Without `apply: true` nothing is changed. A change names the property, its current value, whether it was an override (so the undo is to set it back) or the default (so the undo is to clear the override), the

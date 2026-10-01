@@ -176,3 +176,15 @@ func TestInventoryABadKindIsRejectedBeforeAnyCall(t *testing.T) {
 		t.Fatalf("err %v calls %d", err, len(srv.Calls()))
 	}
 }
+
+func TestInventoryCloudAccountsShowsWhichAccountWasNotCollected(t *testing.T) {
+	r, _ := inv(t, map[string]fwdtest.Handler{"Collected: account.collected": rowsOf(2,
+		map[string]any{"Account": "a1", "Cloud": "AWS", "Collected": true, "VPCs": 3, "Instances": 40},
+		map[string]any{"Account": "a2", "Cloud": "AWS", "Collected": false, "VPCs": 0, "Instances": 0})}, nil, `{"network_id":"n1","kind":"cloud_accounts"}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "1 account(s) were NOT collected") || !strings.Contains(strings.Join(r.Limits, " "), "not because the account is empty") {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+	if !strings.Contains(strings.Join(r.NextActions, " "), "investigate-collection-failure") {
+		t.Errorf("next actions %v", r.NextActions)
+	}
+}

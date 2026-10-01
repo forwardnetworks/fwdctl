@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
@@ -34,6 +35,7 @@ type librarySource struct {
 	commit    string
 	overrides map[string]string
 	added     map[string]string
+	used      map[string]bool // the override and added paths the bundle actually read, so one that matched nothing is an error
 }
 
 // libPath is the library path with its leading slash: an import writes "Team/Mod", the library API and --override write "/Team/Mod".
@@ -45,6 +47,19 @@ func libPath(p string) string {
 	return p
 }
 
+// override reports a local file given for path (an --override or an --add-module), without reading it.
+func (l librarySource) override(path string) (string, bool) {
+	path = libPath(path)
+	for _, m := range []map[string]string{l.overrides, l.added} {
+		for k, f := range m {
+			if libPath(k) == path {
+				return f, true
+			}
+		}
+	}
+	return "", false
+}
+
 func (l librarySource) Source(path string) (string, error) {
 	path = libPath(path)
 	for _, m := range []map[string]string{l.overrides, l.added} {
@@ -52,6 +67,7 @@ func (l librarySource) Source(path string) (string, error) {
 			if libPath(k) != path {
 				continue
 			}
+			l.used[libPath(k)] = true
 			b, err := os.ReadFile(f)
 			return string(b), err
 		}
@@ -93,12 +109,25 @@ func nqeBundleCmd(args []string, stdout, stderr io.Writer, session func() (*fwd.
 		return usage
 	}
 	ctx := context.Background()
-	src := librarySource{ctx: ctx, sess: sess, commit: *commit, overrides: overrides, added: added}
+	src := librarySource{ctx: ctx, sess: sess, commit: *commit, overrides: overrides, added: added, used: map[string]bool{}}
 	var entry string
 	switch {
 	case *path != "":
 		entry, err = src.Source(*path)
 	default:
+		// an override of the entry's own path replaces the entry body: find the path of the query id (at the head; a query renamed since is not found, and an override that
+		// then matches nothing is reported below)
+		if len(overrides) > 0 {
+			if p, perr := sess.OrgQueryPathByID(ctx, *queryID); perr != nil {
+				fmt.Fprintf(stderr, "error: looking up the entry's path: %v\n", perr)
+				return 3
+			} else if p != "" {
+				if _, ok := src.override(p); ok {
+					entry, err = src.Source(p)
+					break
+				}
+			}
+		}
 		var ok bool
 		entry, ok, err = sess.OrgQuerySourceByID(ctx, *commit, *queryID)
 		if err == nil && !ok {
@@ -112,6 +141,20 @@ func nqeBundleCmd(args []string, stdout, stderr io.Writer, session func() (*fwd.
 	text, inlined, err := nqelint.Bundle(entry, src)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	// an override or an added module the bundle never read matched nothing: refuse, or a before/after comparison would silently compare a program with itself
+	var unused []string
+	for _, m := range []map[string]string{overrides, added} {
+		for k := range m {
+			if !src.used[libPath(k)] {
+				unused = append(unused, k)
+			}
+		}
+	}
+	if len(unused) > 0 {
+		sort.Strings(unused)
+		fmt.Fprintf(stderr, "error: --override/--add-module path(s) not used by the bundle (they matched neither the entry nor any module it imports): %s; nothing was written\n", strings.Join(unused, ", "))
 		return 1
 	}
 	if *out != "" {

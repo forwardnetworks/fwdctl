@@ -148,3 +148,30 @@ func TestInspectSnapshotDetailWritesMetricsUnderReadableKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestInspectSnapshotsWithoutANetworkSaysWhatIsProcessingAnywhere(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks":              fwdtest.Const(200, []any{map[string]any{"id": "n1", "name": "one"}, map[string]any{"id": "n2", "name": "two"}}),
+		"GET /api/networks/n1/snapshots": fwdtest.Snapshots(fwdtest.Snap("a", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+		"GET /api/networks/n2/snapshots": fwdtest.Snapshots(fwdtest.Snap("b", "PROCESSING", "COLLECTION", "2026-09-02T00:00:00.000Z"), fwdtest.Snap("c", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+	}
+	r, _ := mustRun(t, "inspect-snapshots", routes, `{}`)
+	rows := r.Evidence[0].Detail["in_progress"].([]map[string]any)
+	if r.Status != result.OK || len(rows) != 1 || rows[0]["network_id"] != "n2" || rows[0]["snapshot_id"] != "b" {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Evidence[0].Detail)
+	}
+	routes["GET /api/networks/n2/snapshots"] = fwdtest.Const(200, []any{})
+	r, _ = mustRun(t, "inspect-snapshots", routes, `{}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "No snapshot is in progress in any of the 2") {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	// a network that cannot be read: not "nothing is processing"
+	routes["GET /api/networks/n2/snapshots"] = fwdtest.Const(403, map[string]any{"message": "no"})
+	r, _ = mustRun(t, "inspect-snapshots", routes, `{}`)
+	if r.Status != result.Unknown || !strings.Contains(r.Finding, "could not be read") {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	if _, _, err := runSkill(t, "inspect-snapshots", routes, `{"kind":"x"}`); err == nil {
+		t.Errorf("kind needs a network_id")
+	}
+}

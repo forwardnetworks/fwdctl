@@ -30,6 +30,11 @@ type editOrgPropertyInput struct {
 	Limit  int    `json:"limit"`
 	Offset int    `json:"offset"`
 	Apply  bool   `json:"apply"`
+	// ReprocessSnapshotID (with NetworkID, the snapshot's network, and WindowMinutes) makes this a guarded window: set the value, reprocess that one snapshot, wait, and always
+	// restore the original value.
+	NetworkID           string `json:"network_id"`
+	ReprocessSnapshotID string `json:"reprocess_snapshot_id"`
+	WindowMinutes       int    `json:"window_minutes"`
 }
 
 // editOrgProperty lists the organization properties Forward defines with their current value and how risky each is to change, and sets (or clears) one for the login's own
@@ -140,6 +145,12 @@ func editOrgProperty(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	ch := result.Change{Action: map[bool]string{true: "clear_org_property", false: "set_org_property"}[in.Clear], Target: "organization property " + strings.ToUpper(name),
 		Before: before, After: after, Reversible: true, Undo: undo}
 	facts["needs_confirm"] = needConfirm
+	if in.ReprocessSnapshotID != "" {
+		return orgPropertyWindow(ctx, s, in, windowSpec{name: name, before: before, overridden: overridden, risk: risk, needConfirm: needConfirm, confirmed: confirmed, cfg: cfg, limits: limits, cx: cx})
+	}
+	if in.NetworkID != "" || in.WindowMinutes != 0 {
+		return result.Result{}, fmt.Errorf("%w: network_id and window_minutes belong to a window (reprocess_snapshot_id)", ErrInvalidInput)
+	}
 	if !in.Apply {
 		msg := fmt.Sprintf("Dry run: would %s %s (risk %s). Nothing was changed; run again with apply=true", map[bool]string{true: "clear the override of", false: "set"}[in.Clear], strings.ToUpper(name), risk)
 		if needConfirm {
