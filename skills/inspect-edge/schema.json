@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "required": ["network_id"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "view": { "enum": ["exits", "public_addresses", "trace_sources"], "default": "exits" },
+    "vrf": { "type": "string", "minLength": 1, "description": "Only devices with a routing instance of this name (every view)" },
+    "device": { "type": "string", "minLength": 1 },
+    "include_owned": { "type": "boolean", "default": false },
+    "limit": { "type": "integer", "minimum": 1 },
+    "offset": { "type": "integer", "minimum": 0 },
+    "role": { "enum": ["management", "loopback", "customer_facing", "internet_facing", "unknown"] },
+    "target_ip": { "type": "string", "minLength": 1, "description": "view trace_sources, required: the control address a good source must reach, such as the edge device's own interface address" },
+    "exclude": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "candidates": { "type": "integer", "minimum": 1 },
+    "snapshot_id": { "type": "string", "minLength": 1 }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": ["network_id"],
+  "description": "Give exactly one of check_id (a check's history) or device (when its configuration last changed)",
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "check_id": { "type": "string", "minLength": 1 },
+    "device": { "type": "string", "minLength": 1 },
+    "snapshots": { "type": "integer", "minimum": 1 }
+  }
+}

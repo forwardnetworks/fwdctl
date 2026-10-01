@@ -1,0 +1,51 @@
+{
+ "skill": "plan-security-posture",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Give me a security review of the network",
+   "should_trigger": true,
+   "expected_behavior": [
+    "checks policy, vulnerabilities and exposure",
+    "ranks by internet exposure",
+    "calls an unmeasured area unknown"
+   ]
+  },
+  {
+   "query": "What could an attacker on the internet reach?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses investigate-reachability from internet",
+    "states how the internet is modelled"
+   ]
+  },
+  {
+   "query": "Are we secure?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "does not claim clean from absence of findings",
+    "recommends, never changes"
+   ]
+  },
+  {
+   "query": "Is CVE-2024-3400 relevant to us?",
+   "should_trigger": false,
+   "note": "plan-vulnerability-response"
+  },
+  {
+   "query": "Does anything violate our NTP policy?",
+   "should_trigger": false,
+   "note": "check-network-compliance"
+  },
+  {
+   "query": "Tag r1 as edge",
+   "should_trigger": false,
+   "note": "edit-device-tags"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

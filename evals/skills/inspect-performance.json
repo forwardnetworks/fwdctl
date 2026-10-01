@@ -1,0 +1,52 @@
+{
+ "skill": "inspect-performance",
+ "cases": [
+  {
+   "query": "Are any of our devices unhealthy right now? Check network 231060.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-performance with view unhealthy_devices",
+    "does not say the network is healthy when the result is unknown for lack of samples"
+   ]
+  },
+  {
+   "query": "Which interface has the most packet loss?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-performance with view interfaces and metric PACKET_LOSS",
+    "reports the highest reading from the result"
+   ]
+  },
+  {
+   "query": "How has CPU on atl-core-pe01 changed over the last 7 days?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-performance with view device_history, device atl-core-pe01, metric CPU, days 7",
+    "reports min, max and latest from the result, or says there is no data"
+   ]
+  },
+  {
+   "query": "How many interfaces does atl-core-pe01 have?",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "Can host A reach host B?",
+   "should_trigger": false,
+   "note": "reachability"
+  },
+  {
+   "query": "Which devices are busiest?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs view devices without a metric and gets CPU and memory",
+    "if there are no samples, says whether performance data is on and the SNMP state, not that the network is healthy"
+   ]
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

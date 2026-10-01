@@ -1,0 +1,44 @@
+{
+ "skill": "edit-advanced-reachability",
+ "cases": [
+  {
+   "query": "Internet exposure says PENDING_ADVANCED_REACHABILITY on snapshot 1001, run advanced reachability for it",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-advanced-reachability"
+   ]
+  },
+  {
+   "query": "The snapshot shows advanced reachability UNPROCESSED, start it",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-advanced-reachability"
+   ]
+  },
+  {
+   "query": "Reprocess snapshot 1001 because it failed",
+   "should_trigger": false,
+   "note": "edit-snapshot-reprocess"
+  },
+  {
+   "query": "Which devices are internet addressable?",
+   "should_trigger": false,
+   "note": "inspect-vulnerabilities"
+  },
+  {
+   "query": "Start advanced reachability for snapshot s1 so internet exposure works.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs edit-advanced-reachability as a dry run first",
+    "if the result says flow computation is disabled, reports it as blocked rather than never triggered, applies nothing, and sends the person to inspect-environment",
+    "does not claim to know a network-level override or the license when the result says UNKNOWN"
+   ],
+   "note": "disabled versus never triggered"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

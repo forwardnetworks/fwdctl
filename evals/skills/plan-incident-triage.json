@@ -1,0 +1,50 @@
+{
+ "skill": "plan-incident-triage",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Something is down, where do I start?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "checks how old the picture is",
+    "looks at what changed",
+    "ranks leads, no root cause from correlation"
+   ]
+  },
+  {
+   "query": "Users report slowness since this morning, what is wrong?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "checks performance, checks and changes",
+    "states what could not be seen"
+   ]
+  },
+  {
+   "query": "The network just broke, triage it",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses inspect-snapshots and inspect-collection first"
+   ]
+  },
+  {
+   "query": "Can A reach B?",
+   "should_trigger": false,
+   "note": "investigate-reachability"
+  },
+  {
+   "query": "Is the network healthy?",
+   "should_trigger": false,
+   "note": "plan-health-check"
+  },
+  {
+   "query": "What changed in config last week?",
+   "should_trigger": false,
+   "note": "plan-what-changed"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

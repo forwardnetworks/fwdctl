@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": ["network_id"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "action": { "enum": ["start", "stop"], "default": "start" },
+    "task_id": { "type": "string", "minLength": 1 },
+    "stop_mode": { "enum": ["CANCEL", "SKIP"], "default": "CANCEL" },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

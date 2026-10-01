@@ -1,0 +1,113 @@
+{
+ "skill": "inspect-topology",
+ "cases": [
+  {
+   "query": "What is atl-ce01 connected to?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses kind links with device atl-ce01",
+    "reports the linked devices and interfaces from the result"
+   ]
+  },
+  {
+   "query": "Which sites and tags do we have defined, and what is in the Core tag?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses kind locations and kind tags",
+    "reports tag membership from the result, not from guesses"
+   ]
+  },
+  {
+   "query": "What aliases are defined in this snapshot?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses kind aliases",
+    "treats an empty result as unknown, not as 'no aliases'"
+   ]
+  },
+  {
+   "query": "How many devices are there?",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "Can 10.101.10.2 reach 10.101.20.2?",
+   "should_trigger": false,
+   "note": "reachability"
+  },
+  {
+   "query": "Is the internet modelled in this network?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-topology (kind external)"
+   ]
+  },
+  {
+   "query": "Which intranet nodes and L3 VPNs exist?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-topology (kind external)"
+   ]
+  },
+  {
+   "query": "Which links were added by hand?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-topology (kind external)"
+   ]
+  },
+  {
+   "query": "Can host A reach host B?",
+   "should_trigger": false,
+   "note": "reachability"
+  },
+  {
+   "query": "Show discovered links between devices",
+   "should_trigger": false,
+   "note": "inspect-topology"
+  },
+  {
+   "query": "Which link overrides does snapshot 1001 have that snapshot 1000 does not?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-topology (kind link_overrides with compare_to_snapshot_id) with both snapshot ids",
+    "reports added, removed and changed counts and names both snapshot ids"
+   ],
+   "note": "[kind link_overrides with compare_to_snapshot_id]"
+  },
+  {
+   "query": "The manual link between FW-01 po47 and CORE-01 po147 is gone in the newest snapshot, was it ever there?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "compares the newest snapshot with an earlier one",
+    "uses the device filter or reads the examples for that pair",
+    "does not claim to know who removed it"
+   ],
+   "note": "paraphrase [kind link_overrides with compare_to_snapshot_id]"
+  },
+  {
+   "query": "Did the reprocess drop any of our suppressed links?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "compares the reprocessed snapshot with its predecessor",
+    "reports changed or removed absent overrides, or that none differ, with the totals"
+   ],
+   "note": "paraphrase [kind link_overrides with compare_to_snapshot_id]"
+  },
+  {
+   "query": "Which devices' config files changed between two snapshots?",
+   "should_trigger": false,
+   "note": "compare-device-config"
+  },
+  {
+   "query": "Add a link between r1 Gi0/1 and sw1 Gi0/24",
+   "should_trigger": false,
+   "note": "edit-link-overrides, after plan-safe-write"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

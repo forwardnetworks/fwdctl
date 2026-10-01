@@ -1,0 +1,58 @@
+[
+ {
+  "query": "Tag r1 and r2 as edge",
+  "skill": "edit-device-tags"
+ },
+ {
+  "query": "Remove the lab tag from the Atlanta switches",
+  "skill": "edit-device-tags"
+ },
+ {
+  "query": "Label the newest snapshot 'before the BGP change'",
+  "skill": "edit-snapshot-note"
+ },
+ {
+  "query": "Reprocess snapshot 1175663",
+  "skill": "edit-snapshot-reprocess"
+ },
+ {
+  "query": "Compute advanced reachability for snapshot 1001 so internet exposure is available",
+  "skill": "edit-advanced-reachability"
+ },
+ {
+  "query": "Save this query to our library as /Team/Devices: foreach d in network.devices select {name: d.name}",
+  "skill": "edit-nqe-query"
+ },
+ {
+  "query": "Add the link between r1 Gi0/1 and sw1 Gi0/24 to the topology of the latest snapshot",
+  "skill": "edit-link-overrides"
+ },
+ {
+  "query": "Collect the network again now",
+  "skill": "edit-collection"
+ },
+ {
+  "query": "Switch off the check that flags open telnet on the latest snapshot",
+  "skill": "edit-checks"
+ },
+ {
+  "query": "Drive the L3 VPN 'dir' from the saved query /Team/WAN connections",
+  "skill": "edit-synthetic-query"
+ },
+ {
+  "query": "Model the leased line between r1 Gi0/1 (VLAN 100) and r2 Gi0/1 (VLAN 200) as a WAN circuit called wan-01",
+  "skill": "edit-wan-circuit"
+ },
+ {
+  "query": "Our 198.18.0.0/16 and 198.19.0.0/16 are internal but the internet node treats them as the internet; exclude them",
+  "skill": "edit-internet-exclusions"
+ },
+ {
+  "query": "Try the 1.3.6.1.4.1.10418.26 OID on endpoint ts-01 using a copy of profile SNMP-10",
+  "skill": "edit-endpoint-profile"
+ },
+ {
+  "query": "Create a temporary workspace zz-test under network 155541 holding device sw-small, retention 7 days",
+  "skill": "edit-workspace"
+ }
+]

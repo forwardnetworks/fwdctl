@@ -1,0 +1,11 @@
+{
+ "skill": "edit-internet-exclusions",
+ "cases": [
+  {"query": "Our 198.18.0.0/16 is used internally but the internet node claims it; keep it off the internet node", "should_trigger": true, "expected_behavior": ["edit-internet-exclusions (dry run first)"]},
+  {"query": "Remove 198.51.100.0/24 from the internet node's excluded subnets", "should_trigger": true, "expected_behavior": ["edit-internet-exclusions with remove"]},
+  {"query": "Which subnets does the internet node exclude today?", "should_trigger": false, "note": "inspect-topology kind external device internet"},
+  {"query": "How do I work out which internal public prefixes to exclude?", "should_trigger": false, "note": "plan-synthetic-device reference/internet-node.md"},
+  {"query": "Add an uplink to the internet node", "should_trigger": false, "note": "edit-synthetic-query (a query) or the Forward drawer"}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

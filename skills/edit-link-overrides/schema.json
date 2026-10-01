@@ -1,0 +1,110 @@
+{
+  "type": "object",
+  "required": [
+    "network_id",
+    "snapshot_id"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "add_present": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "port1",
+          "port2"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "port1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "port2": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "remove_present": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "port1",
+          "port2"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "port1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "port2": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "add_absent": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "port1",
+          "port2"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "port1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "port2": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "remove_absent": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "port1",
+          "port2"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "port1": {
+            "type": "string",
+            "minLength": 1
+          },
+          "port2": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    },
+    "force": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

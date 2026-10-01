@@ -1,0 +1,12 @@
+{
+ "skill": "edit-device-tags",
+ "cases": [
+  {"query": "Tag r1 and r2 as 'edge'", "should_trigger": true, "expected_behavior": ["edit-device-tags (dry run first)"]},
+  {"query": "Remove the 'lab' tag from the Atlanta switches", "should_trigger": true, "expected_behavior": ["edit-device-tags (remove)"]},
+  {"query": "Group these devices under the 'wan' tag", "should_trigger": true, "expected_behavior": ["edit-device-tags"]},
+  {"query": "Which devices carry the 'edge' tag?", "should_trigger": false, "note": "inspect-inventory"},
+  {"query": "Create a new tag called dmz", "should_trigger": false, "note": "not offered: a tag definition cannot be undone through the API"},
+  {"query": "Delete the 'old' tag everywhere", "should_trigger": false, "note": "not offered"}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

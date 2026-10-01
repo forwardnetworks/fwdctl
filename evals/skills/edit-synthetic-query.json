@@ -1,0 +1,12 @@
+{
+ "skill": "edit-synthetic-query",
+ "cases": [
+  {"query": "Drive the L3 VPN 'dir' from the saved query /Team/WAN connections", "should_trigger": true, "expected_behavior": ["edit-synthetic-query (dry run first)", "previews what the query generates"]},
+  {"query": "Which saved queries could define connections for the internet node?", "should_trigger": true, "expected_behavior": ["edit-synthetic-query with no query_id lists compatible queries"]},
+  {"query": "Take the NQE query off the intranet node 'branches'", "should_trigger": true, "expected_behavior": ["edit-synthetic-query (detach)"]},
+  {"query": "Which connections does the L3 VPN have?", "should_trigger": false, "note": "inspect-topology kind external"},
+  {"query": "Write a query that lists my WAN uplinks", "should_trigger": false, "note": "author-nqe-query"},
+  {"query": "Add a hand-written connection to the internet node", "should_trigger": false, "note": "not offered: this skill attaches a query, it does not edit connections"}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

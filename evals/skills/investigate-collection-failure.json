@@ -1,0 +1,88 @@
+{
+ "skill": "investigate-collection-failure",
+ "cases": [
+  {
+   "query": "Are any devices missing from the latest snapshot, and if so why?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs investigate-collection-failure",
+    "reports what the collection health shows; if nothing failed, says so from measured data, and lists what could not be read as a limit"
+   ],
+   "note": "Test Drive snapshot is healthy: the honest answer is no failures"
+  },
+  {
+   "query": "The last collection failed. What happened?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads the newest snapshot and its state",
+    "does not invent a failure; reports the state the snapshot is actually in and the evidence"
+   ],
+   "note": "Test Drive snapshot is PROCESSED"
+  },
+  {
+   "query": "This result looks incomplete. Can I trust the data behind it?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "checks collection health first",
+    "says exceptions were not read when the caller lacks the permission, rather than 'none'"
+   ]
+  },
+  {
+   "query": "Start a new collection of the network.",
+   "should_trigger": false,
+   "note": "a write, out of scope for a read-only data source"
+  },
+  {
+   "query": "What vendors are in the network?",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "Which devices failed collection, and are they refused, timed out or an authentication problem?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs investigate-collection-failure with view devices",
+    "names the devices by category and error type, not only counts",
+    "says when the metrics count more failed devices than the model lists"
+   ]
+  },
+  {
+   "query": "Which collections are slowest and what command is slow?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs investigate-collection-failure with view slow",
+    "reports each device's collection time and slowest command",
+    "says an import or reprocess snapshot has no collection metrics instead of inventing numbers"
+   ]
+  },
+  {
+   "query": "Show me the collection log warnings and errors for one device.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs view logs with the device and a minimum level",
+    "treats an empty log as unknown, not a clean collection"
+   ]
+  },
+  {
+   "query": "Why did 12 devices fail parsing? Give me the parser message and the line.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "lists the failed devices and their category",
+    "says Forward stores no parser message or line for them rather than inventing one"
+   ]
+  },
+  {
+   "query": "Which unmodelled neighbours are BGP peers?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs view neighbors",
+    "lists BGP peers first and does not claim the match is exhaustive"
+   ]
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

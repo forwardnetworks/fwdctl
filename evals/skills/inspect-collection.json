@@ -1,0 +1,75 @@
+{
+ "skill": "inspect-collection",
+ "cases": [
+  {
+   "query": "Is collection healthy for network 231060 right now? Is the collector connected?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-collection (view status)",
+    "reports the collector connection and the latest task outcome from the result"
+   ]
+  },
+  {
+   "query": "Is a collection running at the moment?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-collection (view status)",
+    "says whether a collection is running from the result"
+   ]
+  },
+  {
+   "query": "Which devices failed to collect in the latest run?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-collection (view status)",
+    "lists failing devices with their errors, or says none failed only if the statuses were readable"
+   ]
+  },
+  {
+   "query": "Why are 12 devices missing from the latest snapshot?",
+   "should_trigger": false,
+   "note": "collection failure explanation"
+  },
+  {
+   "query": "List all VLANs on atl-dc01-acc01.",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "What devices is Forward configured to collect?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-collection-config"
+   ]
+  },
+  {
+   "query": "Is r1 switched off for collection?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-collection-config"
+   ]
+  },
+  {
+   "query": "Which jump servers and proxies are configured?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-collection-config"
+   ]
+  },
+  {
+   "query": "Is collection running now?",
+   "should_trigger": false,
+   "note": "inspect-collection (view status)"
+  },
+  {
+   "query": "Show the device password",
+   "should_trigger": false,
+   "note": "refused, never read"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

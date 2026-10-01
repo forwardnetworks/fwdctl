@@ -1,0 +1,46 @@
+{
+ "skill": "edit-snapshot-note",
+ "cases": [
+  {
+   "query": "Label the latest snapshot 'before the BGP change'",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot-note (dry run first)"
+   ]
+  },
+  {
+   "query": "Put a note on snapshot 1175663 saying it is the pre-upgrade baseline",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot-note"
+   ]
+  },
+  {
+   "query": "Clear the note on that snapshot",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot-note"
+   ]
+  },
+  {
+   "query": "What snapshots exist?",
+   "should_trigger": false,
+   "note": "inspect-snapshots"
+  },
+  {
+   "query": "Delete the old snapshot",
+   "should_trigger": false,
+   "note": "not a skill; refused"
+  },
+  {
+   "query": "Favorite this snapshot",
+   "should_trigger": false,
+   "note": "not offered, cannot be undone"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

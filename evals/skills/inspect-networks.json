@@ -1,0 +1,45 @@
+{
+ "skill": "inspect-networks",
+ "cases": [
+  {
+   "query": "Which Forward networks do I have access to?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-networks",
+    "reports the ids and names from the result"
+   ]
+  },
+  {
+   "query": "What is the network id of the Test Drive network?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-networks with a name filter",
+    "gives the id from the result, not from memory"
+   ]
+  },
+  {
+   "query": "Are any of my networks workspaces?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-networks",
+    "says which are workspaces and what they are copies of"
+   ],
+   "note": "paraphrase"
+  },
+  {
+   "query": "How many devices are in network 231060?",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "Is 10.101.10.2 able to reach 10.101.20.2?",
+   "should_trigger": false,
+   "note": "reachability"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

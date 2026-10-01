@@ -1,0 +1,465 @@
+[
+ {
+  "query": "Is collection running on this network right now?",
+  "expect": "inspect-collection",
+  "rival": "investigate-collection-failure"
+ },
+ {
+  "query": "Is the collector connected?",
+  "expect": "inspect-collection",
+  "rival": "investigate-collection-failure"
+ },
+ {
+  "query": "Which devices is Forward set up to collect, and is r1 switched off?",
+  "expect": "inspect-collection",
+  "rival": "investigate-collection-failure"
+ },
+ {
+  "query": "Why are three devices missing from the latest snapshot?",
+  "expect": "investigate-collection-failure",
+  "rival": "inspect-collection"
+ },
+ {
+  "query": "Which snapshot is the newest one I can read, and is it complete?",
+  "expect": "inspect-snapshots",
+  "rival": "inspect-collection"
+ },
+ {
+  "query": "Which checks are failing right now?",
+  "expect": "check-network-compliance",
+  "rival": "inspect-history"
+ },
+ {
+  "query": "What did the 'no open telnet' check find?",
+  "expect": "check-network-compliance",
+  "rival": "inspect-history"
+ },
+ {
+  "query": "When did the 'no open telnet' check start failing?",
+  "expect": "inspect-history",
+  "rival": "check-network-compliance"
+ },
+ {
+  "query": "Does the network comply with: no device allows telnet?",
+  "expect": "check-network-compliance",
+  "rival": "find-nqe-query"
+ },
+ {
+  "query": "Is the internet modelled in this network, and which links were added by hand?",
+  "expect": "inspect-topology",
+  "rival": "inspect-inventory"
+ },
+ {
+  "query": "What is r1 connected to?",
+  "expect": "inspect-topology",
+  "rival": "inspect-inventory"
+ },
+ {
+  "query": "How many devices and interfaces are there per vendor?",
+  "expect": "inspect-inventory",
+  "rival": "inspect-topology"
+ },
+ {
+  "query": "Did this change set do what we intended?",
+  "expect": "verify-change",
+  "rival": "plan-change-review"
+ },
+ {
+  "query": "How far does change set cs-42 reach: which areas differ and which subnets lose connectivity?",
+  "expect": "verify-change",
+  "rival": "plan-change-review"
+ },
+ {
+  "query": "What does change set cs-42 edit, and has it been predicted yet?",
+  "expect": "verify-change",
+  "rival": "edit-change-set"
+ },
+ {
+  "query": "Is it safe to make this ACL change?",
+  "expect": "plan-change-review",
+  "rival": "verify-change"
+ },
+ {
+  "query": "Give me a health check of the network",
+  "expect": "plan-health-check",
+  "rival": "inspect-performance"
+ },
+ {
+  "query": "Is any device over 90% CPU?",
+  "expect": "inspect-performance",
+  "rival": "plan-health-check"
+ },
+ {
+  "query": "Can host A reach host B on tcp/443?",
+  "expect": "investigate-reachability",
+  "rival": "verify-change"
+ },
+ {
+  "query": "Which CVEs affect our devices?",
+  "expect": "inspect-vulnerabilities",
+  "rival": "check-network-compliance"
+ },
+ {
+  "query": "Which networks can I see?",
+  "expect": "inspect-networks",
+  "rival": "inspect-environment"
+ },
+ {
+  "query": "What Forward version are we on?",
+  "expect": "inspect-environment",
+  "rival": "inspect-networks"
+ },
+ {
+  "query": "What does r1's running config say about ntp?",
+  "expect": "inspect-device-files",
+  "rival": "compare-device-config"
+ },
+ {
+  "query": "Which devices' configs changed between the last two snapshots?",
+  "expect": "compare-device-config",
+  "rival": "inspect-device-files"
+ },
+ {
+  "query": "Which rows of the BGP neighbours query changed between the last two snapshots?",
+  "expect": "compare-nqe-results",
+  "rival": "compare-device-config"
+ },
+ {
+  "query": "Is there already a saved NQE query for unused VLANs?",
+  "expect": "find-nqe-query",
+  "rival": "author-nqe-query"
+ },
+ {
+  "query": "Write an NQE query that lists interfaces with duplex mismatch",
+  "expect": "author-nqe-query",
+  "rival": "find-nqe-query"
+ },
+ {
+  "query": "Does this NQE query compile and what does it return: select {x: 1}",
+  "expect": "validate-nqe-query",
+  "rival": "author-nqe-query"
+ },
+ {
+  "query": "Label the newest snapshot 'before the BGP change'",
+  "expect": "edit-snapshot-note",
+  "rival": "inspect-snapshots"
+ },
+ {
+  "query": "Collect the network again now",
+  "expect": "edit-collection",
+  "rival": "inspect-collection"
+ },
+ {
+  "query": "Why can't 10.1.1.5 reach 10.2.2.9 on tcp/5432?",
+  "expect": "plan-troubleshoot-connectivity",
+  "rival": "investigate-reachability"
+ },
+ {
+  "query": "Our Chicago site cannot reach the data center, where do I even start?",
+  "expect": "plan-troubleshoot-connectivity",
+  "rival": "plan-incident-triage"
+ },
+ {
+  "query": "Something is down and users are screaming, what is wrong?",
+  "expect": "plan-incident-triage",
+  "rival": "plan-troubleshoot-connectivity"
+ },
+ {
+  "query": "What changed in the network since last week?",
+  "expect": "plan-what-changed",
+  "rival": "inspect-history"
+ },
+ {
+  "query": "When did r1's configuration last change?",
+  "expect": "inspect-history",
+  "rival": "compare-device-config"
+ },
+ {
+  "query": "Give me a security review of the network",
+  "expect": "plan-security-posture",
+  "rival": "check-network-compliance"
+ },
+ {
+  "query": "What could someone on the internet reach?",
+  "expect": "plan-security-posture",
+  "rival": "investigate-reachability"
+ },
+ {
+  "query": "Are we affected by CVE-2024-3400 and what do we patch first?",
+  "expect": "plan-vulnerability-response",
+  "rival": "inspect-vulnerabilities"
+ },
+ {
+  "query": "Which CVEs affect fw01?",
+  "expect": "inspect-vulnerabilities",
+  "rival": "plan-vulnerability-response"
+ },
+ {
+  "query": "Does the network comply with our logging standard? I need audit evidence.",
+  "expect": "plan-compliance-audit",
+  "rival": "check-network-compliance"
+ },
+ {
+  "query": "Which checks are failing right now?",
+  "expect": "check-network-compliance",
+  "rival": "plan-compliance-audit"
+ },
+ {
+  "query": "Are the PCI and corporate zones actually isolated?",
+  "expect": "plan-segmentation-check",
+  "rival": "investigate-reachability"
+ },
+ {
+  "query": "Can the guest network reach the servers on tcp/443?",
+  "expect": "investigate-reachability",
+  "rival": "plan-segmentation-check"
+ },
+ {
+  "query": "We have a maintenance window tonight; how do we prove the change worked?",
+  "expect": "plan-maintenance-window",
+  "rival": "plan-change-review"
+ },
+ {
+  "query": "Is it safe to make this ACL change?",
+  "expect": "plan-change-review",
+  "rival": "plan-maintenance-window"
+ },
+ {
+  "query": "Tell me everything you know about atl-ce01",
+  "expect": "plan-device-audit",
+  "rival": "inspect-inventory"
+ },
+ {
+  "query": "How many devices are there per vendor?",
+  "expect": "inspect-inventory",
+  "rival": "plan-device-audit"
+ },
+ {
+  "query": "Write an NQE query for interfaces with duplex mismatch and save it for the team",
+  "expect": "author-nqe-query",
+  "rival": "edit-nqe-query"
+ },
+ {
+  "query": "Snapshot 1175663 failed to process, how do I recover it?",
+  "expect": "plan-snapshot-recovery",
+  "rival": "investigate-collection-failure"
+ },
+ {
+  "query": "Tag r1 and r2 as edge",
+  "expect": "edit-device-tags",
+  "rival": "plan-safe-write"
+ },
+ {
+  "query": "Forward missed the link between r1 Gi0/1 and sw1 Gi0/24; add it to the topology",
+  "expect": "edit-link-overrides",
+  "rival": "inspect-topology"
+ },
+ {
+  "query": "Reprocess snapshot 1175663 now",
+  "expect": "edit-snapshot-reprocess",
+  "rival": "plan-snapshot-recovery"
+ },
+ {
+  "query": "inspect-vulnerabilities says internet exposure is unavailable (PENDING_ADVANCED_REACHABILITY) on snapshot 1001; compute advanced reachability for it",
+  "expect": "edit-advanced-reachability",
+  "rival": "edit-snapshot-reprocess"
+ },
+ {
+  "query": "Save this query to our library as /Team/NTP",
+  "expect": "edit-nqe-query",
+  "rival": "author-nqe-query"
+ },
+ {
+  "query": "How should I make a change to Forward safely, step by step?",
+  "expect": "plan-safe-write",
+  "rival": "edit-checks"
+ },
+ {
+  "query": "Make the L3 VPN 'dir' get its connections from the saved NQE query /Team/WAN connections",
+  "expect": "edit-synthetic-query",
+  "rival": "inspect-topology"
+ },
+ {
+  "query": "Which connections does the L3 VPN 'dir' have, and where do they come from?",
+  "expect": "inspect-topology",
+  "rival": "edit-synthetic-query"
+ },
+ {
+  "query": "Our provider carries a point-to-point L2 link between the Chicago and Dallas routers; model it as a WAN circuit",
+  "expect": "edit-wan-circuit",
+  "rival": "edit-synthetic-query"
+ },
+ {
+  "query": "Paths to our branches dead-end at the provider's MPLS core; how do we model it?",
+  "expect": "plan-synthetic-device",
+  "rival": "edit-synthetic-query"
+ },
+ {
+  "query": "What is the capital of France?",
+  "expect": ""
+ },
+ {
+  "query": "Write me a poem about routers",
+  "expect": ""
+ },
+ {
+  "query": "Our 198.18.0.0/16 and 198.19.0.0/16 are internal but the internet node treats them as the internet; exclude them",
+  "expect": "edit-internet-exclusions",
+  "rival": "edit-synthetic-query"
+ },
+ {
+  "query": "My test host was blackholed at its first hop; which internal devices are good sources to trace to the internet from?",
+  "expect": "inspect-edge",
+  "rival": "investigate-reachability"
+ },
+ {
+  "query": "Where should the internet attach to my network? My trace to a public address dead-ends at the edge",
+  "expect": "inspect-edge",
+  "rival": "plan-synthetic-device"
+ },
+ {
+  "query": "Show me the BGP neighbors on the WAN router, who the upstream is and what we advertise to them",
+  "expect": "inspect-bgp-neighbors",
+  "rival": "inspect-inventory"
+ },
+ {
+  "query": "Who owns 198.19.241.29? Which device and interface has that IP address?",
+  "expect": "inspect-inventory",
+  "rival": "inspect-topology"
+ },
+ {
+  "query": "Which management and firewall interfaces carry public IP addresses? I need to see them by device type before touching the internet node",
+  "expect": "inspect-edge",
+  "rival": "inspect-inventory"
+ },
+ {
+  "query": "List the top-level folders of the NQE library and what is in /L3",
+  "expect": "find-nqe-query",
+  "rival": "edit-nqe-query"
+ },
+ {
+  "query": "Which default route points at an unowned next hop? Where does the network egress?",
+  "expect": "inspect-edge",
+  "rival": "investigate-reachability"
+ },
+ {
+  "query": "The two manual links on fw-ext-01 are missing from the newest snapshot but were there before; what changed?",
+  "expect": "inspect-topology",
+  "rival": "plan-link-overrides"
+ },
+ {
+  "query": "Our link overrides keep disappearing from new snapshots; how do we get them back and keep them?",
+  "expect": "plan-link-overrides",
+  "rival": "edit-link-overrides"
+ },
+ {
+  "query": "Which link overrides does snapshot 1001 have that snapshot 1000 does not?",
+  "expect": "inspect-topology",
+  "rival": "compare-device-config"
+ },
+ {
+  "query": "A skill gave me a wrong answer and I had to write my own NQE",
+  "expect": "plan-report-skill-gap",
+  "rival": "author-nqe-query"
+ },
+ {
+  "query": "The skill result was misleading and missing a field, I want to report it as an issue",
+  "expect": "plan-report-skill-gap",
+  "rival": "plan-investigation"
+ },
+ {
+  "query": "Stage a change set that adds a static route on r1 and predict what it does",
+  "expect": "edit-change-set",
+  "rival": "verify-change"
+ },
+ {
+  "query": "Build a change set from these CLI lines for sw1, I have not approved anything yet",
+  "expect": "edit-change-set",
+  "rival": "verify-change"
+ },
+ {
+  "query": "Turn this NQE query into a policy check on the snapshot",
+  "expect": "edit-checks",
+  "rival": "check-network-compliance"
+ },
+ {
+  "query": "Show me the firewall rule diff for fw1 in change set cs-9",
+  "expect": "verify-change",
+  "rival": "edit-change-set"
+ },
+ {
+  "query": "Has change set cs-9 been predicted yet, and which of its checks got worse?",
+  "expect": "verify-change",
+  "rival": "plan-change-review"
+ },
+ {
+  "query": "Take this question from words to a saved, checked NQE query: which interfaces run half duplex?",
+  "expect": "author-nqe-query",
+  "rival": "edit-nqe-query"
+ },
+ {
+  "query": "Which link overrides did snapshot 1001 lose compared with snapshot 1000?",
+  "expect": "inspect-topology",
+  "rival": "edit-link-overrides"
+ },
+ {
+  "query": "Which interface owns 10.20.30.40, and which owns 10.20.30.41?",
+  "expect": "inspect-inventory",
+  "rival": "inspect-topology"
+ },
+ {
+  "query": "List the public IPs on our firewalls' interfaces, by role",
+  "expect": "inspect-edge",
+  "rival": "inspect-inventory"
+ },
+ {
+  "query": "Pick devices to trace from to 203.0.113.1 that are not blackholed at their first hop",
+  "expect": "inspect-edge",
+  "rival": "investigate-reachability"
+ },
+ {
+  "query": "Is advanced reachability enabled on this Forward, and is it the default?",
+  "expect": "inspect-environment",
+  "rival": "inspect-snapshots"
+ },
+ {
+  "query": "Internet exposure shows as unavailable on the newest snapshot: is it disabled or just never triggered?",
+  "expect": "inspect-vulnerabilities",
+  "rival": "edit-advanced-reachability"
+ },
+ {
+  "query": "Which devices failed collection with connection refused?",
+  "expect": "investigate-collection-failure",
+  "rival": "inspect-collection"
+ },
+ {
+  "query": "Which device collections take the longest?",
+  "expect": "investigate-collection-failure",
+  "rival": "inspect-performance"
+ },
+ {
+  "query": "How many of our checks are failing versus erroring?",
+  "expect": "check-network-compliance",
+  "rival": "inspect-snapshots"
+ },
+ {
+  "query": "Add the Avocent enterprise OID subtree to a copy of the SNMP profile and assign it to one endpoint",
+  "expect": "edit-endpoint-profile",
+  "rival": "edit-collection"
+ },
+ {
+  "query": "Which SNMP profile and OIDs does this endpoint use?",
+  "expect": "inspect-collection",
+  "rival": "edit-endpoint-profile"
+ },
+ {
+  "query": "Create a temporary workspace with one device so I can test a collection change without touching production",
+  "expect": "edit-workspace",
+  "rival": "edit-collection"
+ },
+ {
+  "query": "Which networks are workspaces?",
+  "expect": "inspect-networks",
+  "rival": "edit-workspace"
+ }
+]

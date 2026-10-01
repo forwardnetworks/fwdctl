@@ -1,0 +1,13 @@
+{
+ "skill": "edit-nqe-query",
+ "cases": [
+  {"query": "Save that query to our library as /Team/Devices without NTP", "should_trigger": true, "expected_behavior": ["edit-nqe-query (dry run first)"]},
+  {"query": "Replace the saved query /Team/BGP down with this fixed version", "should_trigger": true, "expected_behavior": ["edit-nqe-query"]},
+  {"query": "Remove the old query /Team/Old inventory from the library", "should_trigger": true, "expected_behavior": ["edit-nqe-query (delete)"]},
+  {"query": "Is there already a query for NTP servers?", "should_trigger": false, "note": "find-nqe-query"},
+  {"query": "Write a query that lists devices without NTP", "should_trigger": false, "note": "author-nqe-query"},
+  {"query": "Run this query against the latest snapshot", "should_trigger": false, "note": "validate-nqe-query"},
+  {"query": "Commit these four changed NQE modules together and tell me the new commit id; check the queries that import them first", "should_trigger": true, "expected_behavior": ["edit-nqe-query with changes and typecheck, dry run first", "reports new errors in importing queries and does not commit if there are any", "returns previous and new commit ids on apply"]}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["network_id", "query"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "query": { "type": "string", "minLength": 1 },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "parameters": { "type": "object" },
+    "sample_rows": { "type": "integer", "minimum": 1 },
+    "offset": { "type": "integer", "minimum": 0 },
+    "synthetic_kind": { "enum": ["internet", "intranet", "l3vpn", "adjacent-network", "l2vpn"], "description": "Also check the rows as the connections of this synthetic device kind" }
+  }
+}

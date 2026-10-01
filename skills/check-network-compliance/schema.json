@@ -1,0 +1,84 @@
+{
+  "type": "object",
+  "required": [
+    "network_id"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "use_checks": {
+      "type": "boolean"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "check_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "nqe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "scope_query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_query_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "view": {
+      "enum": [
+        "evaluate",
+        "read"
+      ],
+      "default": "evaluate"
+    },
+    "check_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "statuses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "catalogue": {
+      "type": "boolean"
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

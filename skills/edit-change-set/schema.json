@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "required": ["network_id", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["device", "commands"],
+        "additionalProperties": false,
+        "properties": { "device": { "type": "string", "minLength": 1 }, "commands": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "bgp_advertisements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["device", "external_peer", "prefix", "next_hop"],
+        "additionalProperties": false,
+        "properties": {
+          "device": { "type": "string", "minLength": 1 },
+          "vrf": { "type": "string" },
+          "external_peer": { "type": "string", "minLength": 1 },
+          "prefix": { "type": "string", "minLength": 1 },
+          "next_hop": { "type": "string", "minLength": 1 },
+          "type": { "type": "string" },
+          "origin": { "type": "string" },
+          "local_pref": { "type": "integer" },
+          "as_path": { "type": "array", "items": { "type": "integer" } },
+          "med": { "type": "integer" },
+          "communities": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "run": { "type": "boolean", "default": false },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

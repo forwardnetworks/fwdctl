@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": ["network_id", "device", "mode"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "device": { "type": "string", "minLength": 1 },
+    "mode": { "enum": ["list", "read", "search"] },
+    "file": { "type": "string", "minLength": 1 },
+    "pattern": { "type": "string", "minLength": 1 },
+    "context": { "type": "integer", "minimum": 0 },
+    "start_line": { "type": "integer", "minimum": 1 },
+    "max_lines": { "type": "integer", "minimum": 1 },
+    "max_matches": { "type": "integer", "minimum": 1 },
+    "no_redact": { "type": "boolean" }
+  }
+}

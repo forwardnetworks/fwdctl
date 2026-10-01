@@ -1,0 +1,40 @@
+{
+ "skill": "plan-investigation",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Users in Atlanta cannot reach the billing app. Where do I start?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "maps the symptom to investigate-reachability",
+    "uses inspect-inventory to find the endpoints before asking the user for them",
+    "does not start by writing an NQE query"
+   ]
+  },
+  {
+   "query": "Can you push a config change to r1 to fix it?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "says a write is out of scope for a read-only data source",
+    "offers to find the cause instead"
+   ]
+  },
+  {
+   "query": "What was different in our network last week compared with today?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "explains that history beyond two named snapshots is out of scope, and offers verify-change or analyze-blast-radius between two snapshots"
+   ]
+  },
+  {
+   "query": "What is 12 times 12?",
+   "should_trigger": false,
+   "note": "unrelated"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "skill": "edit-wan-circuit",
+ "cases": [
+  {"query": "Model the leased line between r1 Gi0/1 (VLAN 100) and r2 Gi0/1 (VLAN 200) as a WAN circuit called wan-01", "should_trigger": true, "expected_behavior": ["edit-wan-circuit (dry run first)"]},
+  {"query": "Change the VLAN on the near end of wan-01 to 150", "should_trigger": true, "expected_behavior": ["edit-wan-circuit with the full circuit"]},
+  {"query": "Remove the WAN circuit wan-01", "should_trigger": true, "expected_behavior": ["edit-wan-circuit (delete)"]},
+  {"query": "Which WAN circuits does the network have?", "should_trigger": false, "note": "inspect-topology kind external"},
+  {"query": "A provider MPLS core connects my sites; how do I model it?", "should_trigger": false, "note": "plan-synthetic-device (an L3 VPN, not a circuit)"},
+  {"query": "Tunnel traffic between two sites with IPSec; model the tunnel", "should_trigger": false, "note": "encryptors are not offered"}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

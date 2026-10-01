@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "required": [
+    "network_id",
+    "action",
+    "devices",
+    "tags"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "add",
+        "remove"
+      ]
+    },
+    "devices": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

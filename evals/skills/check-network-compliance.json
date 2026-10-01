@@ -1,0 +1,93 @@
+{
+ "skill": "check-network-compliance",
+ "cases": [
+  {
+   "query": "Are all our devices passing the 'Prevent Unfettered SSH Access' check?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs check-network-compliance with use_checks or the check id",
+    "reports the outcome for that check with its violation count, or says the check was not evaluated",
+    "never reports a check that was not evaluated as passing"
+   ]
+  },
+  {
+   "query": "Does anything violate our NTP policy? Use this NQE query for violations: foreach d in network.devices where d.name == \"atl-ce01\" select {Name: d.name}. The scope is every device: foreach d in network.devices select {Name: d.name}.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "passes the query as an nqe policy with a scope query",
+    "reports the violation count from the run, and says zero violations against an empty scope is unknown, not a pass"
+   ]
+  },
+  {
+   "query": "Verify that no device still uses a default SNMP community.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "writes a violations query and a scope query, or asks for them",
+    "checks the query with validate-nqe-query first"
+   ]
+  },
+  {
+   "query": "Explain what NTP is.",
+   "should_trigger": false,
+   "note": "general knowledge"
+  },
+  {
+   "query": "Which devices have critical CVEs?",
+   "should_trigger": false,
+   "note": "inspect-vulnerabilities"
+  },
+  {
+   "query": "Which checks are failing right now?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "check-network-compliance (view read)"
+   ]
+  },
+  {
+   "query": "What did the 'no open telnet' check find?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "check-network-compliance (view read)"
+   ]
+  },
+  {
+   "query": "What predefined checks does Forward offer?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "check-network-compliance (view read)"
+   ]
+  },
+  {
+   "query": "Does the network comply with policy X?",
+   "should_trigger": false,
+   "note": "check-network-compliance"
+  },
+  {
+   "query": "Create a new check",
+   "should_trigger": false,
+   "note": "edit-checks"
+  },
+  {
+   "query": "How many of the network's checks are actually failing?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads the checks with view read",
+    "counts only FAIL as failing and reports ERROR and TIMEOUT as not evaluated, never as failures"
+   ]
+  },
+  {
+   "query": "Why is this one check in ERROR?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads the check by check_id without needing view",
+    "gives Forward's recorded reason or says none was recorded",
+    "does not call it a policy failure"
+   ]
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

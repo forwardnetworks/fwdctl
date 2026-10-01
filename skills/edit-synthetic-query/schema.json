@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["network_id", "kind"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["internet", "intranet", "l3vpn", "l2vpn", "adjacent-network"] },
+    "name": { "type": "string", "minLength": 1, "description": "The node's name; not used for the internet node, which is one per network" },
+    "query_id": { "type": "string", "minLength": 1, "description": "A library query id, Q_... or FQ_...; omit to list the queries that fit the kind" },
+    "detach": { "type": "boolean", "default": false },
+    "backdate_snapshot_id": { "type": "string", "minLength": 1, "description": "Apply the change to this existing snapshot and every later one now (they are invalidated and reprocess) instead of from the next snapshot" },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

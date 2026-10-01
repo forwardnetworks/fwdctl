@@ -1,0 +1,11 @@
+{
+ "skill": "inspect-bgp-neighbors",
+ "cases": [
+  {"query": "Show the BGP neighbors on the WAN router and which peers are not modelled devices", "should_trigger": true, "expected_behavior": ["inspect-bgp-neighbors"]},
+  {"query": "Who is our upstream provider's AS and what do we advertise to them?", "should_trigger": true, "expected_behavior": ["inspect-bgp-neighbors"]},
+  {"query": "Which BGP sessions are down?", "should_trigger": true, "expected_behavior": ["inspect-bgp-neighbors with state"]},
+  {"query": "Who owns 198.19.241.29?", "should_trigger": false, "note": "inspect-inventory, kind ip_owner"},
+  {"query": "Is BGP configured the same on both routers?", "should_trigger": false, "note": "compare-device-config"}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

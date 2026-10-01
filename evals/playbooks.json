@@ -1,0 +1,241 @@
+[
+ {
+  "query": "Why can't 10.0.0.1 reach 10.0.0.2 on tcp/443?",
+  "playbook": "plan-troubleshoot-connectivity",
+  "steps": [
+   "inspect-snapshots",
+   "investigate-reachability",
+   "inspect-topology",
+   "inspect-device-files",
+   "inspect-history"
+  ],
+  "required": [
+   [
+    "inspect-snapshots"
+   ],
+   [
+    "investigate-reachability"
+   ],
+   [
+    "inspect-topology",
+    "inspect-device-files"
+   ]
+  ]
+ },
+ {
+  "query": "Give me a security review of this network.",
+  "playbook": "plan-security-posture",
+  "steps": [
+   "inspect-snapshots",
+   "check-network-compliance",
+   "inspect-vulnerabilities",
+   "investigate-reachability",
+   "inspect-topology"
+  ],
+  "required": [
+   [
+    "check-network-compliance"
+   ],
+   [
+    "inspect-vulnerabilities"
+   ],
+   [
+    "investigate-reachability",
+    "inspect-topology"
+   ]
+  ]
+ },
+ {
+  "query": "Are we exposed to a known-exploited CVE, and what should we patch first?",
+  "playbook": "plan-vulnerability-response",
+  "steps": [
+   "inspect-snapshots",
+   "inspect-vulnerabilities",
+   "inspect-inventory",
+   "investigate-reachability"
+  ],
+  "required": [
+   [
+    "inspect-vulnerabilities"
+   ],
+   [
+    "investigate-reachability"
+   ]
+  ]
+ },
+ {
+  "query": "Is the network healthy right now?",
+  "playbook": "plan-health-check",
+  "steps": [
+   "inspect-snapshots",
+   "inspect-collection",
+   "inspect-performance",
+   "check-network-compliance",
+   "inspect-history"
+  ],
+  "required": [
+   [
+    "inspect-snapshots"
+   ],
+   [
+    "inspect-collection"
+   ],
+   [
+    "inspect-performance",
+    "check-network-compliance"
+   ]
+  ]
+ },
+ {
+  "query": "What changed in the network between the last two snapshots?",
+  "playbook": "plan-what-changed",
+  "steps": [
+   "inspect-snapshots",
+   "compare-device-config",
+   "find-nqe-query",
+   "compare-nqe-results"
+  ],
+  "required": [
+   [
+    "inspect-snapshots"
+   ],
+   [
+    "compare-device-config"
+   ]
+  ]
+ },
+ {
+  "query": "Tell me everything you know about atl-ce01.",
+  "playbook": "plan-device-audit",
+  "steps": [
+   "inspect-inventory",
+   "inspect-topology",
+   "inspect-device-files",
+   "inspect-vulnerabilities",
+   "inspect-performance",
+   "inspect-history"
+  ],
+  "required": [
+   [
+    "inspect-inventory"
+   ],
+   [
+    "inspect-topology",
+    "inspect-device-files",
+    "inspect-vulnerabilities",
+    "inspect-performance",
+    "inspect-history"
+   ]
+  ]
+ },
+ {
+  "query": "Something is wrong with the network, users are complaining. Where do I start?",
+  "playbook": "plan-incident-triage",
+  "steps": [
+   "inspect-snapshots",
+   "inspect-collection",
+   "inspect-performance",
+   "check-network-compliance"
+  ],
+  "required": [
+   [
+    "inspect-snapshots",
+    "inspect-collection"
+   ],
+   [
+    "compare-device-config",
+    "inspect-history"
+   ],
+   [
+    "inspect-performance",
+    "check-network-compliance"
+   ]
+  ]
+ },
+ {
+  "query": "Do we comply with a policy that no device allows telnet? I need audit evidence.",
+  "playbook": "plan-compliance-audit",
+  "steps": [
+   "inspect-snapshots",
+   "check-network-compliance",
+   "find-nqe-query",
+   "inspect-history"
+  ],
+  "required": [
+   [
+    "check-network-compliance"
+   ],
+   [
+    "find-nqe-query",
+    "author-nqe-query",
+    "inspect-history"
+   ]
+  ]
+ },
+ {
+  "query": "The latest snapshot looks incomplete, devices are missing. How do we recover?",
+  "playbook": "plan-snapshot-recovery",
+  "steps": [
+   "inspect-snapshots",
+   "inspect-collection",
+   "investigate-collection-failure"
+  ],
+  "required": [
+   [
+    "inspect-snapshots"
+   ],
+   [
+    "inspect-collection"
+   ],
+   [
+    "investigate-collection-failure"
+   ]
+  ]
+ },
+ {
+  "query": "Write an NQE query that lists interfaces that are administratively down, and check it.",
+  "playbook": "author-nqe-query",
+  "steps": [
+   "find-nqe-query",
+   "validate-nqe-query"
+  ],
+  "required": [
+   [
+    "find-nqe-query"
+   ],
+   [
+    "validate-nqe-query"
+   ]
+  ]
+ },
+ {
+  "query": "Manual links we added on the Acme network are missing from the latest snapshot. Find out what happened and fix it.",
+  "playbook": "plan-link-overrides",
+  "steps": [
+   "inspect-snapshots",
+   "inspect-topology",
+   "inspect-inventory",
+   "edit-link-overrides"
+  ],
+  "required": [
+   [
+    "inspect-snapshots"
+   ],
+   [
+    "inspect-topology"
+   ]
+  ]
+ },
+ {
+  "query": "A skill returned a wrong result and I had to hand-write the query; file an issue about it.",
+  "playbook": "plan-report-skill-gap",
+  "steps": [
+   "plan-investigation"
+  ],
+  "required": [
+   [
+    "plan-investigation"
+   ]
+  ]
+ }
+]

@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": ["network_id", "dst_ip"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "dst_ip": { "type": "string", "minLength": 1 },
+    "src_ip": { "type": "string", "minLength": 1 },
+    "from": { "type": "string", "minLength": 1 },
+    "protocol": { "type": ["string", "integer"] },
+    "src_port": { "type": "string" },
+    "dst_port": { "type": "string" },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "max_results": { "type": "integer", "minimum": 1 },
+    "max_seconds": { "type": "integer", "minimum": 1 }
+  }
+}

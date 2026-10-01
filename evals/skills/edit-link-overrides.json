@@ -1,0 +1,13 @@
+{
+ "skill": "edit-link-overrides",
+ "cases": [
+  {"query": "Forward missed the link between r1 Gi0/1 and sw1 Gi0/24; add it to the topology of the latest snapshot", "should_trigger": true, "expected_behavior": ["edit-link-overrides (dry run first)"]},
+  {"query": "Ignore the discovered link between a1 Eth1 and b1 Eth2, it is not real", "should_trigger": true, "expected_behavior": ["edit-link-overrides (add_absent)"]},
+  {"query": "Take back the manual link I added to snapshot 1175663", "should_trigger": true, "expected_behavior": ["edit-link-overrides (remove_present)"]},
+  {"query": "Add a link between two ports that are not in the snapshot", "should_trigger": true, "expected_behavior": ["edit-link-overrides dry run refuses ports the snapshot lacks unless force is set", "shows counts, not the whole override list"], "note": "dry run only; never applies"},
+  {"query": "Which links does the topology have?", "should_trigger": false, "note": "inspect-topology"},
+  {"query": "Shut down the uplink on r1", "should_trigger": false, "note": "not a skill; refused: no device change"},
+  {"query": "Would adding a link change reachability?", "should_trigger": false, "note": "verify-change"}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

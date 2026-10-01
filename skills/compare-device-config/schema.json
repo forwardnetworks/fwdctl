@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": ["network_id", "before_snapshot_id", "after_snapshot_id"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "before_snapshot_id": { "type": "string", "minLength": 1 },
+    "after_snapshot_id": { "type": "string", "minLength": 1 },
+    "device": { "type": "string", "minLength": 1 },
+    "file": { "type": "string", "minLength": 1 },
+    "file_type": { "enum": ["CONFIG", "STATE", "CUSTOM"] },
+    "max_lines": { "type": "integer", "minimum": 1 },
+    "no_redact": { "type": "boolean" }
+  }
+}

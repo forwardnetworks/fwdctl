@@ -1,0 +1,51 @@
+{
+ "skill": "plan-troubleshoot-connectivity",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Why can't the app server 10.1.1.5 reach the database 10.2.2.9 on tcp/5432?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "checks the snapshot age",
+    "uses investigate-reachability",
+    "names the first failing device and reason"
+   ]
+  },
+  {
+   "query": "Is there a path from the branch to the data center?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "pins down the flow",
+    "reads every returned path"
+   ]
+  },
+  {
+   "query": "Our Chicago site is unreachable from HQ, why?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "tests the reverse and a sibling flow",
+    "says what is not modelled"
+   ]
+  },
+  {
+   "query": "Which CVEs affect us?",
+   "should_trigger": false,
+   "note": "inspect-vulnerabilities"
+  },
+  {
+   "query": "What changed since yesterday?",
+   "should_trigger": false,
+   "note": "plan-what-changed"
+  },
+  {
+   "query": "Is it safe to make this ACL change?",
+   "should_trigger": false,
+   "note": "plan-change-review"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

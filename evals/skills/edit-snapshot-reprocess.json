@@ -1,0 +1,12 @@
+{
+ "skill": "edit-snapshot-reprocess",
+ "cases": [
+  {"query": "Snapshot 1175663 failed to process; reprocess it", "should_trigger": true, "expected_behavior": ["edit-snapshot-reprocess (dry run first)"]},
+  {"query": "The answers on the latest snapshot look stale since the Forward upgrade; recompute them", "should_trigger": true, "expected_behavior": ["edit-snapshot-reprocess"]},
+  {"query": "Rebuild the model for this snapshot without collecting again", "should_trigger": true, "expected_behavior": ["edit-snapshot-reprocess"]},
+  {"query": "Collect the network again", "should_trigger": false, "note": "edit-collection"},
+  {"query": "Why did the collection fail?", "should_trigger": false, "note": "investigate-collection-failure"},
+  {"query": "Delete the snapshot", "should_trigger": false, "note": "not a skill; refused"}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

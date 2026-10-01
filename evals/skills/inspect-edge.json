@@ -1,0 +1,102 @@
+{
+ "skill": "inspect-edge",
+ "cases": [
+  {
+   "query": "Where should the internet attach to my network? Show me the exits",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-edge"
+   ]
+  },
+  {
+   "query": "My trace to 8.8.8.8 dead-ends at the edge; which default routes point at a next hop nobody owns?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-edge"
+   ]
+  },
+  {
+   "query": "Which uplinks should the internet node get?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-edge",
+    "then plan-synthetic-device"
+   ]
+  },
+  {
+   "query": "Show the BGP neighbors on edge1",
+   "should_trigger": false,
+   "note": "inspect-bgp-neighbors"
+  },
+  {
+   "query": "Can 10.1.1.5 reach 10.2.2.2?",
+   "should_trigger": false,
+   "note": "investigate-reachability"
+  },
+  {
+   "query": "Which management interfaces carry public IP addresses?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-edge (view public_addresses)"
+   ],
+   "note": "[view public_addresses]"
+  },
+  {
+   "query": "List the public IPv4 addresses on our firewalls and switches by VRF",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-edge (view public_addresses)"
+   ],
+   "note": "[view public_addresses]"
+  },
+  {
+   "query": "What should we review before adding prefixes to the internet node's excluded subnets?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-edge (view public_addresses)"
+   ],
+   "note": "[view public_addresses]"
+  },
+  {
+   "query": "Who owns 198.19.241.30?",
+   "should_trigger": false,
+   "note": "inspect-inventory, kind ip_owner"
+  },
+  {
+   "query": "Can the internet reach 198.19.217.72?",
+   "should_trigger": false,
+   "note": "investigate-reachability"
+  },
+  {
+   "query": "My first test host was blackholed at its first hop; pick me a good internal source for a trace to the internet",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-edge (view trace_sources) with the edge's own address as target_ip"
+   ],
+   "note": "[view trace_sources]"
+  },
+  {
+   "query": "Which devices in the INET VRF can reach the edge router's 198.19.241.30 so I can trace from them?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-edge (view trace_sources) with vrf INET"
+   ],
+   "note": "[view trace_sources]"
+  },
+  {
+   "query": "Can 10.1.1.5 reach 10.2.2.2 on tcp 443?",
+   "should_trigger": false,
+   "note": "investigate-reachability"
+  },
+  {
+   "query": "List the devices in the network",
+   "should_trigger": false,
+   "note": "inspect-inventory"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

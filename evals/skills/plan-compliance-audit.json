@@ -1,0 +1,50 @@
+{
+ "skill": "plan-compliance-audit",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Does the network comply with our NTP and logging standard?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "maps each rule to a check",
+    "calls a rule with no check unknown"
+   ]
+  },
+  {
+   "query": "Prepare evidence for the audit of access controls",
+   "should_trigger": true,
+   "expected_behavior": [
+    "a table of rule, check, status, snapshot",
+    "does not claim certification"
+   ]
+  },
+  {
+   "query": "Add a standing check that no device allows telnet",
+   "should_trigger": true,
+   "expected_behavior": [
+    "offers edit-checks following the write protocol",
+    "tests the rule first"
+   ]
+  },
+  {
+   "query": "What changed in the BGP config?",
+   "should_trigger": false,
+   "note": "plan-what-changed"
+  },
+  {
+   "query": "Is the internet exposed?",
+   "should_trigger": false,
+   "note": "plan-security-posture"
+  },
+  {
+   "query": "Which checks failed right now?",
+   "should_trigger": false,
+   "note": "check-network-compliance"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

@@ -1,0 +1,51 @@
+{
+ "skill": "plan-snapshot-recovery",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Snapshot 1175663 failed to process; how do I get it back?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "finds the cause first",
+    "chooses reprocess only for a model problem",
+    "follows plan-safe-write"
+   ]
+  },
+  {
+   "query": "Three devices are missing from the latest snapshot, what do I do?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses investigate-collection-failure",
+    "states a device-side cause is fixed outside Forward"
+   ]
+  },
+  {
+   "query": "The answers look stale since the upgrade",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-snapshots first",
+    "offers a reprocess dry run"
+   ]
+  },
+  {
+   "query": "Why can't A reach B?",
+   "should_trigger": false,
+   "note": "investigate-reachability"
+  },
+  {
+   "query": "Label this snapshot",
+   "should_trigger": false,
+   "note": "edit-snapshot-note"
+  },
+  {
+   "query": "Is collection running?",
+   "should_trigger": false,
+   "note": "inspect-collection"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

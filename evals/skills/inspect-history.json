@@ -1,0 +1,41 @@
+{
+ "skill": "inspect-history",
+ "cases": [
+  {
+   "query": "When did the 'no telnet' check start failing?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-history"
+   ]
+  },
+  {
+   "query": "Is this check failure new or has it been there for weeks?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-history"
+   ]
+  },
+  {
+   "query": "Which snapshot first showed check 21240266 failing?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-history"
+   ]
+  },
+  {
+   "query": "Which checks are failing right now?",
+   "should_trigger": false,
+   "note": "check-network-compliance view read"
+  },
+  {
+   "query": "What changed in the config between two snapshots?",
+   "should_trigger": false,
+   "note": "compare-device-config"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

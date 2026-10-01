@@ -1,0 +1,46 @@
+{
+ "skill": "edit-checks",
+ "cases": [
+  {
+   "query": "Add a check that no device has telnet enabled, using this NQE query",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-checks (dry run first)"
+   ]
+  },
+  {
+   "query": "Switch off check 21240266, it's noisy",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-checks (dry run first)"
+   ]
+  },
+  {
+   "query": "Make that check persistent so later snapshots inherit it",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-checks"
+   ]
+  },
+  {
+   "query": "Which checks are failing?",
+   "should_trigger": false,
+   "note": "inspect-checks"
+  },
+  {
+   "query": "Disable every check on the snapshot",
+   "should_trigger": false,
+   "note": "refused: never wholesale"
+  },
+  {
+   "query": "Does the network comply?",
+   "should_trigger": false,
+   "note": "check-network-compliance"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

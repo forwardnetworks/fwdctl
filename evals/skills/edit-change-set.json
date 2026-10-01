@@ -1,0 +1,46 @@
+{
+ "skill": "edit-change-set",
+ "cases": [
+  {
+   "query": "Stage these commands on r1 as a change set called 'add loopback' and tell me what happens",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-change-set (dry run first)"
+   ]
+  },
+  {
+   "query": "Advertise 203.0.113.0/24 from peer 192.0.2.1 into vrf blue and predict it",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-change-set with bgp_advertisements"
+   ]
+  },
+  {
+   "query": "Draft a change set for this ticket's config but don't run the prediction yet",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-change-set"
+   ]
+  },
+  {
+   "query": "Write the config to open port 443",
+   "should_trigger": false,
+   "note": "refused: the skill authors no configuration"
+  },
+  {
+   "query": "Push this to the router",
+   "should_trigger": false,
+   "note": "refused: never pushes to devices"
+  },
+  {
+   "query": "Review change set cs-42",
+   "should_trigger": false,
+   "note": "verify-change, view describe"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

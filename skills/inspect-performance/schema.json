@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": ["network_id", "view"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "view": { "enum": ["unhealthy_devices", "unhealthy_interfaces", "devices", "interfaces", "device_history", "interface_history"] },
+    "metric": { "enum": ["CPU", "MEMORY", "UTILIZATION", "PACKET_LOSS", "ERROR"] },
+    "direction": { "enum": ["INGRESS", "EGRESS"] },
+    "days": { "type": "integer", "minimum": 1 },
+    "device": { "type": "string", "minLength": 1 },
+    "interface": { "type": "string", "minLength": 1 },
+    "limit": { "type": "integer", "minimum": 1 }
+  }
+}

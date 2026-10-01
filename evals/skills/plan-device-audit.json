@@ -1,0 +1,50 @@
+{
+ "skill": "plan-device-audit",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Give me everything you know about atl-ce01",
+   "should_trigger": true,
+   "expected_behavior": [
+    "identifies the device first",
+    "covers config, exposure, performance and history",
+    "names the snapshot"
+   ]
+  },
+  {
+   "query": "Audit the Atlanta site",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspects the inventory for the group",
+    "reports unknowns explicitly"
+   ]
+  },
+  {
+   "query": "Review this device before we touch it",
+   "should_trigger": true,
+   "expected_behavior": [
+    "recommends, never changes a device"
+   ]
+  },
+  {
+   "query": "How many devices are there per vendor?",
+   "should_trigger": false,
+   "note": "inspect-inventory"
+  },
+  {
+   "query": "Which CVEs affect us?",
+   "should_trigger": false,
+   "note": "inspect-vulnerabilities"
+  },
+  {
+   "query": "Tag r1 as edge",
+   "should_trigger": false,
+   "note": "edit-device-tags"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

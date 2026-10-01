@@ -1,0 +1,31 @@
+{
+ "skill": "edit-workspace",
+ "cases": [
+  {
+   "query": "Set up a throwaway workspace to test the new SNMP profile on one endpoint without collecting production",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-workspace create_workspace dry run first, naming the one small classic device and why",
+    "says endpoints and credentials are not copied and that no secret is handled",
+    "does not apply without approval"
+   ]
+  },
+  {
+   "query": "Delete the test workspace when we are done",
+   "should_trigger": true,
+   "expected_behavior": [
+    "requires the exact workspace name in confirm_name and refuses a non-workspace network"
+   ]
+  },
+  {
+   "query": "Collect the whole network now",
+   "should_trigger": false,
+   "note": "edit-collection"
+  },
+  {
+   "query": "List the networks and workspaces I can see",
+   "should_trigger": false,
+   "note": "inspect-networks"
+  }
+ ]
+}

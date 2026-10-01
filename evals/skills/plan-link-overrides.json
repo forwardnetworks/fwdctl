@@ -1,0 +1,46 @@
+{
+ "skill": "plan-link-overrides",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Two manual links are missing from the latest snapshot on our network; what happened and how do I get them back?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "compares snapshots with inspect-topology (kind link_overrides, compare_to_snapshot_id) first",
+    "verifies the ports and the topology before editing",
+    "states that writing overrides invalidates the snapshot and follows plan-safe-write"
+   ]
+  },
+  {
+   "query": "Can I keep link overrides across snapshots?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "says what Forward documents: network-level staged overrides apply to the next snapshot",
+    "marks what is unknown instead of guessing"
+   ]
+  },
+  {
+   "query": "Give me the curl command the customer can use to apply the overrides.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses placeholders for credentials, URL and ids",
+    "warns that the write invalidates the snapshot"
+   ]
+  },
+  {
+   "query": "Is 10.1.1.5 reachable from 10.2.2.2?",
+   "should_trigger": false,
+   "note": "plan-troubleshoot-connectivity"
+  },
+  {
+   "query": "Reprocess snapshot 1001",
+   "should_trigger": false,
+   "note": "edit-snapshot-reprocess"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

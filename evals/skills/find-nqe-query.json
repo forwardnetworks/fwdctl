@@ -1,0 +1,44 @@
+{
+ "skill": "find-nqe-query",
+ "cases": [
+  {
+   "query": "Does Forward already have a query for finding devices with expiring certificates?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs find-nqe-query",
+    "reports the matches with their paths, or says none matched without claiming none exist"
+   ]
+  },
+  {
+   "query": "I need a saved query id I can use as a compliance policy for BGP neighbor state.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs find-nqe-query",
+    "returns a query id"
+   ]
+  },
+  {
+   "query": "Is there an existing NQE query for OSPF adjacency?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs find-nqe-query before writing a new query"
+   ],
+   "note": "paraphrase"
+  },
+  {
+   "query": "Explain what NQE is in two sentences.",
+   "should_trigger": false,
+   "note": "concept question"
+  },
+  {
+   "query": "Which CVEs are critical?",
+   "should_trigger": false,
+   "note": "vulnerabilities"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

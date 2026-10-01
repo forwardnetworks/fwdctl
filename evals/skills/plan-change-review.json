@@ -1,0 +1,47 @@
+{
+ "skill": "plan-change-review",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Is it safe to push this ACL change to the edge firewalls?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "starts from the newest snapshot",
+    "stages or reviews a change set",
+    "predicts it",
+    "reports unknown steps instead of calling it safe"
+   ]
+  },
+  {
+   "query": "We want to add a route; will it break anything?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses verify-change and the impact view",
+    "checks policy regressions"
+   ]
+  },
+  {
+   "query": "Review change set cs-42 before the window tonight",
+   "should_trigger": true,
+   "expected_behavior": [
+    "verify-change with view describe first",
+    "then the verdict and impact"
+   ]
+  },
+  {
+   "query": "Why can't host A reach host B right now?",
+   "should_trigger": false,
+   "note": "plan-investigation / investigate-reachability"
+  },
+  {
+   "query": "Write the config to open port 443",
+   "should_trigger": false,
+   "note": "refused: no configuration is authored"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

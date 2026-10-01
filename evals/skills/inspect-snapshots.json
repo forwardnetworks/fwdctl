@@ -1,0 +1,44 @@
+{
+ "skill": "inspect-snapshots",
+ "cases": [
+  {
+   "query": "What snapshots does network 231060 have, and which is the latest one I should use?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-snapshots",
+    "names the latest readable snapshot from the result, not the newest of any kind"
+   ]
+  },
+  {
+   "query": "Which snapshot should I compare against 1175663 for the change?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-snapshots",
+    "treats a predicted snapshot as a model, not as a state the network was in"
+   ]
+  },
+  {
+   "query": "Did snapshot 1175663 collect cleanly? How complete is it?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-snapshots with the snapshot id",
+    "reports the metrics, and says when exceptions could not be read rather than saying there were none"
+   ]
+  },
+  {
+   "query": "How many devices are in network 231060?",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "Why are devices missing from the last collection?",
+   "should_trigger": false,
+   "note": "collection failure"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

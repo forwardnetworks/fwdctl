@@ -1,0 +1,50 @@
+{
+ "skill": "plan-what-changed",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "What changed in the network since last week?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "picks the two bracketing snapshots",
+    "names the interval, not a time inside it"
+   ]
+  },
+  {
+   "query": "When did r1's configuration last change?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses inspect-history with device",
+    "says the change is between two collections"
+   ]
+  },
+  {
+   "query": "Did yesterday's change cause the BGP problem?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "compares configs and state between the snapshots",
+    "does not name a cause from a difference alone"
+   ]
+  },
+  {
+   "query": "Can A reach B on tcp/443?",
+   "should_trigger": false,
+   "note": "investigate-reachability"
+  },
+  {
+   "query": "Which snapshot is the newest?",
+   "should_trigger": false,
+   "note": "inspect-snapshots"
+  },
+  {
+   "query": "Is the network healthy?",
+   "should_trigger": false,
+   "note": "plan-health-check"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

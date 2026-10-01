@@ -1,0 +1,46 @@
+{
+ "skill": "compare-device-config",
+ "cases": [
+  {
+   "query": "Which devices had their configuration changed between snapshot 1175662 and snapshot 1175663?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs compare-device-config without a device",
+    "lists the devices from the result, or says none changed"
+   ]
+  },
+  {
+   "query": "Show me exactly what changed in the config of atl-ce01 between snapshots 1175662 and 1175663.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs compare-device-config with the device",
+    "reports added and removed lines, or that no changed file is listed, with the limits",
+    "does not print secret values"
+   ]
+  },
+  {
+   "query": "Did anyone touch the NTP settings in the last change (1175662 to 1175663)?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "compares the config files or the NTP data between the two snapshots",
+    "does not report 'no change' unless something was actually compared"
+   ],
+   "note": "paraphrase"
+  },
+  {
+   "query": "Show me the current config of atl-ce01.",
+   "should_trigger": false,
+   "note": "inspect-device-files"
+  },
+  {
+   "query": "Which devices have critical CVEs?",
+   "should_trigger": false,
+   "note": "vulnerabilities"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

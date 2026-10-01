@@ -1,0 +1,50 @@
+{
+ "skill": "inspect-environment",
+ "cases": [
+  {
+   "query": "What version of Forward are we on and what is the vulnerability index date?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-environment"
+   ]
+  },
+  {
+   "query": "Which org properties are non-default?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-environment"
+   ]
+  },
+  {
+   "query": "Is predict supported on this build?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-environment"
+   ]
+  },
+  {
+   "query": "List my networks",
+   "should_trigger": false,
+   "note": "inspect-networks"
+  },
+  {
+   "query": "Why did collection fail?",
+   "should_trigger": false,
+   "note": "collection"
+  },
+  {
+   "query": "Is advanced reachability switched on for our organization, and who can change it?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-environment and reads the features row for advanced_reachability_analysis",
+    "states the effective value, the default and whether the organization overrides it",
+    "says who can change it (org_admin_configurability) and that a network-level override is not visible to the API"
+   ]
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

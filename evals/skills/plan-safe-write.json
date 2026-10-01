@@ -1,0 +1,53 @@
+{
+ "skill": "plan-safe-write",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Tag r1 and r2 as edge",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads the tags first",
+    "runs the plan and shows the pairs",
+    "waits for approval before apply"
+   ]
+  },
+  {
+   "query": "Save this query to our library",
+   "should_trigger": true,
+   "expected_behavior": [
+    "plan first",
+    "says the commit is visible to the organization",
+    "does not apply on its own"
+   ]
+  },
+  {
+   "query": "Reprocess snapshot 1175663",
+   "should_trigger": true,
+   "expected_behavior": [
+    "plan first",
+    "says there is no undo for the data but none is needed",
+    "asks before apply"
+   ]
+  },
+  {
+   "query": "What is r1 connected to?",
+   "should_trigger": false,
+   "note": "inspect-topology"
+  },
+  {
+   "query": "Which checks fail?",
+   "should_trigger": false,
+   "note": "check-network-compliance"
+  },
+  {
+   "query": "What does this change set do?",
+   "should_trigger": false,
+   "note": "verify-change, view describe"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

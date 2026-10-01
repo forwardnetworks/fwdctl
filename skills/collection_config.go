@@ -1,0 +1,235 @@
+package skills
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sort"
+
+	forward "github.com/forwardnetworks/forward-go-sdk"
+
+	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/result"
+)
+
+const collectionConfigName = collectionName
+
+type collectionConfigInput struct {
+	NetworkID string `json:"network_id"`
+	Limit     int    `json:"limit"`
+	Offset    int    `json:"offset"`
+}
+
+// inspectCollectionConfig states what Forward is told to collect: devices, endpoints, jump servers and proxies. It never reads a
+// credential: a device shows only whether a credential is set, and no secret, credential id or username is copied out.
+func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
+	var in collectionConfigInput
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
+	detail := map[string]any{}
+	var limits []string
+	read, total := 0, 0
+
+	if devs, err := s.ClassicDevices(ctx, in.NetworkID); err != nil {
+		limits = append(limits, "the collection devices could not be read: "+err.Error())
+	} else {
+		read++
+		total += len(devs)
+		rows := make([]map[string]any, 0, len(devs))
+		for _, d := range devs {
+			row := map[string]any{"name": d.Name, "host": d.Host, "type": d.Type, "cli_credential_set": d.CLICredentialID != "",
+				"http_credential_set": d.HTTPCredentialID != "", "collect": d.Collect == nil || *d.Collect}
+			if d.Port != nil {
+				row["port"] = *d.Port
+			}
+			rows = append(rows, row)
+		}
+		win, wl, ok := window(rows, in.Limit, in.Offset, 50, 500, "devices")
+		if ok {
+			detail["devices"] = win
+			limits = append(limits, wl...)
+		} else {
+			detail["devices"] = []map[string]any{}
+			if len(rows) > 0 {
+				limits = append(limits, fmt.Sprintf("offset %d is past the end of the %d devices", in.Offset, len(rows)))
+			}
+		}
+		detail["device_count"] = len(rows)
+		notCollected := 0
+		for _, r := range rows {
+			if r["collect"] == false {
+				notCollected++
+			}
+		}
+		detail["devices_not_collected"] = notCollected
+	}
+	if eps, err := s.Endpoints(ctx, in.NetworkID); err != nil {
+		limits = append(limits, "the endpoints could not be read: "+err.Error())
+	} else {
+		read++
+		total += len(eps)
+		rows := make([]map[string]any, 0, len(eps))
+		for _, e := range eps {
+			rows = append(rows, map[string]any{"name": e.Name, "type": e.Type, "host": e.Host, "protocol": e.Protocol,
+				"profile_id": nilIfEmpty(e.ProfileID), "credential_set": e.CredentialID != "", "via_jump_server": e.JumpServerID != "", "collect": e.Collect == nil || *e.Collect})
+		}
+		byProfile := map[string]int{}
+		for _, e := range eps {
+			byProfile[e.Type+" "+orDash(e.ProfileID)]++
+		}
+		win, wl, ok := window(rows, in.Limit, in.Offset, 50, 500, "endpoints")
+		if ok {
+			detail["endpoints"] = win
+			limits = append(limits, wl...)
+		} else {
+			detail["endpoints"] = []map[string]any{}
+		}
+		detail["endpoint_count"], detail["endpoints_by_type_and_profile"] = len(rows), byProfile
+		limits = append(limits, endpointProfiles(ctx, s, eps, detail)...)
+	}
+	if js, err := s.JumpServers(ctx, in.NetworkID); err != nil {
+		limits = append(limits, "the jump servers could not be read: "+err.Error())
+	} else {
+		read++
+		total += len(js)
+		rows := make([]map[string]any, 0, len(js))
+		for _, j := range js {
+			rows = append(rows, map[string]any{"id": string(j.ID), "host": j.Host, "port": j.Port})
+		}
+		detail["jump_servers"] = rows
+	}
+	if px, err := s.Proxies(ctx, in.NetworkID); err != nil {
+		limits = append(limits, "the proxies could not be read: "+err.Error())
+	} else {
+		read++
+		total += len(px)
+		rows := make([]map[string]any, 0, len(px))
+		for _, p := range px {
+			rows = append(rows, map[string]any{"name": p.Name, "host": p.Host, "port": p.Port, "protocol": p.Protocol, "cert_checking_disabled": p.DisableCertChecking})
+		}
+		detail["proxies"] = rows
+	}
+	if sc, _, err := s.Client.CollectionSchedules.List(ctx, in.NetworkID); err != nil {
+		limits = append(limits, "the collection schedules could not be read: "+err.Error())
+	} else {
+		read++
+		rows := make([]map[string]any, 0, len(sc))
+		for _, c := range sc {
+			row := map[string]any{"id": string(c.ID), "enabled": c.Enabled, "time_zone": nilIfEmpty(c.TimeZone), "start_at": nilIfEmpty(c.StartAt), "end_at": nilIfEmpty(c.EndAt)}
+			if c.Periodic() {
+				row["kind"], row["every_seconds"] = "periodic", *c.PeriodInSeconds
+			} else {
+				row["kind"], row["times"], row["days_of_week"] = "times", c.Times, weekdays(c.DaysOfTheWeek)
+			}
+			rows = append(rows, row)
+		}
+		detail["collection_schedules"] = rows
+		if len(rows) == 0 {
+			limits = append(limits, "no collection schedule is configured: collections run only when started (or by uploads)")
+		} else {
+			limits = append(limits, "schedules are as configured: Forward does not return a next run time, and an empty time zone means the organization's preferred zone. days_of_week is empty when every day applies or none was set")
+		}
+	}
+	limits = append(limits, "credentials are never read or shown; a device lists only whether one is set")
+	if read == 0 {
+		return result.NewUnknown(collectionConfigName, "The collection configuration could not be read", cx, limits, result.Options{})
+	}
+	if total == 0 {
+		return result.NewUnknown(collectionConfigName, "No collection targets are configured for this network", cx,
+			append(limits, "nothing to collect is configured through these routes; devices may arrive by snapshot upload or a cloud setup instead"), result.Options{})
+	}
+	finding := fmt.Sprintf("%v devices, %v endpoints, %d jump servers, %d proxies configured", detail["device_count"], detail["endpoint_count"], lenAny(detail["jump_servers"]), lenAny(detail["proxies"]))
+	return result.Build(collectionConfigName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+		NextActions: []string{"inspect-collection", "investigate-collection-failure"},
+		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "inspectCollectionConfig", nil, detail, finding)}})
+}
+
+func lenAny(v any) int {
+	if r, ok := v.([]map[string]any); ok {
+		return len(r)
+	}
+	return 0
+}
+
+// endpointProfiles adds the definitions of the profiles this network's endpoints use (org-wide objects: the other profiles are counted,
+// not listed). An SNMP profile lists the OIDs it collects, a CLI profile its commands, an HTTP profile its requests; HTTP header values
+// are never shown. It returns limits; a failed read is a limit, not an empty list.
+func endpointProfiles(ctx context.Context, s *fwd.Session, eps []forward.Endpoint, detail map[string]any) []string {
+	used := map[string]bool{}
+	for _, e := range eps {
+		if e.ProfileID != "" {
+			used[e.ProfileID] = true
+		}
+	}
+	if len(eps) == 0 {
+		return nil
+	}
+	profiles, _, err := s.Client.Endpoints.ListProfiles(ctx, "")
+	if err != nil {
+		return []string{"the endpoint profiles could not be read, so what the endpoints collect is not shown: " + err.Error()}
+	}
+	var rows []map[string]any
+	cli := false
+	for _, p := range profiles {
+		if !used[string(p.ID)] {
+			continue
+		}
+		row := map[string]any{"id": string(p.ID), "name": p.Name, "type": p.Type}
+		switch p.Type {
+		case "SNMP":
+			oids := make([]map[string]string, 0, len(p.CustomOIDs))
+			for _, o := range p.CustomOIDs {
+				oids = append(oids, map[string]string{"name": o.Name, "oid": o.OID})
+			}
+			row["oid_sets"], row["custom_oids"], row["detector_oid"] = p.OIDSets, oids, nilIfEmpty(p.DetectorOID)
+		case "CLI":
+			cli = true
+			row["command_sets"], row["custom_commands"], row["detector_command"] = p.CommandSets, p.CustomCommands, nilIfEmpty(p.DetectorCommand)
+		case "HTTP":
+			reqs := make([]map[string]string, 0, len(p.Endpoints))
+			for _, h := range p.Endpoints {
+				reqs = append(reqs, map[string]string{"name": h.Name, "path": h.Path})
+			}
+			hdrs := make([]string, 0, len(p.Headers))
+			for k := range p.Headers {
+				hdrs = append(hdrs, k)
+			}
+			sort.Strings(hdrs)
+			row["https"], row["auth_type"], row["requests"], row["header_names"] = p.HTTPS, p.AuthType, reqs, hdrs
+		}
+		rows = append(rows, row)
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i]["id"].(string) < rows[j]["id"].(string) })
+	detail["endpoint_profiles"] = rows
+	limits := []string{fmt.Sprintf("%d endpoint profile(s) exist in the organization; %d used by this network's endpoints are shown. Profiles are organization-wide, and each type's standard set (oid_sets, command_sets) is Forward's own list, not repeated here. Only what a profile asks for is shown: what a device returned is in the model (NQE network.endpoints)", len(profiles), len(rows))}
+	if cli {
+		if ap, _, aerr := s.Client.Endpoints.ApprovedCLICommands(ctx); aerr != nil {
+			limits = append(limits, "CLI profile commands run only if the organization approved them; the approved list could not be read: "+aerr.Error())
+		} else if ap != nil {
+			detail["approved_cli_commands"] = map[string]any{"count": len(ap.Commands), "custom_list_uploaded": ap.SignedAt != "" || ap.UploadedAt != ""}
+			limits = append(limits, "CLI profile commands run only if the organization approved them (Forward's approved-command list, patterns not matched here): an unapproved command is skipped at collection")
+		}
+	}
+	return limits
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+// weekdays names Forward's day numbers (Sunday is 0).
+func weekdays(d []int) []string {
+	names := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+	out := make([]string, 0, len(d))
+	for _, n := range d {
+		if n >= 0 && n < 7 {
+			out = append(out, names[n])
+		}
+	}
+	return out
+}

@@ -1,0 +1,91 @@
+{
+ "skill": "inspect-inventory",
+ "cases": [
+  {
+   "query": "How many devices do we have and what vendors?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-inventory with kind summary",
+    "reports the counts and the vendor mix from the result"
+   ]
+  },
+  {
+   "query": "Show the interfaces on atl-core-pe01.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses kind interfaces with device atl-core-pe01",
+    "does not dump everything: relies on the default page size or sets a limit, and says how to see more"
+   ]
+  },
+  {
+   "query": "Which hosts are behind switch atl-dc01-acc01?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses kind hosts with the device filter atl-dc01-acc01",
+    "reports hosts from the result (for example sjc-dc-12-server-4) and says when more remain"
+   ],
+   "note": "paraphrase"
+  },
+  {
+   "query": "What VLANs are configured on atl-dc01-acc01?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses kind vlans with the device filter",
+    "reports the VLANs from the result (default and VLAN0201)"
+   ],
+   "note": "answerable: the device has 2 VLANs"
+  },
+  {
+   "query": "Can host A reach host B?",
+   "should_trigger": false,
+   "note": "reachability"
+  },
+  {
+   "query": "Is atl-core-pe01 vulnerable to anything?",
+   "should_trigger": false,
+   "note": "vulnerabilities"
+  },
+  {
+   "query": "Which device and interface owns 198.19.241.30?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-inventory (kind ip_owner)"
+   ],
+   "note": "[kind ip_owner]"
+  },
+  {
+   "query": "Is 10.1.1.77 inside a connected subnet, and whose?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-inventory (kind ip_owner)"
+   ],
+   "note": "[kind ip_owner]"
+  },
+  {
+   "query": "Is this next hop address a device we model?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-inventory (kind ip_owner)"
+   ],
+   "note": "[kind ip_owner]"
+  },
+  {
+   "query": "Can 10.1.1.5 reach 10.2.2.2?",
+   "should_trigger": false,
+   "note": "investigate-reachability"
+  },
+  {
+   "query": "What routes, security group rules and gateways does this cloud VPC have?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses kinds cloud_routes, cloud_security and cloud_gateways",
+    "says what the cloud kinds do not cover (ACLs, firewalls, transit gateways) and that path search between instances is unverified"
+   ]
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

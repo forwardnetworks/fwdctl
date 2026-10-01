@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forward-skills/skill-result/v1",
+  "title": "Forward Skill result (finding envelope)",
+  "description": "What every Forward Skill returns. Evidence, not just an answer. 'unknown' is a first-class outcome: an empty result or an unmeasured question must never read as a pass.",
+  "type": "object",
+  "required": ["schema", "skill", "status", "finding", "confidence", "evidence", "next_actions", "limits", "context"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "forward-skills/skill-result/v1" },
+    "skill": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+    "status": {
+      "enum": ["ok", "failed", "unknown", "error"],
+      "description": "ok = the objective holds; failed = the objective does not hold (a finding); unknown = the question could not be answered from measured data; error = the skill itself could not run."
+    },
+    "finding": { "type": "string", "minLength": 1 },
+    "confidence": {
+      "enum": ["deterministic", "inferred", "unknown"],
+      "description": "deterministic = read directly from the digital twin; inferred = a conclusion drawn from evidence; unknown = no basis."
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+      "description": "Names of skills that logically follow. Recommendations only; the harness owns orchestration."
+    },
+    "limits": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "What was NOT measured, truncated, or unavailable."
+    },
+    "context": {
+      "type": "object",
+      "required": ["network_id", "snapshot_id"],
+      "additionalProperties": true,
+      "if": { "required": ["scope"] },
+      "then": { "properties": { "network_id": { "maxLength": 0 } } },
+      "else": { "properties": { "network_id": { "minLength": 1 } } },
+      "properties": {
+        "network_id": { "type": "string" },
+        "scope": { "enum": ["account"], "description": "Set only for an account-level result (such as the list of networks), which has no network_id." },
+        "snapshot_id": { "type": ["string", "null"] },
+        "snapshot_time": { "type": ["string", "null"] },
+        "state": { "enum": ["current", "historical", "predicted"] }
+      }
+    },
+    "mode": {
+      "enum": ["dry_run", "applied"],
+      "description": "Set only by a skill that writes. dry_run: nothing was changed and changes is the plan. applied: changes is what was done."
+    },
+    "changes": {
+      "type": "array",
+      "description": "What a writing skill plans or did, each change with the value it replaces and how to undo it.",
+      "items": { "$ref": "#/$defs/change" }
+    },
+    "operations": {
+      "type": "array",
+      "description": "Optional operation log: every Forward call the skill made (for audit and API-gap analysis).",
+      "items": { "$ref": "#/$defs/operation" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["ok", "failed"] } } },
+      "then": {
+        "properties": {
+          "evidence": { "minItems": 1 },
+          "confidence": { "enum": ["deterministic", "inferred"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "unknown" } } },
+      "then": {
+        "properties": {
+          "confidence": { "const": "unknown" },
+          "limits": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "change": {
+      "type": "object",
+      "required": ["action", "target", "applied", "reversible"],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "before": {},
+        "after": {},
+        "applied": { "type": "boolean" },
+        "reversible": { "type": "boolean" },
+        "undo": { "type": "string" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["type", "source", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["path", "nqe", "config", "state", "collection", "predict", "topology", "policy"] },
+        "source": {
+          "type": "object",
+          "required": ["operation", "snapshot_id"],
+          "additionalProperties": true,
+          "properties": {
+            "operation": { "type": "string", "minLength": 1 },
+            "snapshot_id": { "type": ["string", "null"] }
+          }
+        },
+        "detail": { "type": "object" },
+        "summary": { "type": "string" }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "required": ["operation", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "operation": { "type": "string" },
+        "status": { "type": "integer" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "rows": { "type": ["integer", "null"], "minimum": 0 },
+        "truncated": { "type": "boolean" },
+        "duration_ms": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+ "skill": "plan-synthetic-device",
+ "procedure_only": true,
+ "cases": [
+  {"query": "Paths to our branch offices dead-end at the WAN edge; the provider runs an MPLS VPN we can't collect. How do we model it?", "should_trigger": true, "expected_behavior": ["chooses an L3 VPN and says why", "builds the connections from a query and previews before attaching"]},
+  {"query": "Traffic to the internet stops at our edge routers in the model. Fix the model.", "should_trigger": true, "expected_behavior": ["uses the internet node and Forward's suggested connections", "verifies a path crosses after a new snapshot"]},
+  {"query": "We connect to a partner bank's network over a dedicated link; it only terminates our traffic. How should Forward model it?", "should_trigger": true, "expected_behavior": ["chooses an adjacent network, not a transit device"]},
+  {"query": "Why can't A reach B?", "should_trigger": false, "note": "plan-troubleshoot-connectivity"},
+  {"query": "Write a query that lists my WAN uplinks", "should_trigger": false, "note": "author-nqe-query"},
+  {"query": "Tag these devices as edge", "should_trigger": false, "note": "edit-device-tags"}
+ ],
+ "measure": ["tool_calls", "total_tokens", "failed_calls"]
+}

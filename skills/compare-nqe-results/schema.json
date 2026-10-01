@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "required": ["network_id", "before_snapshot_id", "after_snapshot_id", "query_id"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "before_snapshot_id": { "type": "string", "minLength": 1 },
+    "after_snapshot_id": { "type": "string", "minLength": 1 },
+    "query_id": { "type": "string", "minLength": 1 },
+    "commit_id": { "type": "string", "minLength": 1 },
+    "limit": { "type": "integer", "minimum": 1 }
+  }
+}

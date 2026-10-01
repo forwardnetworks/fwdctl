@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "required": [
+    "network_id"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "view": {
+      "enum": [
+        "status",
+        "config"
+      ],
+      "default": "status"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

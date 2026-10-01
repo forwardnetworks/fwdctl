@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": ["network_id", "action"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "action": { "enum": ["create", "deactivate"] },
+    "definition": { "type": "object" },
+    "name": { "type": "string" },
+    "note": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "priority": { "type": "string" },
+    "persistent": { "type": "boolean", "default": false },
+    "check_id": { "type": "string", "minLength": 1 },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

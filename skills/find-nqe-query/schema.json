@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "required": [
+    "network_id"
+  ],
+  "description": "Give exactly one of question (search), query_id (read a Q_ query's source) or path (read by library path)",
+  "additionalProperties": false,
+  "properties": {
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "directory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "list": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show one level of the library as a tree (directories with query counts, and the queries directly in directory, default /) instead of searching"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "commit_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "read query_id or path at this library commit instead of the head"
+    }
+  }
+}

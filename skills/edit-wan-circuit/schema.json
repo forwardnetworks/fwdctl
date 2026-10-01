@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "required": ["network_id", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "delete": { "type": "boolean", "default": false },
+    "connection1": { "type": "object", "required": ["device", "port"], "additionalProperties": false,
+      "properties": { "device": { "type": "string", "minLength": 1 }, "port": { "type": "string", "minLength": 1 }, "vlan": { "type": "integer", "minimum": 1 }, "name": { "type": "string" } } },
+    "connection2": { "type": "object", "required": ["device", "port"], "additionalProperties": false,
+      "properties": { "device": { "type": "string", "minLength": 1 }, "port": { "type": "string", "minLength": 1 }, "vlan": { "type": "integer", "minimum": 1 }, "name": { "type": "string" } } },
+    "backdate_snapshot_id": { "type": "string", "minLength": 1 },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

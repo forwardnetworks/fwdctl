@@ -1,0 +1,44 @@
+{
+ "skill": "validate-nqe-query",
+ "cases": [
+  {
+   "query": "Run this NQE query and tell me if it works: foreach d in network.devices select {Name: d.name}",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs validate-nqe-query",
+    "reports the row count and a sample, or Forward's diagnostic with its position"
+   ]
+  },
+  {
+   "query": "Why does this query say 'Unknown alternative'? foreach d in network.devices where d.platform.vendor == Vendor.PALO_ALTO select d.name",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs validate-nqe-query on the query and quotes the diagnostic",
+    "offers the closest real enum values from the schema hints (PALO_ALTO_NETWORKS)"
+   ]
+  },
+  {
+   "query": "Check this NQE against the latest snapshot before I use it: foreach d in network.devices where d.name == \"no-such-device\" select {Name: d.name}",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs validate-nqe-query",
+    "treats zero rows as unknown, not as compliant"
+   ]
+  },
+  {
+   "query": "Show me the interfaces on r1.",
+   "should_trigger": false,
+   "note": "inspect-inventory"
+  },
+  {
+   "query": "Which CVEs are critical?",
+   "should_trigger": false,
+   "note": "inspect-vulnerabilities"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

@@ -1,0 +1,46 @@
+{
+ "skill": "compare-nqe-results",
+ "cases": [
+  {
+   "query": "Which BGP neighbors changed between snapshot 1175662 and snapshot 1175663?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "finds a saved query id first (find-nqe-query)",
+    "runs compare-nqe-results with both snapshots",
+    "reports differences as rows, or says the comparison is unknown, and never as 'no change' when nothing was compared"
+   ]
+  },
+  {
+   "query": "Diff the configured NTP servers between snapshot 1175662 and 1175663.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses compare-nqe-results with a committed query id",
+    "states that only committed queries can be compared if none was found"
+   ]
+  },
+  {
+   "query": "Using the saved query 'BGP Peerings Not Established', show what changed between snapshots 1175662 and 1175663.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "finds the saved query id (find-nqe-query) or uses one",
+    "runs compare-nqe-results on both snapshots and reports the differences or that there are none over a non-empty query"
+   ],
+   "note": "names a saved query"
+  },
+  {
+   "query": "How many devices are there?",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "Is 10.101.10.2 able to reach 10.101.20.2?",
+   "should_trigger": false,
+   "note": "reachability"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

@@ -1,0 +1,46 @@
+{
+ "skill": "edit-collection",
+ "cases": [
+  {
+   "query": "Collect the network again, I need a fresh snapshot",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-collection (dry run first)"
+   ]
+  },
+  {
+   "query": "Cancel the collection that's running",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-collection action=stop"
+   ]
+  },
+  {
+   "query": "Kick off a collection but skip it if one is already going",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-collection"
+   ]
+  },
+  {
+   "query": "Is collection healthy?",
+   "should_trigger": false,
+   "note": "inspect-collection-status"
+  },
+  {
+   "query": "Why is r1 missing from the snapshot?",
+   "should_trigger": false,
+   "note": "investigate-collection-failure"
+  },
+  {
+   "query": "Reprocess the snapshot",
+   "should_trigger": false,
+   "note": "not offered"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

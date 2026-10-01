@@ -1,0 +1,53 @@
+{
+ "skill": "inspect-vulnerabilities",
+ "cases": [
+  {
+   "query": "What are our critical vulnerabilities?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-vulnerabilities with min_severity CRITICAL",
+    "names the worst CVEs and how many devices are exposed",
+    "does not treat UNCONFIRMED or UNIMPLEMENTED as exposure or as a pass"
+   ]
+  },
+  {
+   "query": "Are we exposed to CVE-2018-0171?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses cve_id",
+    "lists exposed devices first when there are any, and says how firm each verdict is (including that UNCONFIRMED or POTENTIALLY_VULNERABLE is not settled)"
+   ]
+  },
+  {
+   "query": "What CVEs affect atl-core-pe01?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses the device view with the device name",
+    "if the device has no findings, reports that as unknown, not clean; otherwise reports the findings with how firm each verdict is"
+   ]
+  },
+  {
+   "query": "Which vulnerabilities are being actively exploited?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses known_exploited_only"
+   ],
+   "note": "paraphrase"
+  },
+  {
+   "query": "List every Juniper device.",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "Is the configuration compliant with our standard?",
+   "should_trigger": false,
+   "note": "compliance"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

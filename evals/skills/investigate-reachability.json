@@ -1,0 +1,47 @@
+{
+ "skill": "investigate-reachability",
+ "cases": [
+  {
+   "query": "Can 10.101.10.2 reach 10.101.20.2 on TCP 443?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs investigate-reachability with src_ip, dst_ip, protocol tcp and dst_port 443",
+    "reports blocked or blackholed with the last-hop device and interface as evidence (atl-te-fw01)",
+    "does not report delivered"
+   ],
+   "note": "live: blackholes at atl-te-fw01 (missing_route)"
+  },
+  {
+   "query": "Why is traffic from sjc-dc-12-server-4 (10.101.10.2) to 10.101.20.2 on port 5432 being dropped?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses 10.101.10.2 as the source and 10.101.20.2 as the destination",
+    "states the outcome and the last-hop device from the result, and does not add causes the result does not show"
+   ],
+   "note": "paraphrase, no explicit 'reach'"
+  },
+  {
+   "query": "Is the internet able to get to our web VIP 203.0.113.10 on 443?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses the internet as the source, as plan-investigation describes",
+    "states the outcome and any limits (timeout, truncation, predicted snapshot)"
+   ]
+  },
+  {
+   "query": "Show me all the interfaces on atl-core-pe01",
+   "should_trigger": false,
+   "note": "an inventory question: inspect-inventory"
+  },
+  {
+   "query": "Which CVEs affect atl-core-pe01?",
+   "should_trigger": false,
+   "note": "a vulnerability question: inspect-vulnerabilities"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

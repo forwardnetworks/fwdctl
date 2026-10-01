@@ -1,0 +1,46 @@
+{
+ "skill": "plan-health-check",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Give me a health check of the network",
+   "should_trigger": true,
+   "expected_behavior": [
+    "checks data freshness first",
+    "covers collection, performance and checks",
+    "does not call unknown areas healthy"
+   ]
+  },
+  {
+   "query": "Is anything wrong with the network this morning?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs the sequence",
+    "reports unknowns explicitly"
+   ]
+  },
+  {
+   "query": "Is the network healthy right now?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "states the snapshot age",
+    "uses inspect-performance and inspect-collection"
+   ]
+  },
+  {
+   "query": "When did check X start failing?",
+   "should_trigger": false,
+   "note": "inspect-history"
+  },
+  {
+   "query": "Start a collection now",
+   "should_trigger": false,
+   "note": "edit-collection"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

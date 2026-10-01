@@ -1,0 +1,50 @@
+{
+ "skill": "plan-segmentation-check",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "Are the PCI and corporate zones isolated?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "states the must-block and must-work flows",
+    "tests both",
+    "names the rule behind a violation"
+   ]
+  },
+  {
+   "query": "Does the firewall policy actually block guest to servers?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses investigate-reachability per flow",
+    "reports untested zones"
+   ]
+  },
+  {
+   "query": "Confirm isolation still holds after the firewall change",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses verify-change with expectations"
+   ]
+  },
+  {
+   "query": "Why can't A reach B?",
+   "should_trigger": false,
+   "note": "plan-troubleshoot-connectivity"
+  },
+  {
+   "query": "What is r1 connected to?",
+   "should_trigger": false,
+   "note": "inspect-topology"
+  },
+  {
+   "query": "Which CVEs affect us?",
+   "should_trigger": false,
+   "note": "inspect-vulnerabilities"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["network_id", "snapshot_id", "note"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "note": { "type": "string" },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

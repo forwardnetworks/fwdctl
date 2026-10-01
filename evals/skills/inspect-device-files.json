@@ -1,0 +1,45 @@
+{
+ "skill": "inspect-device-files",
+ "cases": [
+  {
+   "query": "Show me the SNMP configuration on atl-ce01.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "lists the device files first or searches the config file for snmp",
+    "searches rather than reading the whole file",
+    "does not print a community string or secret in the answer"
+   ]
+  },
+  {
+   "query": "Does atl-core-pe01 have an NTP server configured in its actual config?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "searches the collected config for ntp",
+    "treats no matching line as unknown, not as proof NTP is not configured"
+   ]
+  },
+  {
+   "query": "What command outputs did Forward collect from atl-ce02?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses mode list",
+    "reports file names with the commands they came from"
+   ]
+  },
+  {
+   "query": "How many interfaces does atl-ce01 have?",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "Which devices have a critical CVE?",
+   "should_trigger": false,
+   "note": "vulnerabilities"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

@@ -1,0 +1,51 @@
+{
+ "skill": "plan-maintenance-window",
+ "procedure_only": true,
+ "cases": [
+  {
+   "query": "We have a maintenance window tonight; how do we prove the change did what we wanted?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "labels a baseline",
+    "collects after",
+    "compares and verifies against expectations"
+   ]
+  },
+  {
+   "query": "Close out the cutover: what changed and did anything break?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "compare-device-config between baseline and after",
+    "reports unplanned differences as findings"
+   ]
+  },
+  {
+   "query": "Plan the before and after checks for migrating the DC firewall",
+   "should_trigger": true,
+   "expected_behavior": [
+    "records the flows that must hold",
+    "treats a missing after-snapshot as unknown"
+   ]
+  },
+  {
+   "query": "Is this ACL change safe?",
+   "should_trigger": false,
+   "note": "plan-change-review"
+  },
+  {
+   "query": "Why can't A reach B?",
+   "should_trigger": false,
+   "note": "plan-troubleshoot-connectivity"
+  },
+  {
+   "query": "Label this snapshot",
+   "should_trigger": false,
+   "note": "edit-snapshot-note"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

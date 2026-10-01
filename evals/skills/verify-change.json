@@ -1,0 +1,110 @@
+{
+ "skill": "verify-change",
+ "cases": [
+  {
+   "query": "I staged change set CHG-123. Will it break reachability from 10.101.10.2 to 10.101.20.2 on TCP 443?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs verify-change with the change_set_id and an expectation of delivered for that flow",
+    "does not run Predict unless asked (run_predict is opt-in)",
+    "reports the result as unknown when the change set cannot be read, and never as ok"
+   ],
+   "note": "intentional unknown: the network has no change set CHG-123"
+  },
+  {
+   "query": "Did last night's change work? Compare snapshot 1175662 to snapshot 1175663.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses before_snapshot_id and after_snapshot_id",
+    "says the change was not judged when no expectation is given, and reports the impact it measured"
+   ]
+  },
+  {
+   "query": "After the change, make sure 10.101.10.2 still cannot reach 10.101.20.2 on TCP 443, comparing snapshot 1175662 to 1175663.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "passes an expectation of blocked for that flow",
+    "reports the outcome the path search returned; if the search is undetermined it is unknown, not blocked"
+   ]
+  },
+  {
+   "query": "Write me the CLI commands to add a static route on r1.",
+   "should_trigger": false,
+   "note": "config authoring is out of scope"
+  },
+  {
+   "query": "How many devices do we have?",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "How big is change set CHG-9? What does it touch?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs verify-change (view impact) with the change_set_id",
+    "reports that the change set could not be measured (unknown) rather than reporting zero impact or inventing areas"
+   ],
+   "note": "intentional unknown: the network has no change set CHG-9"
+  },
+  {
+   "query": "What changed between snapshot 1175662 and snapshot 1175663?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses the two snapshots as before and after",
+    "reports what the skill measured per area, and states what was not measured (limits) instead of implying a complete comparison"
+   ]
+  },
+  {
+   "query": "Which subnets lost connectivity after the change?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads the connectivity comparison and reports newly isolated pairs, or says the connectivity comparison was unavailable",
+    "does not report zero when zero pairs were compared"
+   ]
+  },
+  {
+   "query": "Is the change correct? Did it do what we intended?",
+   "should_trigger": false,
+   "note": "an intent question: verify-change"
+  },
+  {
+   "query": "Show the VLANs on sw1",
+   "should_trigger": false,
+   "note": "inventory"
+  },
+  {
+   "query": "What does change set cs-42 do, and is it safe to run?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "verify-change (view describe)"
+   ],
+   "note": "[view describe]"
+  },
+  {
+   "query": "Which checks would the change set break once predicted?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "verify-change (view describe)"
+   ],
+   "note": "[view describe]"
+  },
+  {
+   "query": "Show me the firewall rule diff for fw1 in that change set",
+   "should_trigger": true,
+   "expected_behavior": [
+    "verify-change (view describe)"
+   ],
+   "note": "[view describe]"
+  },
+  {
+   "query": "Why can't host A reach host B?",
+   "should_trigger": false,
+   "note": "reachability"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}
