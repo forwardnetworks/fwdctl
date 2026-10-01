@@ -3,6 +3,7 @@ package fwd
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -175,22 +176,27 @@ func (s *Session) NQEHead(ctx context.Context) (string, error) {
 }
 
 // StageOrgQuery stages a query's new source in the caller's workspace as a draft (nothing is committed or visible to the organization until a commit). A path that is
-// in the library's head is edited (Forward's editQuery, which needs the query's id and the head commit as its basis); a new path is added. Forward refuses adding a
-// path that exists, which is why the two are different calls.
+// in the library's head is edited with Forward's editQuery; a new path is added (Forward refuses adding a path that exists, so the two are different calls).
+//
+// editQuery's basis is the query's id and the commit that LAST CHANGED that query (the lastCommitId of the head listing), NOT the library's head commit: Forward refuses
+// a new draft whose basis commit is not the query's own last changing commit (measured on a live library whose head had moved past the module's last change).
 func (s *Session) StageOrgQuery(ctx context.Context, path, source string) error {
-	head, err := s.NQEHead(ctx)
+	list, _, err := s.Client.NQERepository.ListHeadQueries(ctx)
 	if err != nil {
 		return err
 	}
-	q, _, err := s.Client.NQERepository.GetQuery(ctx, head, path)
-	switch {
-	case err == nil:
-		_, err = s.Client.NQERepository.EditQuery(ctx, path, source, forward.NQEDraftBasis{QueryID: string(q.QueryID), CommitID: head})
-		return err
-	case forwardNotFound(err):
-		_, err = s.Client.NQERepository.AddQuery(ctx, path, source)
+	for _, q := range list {
+		if strings.TrimSpace(q.Path) != path {
+			continue
+		}
+		qid := string(q.QueryID)
+		if qid == "" || q.LastCommitID == "" {
+			return errors.New("Forward's listing gave no query id or last commit for " + path + ", so an edit cannot be based on it")
+		}
+		_, err = s.Client.NQERepository.EditQuery(ctx, path, source, forward.NQEDraftBasis{QueryID: qid, CommitID: string(q.LastCommitID)})
 		return err
 	}
+	_, err = s.Client.NQERepository.AddQuery(ctx, path, source)
 	return err
 }
 
@@ -269,4 +275,57 @@ func (s *Session) OrgQuerySourceByID(ctx context.Context, commitID, queryID stri
 		return "", false, err
 	}
 	return q.SourceCode, true, nil
+}
+
+// OrgCommitInfo says what a library commit last changed and who made it. Forward has no org-wide commit list: this is read from the head listing (each query's
+// last changing commit) and the history of one of those queries.
+type OrgCommitInfo struct {
+	CommitID    string
+	Paths       []string // queries whose last changing commit is this one (a later commit may have changed others)
+	Author      string
+	AuthorEmail string
+	CommittedAt string
+	Title       string
+	Body        string
+	HistoryRead bool // false when no history entry for the commit could be read
+}
+
+// OrgCommitChanges reads what a library commit last changed. commitID "" or "head" is the head commit.
+func (s *Session) OrgCommitChanges(ctx context.Context, commitID string) (*OrgCommitInfo, error) {
+	if commitID == "" || commitID == "head" {
+		h, err := s.NQEHead(ctx)
+		if err != nil {
+			return nil, err
+		}
+		commitID = h
+	}
+	list, _, err := s.Client.NQERepository.ListHeadQueries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	info := &OrgCommitInfo{CommitID: commitID}
+	var ids []string
+	for _, q := range list {
+		if string(q.LastCommitID) == commitID {
+			info.Paths = append(info.Paths, strings.TrimSpace(q.Path))
+			ids = append(ids, string(q.QueryID))
+		}
+	}
+	sort.Strings(info.Paths)
+	for i, id := range ids {
+		if i == 3 || id == "" {
+			break
+		}
+		hist, _, herr := s.Client.NQERepository.History(ctx, id)
+		if herr != nil {
+			continue
+		}
+		for _, c := range hist {
+			if string(c.ID) == commitID {
+				info.Author, info.AuthorEmail, info.CommittedAt, info.Title, info.Body, info.HistoryRead = c.Author, c.AuthorEmail, c.CommittedAt, c.Title, c.Body, true
+				return info, nil
+			}
+		}
+	}
+	return info, nil
 }

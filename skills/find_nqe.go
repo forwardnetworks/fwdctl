@@ -70,6 +70,9 @@ func findNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.R
 	if in.List {
 		return listNQEDirectory(ctx, s, in, cx)
 	}
+	if in.CommitID != "" && in.Question == "" {
+		return describeNQECommit(ctx, s, in, cx)
+	}
 	want := words(in.Question)
 	if len(want) == 0 {
 		return result.NewError(findNQEName, "question has no searchable words", cx), nil
@@ -219,4 +222,33 @@ func listNQEDirectory(ctx context.Context, s *fwd.Session, in findNQEInput, cx r
 	return result.Build(findNQEName, result.OK, fmt.Sprintf("%s holds %d director%s and %d quer%s directly", dir, len(list), map[bool]string{true: "y", false: "ies"}[len(list) == 1], len(direct), map[bool]string{true: "y", false: "ies"}[len(direct) == 1]),
 		result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"validate-nqe-query", "edit-nqe-query"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "listNqeQueries", nil, map[string]any{"directory": dir, "directories": list, "queries": direct}, fmt.Sprintf("%d directories", len(list)))}})
+}
+
+// describeNQECommit answers "what is this library commit and who made it": the paths whose last change it was, and the commit's author, time and title. commit_id "head" is the head.
+func describeNQECommit(ctx context.Context, s *fwd.Session, in findNQEInput, cx result.Context) (result.Result, error) {
+	c, err := s.OrgCommitChanges(ctx, in.CommitID)
+	if err != nil {
+		return result.Result{}, err
+	}
+	limits := []string{"Forward has no list of library commits: this reads the queries whose LAST change was this commit (a later commit may have changed others since) and the history of one of them for the author, time and title"}
+	if len(c.Paths) == 0 {
+		return result.NewUnknown(findNQEName, fmt.Sprintf("No query's last change is commit %s", c.CommitID), cx,
+			append(limits, "the commit may be older than the latest change of every query it touched, may have deleted queries, or may not exist: that is not proof it changed nothing"), result.Options{})
+	}
+	paths := c.Paths
+	if len(paths) > in.Limit {
+		limits = append(limits, fmt.Sprintf("%d queries; the first %d are shown", len(paths), in.Limit))
+		paths = paths[:in.Limit]
+	}
+	d := map[string]any{"commit_id": c.CommitID, "queries_last_changed_here": len(c.Paths), "paths": paths}
+	finding := fmt.Sprintf("Commit %s is the last change of %d query(ies)", c.CommitID, len(c.Paths))
+	if c.HistoryRead {
+		d["author"], d["author_email"], d["committed_at"], d["title"] = c.Author, c.AuthorEmail, c.CommittedAt, c.Title
+		finding += fmt.Sprintf(", made by %s at %s: %q", firstNonEmpty(c.Author, c.AuthorEmail), c.CommittedAt, c.Title)
+	} else {
+		limits = append(limits, "the history of the queries did not list this commit, so its author, time and title are not known")
+	}
+	limits = append(limits, "an author and a title are personal and internal: keep them out of issues and public places")
+	return result.Build(findNQEName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+		Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "orgCommit", nil, d, finding)}})
 }

@@ -43,7 +43,7 @@ func multiLibrary(head *string, dry map[string]any) (map[string]fwdtest.Handler,
 	return map[string]fwdtest.Handler{
 		"GET /api/nqe/repos/org/commits/head": func(*http.Request, []byte) (int, any) { return 200, *head },
 		"GET /api/nqe/repos/org/commits/head/queries": fwdtest.Const(200, map[string]any{"queries": []any{
-			map[string]any{"path": "/Team/a", "lastCommitId": "c1", "queryId": "Q_a"}, map[string]any{"path": "/Team/b", "lastCommitId": "c1", "queryId": "Q_b"}}}),
+			map[string]any{"path": "/Team/a", "lastCommitId": "c0", "queryId": "Q_a"}, map[string]any{"path": "/Team/b", "lastCommitId": "c0", "queryId": "Q_b"}}}),
 		"GET /api/nqe/repos/org/commits/c1/queries": src,
 		"GET /api/nqe/repos/org/commits/c2/queries": src,
 		"GET /api/users/current/nqe/changes": func(*http.Request, []byte) (int, any) {
@@ -73,7 +73,7 @@ func multiLibrary(head *string, dry map[string]any) (map[string]fwdtest.Handler,
 				if !exists {
 					return 409, map[string]any{"message": "no such query in HEAD", "reason": "PATH_MISSING_IN_HEAD"}
 				}
-				if !strings.Contains(string(body), `"basis":{"queryId":"Q_x","commitId":"c1"}`) {
+				if !strings.Contains(string(body), `"commitId":"c0"}`) {
 					return 400, map[string]any{"message": "'basis' is required: " + string(body)}
 				}
 				if failStage[path] {
@@ -192,5 +192,31 @@ func TestEditNQEQueriesRefusesToStageOverADraftThatIsNotItsOwn(t *testing.T) {
 	r, srv := mustRun(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true}`)
 	if r.Status != result.Failed || !strings.Contains(r.Finding, "already have uncommitted changes") || writes(srv) != 0 || len(*log) != 0 || drafts["/Team/a"] == "" {
 		t.Fatalf("%s %s writes=%d drafts=%v", r.Status, r.Finding, writes(srv), drafts)
+	}
+}
+
+func TestEditNQEQueriesTypecheckOfANewPathDiscardsItsDraftToo(t *testing.T) {
+	head := "c1"
+	routes, _, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	r, _ := mustRun(t, "edit-nqe-query", routes, `{"changes":[{"path":"/Team/new","source":"`+goodQuery+`"}],"typecheck":true,"message":"x"}`)
+	got := strings.Join(*log, ",")
+	if r.Status != result.OK || !strings.Contains(got, "add /Team/new") || !strings.Contains(got, "bulkDiscard") || len(drafts) != 0 {
+		t.Fatalf("%s %s log=%s drafts=%v", r.Status, r.Finding, got, drafts)
+	}
+}
+
+func TestFindNQEDescribesALibraryCommitFromTheHeadListingAndHistory(t *testing.T) {
+	head := "c1"
+	routes, _, _ := multiLibrary(&head, map[string]any{})
+	routes["GET /api/nqe/queries/Q_a/history"] = fwdtest.Const(200, map[string]any{"commits": []any{
+		map[string]any{"path": "/Team/a", "id": "c0", "author": "Pat Example", "authorEmail": "pat@example.test", "committedAt": "2026-09-30T10:00:00Z", "title": "tidy a"}}})
+	r, _ := mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","commit_id":"c0"}`)
+	d := r.Evidence[0].Detail
+	if r.Status != result.OK || d["queries_last_changed_here"] != 2 || d["author"] != "Pat Example" || d["title"] != "tidy a" {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, d)
+	}
+	r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","commit_id":"c9"}`)
+	if r.Status != result.Unknown {
+		t.Fatalf("a commit no query last changed in is unknown, not empty-ok: %s", r.Status)
 	}
 }

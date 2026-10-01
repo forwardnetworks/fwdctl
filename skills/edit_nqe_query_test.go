@@ -26,7 +26,7 @@ func libraryRoutes(prior string, held bool) map[string]fwdtest.Handler {
 			if state == "" {
 				return 200, map[string]any{"queries": []any{anchor}}
 			}
-			return 200, map[string]any{"queries": []any{anchor, map[string]any{"path": "/Team/q", "lastCommitId": "c1", "queryId": "Q_1"}}}
+			return 200, map[string]any{"queries": []any{anchor, map[string]any{"path": "/Team/q", "lastCommitId": "c0", "queryId": "Q_1"}}}
 		},
 		"GET /api/nqe/repos/org/commits/c1/queries": func(*http.Request, []byte) (int, any) {
 			if state == "" {
@@ -44,7 +44,7 @@ func libraryRoutes(prior string, held bool) map[string]fwdtest.Handler {
 				}
 				pending, deleted = stageSource(body), false
 			case "editQuery":
-				if state == "" || !strings.Contains(string(body), `"basis":{"queryId":"Q_1","commitId":"c1"}`) {
+				if state == "" || !strings.Contains(string(body), `"basis":{"queryId":"Q_1","commitId":"c0"}`) {
 					return 409, map[string]any{"message": "bad edit", "reason": "PATH_MISSING_IN_HEAD"}
 				}
 				pending, deleted = stageSource(body), false
