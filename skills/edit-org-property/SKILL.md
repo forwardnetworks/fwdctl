@@ -35,8 +35,8 @@ only) and what it is used for come from Forward's source (`OrgProperty`), embedd
 
 | Risk | Meaning | To apply |
 |---|---|---|
-| `dangerous` | can lock users out, delete data or switch off a computation (for example `ALLOWED_IPS`, `TWO_FACTOR_AUTH`, `AUDIT_LOGS_RETENTION_DAYS`, `DISABLE_FLOW_COMPUTATION`) | `confirm` = the property name |
-| `caution` | an organization-wide behaviour change that needs a reason (for example `ADVANCED_REACHABILITY_ANALYSIS`, the parsing modes, password policy); a property that changes snapshot computation is `caution` by rule | dry run, then apply |
+| `dangerous` | can lock users out, delete data or switch off a computation | `confirm` = the property name |
+| `caution` | an organization-wide behaviour change that needs a reason; a property that changes snapshot computation is `caution` by rule | dry run, then apply |
 | `safe` | a display preference or a notification threshold | dry run, then apply |
 | `unclassified` | no reviewed classification (a property newer than the table): treated as caution | `confirm` = the property name |
 
