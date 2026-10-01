@@ -54,10 +54,10 @@ The skills, by area:
 - **Path analysis and troubleshooting:** `investigate-reachability`, `inspect-topology`, `inspect-history`, `compare-device-config`, `inspect-device-files`, `investigate-collection-failure`
 - **Security:** `inspect-vulnerabilities`, `check-network-compliance`
 - **Change:** `verify-change`
-- **Health and collection:** `inspect-snapshots`, `inspect-collection`, `inspect-performance`, `inspect-environment`
+- **Health and collection:** `inspect-snapshots`, `inspect-collection`, `inspect-performance`, `inspect-environment`, `inspect-access`
 - **Inventory:** `inspect-networks`, `inspect-inventory`
 - **NQE:** `find-nqe-query`, `author-nqe-query`, `validate-nqe-query`, `compare-nqe-results`
-- **Edit (write, dry run first):** `edit-snapshot-note`, `edit-snapshot-reprocess`, `edit-advanced-reachability`, `edit-checks`, `edit-change-set`, `edit-collection`, `edit-endpoint-profile`, `edit-workspace`, `edit-nqe-query`, `edit-device-tags`, `edit-link-overrides`, `edit-synthetic-query`, `edit-wan-circuit`
+- **Edit (write, dry run first):** `edit-snapshot-note`, `edit-snapshot-reprocess`, `edit-advanced-reachability`, `edit-checks`, `edit-change-set`, `edit-collection`, `edit-endpoint-profile`, `edit-workspace`, `edit-org-property`, `edit-access`, `edit-nqe-query`, `edit-device-tags`, `edit-link-overrides`, `edit-synthetic-query`, `edit-wan-circuit`
 
 The result every tool returns is small and structured, so the model spends its attention on the answer:
 - `status`: `ok`, `failed`, `unknown` (could not decide: never a pass) or `error`

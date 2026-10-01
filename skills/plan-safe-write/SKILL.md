@@ -6,7 +6,7 @@ metadata:
   cluster: "environment"
   summary: "edit protocol; read first"
   maturity: "3"
-  tools: "edit-snapshot-note, edit-snapshot-reprocess, edit-checks, edit-change-set, edit-collection, edit-nqe-query, edit-device-tags, edit-link-overrides, edit-synthetic-query, edit-wan-circuit, edit-internet-exclusions, edit-advanced-reachability, edit-endpoint-profile, edit-workspace"
+  tools: "edit-snapshot-note, edit-snapshot-reprocess, edit-checks, edit-change-set, edit-collection, edit-nqe-query, edit-device-tags, edit-link-overrides, edit-synthetic-query, edit-wan-circuit, edit-internet-exclusions, edit-advanced-reachability, edit-endpoint-profile, edit-workspace, edit-org-property, edit-access"
 ---
 
 # plan-safe-write

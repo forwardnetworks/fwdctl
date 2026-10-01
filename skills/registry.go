@@ -256,7 +256,12 @@ func Run(ctx context.Context, name string, s *fwd.Session, in json.RawMessage) (
 	}
 	r, err := run(ctx, s, in)
 	if err != nil {
-		return result.Result{}, err
+		// A refusal for missing permission or licence reads the same for every skill: what was refused, what it needs, who can resolve it.
+		dr, ok := denialResult(name, err, result.Context{Scope: "account", State: "current"}, "the request")
+		if !ok {
+			return result.Result{}, err
+		}
+		r = dr
 	}
 	if len(r.Operations) == 0 {
 		r.Operations = s.Operations()

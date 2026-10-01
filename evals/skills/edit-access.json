@@ -1,0 +1,39 @@
+{
+ "skill": "edit-access",
+ "cases": [
+  {
+   "query": "Give the netops group OPERATOR on network 1001",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-access set_network_role dry run for the group",
+    "states it affects every member, shows before, after and undo",
+    "does not apply without approval"
+   ]
+  },
+  {
+   "query": "Make dana an organization admin",
+   "should_trigger": true,
+   "expected_behavior": [
+    "dry run showing it grants everything including user management",
+    "apply only with confirm equal to the username and approval"
+   ]
+  },
+  {
+   "query": "Disable my own account",
+   "should_trigger": true,
+   "expected_behavior": [
+    "refuses: Forward does not allow disabling your own account, nothing sent"
+   ]
+  },
+  {
+   "query": "Why was I denied editing checks?",
+   "should_trigger": false,
+   "note": "inspect-access"
+  },
+  {
+   "query": "Set the org property for password strength",
+   "should_trigger": false,
+   "note": "edit-org-property"
+  }
+ ]
+}

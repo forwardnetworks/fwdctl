@@ -71,3 +71,15 @@ func (s *Session) OrgConfig(ctx context.Context) OrgConfig {
 	})
 	return c
 }
+
+// SetOrgProperty sets an organization override for the login's own organization (PUT /api/config/{property}; needs the organization-settings permission).
+func (s *Session) SetOrgProperty(ctx context.Context, name, value string) error {
+	_, _, err := s.Client.Properties.SetCurrent(ctx, forward.OrgProperty(strings.ToLower(name)), value)
+	return err
+}
+
+// ClearOrgProperty removes the organization's override, so the deployment default applies again (DELETE /api/config/{property}).
+func (s *Session) ClearOrgProperty(ctx context.Context, name string) error {
+	_, err := s.Client.Properties.ClearCurrent(ctx, forward.OrgProperty(strings.ToLower(name)))
+	return err
+}

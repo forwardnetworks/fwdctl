@@ -461,5 +461,25 @@
   "query": "Which networks are workspaces?",
   "expect": "inspect-networks",
   "rival": "edit-workspace"
+ },
+ {
+  "query": "Set the organization to compute advanced reachability automatically",
+  "expect": "edit-org-property",
+  "rival": "edit-advanced-reachability"
+ },
+ {
+  "query": "What features and non-default properties does this Forward have?",
+  "expect": "inspect-environment",
+  "rival": "edit-org-property"
+ },
+ {
+  "query": "Why am I getting a 403 Missing permission when I edit a check, and what role do I need?",
+  "expect": "inspect-access",
+  "rival": "edit-checks"
+ },
+ {
+  "query": "Make the netops group an OPERATOR on network 1001",
+  "expect": "edit-access",
+  "rival": "inspect-access"
  }
 ]

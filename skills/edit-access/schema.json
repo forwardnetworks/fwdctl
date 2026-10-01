@@ -1,0 +1,70 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "create_user",
+        "set_user",
+        "delete_user",
+        "reset_2fa",
+        "set_org_admin",
+        "set_network_role",
+        "create_group",
+        "update_group",
+        "delete_group"
+      ]
+    },
+    "user": {
+      "type": "string",
+      "minLength": 1
+    },
+    "group": {
+      "type": "string",
+      "minLength": 1
+    },
+    "password": {
+      "type": "string",
+      "minLength": 1
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "admin": {
+      "type": "boolean"
+    },
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identity_provider_groups": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "network_roles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "confirm": {
+      "type": "string",
+      "minLength": 1
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "action"
+  ]
+}

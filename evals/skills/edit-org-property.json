@@ -1,0 +1,40 @@
+{
+ "skill": "edit-org-property",
+ "cases": [
+  {
+   "query": "Which Forward organization settings can I change, and which are dangerous?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "lists the properties with their risk and who may change them",
+    "does not set anything"
+   ]
+  },
+  {
+   "query": "Switch advanced reachability to run automatically after every snapshot",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-org-property dry run: ADVANCED_REACHABILITY_ANALYSIS to ASYNC",
+    "states it is org-wide, applies to snapshots processed after the change, adds compute cost, and gives the undo",
+    "does not apply without approval"
+   ]
+  },
+  {
+   "query": "Turn off flow computation for the whole org",
+   "should_trigger": true,
+   "expected_behavior": [
+    "says DISABLE_FLOW_COMPUTATION is dangerous and what stops working",
+    "applies only with the confirm input equal to the property name and the person's approval"
+   ]
+  },
+  {
+   "query": "Reprocess snapshot 1001",
+   "should_trigger": false,
+   "note": "edit-snapshot-reprocess"
+  },
+  {
+   "query": "What Forward features are enabled?",
+   "should_trigger": false,
+   "note": "inspect-environment"
+  }
+ ]
+}

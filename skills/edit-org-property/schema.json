@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "property": {
+      "type": "string",
+      "minLength": 1
+    },
+    "value": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clear": {
+      "type": "boolean"
+    },
+    "confirm": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match": {
+      "type": "string",
+      "minLength": 1
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

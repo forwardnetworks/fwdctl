@@ -78,6 +78,9 @@ A playbook is a procedure (it does not run): it names the skills to call, their 
 | Save an authored query to the library, or remove a saved one | `edit-nqe-query` (dry run first) |
 | Tag devices or take a tag off them | `edit-device-tags` (dry run first) |
 | Try a collection change away from production (a temporary workspace network, endpoints added to it, delete it afterwards) | `edit-workspace` (dry run first) |
+| What can this login do, why was I refused (403, permission denied), who has access, which users or groups exist | `inspect-access` |
+| Create or disable a user, make someone org admin, give a user or group a role on a network, define an access group | `edit-access` (dry run first) |
+| Change an organization-wide Forward setting (a property), or list what is configurable and how risky each is | `edit-org-property` (dry run first) |
 | Try an extra OID, or a different profile, on an endpoint (create an SNMP profile as a copy plus OIDs, repoint endpoints, delete the copy) | `edit-endpoint-profile` (dry run first) |
 | Model a leased line or provider L2 circuit between two edge ports (a WAN circuit) | `edit-wan-circuit` (dry run first) |
 | Where should the internet attach or egress, why a trace dead-ends at the edge, which default route points at an unowned next hop or upstream | `inspect-edge` (`view: exits`, the default) |
@@ -119,7 +122,7 @@ empty result, an unprocessed or predicted snapshot, an incomplete comparison. It
 
 Forward as a data source cannot do these, and no skill should be bent to pretend it can:
 
-1. Changes to devices, or any write to Forward beyond the fourteen skills that write (`edit-snapshot-note`, `edit-snapshot-reprocess`, `edit-checks`, `edit-change-set`, `edit-collection`, `edit-nqe-query`, `edit-device-tags`, `edit-link-overrides`, `edit-synthetic-query`, `edit-wan-circuit`, `edit-internet-exclusions`, `edit-advanced-reachability`, `edit-endpoint-profile`, `edit-workspace`): push, apply, configure, restart, roll back. Those fourteen show a dry run first and change only Forward's own data.
+1. Changes to devices, or any write to Forward beyond the sixteen skills that write (`edit-snapshot-note`, `edit-snapshot-reprocess`, `edit-checks`, `edit-change-set`, `edit-collection`, `edit-nqe-query`, `edit-device-tags`, `edit-link-overrides`, `edit-synthetic-query`, `edit-wan-circuit`, `edit-internet-exclusions`, `edit-advanced-reachability`, `edit-endpoint-profile`, `edit-workspace`, `edit-org-property`, `edit-access`): push, apply, configure, restart, roll back. Those sixteen show a dry run first and change only Forward's own data.
 2. A timeline finer than the collected snapshots. History is read across the last snapshots (`inspect-history`, `plan-what-changed`) and is only as fine as the collection interval; Forward holds no events between two collections.
 3. Platform management (dashboards, licensing, users, permissions, credentials). Collector and collection state can be read and a collection started or stopped; nothing else.
 4. Verifying a configuration against an external policy or framework that is not expressed as a Forward check

@@ -8,3 +8,7 @@ github.com/forwardnetworks/forward-go-sdk v0.3.20 h1:N/vHdNxMqo6i8vUfCr1yDKN9YtO
 github.com/forwardnetworks/forward-go-sdk v0.3.20/go.mod h1:BIYHI6L5mHgvK4vBojAVCBRlQSe5/R3P6IYcCjDUGng=
 github.com/forwardnetworks/forward-go-sdk v0.3.21 h1:vPU8vo74TIK7rXVDVMk7aw75jevkPn35SEYmbcT1kYs=
 github.com/forwardnetworks/forward-go-sdk v0.3.21/go.mod h1:BIYHI6L5mHgvK4vBojAVCBRlQSe5/R3P6IYcCjDUGng=
+github.com/forwardnetworks/forward-go-sdk v0.3.22 h1:1Bjghr6ZJC4nBExsYZSDt/u03v1mHwbnzGxe+02s3+c=
+github.com/forwardnetworks/forward-go-sdk v0.3.22/go.mod h1:BIYHI6L5mHgvK4vBojAVCBRlQSe5/R3P6IYcCjDUGng=
+github.com/forwardnetworks/forward-go-sdk v0.3.23 h1:EO3yRXE8WCfjVGWzOjVAGZXs0MydxuRw7nvV3i3p768=
+github.com/forwardnetworks/forward-go-sdk v0.3.23/go.mod h1:BIYHI6L5mHgvK4vBojAVCBRlQSe5/R3P6IYcCjDUGng=

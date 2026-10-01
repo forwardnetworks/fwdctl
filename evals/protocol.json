@@ -54,5 +54,13 @@
  {
   "query": "Create a temporary workspace zz-test under network 155541 holding device sw-small, retention 7 days",
   "skill": "edit-workspace"
+ },
+ {
+  "query": "Change the org setting ADVANCED_REACHABILITY_ANALYSIS to ASYNC",
+  "skill": "edit-org-property"
+ },
+ {
+  "query": "Give user alice the OPERATOR role on network 1001",
+  "skill": "edit-access"
  }
 ]

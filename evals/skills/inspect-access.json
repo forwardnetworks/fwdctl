@@ -1,0 +1,39 @@
+{
+ "skill": "inspect-access",
+ "cases": [
+  {
+   "query": "I got 'Missing permission: NetworkOperation.EDIT_CHECKS' - why, and what do I need?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "view explain: names the operation, the lowest role that holds it, the role held on that network, and who can grant it",
+    "does not change anything"
+   ]
+  },
+  {
+   "query": "What access level do I have in Forward and what does it let me do?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "view me: org roles, role per network, groups",
+    "says what the role allows and does not"
+   ]
+  },
+  {
+   "query": "Which users are organization admins, and which have two-factor off?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "view users: lists them with org_admin and two_factor",
+    "unknown with the resolution if the login lacks VIEW_USER_ACCOUNTS"
+   ]
+  },
+  {
+   "query": "Make bob an operator on network 1001",
+   "should_trigger": false,
+   "note": "edit-access"
+  },
+  {
+   "query": "What Forward version is this?",
+   "should_trigger": false,
+   "note": "inspect-environment"
+  }
+ ]
+}

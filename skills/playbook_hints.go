@@ -26,6 +26,7 @@ var playbookFor = map[string]string{
 	"edit-collection":                "plan-snapshot-recovery",
 	"edit-endpoint-profile":          "plan-health-check",
 	"edit-workspace":                 "plan-health-check",
+	"edit-org-property":              "plan-health-check",
 	"edit-snapshot-reprocess":        "plan-snapshot-recovery",
 	"edit-advanced-reachability":     "plan-snapshot-recovery",
 	"inspect-performance":            "plan-incident-triage",
@@ -43,6 +44,8 @@ var playbookFor = map[string]string{
 	"inspect-bgp-neighbors":          "plan-synthetic-device",
 	"inspect-networks":               "plan-investigation",
 	"inspect-environment":            "plan-investigation",
+	"inspect-access":                 "plan-investigation",
+	"edit-access":                    "plan-health-check",
 	"edit-snapshot-note":             "plan-maintenance-window",
 }
 

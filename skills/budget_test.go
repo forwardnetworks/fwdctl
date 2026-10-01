@@ -17,10 +17,10 @@ import (
 // Do not raise a cap. Raise alwaysLoadedBudget only when a new skill is justified by "Adding a skill" in docs/internal.md, and say what
 // was added in the comment next to the number.
 const (
-	maxDescription     = 190  // characters, every skill
-	maxPlaybookDesc    = 140  // characters, plan-* playbooks
-	maxGapDescription  = 100  // plan-report-skill-gap is DOGFOOD-TEMP and must cost almost nothing in every listing
-	alwaysLoadedBudget = 9500 // +edit-workspace (a temporary network to try a collection change off production; a different object and undo from edit-collection and edit-endpoint-profile);  +edit-endpoint-profile (the only way to try an extra OID on one endpoint, a new object with its own undo, not a view of edit-collection);  sum of len(name)+len(description) over all skills; v0.5.26 measured 10,218 for 56 skills, v0.5.27 9,064 for 50 (merged views)
+	maxDescription     = 190   // characters, every skill
+	maxPlaybookDesc    = 140   // characters, plan-* playbooks
+	maxGapDescription  = 100   // plan-report-skill-gap is DOGFOOD-TEMP and must cost almost nothing in every listing
+	alwaysLoadedBudget = 10100 // +inspect-access and edit-access (access is a different object, with its own refusal explanation, from every other skill); +edit-org-property (an org-wide setting is a different object and undo from every other write skill);  +edit-workspace (a temporary network to try a collection change off production; a different object and undo from edit-collection and edit-endpoint-profile);  +edit-endpoint-profile (the only way to try an extra OID on one endpoint, a new object with its own undo, not a view of edit-collection);  sum of len(name)+len(description) over all skills; v0.5.26 measured 10,218 for 56 skills, v0.5.27 9,064 for 50 (merged views)
 )
 
 func descriptionCap(name string) int {
