@@ -179,3 +179,31 @@ func (s *Session) NQECommitDryRun(ctx context.Context, paths []string, snapshotI
 	d, _, err := s.Client.NQERepository.CommitDryRun(ctx, paths, snapshotID)
 	return d, err
 }
+
+// OrgModuleSource reads a library module's source by path at a commit ("" is the head). A missing module is (_, false, nil).
+func (s *Session) OrgModuleSource(ctx context.Context, commitID, path string) (string, bool, error) {
+	if commitID == "" {
+		h, err := s.NQEHead(ctx)
+		if err != nil {
+			return "", false, err
+		}
+		commitID = h
+	}
+	q, _, err := s.Client.NQERepository.GetQuery(ctx, commitID, path)
+	if err != nil {
+		if forwardNotFound(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return q.SourceCode, true, nil
+}
+
+// OrgQuerySourceByID reads a saved query's source by its id at a commit ("" is the head).
+func (s *Session) OrgQuerySourceByID(ctx context.Context, commitID, queryID string) (string, bool, error) {
+	q, err := s.OrgQueryByIDAt(ctx, queryID, commitID)
+	if err != nil || q == nil {
+		return "", false, err
+	}
+	return q.SourceCode, true, nil
+}

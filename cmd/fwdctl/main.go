@@ -165,6 +165,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, session func(
 		if len(args) > 1 && args[1] == "run" {
 			return nqeRunCmd(args[2:], stdin, stdout, stderr, session)
 		}
+		if len(args) > 1 && args[1] == "bundle" {
+			return nqeBundleCmd(args[2:], stdout, stderr, session)
+		}
 		if len(args) > 1 && args[1] == "synthesize" {
 			return nqeSynthesizeCmd(args[2:], stdout, stderr, session)
 		}

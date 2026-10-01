@@ -104,3 +104,14 @@ func CheckSyntheticRows(string, string) ([]Diagnostic, error) { return nil, nil 
 func SyntheticKindNames() []string {
 	return []string{"adjacent-network", "internet", "intranet", "l2vpn", "l3vpn"}
 }
+
+// BundleSource gives a bundle the source of a library module (not available here).
+type BundleSource interface {
+	Source(path string) (string, error)
+}
+
+// ErrNoSuchModule is what a BundleSource returns for a path it does not hold.
+var ErrNoSuchModule = errors.New("no such module")
+
+// Bundle is not available in this build.
+func Bundle(string, BundleSource) (string, []string, error) { return "", nil, ErrNotInThisBuild }

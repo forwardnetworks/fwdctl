@@ -156,6 +156,9 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 	queryID := fs.String("query-id", "", "run a saved query by id instead of a file (a library query: see fwdctl run find-nqe-query)")
 	commitID := fs.String("commit-id", "", "with --query-id: the library commit to run it at (default: the head)")
 	paramsFile := fs.String("params", "", "JSON file with the query's parameters, an object of name to typed value")
+	asyncRun := fs.Bool("async", false, "run through Forward's asynchronous execution API (the execution key and outcome are in --meta)")
+	metaOut := fs.String("meta", "", "write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr")
+	waitMax := fs.Duration("timeout", 10*time.Minute, "with --async: how long to wait for the execution")
 	var paramKV paramList
 	fs.Var(&paramKV, "param", "one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params")
 	if err := fs.Parse(args); err != nil {
@@ -210,8 +213,46 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 		snap = fwd.SnapshotID(fwd.Context(*network, s))
 	}
 	started := time.Now()
-	rows, total, truncated, err := sess.RunNQEAllWith(context.Background(), *network,
-		fwd.NQERun{Query: string(src), QueryID: *queryID, CommitID: *commitID, Parameters: params, SnapshotID: snap}, *max)
+	run := fwd.NQERun{Query: string(src), QueryID: *queryID, CommitID: *commitID, Parameters: params, SnapshotID: snap}
+	var rows []map[string]any
+	var total int64
+	var truncated bool
+	meta := fwd.NQEMeta{Mode: "sync", Diagnostics: []fwd.QueryDiagnostic{}}
+	if *asyncRun {
+		rows, total, meta, err = sess.RunNQEAsync(context.Background(), *network, run, *max, *waitMax)
+		truncated = int64(len(rows)) < total
+	} else {
+		rows, total, truncated, err = sess.RunNQEAllWith(context.Background(), *network, run, *max)
+	}
+	writeMeta := func() {
+		if *metaOut == "" {
+			return
+		}
+		if err != nil {
+			fwd.MetaFromError(&meta, err)
+		}
+		meta.Mode = map[bool]string{true: "async", false: "sync"}[*asyncRun]
+		// Forward caches an execution by a normalised form of the query (a comment, an unused let and useLatestDataFiles were all measured to reuse it): a wall time far below
+		// the execution time Forward recorded means the result came from the cache
+		if meta.MillisExecuting != nil && *meta.MillisExecuting > 2000 && time.Since(started).Milliseconds()*5 < *meta.MillisExecuting {
+			meta.LikelyCached = true
+		}
+		b, _ := json.MarshalIndent(struct {
+			fwd.NQEMeta
+			ElapsedSeconds float64 `json:"elapsed_seconds"`
+			Rows           int     `json:"rows"`
+			Total          int64   `json:"total"`
+			SnapshotID     string  `json:"snapshot_id"`
+			QueryID        string  `json:"query_id,omitempty"`
+			CommitID       string  `json:"commit_id,omitempty"`
+		}{meta, time.Since(started).Seconds(), len(rows), total, snap, *queryID, *commitID}, "", "  ")
+		if *metaOut == "-" {
+			fmt.Fprintln(stderr, string(b))
+		} else {
+			_ = os.WriteFile(*metaOut, append(b, '\n'), 0o644)
+		}
+	}
+	defer writeMeta()
 	if err != nil {
 		if diags, msg, ok := fwd.QueryErrors(err); ok {
 			fmt.Fprintf(stderr, "the query does not compile: %s\n", msg)

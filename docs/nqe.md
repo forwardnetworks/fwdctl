@@ -99,6 +99,9 @@ Runs the query on Forward against a snapshot: compile errors with positions, row
 
     fwdctl nqe run --network <id> --file q.nqe --format table            # every row, paged for you (at most --max, default 50000)
     fwdctl nqe run --network <id> --file q.nqe --count-by vrf --format csv   # how many rows per value of a field
+    fwdctl nqe run --network <id> --query-id Q_... --async --meta run.json   # execution key, outcome, Forward's timing and any diagnostics in run.json
+    fwdctl nqe bundle --query-id Q_... --commit-id C --override /Lib/Mod=local.nqe > inline.nqe   # ONE query: the entry + every library module it imports at C, local files substituted
+    fwdctl nqe run --network <id> --file inline.nqe --async --meta run.json
     fwdctl run inspect-edge --format table < input.json                  # any skill: the largest list of rows in its evidence as a table or CSV
 
 `validate-nqe-query` returns a bounded sample (at most 200 rows) so a result stays small for an agent. `nqe run` is for a person or a script that wants all of them: it reads the query from `--file` or stdin, runs it on the latest processed
