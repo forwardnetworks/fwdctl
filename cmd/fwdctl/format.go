@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -142,30 +141,20 @@ func largestRows(result any) (rows []map[string]any, where string) {
 	return rows, where
 }
 
-// nqeRunCmd runs one NQE query from a file and prints every row (paged for you): fwdctl nqe run --network ID [--file F] [--format table|csv|json|jsonl]
-// [--count-by FIELD] [--max N] [--snapshot ID]. The query is read from stdin without --file.
-func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session func() (*fwd.Session, error)) int {
-	fs := flag.NewFlagSet("nqe run", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	network := fs.String("network", "", "network id (required)")
-	file := fs.String("file", "", "file with the NQE query (default: stdin)")
-	snapshot := fs.String("snapshot", "", "snapshot id (default: the latest processed)")
-	format := fs.String("format", "json", "json, jsonl, table or csv")
-	countBy := fs.String("count-by", "", "print how many rows have each value of this field instead of the rows")
-	max := fs.Int("max", 50000, "stop after this many rows (stated on stderr when more exist)")
-	queryID := fs.String("query-id", "", "run a saved query by id instead of a file (a library query: see fwdctl run find-nqe-query)")
-	commitID := fs.String("commit-id", "", "with --query-id: the library commit to run it at (default: the head)")
-	paramsFile := fs.String("params", "", "JSON file with the query's parameters, an object of name to typed value")
-	asyncRun := fs.Bool("async", false, "run through Forward's asynchronous execution API (the execution key and outcome are in --meta)")
-	metaOut := fs.String("meta", "", "write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr")
-	pageOffset := fs.Int("offset", 0, "read one page: skip this many rows (with --limit; the page, the total and the offset are in --meta)")
-	pageLimit := fs.Int("limit", 0, "read one page of at most this many rows instead of every row (0: every row, up to --max)")
-	waitMax := fs.Duration("timeout", 10*time.Minute, "how long to wait: the whole synchronous request (response included; the default HTTP limit is 120s), or with --async the execution")
-	var paramKV paramList
-	fs.Var(&paramKV, "param", "one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params")
-	if err := fs.Parse(args); err != nil {
-		return usage
-	}
+// nqeRunOpts are the flags of `fwdctl nqe run` (cobra fills them).
+type nqeRunOpts struct {
+	network, file, snapshot, format, countBy, queryID, commitID, paramsFile, metaOut string
+	max, pageOffset, pageLimit                                                       int
+	asyncRun                                                                         bool
+	waitMax                                                                          time.Duration
+	params                                                                           []string
+}
+
+// nqeRunCmd runs one NQE query from a file, a saved id or stdin and prints every row (paged for you), or one page with --limit/--offset.
+func nqeRunCmd(a *app, o nqeRunOpts) int {
+	stdin, stdout, stderr, session := a.in, a.out, a.err, a.session
+	network, file, snapshot, format, countBy, queryID, commitID, paramsFile, metaOut := &o.network, &o.file, &o.snapshot, &o.format, &o.countBy, &o.queryID, &o.commitID, &o.paramsFile, &o.metaOut
+	max, pageOffset, pageLimit, asyncRun, waitMax, paramKV := &o.max, &o.pageOffset, &o.pageLimit, &o.asyncRun, &o.waitMax, o.params
 	if *pageOffset < 0 || *pageLimit < 0 || (*pageOffset > 0 && *pageLimit == 0) {
 		fmt.Fprintln(stderr, "error: --offset needs --limit, and neither may be negative")
 		return usage
@@ -322,12 +311,6 @@ func nqeRunCmd(args []string, stdin io.Reader, stdout, stderr io.Writer, session
 	}
 	return 0
 }
-
-// paramList collects repeated --param NAME=JSON flags.
-type paramList []string
-
-func (p *paramList) String() string     { return strings.Join(*p, ",") }
-func (p *paramList) Set(v string) error { *p = append(*p, v); return nil }
 
 // nqeParams reads the query parameters: a JSON object from a file, then each NAME=JSON (a value that does not parse as JSON is a string).
 func nqeParams(file string, kv []string) (map[string]any, error) {

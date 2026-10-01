@@ -19,6 +19,7 @@ prints a warning and every result records it.
     echo '{}' | fwdctl run inspect-networks               # which networks can I see, and their ids
     fwdctl list                                             # every skill with its description and inputs
     fwdctl run inspect-snapshots --help                     # what one skill answers, its inputs, an example
+    fwdctl nqe --help                                       # the NQE commands; fwdctl nqe run --help lists every flag of one
     echo '{"network_id": "<id>"}' | fwdctl run inspect-snapshots
     fwdctl describe plan-investigation                      # which skill answers which question
 

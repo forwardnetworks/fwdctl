@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,45 +67,9 @@ func defaultConfigPath() string {
 	return ""
 }
 
-// applyConnection takes the connection flags off the front of args and puts the connection into the environment the session reads.
-// It returns the remaining arguments.
-func applyConnection(args []string, stderr io.Writer) ([]string, error) {
-	var url, user, passFile, cfg, tokenFile string
-	insecure := false
-	for len(args) > 0 && strings.HasPrefix(args[0], "--") && args[0] != "--help" && args[0] != "--version" {
-		name, val, hasVal := strings.Cut(args[0], "=")
-		take := func() (string, error) {
-			if hasVal {
-				return val, nil
-			}
-			if len(args) < 2 {
-				return "", fmt.Errorf("%s needs a value", name)
-			}
-			args = args[1:]
-			return args[0], nil
-		}
-		var err error
-		switch name {
-		case "--url":
-			url, err = take()
-		case "--username":
-			user, err = take()
-		case "--password-file":
-			passFile, err = take()
-		case "--config":
-			cfg, err = take()
-		case "--token-file":
-			tokenFile, err = take()
-		case "--insecure":
-			insecure = true
-		default:
-			return args, nil // not a connection flag: the command's own
-		}
-		if err != nil {
-			return nil, err
-		}
-		args = args[1:]
-	}
+// applyConnectionOptions puts the connection (flags, then the saved config and token file for whatever they leave empty) into the environment the session reads.
+func applyConnectionOptions(o connOptions) error {
+	url, user, passFile, cfg, tokenFile, insecure := o.url, o.username, o.passwordFile, o.configFile, o.tokenFile, o.insecure
 	file := cfg
 	explicit := cfg != ""
 	if file == "" {
@@ -116,10 +79,10 @@ func applyConnection(args []string, stderr io.Writer) ([]string, error) {
 	if file != "" {
 		if b, err := os.ReadFile(file); err == nil {
 			if err := json.Unmarshal(b, &c); err != nil {
-				return nil, fmt.Errorf("%s is not valid JSON: %v", file, err)
+				return fmt.Errorf("%s is not valid JSON: %v", file, err)
 			}
 		} else if explicit {
-			return nil, fmt.Errorf("cannot read %s: %v", file, err)
+			return fmt.Errorf("cannot read %s: %v", file, err)
 		}
 	}
 	if tokenFile == "" && c.TokenFile != "" && c.URL == "" && c.Username == "" && c.PasswordFile == "" {
@@ -128,7 +91,7 @@ func applyConnection(args []string, stderr io.Writer) ([]string, error) {
 	if tokenFile != "" { // a token file fills what flags and the environment leave empty
 		tu, tn, tp, err := readTokenFile(tokenFile)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if url == "" && os.Getenv("FORWARD_URL") == "" {
 			url = tu
@@ -160,11 +123,11 @@ func applyConnection(args []string, stderr io.Writer) ([]string, error) {
 	if pf != "" && (passFile != "" || os.Getenv("FORWARD_PASSWORD") == "") {
 		pw, err := readPasswordFile(pf)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		os.Setenv("FORWARD_PASSWORD", pw)
 	}
-	return args, nil
+	return nil
 }
 
 func readPasswordFile(path string) (string, error) {

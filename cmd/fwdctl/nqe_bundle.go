@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strings"
@@ -15,17 +13,17 @@ import (
 
 type pathFiles map[string]string
 
-func (p *pathFiles) String() string { return fmt.Sprint(map[string]string(*p)) }
-func (p *pathFiles) Set(v string) error {
-	k, f, ok := strings.Cut(v, "=")
-	if !ok || strings.TrimSpace(k) == "" || strings.TrimSpace(f) == "" {
-		return fmt.Errorf("%q must be LIBRARY_PATH=FILE", v)
+// parsePathFiles reads repeated LIBRARY_PATH=FILE flag values.
+func parsePathFiles(vals []string) (pathFiles, error) {
+	out := pathFiles{}
+	for _, v := range vals {
+		k, f, ok := strings.Cut(v, "=")
+		if !ok || strings.TrimSpace(k) == "" || strings.TrimSpace(f) == "" {
+			return nil, fmt.Errorf("%q must be LIBRARY_PATH=FILE", v)
+		}
+		out[strings.TrimSpace(k)] = strings.TrimSpace(f)
 	}
-	if *p == nil {
-		*p = pathFiles{}
-	}
-	(*p)[strings.TrimSpace(k)] = strings.TrimSpace(f)
-	return nil
+	return out, nil
 }
 
 // librarySource resolves a module for a bundle: a local override first, then a module that exists only locally, then the library at the commit.
@@ -82,25 +80,29 @@ func (l librarySource) Source(path string) (string, error) {
 	return src, nil
 }
 
+// nqeBundleOpts are the flags of `fwdctl nqe bundle`.
+type nqeBundleOpts struct {
+	queryID, path, commit, out string
+	overrides, added           []string
+}
+
 // nqeBundleCmd prints ONE self-contained query: the entry query and every library module it imports at a commit, with local files substituted. Inline text always
 // imports against the library head, and a commit id cannot be combined with inline text, so testing an older or an uncommitted version of a module needs this.
-//
-//	fwdctl nqe bundle (--query-id Q_... | --path /Lib/Entry) [--commit-id C] [--override /Lib/Mod=file.nqe]... [--add-module /Lib/New=file.nqe]... [--out FILE]
-func nqeBundleCmd(args []string, stdout, stderr io.Writer, session func() (*fwd.Session, error)) int {
-	fs := flag.NewFlagSet("nqe bundle", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	queryID := fs.String("query-id", "", "the entry query, by id")
-	path := fs.String("path", "", "the entry query, by library path")
-	commit := fs.String("commit-id", "", "the library commit to read modules at (default: the head)")
-	out := fs.String("out", "", "write the bundle to this file (default: stdout)")
-	var overrides, added pathFiles
-	fs.Var(&overrides, "override", "LIBRARY_PATH=FILE: use this local file instead of the module (or the entry) at that path; repeatable")
-	fs.Var(&added, "add-module", "LIBRARY_PATH=FILE: a module that exists only locally, importable by the entry or an override; repeatable")
-	if err := fs.Parse(args); err != nil {
+func nqeBundleCmd(a *app, o nqeBundleOpts) int {
+	stdout, stderr, session := a.out, a.err, a.session
+	queryID, path, commit, out := &o.queryID, &o.path, &o.commit, &o.out
+	overrides, perr := parsePathFiles(o.overrides)
+	if perr != nil {
+		fmt.Fprintf(stderr, "error: --override %v\n", perr)
+		return usage
+	}
+	added, perr := parsePathFiles(o.added)
+	if perr != nil {
+		fmt.Fprintf(stderr, "error: --add-module %v\n", perr)
 		return usage
 	}
 	if (*queryID == "") == (*path == "") {
-		fmt.Fprintln(stderr, "error: usage: fwdctl nqe bundle (--query-id Q_... | --path /Lib/Entry) [--commit-id C] [--override PATH=FILE]... [--add-module PATH=FILE]... [--out FILE]")
+		fmt.Fprintln(stderr, "error: give exactly one of --query-id and --path")
 		return usage
 	}
 	sess, err := session()

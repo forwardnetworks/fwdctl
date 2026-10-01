@@ -14,54 +14,66 @@
         "create_group",
         "update_group",
         "delete_group"
-      ]
+      ],
+      "description": "what to do: create_user, set_user (enabled), delete_user, reset_2fa, set_org_admin (admin), set_network_role (role + network_id for a user or group), create_group, update_group, delete_group"
     },
     "user": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the user: id, username or email (create_user: the new user's email, also the username)"
     },
     "group": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the access control group: id or name (create_group: the new name)"
     },
     "password": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "create_user: a temporary password the user changes at first sign-in; never read back"
     },
     "enabled": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "set_user or create_user: true enables, false disables"
     },
     "admin": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "set_org_admin: true grants, false revokes; create_group: true makes an organization-admin group"
     },
     "network_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "set_network_role: the network the role is on"
     },
     "role": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "set_network_role: LIMITED_READ_ONLY, READ_ONLY, OPERATOR, WORKSPACE_OPERATOR, ADMIN, or none to remove"
     },
     "identity_provider_groups": {
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1
-      }
+      },
+      "description": "create_group, update_group: the identity-provider group names that put a user in this group"
     },
     "network_roles": {
       "type": "object",
       "additionalProperties": {
         "type": "string"
-      }
+      },
+      "description": "create_group, update_group: network id to role; update_group replaces the whole map"
     },
     "confirm": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the username or group name, required for delete, 2FA reset, org-admin changes and org-admin groups"
     },
     "apply": {
       "type": "boolean",
-      "default": false
+      "default": false,
+      "description": "false (default) is a dry run that writes nothing; true makes the change"
     }
   },
   "required": [

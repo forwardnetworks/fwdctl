@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -90,9 +89,8 @@ func TestConnectionFlagsFileAndEnvironmentPrecedence(t *testing.T) {
 		t.Setenv(k, "")
 	}
 	t.Setenv("FORWARD_USERNAME", "envuser")
-	rest, err := applyConnection([]string{"--config", cfg, "--url", "https://flag.example", "run", "x"}, io.Discard)
-	if err != nil || len(rest) != 2 || rest[0] != "run" {
-		t.Fatalf("%v %v", rest, err)
+	if code, _, errb := call(t, []string{"--config", cfg, "--url", "https://flag.example", "version"}, "", nil); code != 0 {
+		t.Fatalf("%d %s", code, errb)
 	}
 	if os.Getenv("FORWARD_URL") != "https://flag.example" || os.Getenv("FORWARD_USERNAME") != "envuser" || os.Getenv("FORWARD_PASSWORD") != "secret" {
 		t.Errorf("flag > env > file: %s %s %s", os.Getenv("FORWARD_URL"), os.Getenv("FORWARD_USERNAME"), os.Getenv("FORWARD_PASSWORD"))
@@ -101,17 +99,30 @@ func TestConnectionFlagsFileAndEnvironmentPrecedence(t *testing.T) {
 	os.WriteFile(pw, []byte("secret"), 0o600)
 	os.Chmod(pw, 0o644)
 	t.Setenv("FORWARD_PASSWORD", "")
-	if _, err := applyConnection([]string{"--config", cfg, "list"}, io.Discard); err == nil || !strings.Contains(err.Error(), "chmod 600") {
-		t.Errorf("want a refusal, got %v", err)
+	if code, _, errb := call(t, []string{"--config", cfg, "version"}, "", nil); code != usage || !strings.Contains(errb, "chmod 600") {
+		t.Errorf("want a refusal, got %d %s", code, errb)
 	}
 }
 
 func TestCompletionScriptsNameTheSkills(t *testing.T) {
 	for _, sh := range []string{"bash", "zsh", "fish", "powershell"} {
-		var out, errb bytes.Buffer
-		if code := completionCmd([]string{sh}, &out, &errb); code != 0 || !strings.Contains(out.String(), "inspect-networks") || !strings.Contains(out.String(), "whoami") {
-			t.Errorf("%s: %d %s", sh, code, errb.String())
+		code, out, errb := call(t, []string{"completion", sh}, "", nil)
+		if code != 0 || !strings.Contains(out, "fwdctl") {
+			t.Errorf("%s: %d %s", sh, code, errb)
 		}
+	}
+	// the shell asks the binary for the words (cobra's dynamic completion): skill names after run and describe, commands first
+	_, out, _ := call(t, []string{"__complete", "run", ""}, "", nil)
+	if !strings.Contains(out, "inspect-networks") || !strings.Contains(out, "edit-org-property") {
+		t.Errorf("run completes skill names: %q", out)
+	}
+	_, out, _ = call(t, []string{"__complete", ""}, "", nil)
+	if !strings.Contains(out, "whoami") || !strings.Contains(out, "nqe") {
+		t.Errorf("the first word completes commands: %q", out)
+	}
+	_, out, _ = call(t, []string{"__complete", "nqe", "run", "--format", ""}, "", nil)
+	if !strings.Contains(out, "jsonl") {
+		t.Errorf("--format completes its values: %q", out)
 	}
 }
 
@@ -124,8 +135,8 @@ func TestTokenFileFillsTheLoginAndIsRefusedWhenOthersCanReadIt(t *testing.T) {
 	}
 	cfg := filepath.Join(dir, "c.json")
 	os.WriteFile(cfg, []byte(`{"token_file":"`+tf+`"}`), 0o600)
-	if _, err := applyConnection([]string{"--config", cfg, "whoami"}, io.Discard); err != nil {
-		t.Fatal(err)
+	if code, _, errb := call(t, []string{"--config", cfg, "version"}, "", nil); code != 0 {
+		t.Fatalf("%d %s", code, errb)
 	}
 	if os.Getenv("FORWARD_URL") != "https://fwd.example.com" || os.Getenv("FORWARD_USERNAME") != "me@example.com" || os.Getenv("FORWARD_PASSWORD") != "s3cret" {
 		t.Errorf("token file: %s %s %s", os.Getenv("FORWARD_URL"), os.Getenv("FORWARD_USERNAME"), os.Getenv("FORWARD_PASSWORD"))
@@ -134,18 +145,18 @@ func TestTokenFileFillsTheLoginAndIsRefusedWhenOthersCanReadIt(t *testing.T) {
 	t.Setenv("FORWARD_URL", "https://other.example")
 	t.Setenv("FORWARD_USERNAME", "")
 	t.Setenv("FORWARD_PASSWORD", "")
-	applyConnection([]string{"--config", cfg, "whoami"}, io.Discard)
+	call(t, []string{"--config", cfg, "version"}, "", nil)
 	if os.Getenv("FORWARD_URL") != "https://other.example" {
 		t.Errorf("FORWARD_URL from the environment must win: %s", os.Getenv("FORWARD_URL"))
 	}
 	os.Chmod(tf, 0o644)
 	t.Setenv("FORWARD_URL", "")
-	if _, err := applyConnection([]string{"--config", cfg, "whoami"}, io.Discard); err == nil || !strings.Contains(err.Error(), "chmod 600") {
-		t.Errorf("a world-readable token file must be refused: %v", err)
+	if code, _, errb := call(t, []string{"--config", cfg, "version"}, "", nil); code != usage || !strings.Contains(errb, "chmod 600") {
+		t.Errorf("a world-readable token file must be refused: %d %s", code, errb)
 	}
 	os.Chmod(tf, 0o600)
 	os.WriteFile(tf, []byte("a\nb\n"), 0o600)
-	if _, err := applyConnection([]string{"--token-file", tf, "whoami"}, io.Discard); err == nil {
+	if code, _, _ := call(t, []string{"--token-file", tf, "version"}, "", nil); code != usage {
 		t.Error("a token file without three lines must be refused")
 	}
 }

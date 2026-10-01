@@ -4,46 +4,57 @@
   "properties": {
     "property": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the organization property (omit to list what is configurable, with value, risk and who may change it)"
     },
     "value": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the new value as text (true, 42, ASYNC)"
     },
     "clear": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "true removes the organization's override so the default applies again"
     },
     "confirm": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the property name again, required to apply a dangerous or unclassified property"
     },
     "match": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "list only: a substring of the name or description"
     },
     "limit": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "list only: rows per page"
     },
     "offset": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "description": "list only: rows to skip"
     },
     "apply": {
       "type": "boolean",
-      "default": false
+      "default": false,
+      "description": "false (default) is a dry run; true makes the change"
     },
     "network_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "guarded window: the network of the snapshot to reprocess"
     },
     "reprocess_snapshot_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "guarded window: set the value, reprocess this one snapshot, wait, and always restore the original value"
     },
     "window_minutes": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "guarded window: how long it may last, also how far ahead collection schedules are checked (default 30, at most 240)"
     }
   }
 }

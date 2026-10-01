@@ -3,36 +3,26 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"strings"
 
-	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/nqelint"
 	"github.com/forwardnetworks/fwdctl/skills"
 )
 
-// nqeSynthesizeCmd derives a synthetic-device query from evidence in the network model: fwdctl nqe synthesize internet --network ID [--vrf V] [--device D]
-// [--discovery interfaceAddresses|bgpRoutes|ipRoutes|none] [--subnets CIDR,...] [--include-unlikely] [--snapshot ID]. It runs the analysis inspect-edge runs, prints the query on
-// stdout and lints it with the offline checks; output that is not clean is reported on stderr and exits non-zero.
-func nqeSynthesizeCmd(args []string, stdout, stderr io.Writer, session func() (*fwd.Session, error)) int {
-	const use = "usage: fwdctl nqe synthesize internet --network ID [--vrf V] [--device D] [--discovery interfaceAddresses|bgpRoutes|ipRoutes|none] [--subnets CIDR,...] [--include-unlikely] [--snapshot ID]"
-	if len(args) == 0 || args[0] != "internet" {
-		fmt.Fprintln(stderr, use)
-		return usage
-	}
-	fs := flag.NewFlagSet("nqe synthesize internet", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	network := fs.String("network", "", "network id (required)")
-	vrf := fs.String("vrf", "", "only default routes in this VRF")
-	device := fs.String("device", "", "only default routes on this device")
-	discovery := fs.String("discovery", "interfaceAddresses", "interfaceAddresses, bgpRoutes, ipRoutes or none")
-	subnets := fs.String("subnets", "", "comma-separated prefixes written on every row (required for --discovery none)")
-	unlikely := fs.Bool("include-unlikely", false, "also write rows for unowned exits that are not likely internet edges")
-	snapshot := fs.String("snapshot", "", "snapshot id (default: the latest processed)")
-	if err := fs.Parse(args[1:]); err != nil || fs.NArg() > 0 || *network == "" {
-		fmt.Fprintln(stderr, use)
+// nqeSynthOpts are the flags of `fwdctl nqe synthesize internet`.
+type nqeSynthOpts struct {
+	network, vrf, device, discovery, subnets, snapshot string
+	unlikely                                           bool
+}
+
+// nqeSynthesizeCmd derives a synthetic-device query from evidence in the network model. It runs the analysis inspect-edge runs, prints the query on stdout and lints it with the
+// offline checks; output that is not clean is reported on stderr and exits non-zero.
+func nqeSynthesizeCmd(a *app, o nqeSynthOpts) int {
+	stdout, stderr, session := a.out, a.err, a.session
+	network, vrf, device, discovery, subnets, snapshot, unlikely := &o.network, &o.vrf, &o.device, &o.discovery, &o.subnets, &o.snapshot, &o.unlikely
+	if *network == "" {
+		fmt.Fprintln(stderr, "error: --network is required")
 		return usage
 	}
 	var subs []string

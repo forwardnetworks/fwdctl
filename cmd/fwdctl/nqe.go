@@ -17,7 +17,7 @@ import (
 // nqeCmd is the offline NQE checker: no Forward connection, no snapshot, milliseconds. It reads a query from FILE (or - for stdin)
 // and reports syntax errors with line and column, deprecated constructs with the replacement, and field and enum names the data
 // model does not have (with the closest real name). It does not type-check: validate-nqe-query asks Forward for that.
-func nqeCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func nqeTool(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "lsp" {
 		if err := nqelint.ServeLSP(stdin, stdout); err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)

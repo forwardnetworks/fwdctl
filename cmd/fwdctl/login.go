@@ -14,13 +14,13 @@ import (
 //	fwdctl login --forget                    remove what was remembered
 //
 // It stores only the path of the file, never the password, and checks the login before it saves anything.
-func loginCmd(args []string, stdout, stderr io.Writer, whoamiRun func() int) int {
+func loginRun(file string, forget bool, stdout, stderr io.Writer, whoamiRun func() int) int {
 	path := defaultConfigPath()
 	if path == "" {
 		fmt.Fprintln(stderr, "error: no user config directory on this machine")
 		return 3
 	}
-	if len(args) == 1 && args[0] == "--forget" {
+	if forget {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 3
@@ -28,11 +28,11 @@ func loginCmd(args []string, stdout, stderr io.Writer, whoamiRun func() int) int
 		fmt.Fprintln(stdout, "forgot the saved login")
 		return 0
 	}
-	if len(args) != 2 || args[0] != "--file" {
+	if file == "" {
 		fmt.Fprintln(stderr, "usage: fwdctl login --file TOKENFILE | fwdctl login --forget")
 		return usage
 	}
-	abs, err := filepath.Abs(args[1])
+	abs, err := filepath.Abs(file)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return usage

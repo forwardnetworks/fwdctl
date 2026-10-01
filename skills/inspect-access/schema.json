@@ -10,35 +10,43 @@
         "users",
         "groups"
       ],
-      "default": "me"
+      "default": "me",
+      "description": "me (what this login may do), explain (why an operation was refused), users, groups"
     },
     "network_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "me: show what the role on this network allows; explain: the network the refusal was on"
     },
     "operation": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "explain: the refused operation, for example EDIT_CHECKS or NetworkOperation.EDIT_CHECKS"
     },
     "error": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "explain: Forward's 403 message, for example \"Missing permission: NetworkOperation.EDIT_CHECKS\""
     },
     "user": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "users: one user by id, username or email"
     },
     "match": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "users or groups: a substring of the name"
     },
     "limit": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "users or groups: rows per page"
     },
     "offset": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "description": "users or groups: rows to skip"
     }
   }
 }

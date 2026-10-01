@@ -259,26 +259,7 @@ func (u *updater) updateTo(ctx context.Context, rel *releaseInfo, exe string) (s
 }
 
 // updateCmd is `fwdctl update [--check] [--version vX.Y.Z] [--force]`.
-func updateCmd(args []string, stdout, stderr io.Writer) int {
-	check, force, tag := false, false, ""
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--check":
-			check = true
-		case "--force":
-			force = true
-		case "--version":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "usage: fwdctl update [--check] [--version vX.Y.Z] [--force]")
-				return usage
-			}
-			i++
-			tag = args[i]
-		default:
-			fmt.Fprintln(stderr, "usage: fwdctl update [--check] [--version vX.Y.Z] [--force]")
-			return usage
-		}
-	}
+func updateRun(check, force bool, tag string, stdout, stderr io.Writer) int {
 	u := newUpdater()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -354,7 +335,7 @@ func updateHint() string {
 // (stderr is not a terminal), for the language server, or when FWDCTL_NO_UPDATE_CHECK is set, and it gives up quickly if the network is slow.
 func updateNotice(cmd string, stderr *os.File) {
 	switch cmd {
-	case "lsp", "update", "version", "--version", "help", "-h", "--help", "docs", "completion":
+	case "lsp", "update", "version", "--version", "help", "-h", "--help", "docs", "guide", "completion", "__complete", "__completeNoDesc", "":
 		return
 	}
 	if os.Getenv("FWDCTL_NO_UPDATE_CHECK") != "" {
@@ -402,7 +383,7 @@ func autoUpdate(cmd string, stderr io.Writer) {
 		return
 	}
 	switch cmd {
-	case "lsp", "update", "version", "--version", "help", "-h", "--help", "docs", "completion":
+	case "lsp", "update", "version", "--version", "help", "-h", "--help", "docs", "guide", "completion", "__complete", "__completeNoDesc", "":
 		return
 	}
 	if _, _, ok := parseVersion(version); !ok {

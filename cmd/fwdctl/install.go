@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,9 +25,11 @@ func yamlString(s string) string {
 }
 
 type schemaProp struct {
-	Type    any    `json:"type"`
-	Enum    []any  `json:"enum"`
-	Pattern string `json:"pattern"`
+	Type        any    `json:"type"`
+	Enum        []any  `json:"enum"`
+	Pattern     string `json:"pattern"`
+	Description string `json:"description"`
+	Default     any    `json:"default"`
 }
 
 // inputTable renders a skill's input schema as a markdown table.
@@ -53,7 +56,7 @@ func inputTable(schema json.RawMessage) string {
 		return names[i] < names[j]
 	})
 	var b strings.Builder
-	b.WriteString("| Input | Type | Required |\n|---|---|---|\n")
+	b.WriteString("| Input | Type | Required | Notes |\n|---|---|---|---|\n")
 	for _, n := range names {
 		p := s.Properties[n]
 		t := fmt.Sprint(p.Type)
@@ -75,7 +78,14 @@ func inputTable(schema json.RawMessage) string {
 		if req[n] {
 			yes = "yes"
 		}
-		fmt.Fprintf(&b, "| `%s` | %s | %s |\n", n, t, yes)
+		note := strings.ReplaceAll(strings.TrimSpace(p.Description), "|", "\\|")
+		if p.Default != nil {
+			if note != "" {
+				note += " "
+			}
+			note += fmt.Sprintf("(default %v)", p.Default)
+		}
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", n, t, yes, note)
 	}
 	return b.String()
 }
@@ -83,7 +93,7 @@ func inputTable(schema json.RawMessage) string {
 func runSection(m skills.Meta) string {
 	var b strings.Builder
 	b.WriteString("\n## Running this skill\n\n")
-	fmt.Fprintf(&b, "Run it with the `fwdctl` command, giving the inputs as one JSON object on stdin:\n\n```bash\necho '{\"network_id\": \"<network id>\"}' | fwdctl run %s\n```\n\n", m.Name)
+	fmt.Fprintf(&b, "Run it with the `fwdctl` command, giving the inputs as one JSON object on stdin:\n\n```bash\necho '%s' | fwdctl run %s\n```\n\n", exampleInput(m.InputSchema), m.Name)
 	if t := inputTable(m.InputSchema); t != "" {
 		b.WriteString(t + "\n")
 	}
@@ -213,4 +223,84 @@ func installAgents(file string, all []skills.Meta) error {
 		return err
 	}
 	return os.WriteFile(file, []byte(mergeBlock(existing, block)), 0o644)
+}
+
+// exampleInput is a runnable-looking JSON object for a skill: its required inputs with a placeholder of the right kind (the first allowed value for an enumeration), or the
+// network id when nothing is required and the skill takes one.
+func exampleInput(schema json.RawMessage) string {
+	var s struct {
+		Required   []string              `json:"required"`
+		Properties map[string]schemaProp `json:"properties"`
+	}
+	if json.Unmarshal(schema, &s) != nil {
+		return "{}"
+	}
+	names := s.Required
+	if len(names) == 0 {
+		// a skill that takes a network gets the network id; one whose network_id has its own note (a window's snapshot, say) is not about a network, so {} is the example
+		if p, ok := s.Properties["network_id"]; ok && p.Description == "" {
+			names = []string{"network_id"}
+		}
+	}
+	parts := make([]string, 0, len(names))
+	for _, n := range names {
+		p := s.Properties[n]
+		var v string
+		switch {
+		case len(p.Enum) > 0:
+			v = fmt.Sprintf("%q", fmt.Sprint(p.Enum[0]))
+		case p.Type == "boolean":
+			v = "true"
+		case p.Type == "integer" || p.Type == "number":
+			v = "1"
+		case p.Type == "array":
+			v = "[]"
+		case p.Type == "object":
+			v = "{}"
+		case n == "network_id":
+			v = `"<network id>"`
+		default:
+			v = fmt.Sprintf("%q", "<"+strings.ReplaceAll(n, "_", " ")+">")
+		}
+		parts = append(parts, fmt.Sprintf("%q: %s", n, v))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// installRun writes the skills for an agent: kind "claude" into dir (default ~/.claude/skills), kind "agents" into file (printed without one).
+func installRun(kind, dir, file string, stdout, stderr io.Writer) int {
+	all, err := skills.All()
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return usage
+	}
+	switch kind {
+	case "claude":
+		target := dir
+		if target == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				fmt.Fprintf(stderr, "error: %v\n", err)
+				return usage
+			}
+			target = filepath.Join(home, ".claude", "skills")
+		}
+		written, err := installClaude(target, all)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "wrote %d skills under %s\n", len(written), target)
+	case "agents":
+		if file == "" {
+			fmt.Fprint(stdout, agentsBlock(all))
+			return 0
+		}
+		if err := installAgents(file, all); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "updated %s\n", file)
+	}
+	return 0
 }
