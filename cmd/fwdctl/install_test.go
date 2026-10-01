@@ -160,10 +160,16 @@ func TestInstallClaudeCopiesTheReferenceFilesBesideSKILLmd(t *testing.T) {
 	needCorpora(t)
 	dir := t.TempDir()
 	call(t, []string{"install", "claude", "--dir", dir}, "", nil)
-	for _, f := range []string{"cheatsheet.md", "rules.md", "syntax-and-types.md"} {
+	for _, f := range []string{"config-patterns.md", "synthetic-devices.md"} {
 		b, err := os.ReadFile(filepath.Join(dir, "author-nqe-query", "reference", f))
 		if err != nil || len(b) < 200 {
 			t.Errorf("reference %s not installed: %v", f, err)
+		}
+	}
+	// the cheat sheet, the rules and the syntax notes are served by the binary, never written beside the skill
+	for _, f := range []string{"cheatsheet.md", "rules.md", "syntax-and-types.md"} {
+		if _, err := os.Stat(filepath.Join(dir, "author-nqe-query", "reference", f)); err == nil {
+			t.Errorf("%s must not be installed as a file", f)
 		}
 	}
 	skill, _ := os.ReadFile(filepath.Join(dir, "author-nqe-query", "SKILL.md"))
@@ -181,7 +187,7 @@ func TestDescribeReadsAReferenceFileAsPlainMarkdown(t *testing.T) {
 	if code, _, _ := call(t, []string{"describe", "author-nqe-query", "rules"}, "", nil); code != 0 {
 		t.Error("the short file name did not resolve")
 	}
-	if code, out, e := call(t, []string{"describe", "author-nqe-query", "nope.md"}, "", nil); code != 64 || out != "" || !strings.Contains(e, "reference/rules.md") {
+	if code, out, e := call(t, []string{"describe", "author-nqe-query", "nope.md"}, "", nil); code != 64 || out != "" || !strings.Contains(e, "reference/config-patterns.md") {
 		t.Errorf("code %d err %.160q", code, e)
 	}
 }

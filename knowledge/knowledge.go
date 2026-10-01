@@ -14,3 +14,9 @@ func Examples() ([]Example, error) { return nil, nil }
 
 // Search returns none in this build.
 func Search(string, int) ([]Example, error) { return nil, nil }
+
+// AuthoringRef has nothing in this build: the authoring references are in the release binaries only.
+func AuthoringRef(string) (string, bool) { return "", false }
+
+// AuthoringRefs lists none.
+func AuthoringRefs() []string { return nil }

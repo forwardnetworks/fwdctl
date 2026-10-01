@@ -11,6 +11,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/forwardnetworks/fwdctl/knowledge"
 	"sort"
 	"strconv"
 	"strings"
@@ -364,6 +365,11 @@ func Reference(name, ref string) (string, error) {
 		if r == ref || r == ref+".md" {
 			b, err := docs.ReadFile(name + "/" + r)
 			return string(b), err
+		}
+	}
+	if name == "author-nqe-query" { // the authoring references are served by the binary, not shipped beside the skill
+		if t, ok := knowledge.AuthoringRef(ref); ok {
+			return t, nil
 		}
 	}
 	return "", fmt.Errorf("%w: %s has no reference %q", ErrUnknown, name, ref)

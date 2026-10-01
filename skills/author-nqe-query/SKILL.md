@@ -18,7 +18,7 @@ metadata:
    `nqe_examples` tool. They are real queries for real questions; imitate their shape, not their names.
 2. Look up the real names you are about to use: `fwdctl context schema "<term>"` (or the `nqe_schema` tool) searches Forward's
    data model and lists enum values. Never guess a field or an enum value.
-3. Write the query against [the cheat sheet](reference/cheatsheet.md) and [the rules for choosing what to query](reference/rules.md). Do not invent schema names.
+3. Write the query against the cheat sheet and the rules for choosing what to query (`fwdctl describe author-nqe-query reference/cheatsheet.md` and `reference/rules.md`). Do not invent schema names.
 3a. Before running anything, check it offline: `fwdctl nqe lint query.nqe` (no Forward connection, milliseconds). It reports syntax errors with line and column, unknown names and wrong argument counts, fields or enum values the data model does not have (with the closest real ones), type errors, and deprecated constructs with Forward's own advice. Its type check is gradual: where it cannot tell a type it says nothing, so a clean result is not proof, but an error it reports is one Forward reports.
 4. Run `validate-nqe-query`. A compile error is a deterministic finding with a position: fix exactly what
    it names and run it again. Do not guess a second change.
@@ -42,4 +42,7 @@ The minimum before you answer: the existing-query search (step 1), the offline l
 
 The authoring references are not in the public source tree; the official release carries them.
 
+- `reference/cheatsheet.md` (served by `fwdctl describe author-nqe-query reference/cheatsheet.md`): syntax forms and the roots of the data model. Read before writing.
+- `reference/rules.md` (served by `fwdctl describe`): what to query: exact schema names, filters, matching the question's intent, `configured` fields, config-compliance patterns, and why not to filter on `DeviceType.ROUTER` or `SWITCH`. Read before writing.
+- `reference/syntax-and-types.md` (served by `fwdctl describe`): type keywords, single-line versus block patterns, parenthesising a comprehension used as a value, `order by` and `limit`, and typed time arithmetic. Read when the query sorts, limits, does time arithmetic or matches patterns, or when a diagnostic mentions a type.
 
