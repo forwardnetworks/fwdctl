@@ -1,70 +1,34 @@
-# Forward Skills
+# fwdctl
 
-A portable capability layer that lets agents and automation accomplish network-engineering tasks with
-Forward. A skill encodes **how** to reach an objective and returns **evidence**, not just an answer.
-Forward is the data source here, read almost entirely; the few skills that write change only Forward's own data, and only when told to apply. This is not an agent framework and it calls no model.
+The Forward Networks command line: log in to Forward, run its **skills** (read-only questions and dry-run-first changes that return evidence), and run NQE
+queries. It is an API client built on the public Go SDK, [forward-go-sdk](https://github.com/forwardnetworks/forward-go-sdk). The skills themselves, for
+Claude Code, Codex and Gemini, live in [forward-skills](https://github.com/forwardnetworks/fwdctl); this repository is the CLI those skills run.
 
-```text
-Agent / harness   -> orchestration, memory, governance, approval, the model
-Forward Skills    -> investigate-reachability, verify-change, ...
-fwd               -> thin layer over forward-go-sdk (operation log, snapshot guards, bounded results)
-Forward platform  -> the digital twin
-```
-
-## Quick start (Claude Code, Codex or Gemini)
+## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/forwardnetworks/forward-skills/main/scripts/install.sh | sh   # the fwdctl binary
-fwdctl login --file ~/forward.token      # once: remember the login (file format below)
+brew install forwardnetworks/tap/fwdctl                  # macOS and Linux
+curl -fsSL https://raw.githubusercontent.com/forwardnetworks/fwdctl/main/install.sh | sh   # macOS and Linux, no brew
+irm https://raw.githubusercontent.com/forwardnetworks/fwdctl/main/install.ps1 | iex       # Windows (PowerShell)
 ```
 
-Then give your agent the skills (pick one):
+Each release carries `fwdctl_<version>_<os>_<arch>` archives (linux/amd64, darwin/arm64, darwin/amd64, windows/amd64) with a `SHA256SUMS` file; the scripts verify it.
+`fwdctl update` installs the newest release in place (a brew-installed copy tells you to run `brew upgrade fwdctl`).
+
+## Use
 
 ```bash
-# Claude Code (the plugin also registers the NQE language server for *.nqe files)
-claude plugin marketplace add forwardnetworks/forward-skills && claude plugin install forward-skills@forward-skills
-# Codex
-codex plugin marketplace add forwardnetworks/forward-skills && codex plugin add forward-skills@forward-skills
-# Gemini CLI
-gemini skills install https://github.com/forwardnetworks/fwdctl --path skills --scope user
+fwdctl login --file ~/forward.token        # once: URL, username (or API token access key) and password (or secret), one per line, chmod 600
+fwdctl whoami                              # who this connects as, and the Forward version
+fwdctl run inspect-networks <<< '{}'       # run any skill with a JSON object on stdin (every skill has a schema)
+fwdctl nqe run --network ID --file q.nqe --format table      # run an NQE query: every row, paged for you
+fwdctl nqe run --network ID --query-id Q_... --commit-id C   # a saved library query at a commit, with --param NAME=JSON
+fwdctl help
 ```
 
-Restart the agent after installing, then open a session anywhere and ask. **NQE language server** (diagnostics, hover, completion on `.nqe` files in Claude Code): the Claude Code plugin has it already;
-for the server alone, other editors and how to check it, see [docs/install.md](docs/install.md). It is optional: the skills lint and run NQE without it.
+Every skill returns one envelope (`status` ok, failed, unknown or error; `evidence`; `limits`; `next_actions`). **`unknown` is never a pass**, and a change in Forward is a dry run until
+you pass `"apply": true`. Connection flags, the `FORWARD_URL`, `FORWARD_USERNAME` and `FORWARD_PASSWORD` variables, and `--token-file` are all accepted.
 
-The login file has three lines: the Forward URL, the username (or an API token's access key) and the password (or its secret). Keep it private (`chmod 600`):
-
-```text
-https://fwd.app
-<access key or username>
-<secret or password>
-```
-
-`fwdctl login` checks the login and remembers only the path of the file (the password is never copied); `fwdctl login --forget` removes it. Flags and the `FORWARD_*` variables still win. More in [docs/install.md](docs/install.md).
-
-Then ask in plain words: *"Why can't 10.1.1.5 reach the database on 5432?"*, *"Give me a security review"*, *"Is CVE-2024-3400 relevant to us?"*. The agent reads the router (`plan-investigation`), follows the playbook it names, and says what it measured and what it did not.
-Changes in Forward are dry runs until you approve a plan; devices are never reconfigured.
-
-## Skills
-
-A **playbook** (`plan-*`) says which skills to use for a task and in what order; a **read skill** answers one question and returns evidence; an **edit skill** (`edit-*`) changes only Forward's own data, and only as a dry run until you pass `"apply": true`.
-Every skill returns the same envelope (`status` ok / failed / unknown / error, `evidence`, `limits`, `next_actions`); **`unknown` is never a pass**. Start with `plan-investigation`, the router. Several skills have views (`view` or `kind`), and the older names of the skills they absorbed still work. The full list with what each does is in [docs/skills.md](docs/skills.md).
-
-- **Path analysis and troubleshooting:** `plan-troubleshoot-connectivity`, `plan-incident-triage`, `plan-what-changed`, `plan-synthetic-device`, `plan-snapshot-recovery`, `plan-link-overrides`, `investigate-reachability`, `inspect-topology`, `inspect-history`, `compare-device-config`, `inspect-device-files`, `investigate-collection-failure`
-- **Security:** `plan-security-posture`, `plan-vulnerability-response`, `plan-segmentation-check`, `inspect-vulnerabilities`, `check-network-compliance`, `investigate-reachability`
-- **Change:** `plan-change-review`, `plan-maintenance-window`, `verify-change`, `edit-change-set`
-- **Audit and compliance:** `plan-compliance-audit`, `plan-device-audit`, `check-network-compliance`, `inspect-inventory`, `edit-checks`
-- **Health and collection:** `plan-health-check`, `inspect-snapshots`, `inspect-collection`, `inspect-performance`, `inspect-environment`, `edit-collection`, `edit-endpoint-profile`, `edit-workspace`, `edit-snapshot-reprocess`, `edit-advanced-reachability`, `edit-snapshot-note`
-- **Inventory and topology:** `inspect-networks`, `inspect-inventory`, `inspect-topology`, `edit-device-tags`, `inspect-edge`, `inspect-bgp-neighbors`, `edit-internet-exclusions`, `edit-wan-circuit`, `edit-synthetic-query`, `edit-link-overrides`
-- **NQE (custom questions):** `find-nqe-query`, `author-nqe-query`, `validate-nqe-query`, `compare-nqe-results`, `edit-nqe-query`
-- **Router and protocol:** `plan-investigation`, `plan-safe-write`, `plan-report-skill-gap` <!-- DOGFOOD-TEMP -->
-
-## More
-
-- [docs/install.md](docs/install.md): every install path (Claude Code, Codex, Gemini CLI), the login, updating, credentials and the NQE language server (other editors, how to check it)
-- [docs/skills.md](docs/skills.md): each skill and playbook, and how an AI gets the right context
-- [docs/nqe.md](docs/nqe.md): writing, linting, formatting and running NQE with `fwdctl nqe`
-- [docs/architecture.md](docs/architecture.md): the reference architecture and a worked flow
 
 ## Building from source
 

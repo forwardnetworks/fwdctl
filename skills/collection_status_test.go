@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
@@ -108,5 +109,22 @@ func TestCollectionStatusKeepsTheSilenceWordingForCollectedAndUnknownKinds(t *te
 	r = colStatusWithSnapshot(t, "COLLECTION", map[string]fwdtest.Handler{tasksPath: fwdtest.Const(200, []any{task("8", "COMPLETED", "2026-09-29T10:05:00Z")})})
 	if r.Status != result.OK {
 		t.Errorf("a collected snapshot with a good task is still healthy: %s %s", r.Status, r.Finding)
+	}
+}
+
+func TestCollectionStatusRunningSaysTaskElapsedProgressAndARoughEstimateAndCanWait(t *testing.T) {
+	started := time.Now().Add(-90 * time.Second).UTC().Format(time.RFC3339)
+	run := map[string]any{"id": "77", "status": "RUNNING", "type": "COLLECTION", "networkId": "n1", "startedAt": started,
+		"progress": map[string]any{"total": 10, "succeeded": 4, "running": 2, "queued": 4}}
+	routes := map[string]fwdtest.Handler{tasksPath: fwdtest.Const(200, []any{run})}
+	r := colStatus(t, routes)
+	for _, want := range []string{"task 77", "running for 1m", "4 of 10 sources finished", "rough estimate"} {
+		if !strings.Contains(r.Finding, want) {
+			t.Errorf("finding %q lacks %q", r.Finding, want)
+		}
+	}
+	r, _ = mustRun(t, "inspect-collection-status", routes, `{"network_id":"n1","wait_seconds":1}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "still running") {
+		t.Errorf("a wait that ends with the collection still running says so: %v", r.Limits)
 	}
 }

@@ -45,8 +45,8 @@ Check: ask Claude to use the LSP tool on a `.nqe` file with a misspelt field; it
 
 ## Installing the binary
 
-    macOS, Linux:  curl -fsSL https://raw.githubusercontent.com/forwardnetworks/forward-skills/main/scripts/install.sh | sh
-    Windows:       irm https://raw.githubusercontent.com/forwardnetworks/forward-skills/main/scripts/install.ps1 | iex
+    macOS, Linux:  curl -fsSL https://raw.githubusercontent.com/forwardnetworks/fwdctl/main/install.sh | sh
+    Windows:       irm https://raw.githubusercontent.com/forwardnetworks/fwdctl/main/install.ps1 | iex
 
 Builds: linux/amd64, darwin/arm64 (Apple silicon), darwin/amd64 (Intel Mac), windows/amd64. The scripts verify the SHA-256 and print where they installed; they use
 the `gh` CLI when it is logged in. Add `~/.local/bin` to `PATH` if told to.

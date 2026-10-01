@@ -23,6 +23,11 @@
     "offset": {
       "type": "integer",
       "minimum": 0
+    },
+    "wait_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "view status: wait up to this many seconds (at most 120) for a running collection to finish"
     }
   }
 }

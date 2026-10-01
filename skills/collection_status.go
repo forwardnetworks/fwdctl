@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
@@ -17,6 +19,24 @@ const collectionStatusName = collectionName
 type collectionStatusInput struct {
 	NetworkID string `json:"network_id"`
 	Limit     int    `json:"limit"`
+	// WaitSeconds waits (polling every few seconds, at most maxWaitSeconds) for a running collection to finish before reading its outcome.
+	WaitSeconds int `json:"wait_seconds"`
+}
+
+const maxWaitSeconds = 120
+
+// parseTaskTime reads a collector task's time: RFC 3339, or epoch milliseconds.
+func parseTaskTime(v string) (time.Time, bool) {
+	if v == "" {
+		return time.Time{}, false
+	}
+	if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+		return t, true
+	}
+	if ms, err := strconv.ParseInt(v, 10, 64); err == nil && ms > 1e11 {
+		return time.UnixMilli(ms), true
+	}
+	return time.Time{}, false
 }
 
 // inspectCollectionStatus says where collection stands NOW: running or not, how the last tasks ended, which collector serves the
@@ -30,6 +50,30 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	var limits []string
 	detail := map[string]any{}
+	if in.WaitSeconds > 0 {
+		wait := min(in.WaitSeconds, maxWaitSeconds)
+		deadline := time.Now().Add(time.Duration(wait) * time.Second)
+		waited := false
+		for {
+			p, err := s.CollectionProgress(ctx, in.NetworkID)
+			if err != nil || p == nil || !p.InProgress {
+				break
+			}
+			waited = true
+			if !time.Now().Add(5 * time.Second).Before(deadline) {
+				limits = append(limits, fmt.Sprintf("waited %ds and the collection is still running; ask again (wait_seconds) or read the progress below", wait))
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return result.Result{}, ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+		}
+		if waited {
+			detail["waited"] = true
+		}
+	}
 	signals := 0
 	positive := false // something measured says collection worked: a finished task that succeeded, or device statuses read
 	failed := []string{}
@@ -167,7 +211,7 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 	case len(failed) > 0:
 		status, finding = result.Failed, strings.Join(failed, "; ")
 	case running:
-		finding = "A collection is running now"
+		finding = runningFinding(detail)
 	case !positive:
 		// Nothing failed, but nothing shows it worked either: silence is not health.
 		return result.NewUnknown(collectionStatusName, "No collection is running and nothing shows how the last one went", cx,
@@ -217,4 +261,36 @@ func firstNonEmptyStr(vs ...string) string {
 		}
 	}
 	return ""
+}
+
+// runningFinding says how far a running collection is: its task, how long it has run, how many sources finished, and a rough estimate of the rest.
+func runningFinding(detail map[string]any) string {
+	finding := "A collection is running now"
+	var started time.Time
+	if rows, ok := detail["recent_tasks"].([]map[string]any); ok {
+		for _, r := range rows {
+			if st, _ := r["status"].(string); st == "RUNNING" || st == "QUEUED" {
+				finding = fmt.Sprintf("A collection is running now (task %v)", r["id"])
+				started, _ = parseTaskTime(fmt.Sprint(r["started_at"]))
+				break
+			}
+		}
+	}
+	elapsed := time.Duration(0)
+	if !started.IsZero() {
+		elapsed = time.Since(started).Round(time.Second)
+		finding += fmt.Sprintf(", running for %s", elapsed)
+	}
+	if p, ok := detail["progress"].(map[string]any); ok {
+		fin, _ := p["finished"].(int)
+		tot, _ := p["total"].(int)
+		if tot > 0 {
+			finding += fmt.Sprintf(", %d of %d sources finished", fin, tot)
+			if fin > 0 && elapsed > 0 && fin < tot {
+				rest := time.Duration(float64(elapsed) * float64(tot-fin) / float64(fin)).Round(time.Minute)
+				finding += fmt.Sprintf("; a rough estimate of the rest is %s (sources are not equally slow)", rest)
+			}
+		}
+	}
+	return finding
 }

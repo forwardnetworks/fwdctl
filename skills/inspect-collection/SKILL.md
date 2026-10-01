@@ -19,6 +19,8 @@ The read-only side of collection. `view: status` is the present: a running colle
 
 `network_id`. Optional: `view` (`status`, the default, or `config`), `limit`, `offset`. See `schema.json`.
 
+**Waiting.** `wait_seconds` (view status, at most 120) polls every 5 seconds while a collection runs and returns when it finishes or the time is up, so one call after `edit-collection` apply reads the outcome instead of polling by hand. A running collection's finding names the task, how long it has run, how many sources finished and a rough estimate of the rest (an estimate: sources are not equally slow).
+
 ## Procedure
 
 **status**
