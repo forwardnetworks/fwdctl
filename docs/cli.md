@@ -231,6 +231,38 @@ Examples:
   fwdctl nqe complete query.nqe 3 12
 ```
 
+## fwdctl nqe export
+
+Write the entry query and every organization library module it imports, transitively, to a folder tree: one <query name>.nqe per query under the library path
+(/Team/Sub/Mod is DIR/Team/Sub/Mod.nqe), import statements left exactly as they are (they already name library paths, so the tree re-imports as it is), and manifest.json with each
+file's library path, query id, commit id, sha256 and imports. Unlike bundle it inlines nothing. Imports of @fwd/... are listed, not fetched. The data files the queries read
+(network.extensions.<name>) are reported in the manifest and on stderr: they are organization uploads, not part of the export. --override and --add-module behave as in bundle, and
+one that matches nothing is an error. DIR must be empty (or pass --force); --zip also writes the same files as a zip.
+
+```
+fwdctl nqe export [flags]
+```
+
+Examples:
+
+```
+  fwdctl nqe export --path "/Team/Entry" --commit-id 9f3c --out export/
+  fwdctl nqe export --query-id Q_abc --out export/ --zip export.zip
+```
+
+Flags:
+
+```
+      --add-module stringArray   LIBRARY_PATH=FILE: a module that exists only locally; repeatable
+      --commit-id string         the library commit to read at (default: the head, recorded in the manifest)
+      --force                    write into a directory that is not empty
+      --out string               the directory to write (required)
+      --override stringArray     LIBRARY_PATH=FILE: use this local file instead of the module (or the entry) at that path; repeatable
+      --path string              the entry query, by library path
+      --query-id string          the entry query, by id (its library path is read from the head listing)
+      --zip string               also write the files as this zip
+```
+
 ## fwdctl nqe fmt
 
 Lay NQE out in the standard style. With no file it filters stdin to stdout. -w rewrites the files; --check prints the files that would change and exits 1 if any would.
@@ -273,7 +305,7 @@ Offline NQE check, no Forward connection: syntax errors with line and column, un
 type errors, and deprecations with Forward's own advice. Exit 1 on an error. The type check is gradual (it says nothing where it cannot tell a type), so
 validate-nqe-query, which runs the query on Forward, is still the last word. An import of your own organization's saved query (not @fwd/...) warns rather than being
 checked, since that library is per-organization and not sealed into this binary: `fwdctl nqe bundle` first for full coverage of it too.
-Dead code is warned about, never an error (exit stays 0): a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main
+Dead code is warned about, never an error (exit stays 0): an import none of whose names is used (unused-import), a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main
 expression or an export refers to (unused-definition). Lint a `nqe bundle` to find what a whole module tree never uses; an exported definition is never called dead, since
 another module may import it.
 
@@ -307,6 +339,36 @@ Examples:
 
 ```
   fwdctl nqe lsp   # an editor launches this over stdin/stdout
+```
+
+## fwdctl nqe pack
+
+Read DIR (as nqe export writes it: <library path>.nqe files, with manifest.json when there is one) and print the edit-nqe-query input that commits the tree in ONE commit:
+{"changes": [{"path", "source"}...]}. It only reads the directory and prints JSON; the write is the skill's own dry run, so pipe the file to "fwdctl run edit-nqe-query", read the plan,
+then add "apply": true. With a manifest, stderr says which files changed since the export, which are new and which are gone (pack never deletes), and --changed-only sends just the edited
+ones. --create-directory makes missing library folders in the same commit (needed to load a tree into a library that lacks them); --typecheck has Forward type every query and every
+importer first; --basis-commit-id C (or "manifest" for the export's commit) refuses the commit if the library head is not C. A commit carries at most 25 queries.
+
+```
+fwdctl nqe pack DIR [flags]
+```
+
+Examples:
+
+```
+  fwdctl nqe pack tree/ --message "Load parser modules" --create-directory --typecheck > load.json
+  fwdctl run edit-nqe-query < load.json                       # the dry run: the plan, the lint, Forward's typecheck
+  fwdctl nqe pack tree/ --changed-only --basis-commit-id manifest > edits.json   # push only what was edited since the export
+```
+
+Flags:
+
+```
+      --basis-commit-id string   refuse to commit if the library head is not this commit ("manifest": the commit the tree was exported at)
+      --changed-only             send only files that differ from manifest.json or are not in it
+      --create-directory         create missing library directories in the same commit
+      --message string           the commit title
+      --typecheck                have Forward typecheck the changed queries and their importers before committing
 ```
 
 ## fwdctl nqe run

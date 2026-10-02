@@ -29,8 +29,8 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	if in.Apply {
 		mode = result.ModeApplied
 	}
-	if in.Path != "" || in.Source != "" || in.Delete || in.CreateDirectory {
-		return result.Result{}, fmt.Errorf("%w: changes replaces path, source, delete and create_directory; give one or the other", ErrInvalidInput)
+	if in.Path != "" || in.Source != "" || in.Delete {
+		return result.Result{}, fmt.Errorf("%w: changes replaces path, source and delete; give one or the other (create_directory does go with changes)", ErrInvalidInput)
 	}
 	if len(in.Changes) > maxQueryChanges {
 		return result.Result{}, fmt.Errorf("%w: at most %d changed queries per commit", ErrInvalidInput, maxQueryChanges)
@@ -107,6 +107,47 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		changes = append(changes, result.Change{Action: action, Target: "library query " + c.Path, Before: p.src, After: c.Source, Reversible: true, Undo: undo})
 		paths = append(paths, c.Path)
 	}
+	// a NEW query needs its enclosing directories to exist; create_directory makes the missing ones in the same commit
+	var newDirs []string
+	{
+		wanted := map[string]bool{}
+		var known map[string]int
+		for _, c := range in.Changes {
+			if prior[c.Path].exists {
+				continue
+			}
+			if known == nil {
+				var kerr error
+				if known, kerr = s.OrgDirectoriesWithQueries(ctx); kerr != nil {
+					return result.Result{}, fmt.Errorf("reading the library failed, nothing was changed: %w", kerr)
+				}
+			}
+			for _, d := range missingParents(c.Path, known) {
+				wanted[d] = true
+			}
+		}
+		for d := range wanted {
+			newDirs = append(newDirs, d)
+		}
+		sort.Slice(newDirs, func(i, j int) bool { // parents first: a parent path is a prefix of (so shorter than) its child
+			if len(newDirs[i]) != len(newDirs[j]) {
+				return len(newDirs[i]) < len(newDirs[j])
+			}
+			return newDirs[i] < newDirs[j]
+		})
+	}
+	if len(newDirs) > 0 && !in.CreateDirectory {
+		return fail(fmt.Sprintf("%d enclosing director%s do not exist (%s), so saving the new queries would be refused (409); nothing was changed", len(newDirs), map[bool]string{true: "y does", false: "ies"}[len(newDirs) == 1], strings.Join(newDirs, ", ")),
+			map[string]any{"head_commit_id": head, "missing_directories": newDirs},
+			"a library directory exists only while a committed query is in it; run again with create_directory: true to create the missing ones in the same commit")
+	}
+	for _, d := range newDirs {
+		changes = append(changes, result.Change{Action: "create_directory", Target: "library directory " + d, Before: "", After: d, Reversible: true,
+			Undo: "undone with the queries: the directory is removed when its last query is deleted"})
+	}
+	discardAll := func() error {
+		return errors.Join(s.DiscardOrgDrafts(ctx, paths), s.DiscardOrgDirectories(ctx, newDirs))
+	}
 	evd := func(extra map[string]any) []result.Evidence {
 		d := map[string]any{"head_commit_id": head, "paths": paths, "unchanged": unchanged, "mode": mode}
 		for k, v := range extra {
@@ -127,7 +168,10 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 			return fail(fmt.Sprintf("you already have uncommitted changes in the NQE editor at %s; commit or discard them there first, because staging and cleaning up would overwrite or drop them. Nothing was changed", strings.Join(mine, ", ")),
 				map[string]any{"head_commit_id": head, "drafts_at": mine})
 		}
-		discard := func() error { return s.DiscardOrgDrafts(ctx, paths) }
+		discard := discardAll
+		if err := s.AddOrgDirectories(ctx, newDirs); err != nil {
+			return result.Result{}, fmt.Errorf("staging the missing directories failed, nothing is left in your workspace: %w", err)
+		}
 		for _, c := range in.Changes {
 			if err := s.StageOrgQuery(ctx, c.Path, c.Source); err != nil {
 				derr := discard()
@@ -187,10 +231,13 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		return fail(fmt.Sprintf("you already have uncommitted changes in the NQE editor at %s; commit or discard them there first. Nothing was committed", strings.Join(mine, ", ")),
 			map[string]any{"head_commit_id": head, "drafts_at": mine})
 	}
+	if err := s.AddOrgDirectories(ctx, newDirs); err != nil {
+		return result.Result{}, fmt.Errorf("staging the missing directories failed, nothing was committed: %w", err)
+	}
 	for _, c := range in.Changes {
 		if err := s.StageOrgQuery(ctx, c.Path, c.Source); err != nil {
 			msg := fmt.Sprintf("staging %s failed, nothing was committed", c.Path)
-			if derr := s.DiscardOrgDrafts(ctx, paths); derr != nil {
+			if derr := discardAll(); derr != nil {
 				msg += "; the drafts staged so far could not be discarded, check the NQE editor: " + derr.Error()
 			} else {
 				msg += "; the drafts staged so far were discarded"
@@ -201,7 +248,7 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	newHead, err := s.CommitOrgPaths(ctx, paths, title, "")
 	if err != nil {
 		msg := "the commit failed, nothing was committed"
-		if derr := s.DiscardOrgDrafts(ctx, paths); derr != nil {
+		if derr := discardAll(); derr != nil {
 			msg += "; the staged drafts could not be discarded, check the NQE editor: " + derr.Error()
 		} else {
 			msg += "; the staged drafts were discarded"
@@ -228,3 +275,6 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Committed %d quer(ies) as one commit %s (previous head %s)", len(paths), newHead, basis), result.Deterministic, cx,
 		result.Options{Mode: result.ModeApplied, Changes: changes, Limits: limits, Evidence: ev, NextActions: []string{"validate-nqe-query", "find-nqe-query"}})
 }
+
+// MaxQueryChanges is how many queries one commit may carry; `fwdctl nqe pack` refuses a larger tree with this number.
+const MaxQueryChanges = maxQueryChanges

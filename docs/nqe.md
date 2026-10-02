@@ -42,7 +42,7 @@ from files next to the query (`import "helpers";` reads `helpers.nqe` in the sam
 import, an import cycle, and `Errors found in module 'm'` when an imported module has errors. A module found nowhere is not
 guessed at: names that might come from it are not reported.
 
-**Dead code.** Three warnings (exit status stays 0, the query still runs): `unused-param` (a parameter nothing reads), `unused-let` (a `let` nothing
+**Dead code.** Four warnings (exit status stays 0, the query still runs): `unused-import` (an import whose module is found but none of the names it provides is used; needs the module, so `--modules DIR` or an `@fwd/...` library; imports reach one level only, so this is exact; quiet when two imports provide the same name), `unused-param` (a parameter nothing reads), `unused-let` (a `let` nothing
 reads) and `unused-definition` (a top-level definition that nothing reachable from the `@query`, the main expression or an `export` refers to; references
 are followed to a fixed point, so two definitions that only use each other are both reported). Names `dummy` or starting with `_` are deliberately
 unused, a function passed by name (`maxBy(xs, f)`) keeps its parameters, and a query's own parameters are bound by whoever runs it. An exported definition is
@@ -111,7 +111,19 @@ Runs the query on Forward against a snapshot: compile errors with positions, row
     fwdctl nqe run --network <id> --query-id Q_... --async --meta run.json   # execution key, outcome, Forward's timing and any diagnostics in run.json
     fwdctl nqe bundle --query-id Q_... --commit-id C --override /Lib/Mod=local.nqe > inline.nqe   # ONE query: the entry + every library module it imports at C, local files substituted
     fwdctl nqe run --network <id> --file inline.nqe --async --meta run.json
+    fwdctl nqe export --query-id Q_... --commit-id C --out tree/ --zip tree.zip   # the SAME modules as a folder tree mirroring the library (Team/Sub/Mod.nqe), imports untouched, plus manifest.json
     fwdctl run inspect-edge --format table < input.json                  # any skill: the largest list of rows in its evidence as a table or CSV
+
+`nqe export` is the hand-off form of `nqe bundle`: it inlines nothing, writes one `<query name>.nqe` per library query under its library path (imports already name library paths, so the tree re-imports as it is), and
+`manifest.json` holds each file's library path, query id, commit id, sha256 and imports, the commit (the head is pinned when none is given) and the organization data files the queries read as `network.extensions.<name>`
+(direct, or through an alias such as `foreach extensions in [network.extensions]`). Those data files are uploads, not queries, so they are not in the export: the command names them on stderr and the manifest says whether the
+organization has each one. The output directory must be empty (or `--force`); an `--override` or `--add-module` that matches nothing is an error and nothing is written. Bundling the exported tree with every file as an `--override`
+gives the same text as bundling the library (checked on a 13-query, 12-module library).
+
+`nqe pack DIR` is the way back: it reads a tree like the one `export` writes (any tree of `<library path>.nqe` files) and prints the `edit-nqe-query` input that commits it as ONE commit (`{"changes": [{path, source}...]}`,
+up to 25 queries). It only reads the directory; the write is the skill's own dry run, so `fwdctl nqe pack tree/ --create-directory --typecheck > load.json`, then `fwdctl run edit-nqe-query < load.json`, read the plan, and add `"apply": true` once it is
+approved. `--create-directory` makes missing library folders in the same commit, which loading into another library needs. With `manifest.json` present, stderr lists what changed since the export, what is new and what is gone (pack never
+deletes), `--changed-only` sends just the edited files, and `--basis-commit-id manifest` refuses the commit if the library head has moved since the export. A symbolic link in the tree is refused, never followed. Data files are not in a tree.
 
 `validate-nqe-query` returns a bounded sample (at most 200 rows) so a result stays small for an agent. `nqe run` is for a person or a script that wants all of them: it reads the query from `--file` or stdin, runs it on the latest processed
 snapshot (or `--snapshot`), and prints JSON, JSON lines, a table or CSV. `--format table|csv` on `fwdctl run` prints the biggest list of rows in the result's evidence and puts the status, finding and limits on stderr.

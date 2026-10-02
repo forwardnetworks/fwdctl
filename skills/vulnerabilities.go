@@ -25,6 +25,8 @@ type vulnInput struct {
 	KnownExploitedOnly  bool   `json:"known_exploited_only"`
 	InternetAddressable *bool  `json:"internet_addressable"`
 	Limit               int    `json:"limit"`
+	// View is "cves" (the default: the CVEs, worst first) or "devices" (one row per device, with its internet_addressable flag).
+	View string `json:"view"`
 
 	// adv is the snapshot's advanced reachability state, read from the snapshot (not an input)
 	adv string
@@ -38,6 +40,9 @@ func (in vulnInput) keep(c fwd.CVE) bool {
 	}
 	return !in.KnownExploitedOnly || c.KnownExploit
 }
+
+// addressableCaveat is said wherever internet_addressable is read: the flag is one yes or no per device, so it must not be read as "open".
+const addressableCaveat = "internet_addressable is per DEVICE, not per address or service: Forward flags a device when a valid path from the internet ends on any one of its interfaces (it keeps one arbitrary qualifying interface and does not say which), so a flagged load balancer or firewall can still deny a particular VIP or port. Read it as 'can receive some traffic from the internet', not as 'open': investigate-reachability from the internet to the exact address and port says whether that flow is delivered or denied"
 
 const (
 	listedDescChars = 130
@@ -70,6 +75,15 @@ func investigateVulnerabilities(ctx context.Context, s *fwd.Session, raw json.Ra
 	if in.CVEID != "" && in.Device != "" {
 		return result.NewError(vulnerabilitiesName, "give cve_id or device, not both", fwd.Context(in.NetworkID, nil)), nil
 	}
+	switch in.View {
+	case "", "cves":
+	case "devices":
+		if err := noDevicesViewInputs(in); err != nil {
+			return result.Result{}, err
+		}
+	default:
+		return result.Result{}, fmt.Errorf("%w: view is cves or devices", ErrInvalidInput)
+	}
 	if in.Limit <= 0 {
 		in.Limit = 25
 	}
@@ -90,6 +104,8 @@ func investigateVulnerabilities(ctx context.Context, s *fwd.Session, raw json.Ra
 		limits = append(limits, "analysed a predicted snapshot, not collected state")
 	}
 	switch {
+	case in.View == "devices":
+		return vulnDevices(ctx, s, in, cx, sid, snapID, limits)
 	case in.CVEID != "":
 		return vulnOneCVE(ctx, s, in, cx, sid, snapID, limits)
 	case in.Device != "":
@@ -127,6 +143,9 @@ func vulnNetwork(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 	}
 	if index != "" {
 		limits = append(limits, "CVE index created "+index)
+	}
+	if in.InternetAddressable != nil && *in.InternetAddressable {
+		limits = append(limits, "only CVE results on internet-addressable devices are counted here; "+addressableCaveat)
 	}
 	shown := kept
 	if len(shown) > in.Limit {
@@ -180,10 +199,12 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 	}
 	exposed, unsettled := 0, 0
 	devs := d.Devices
-	nilRows := 0
+	nilRows, addressable := 0, 0
 	for _, dv := range d.Devices {
 		if dv.InternetAddressable == nil {
 			nilRows++
+		} else if *dv.InternetAddressable {
+			addressable++
 		}
 	}
 	if in.InternetAddressable != nil && len(d.Devices) > 0 && nilRows == len(d.Devices) {
@@ -214,8 +235,17 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 	if len(shown) > in.Limit {
 		shown = shown[:in.Limit]
 		limits = append(limits, fmt.Sprintf("%d devices are affected; %d shown", len(devs), in.Limit))
+		if in.InternetAddressable == nil && nilRows < len(d.Devices) {
+			limits = append(limits, fmt.Sprintf("the %d shown are ordered by vulnerability verdict, not by internet exposure, so their internet_addressable flags say nothing about the rest: %d of the %d affected devices are internet addressable; give internet_addressable: true to list those", in.Limit, addressable, len(d.Devices)))
+		}
+	}
+	if addressable > 0 || (in.InternetAddressable != nil && *in.InternetAddressable) {
+		limits = append(limits, addressableCaveat)
 	}
 	detail := cveDetail(d.CVE, singleDescChars)
+	if nilRows < len(d.Devices) {
+		detail["internet_addressable_devices"] = addressable
+	}
 	rows := make([]map[string]any, 0, len(shown))
 	for _, dv := range shown {
 		rows = append(rows, map[string]any{"device": dv.Name, "os": dv.OS, "os_version": dv.OSVersion, "result": dv.Result,

@@ -169,6 +169,30 @@ func (s *Session) SaveOrgQueryInNewDirectories(ctx context.Context, dirs []strin
 	return nil
 }
 
+// AddOrgDirectories stages the directories (top-down, each with a trailing slash) as drafts in the caller's workspace; they are committed with the queries that
+// sit in them. On a failure the ones added so far are discarded again, so nothing half-finished stays.
+func (s *Session) AddOrgDirectories(ctx context.Context, dirs []string) error {
+	var added []string
+	for _, d := range dirs {
+		if _, err := s.Client.NQERepository.AddDirectory(ctx, d); err != nil {
+			return errors.Join(err, s.DiscardOrgDirectories(ctx, added))
+		}
+		added = append(added, d)
+	}
+	return nil
+}
+
+// DiscardOrgDirectories drops directory drafts, deepest first (a parent cannot go while a child draft is under it).
+func (s *Session) DiscardOrgDirectories(ctx context.Context, dirs []string) error {
+	var errs []error
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if err := s.DiscardOrgDrafts(ctx, []string{dirs[i]}); err != nil {
+			errs = append(errs, errors.New("the uncommitted directory draft "+dirs[i]+" could not be removed: "+err.Error()))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // NQEHead returns the library's head commit id.
 func (s *Session) NQEHead(ctx context.Context) (string, error) {
 	h, _, err := s.Client.NQERepository.Head(ctx)
@@ -266,6 +290,25 @@ func (s *Session) OrgModuleSource(ctx context.Context, commitID, path string) (s
 		return "", false, err
 	}
 	return q.SourceCode, true, nil
+}
+
+// OrgModuleAt reads a saved query by path at a commit ("" is the head) with its query id; found is false when the path is not there at that commit.
+func (s *Session) OrgModuleAt(ctx context.Context, commitID, path string) (source, queryID string, found bool, err error) {
+	if commitID == "" {
+		h, herr := s.NQEHead(ctx)
+		if herr != nil {
+			return "", "", false, herr
+		}
+		commitID = h
+	}
+	q, _, err := s.Client.NQERepository.GetQuery(ctx, commitID, path)
+	if err != nil {
+		if forwardNotFound(err) {
+			return "", "", false, nil
+		}
+		return "", "", false, err
+	}
+	return q.SourceCode, string(q.QueryID), true, nil
 }
 
 // OrgQuerySourceByID reads a saved query's source by its id at a commit ("" is the head).

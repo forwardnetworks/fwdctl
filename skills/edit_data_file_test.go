@@ -108,7 +108,7 @@ func TestEditDataFileRefusesWhatItShould(t *testing.T) {
 		`{"action":"upload","name":"s.csv","file_type":"STIG","content":"x"}`:                  "fixed name",
 		`{"action":"upload","name":"s.csv","file_type":"JSON","headers":["a"],"content":"x"}`:  "CSV",
 		`{"action":"attach","name":"nope.csv","network_id":"n1"}`:                              "no data file named",
-		`{"action":"attach","name":"s.csv","network_id":"n1","file_type":"CSV"}`:                "belong to upload",
+		`{"action":"attach","name":"s.csv","network_id":"n1","file_type":"CSV"}`:               "belong to upload",
 	} {
 		_, _, err := runSkill(t, "edit-data-file", dataFilesWorld(&files), in)
 		if err == nil {

@@ -10,6 +10,7 @@
     "min_severity": { "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
     "known_exploited_only": { "type": "boolean" },
     "internet_addressable": { "type": "boolean" },
-    "limit": { "type": "integer", "minimum": 1 }
+    "limit": { "type": "integer", "minimum": 1 },
+    "view": { "enum": ["cves", "devices"], "default": "cves", "description": "devices: one row per device with its internet_addressable flag and CVE counts, in one call" }
   }
 }

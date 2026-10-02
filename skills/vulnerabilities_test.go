@@ -246,3 +246,117 @@ func TestVulnerabilitiesFiltersThatHideEveryDeviceFindingAreUnknownNotClean(t *t
 		t.Fatalf("got %s %v", r.Status, r.Limits)
 	}
 }
+
+// An unfiltered, truncated single-CVE view shows an arbitrary slice of devices (ordered by verdict, not exposure), so the count of
+// internet-addressable devices has to come from the whole list, not from what is shown.
+func TestVulnerabilitiesTruncatedCVEViewCountsAddressableDevicesAcrossTheWholeList(t *testing.T) {
+	flag := func(name string, on bool) map[string]any {
+		d := dev(name, "VULNERABLE", "VULNERABLE")
+		d["internetAddressable"] = on
+		return d
+	}
+	routes := vulnRoutes(nil)
+	routes[vulnGet] = gotCVE(flag("a", false), flag("b", false), flag("c", true), flag("d", true), flag("e", true))
+	r, _ := vuln(t, routes, cveIn(`,"limit":2`))
+	limits := strings.Join(r.Limits, " | ")
+	if !strings.Contains(limits, "3 of the 5 affected devices are internet addressable") || !strings.Contains(limits, "not by internet exposure") {
+		t.Errorf("want the whole-list count and the ordering caveat: %s", limits)
+	}
+	if r.Evidence[0].Detail["internet_addressable_devices"] != 3 {
+		t.Errorf("detail: %v", r.Evidence[0].Detail)
+	}
+	if !strings.Contains(limits, "per DEVICE, not per address") {
+		t.Errorf("a flagged device must come with the not-open caveat: %s", limits)
+	}
+}
+
+func TestVulnerabilitiesFilteredNetworkViewSaysAddressableIsPerDeviceNotOpen(t *testing.T) {
+	r, _ := vuln(t, vulnRoutes([]map[string]any{cve("CVE-2024-0001", "CRITICAL", map[string]int{"VULNERABLE": 23}, false)}), netIn+`,"internet_addressable":true}`)
+	if r.Status != result.Failed || !strings.Contains(strings.Join(r.Limits, " | "), "per DEVICE, not per address") {
+		t.Errorf("%s %v", r.Status, r.Limits)
+	}
+}
+
+const vulnDevicesRoute = "GET /api/networks/n1/device-vulnerabilities"
+
+// devCounts is one row of Forward's device-level answer; addr nil leaves internetAddressable out (exposure not computed).
+func devCounts(name string, addr *bool, sev map[string]int, res map[string]int) map[string]any {
+	m := map[string]any{"name": name, "model": "m", "osVersion": "1", "severityToCveCount": sev, "resultToCveCount": res,
+		"ageToCveCount": map[string]int{"YEAR": 1}, "hasExploitToCveCount": map[string]int{"false": 1}, "summary": "VULNERABLE"}
+	if addr != nil {
+		m["internetAddressable"] = *addr
+	}
+	return m
+}
+
+func bp(b bool) *bool { return &b }
+
+func devicesRoutes(devs ...map[string]any) map[string]fwdtest.Handler {
+	routes := vulnRoutes(nil)
+	routes[vulnDevicesRoute] = fwdtest.Const(200, map[string]any{"devices": devs, "totalDevices": 10, "indexCreatedAt": "2026-09-20T00:00:00Z"})
+	return routes
+}
+
+func TestVulnerabilitiesDevicesViewListsTheAddressableSetInOneCall(t *testing.T) {
+	routes := devicesRoutes(
+		devCounts("fw1", bp(true), map[string]int{"CRITICAL": 2, "LOW": 1}, map[string]int{"VULNERABLE": 2, "UNCONFIRMED": 1}),
+		devCounts("sw1", bp(false), map[string]int{"HIGH": 4}, map[string]int{"OS_VULNERABLE": 4}),
+		devCounts("lb1", bp(true), map[string]int{"MEDIUM": 1}, map[string]int{"UNCONFIRMED": 1}),
+	)
+	r, srv := vuln(t, routes, netIn+`,"view":"devices","internet_addressable":true}`)
+	d := r.Evidence[0].Detail
+	rows := d["devices"].([]map[string]any)
+	if len(rows) != 2 || rows[0]["device"] != "fw1" || rows[0]["worst_severity"] != "CRITICAL" || rows[0]["cves"] != 3 || rows[0]["exposed_cves"] != 2 {
+		t.Errorf("want fw1 first with 3 CVEs, worst CRITICAL, 2 exposed, and sw1 filtered out: %v", rows)
+	}
+	if d["internet_addressable_devices"] != 2 || d["not_internet_addressable_devices"] != 1 {
+		t.Errorf("counts are over every device with CVEs, not only the shown rows: %v", d)
+	}
+	if names := d["addressable_device_names"].([]string); len(names) != 2 || names[0] != "fw1" || names[1] != "lb1" {
+		t.Errorf("names %v", names)
+	}
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "2 of 3 devices with matching CVEs are internet addressable") {
+		t.Errorf("%s %s", r.Status, r.Finding)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " | "), "per DEVICE, not per address") || !strings.Contains(strings.Join(r.Limits, " | "), "not every addressable device") {
+		t.Errorf("limits %v", r.Limits)
+	}
+	if n := len(srv.Calls()); n != 2 { // the snapshot list and the one device-level call
+		t.Errorf("one device call, not one per CVE: %d calls", n)
+	}
+}
+
+func TestVulnerabilitiesDevicesViewAppliesMinSeverityFromThePerSeverityCounts(t *testing.T) {
+	routes := devicesRoutes(
+		devCounts("a", bp(true), map[string]int{"LOW": 3}, map[string]int{"VULNERABLE": 3}),
+		devCounts("b", bp(true), map[string]int{"HIGH": 1, "LOW": 2}, map[string]int{"VULNERABLE": 3}),
+	)
+	r, _ := vuln(t, routes, netIn+`,"view":"devices","min_severity":"HIGH"}`)
+	rows := r.Evidence[0].Detail["devices"].([]map[string]any)
+	if len(rows) != 1 || rows[0]["device"] != "b" || rows[0]["cves"] != 1 {
+		t.Errorf("a device with only LOW CVEs is out, and b counts only its HIGH one: %v", rows)
+	}
+}
+
+func TestVulnerabilitiesDevicesViewUnknownFlagsAreNeverReadAsNo(t *testing.T) {
+	routes := devicesRoutes(devCounts("a", nil, map[string]int{"HIGH": 1}, map[string]int{"VULNERABLE": 1}))
+	routes["GET /api/config"] = fwdtest.Const(200, map[string]any{})
+	r, _ := vuln(t, routes, netIn+`,"view":"devices","internet_addressable":true}`)
+	if r.Status != result.Unknown {
+		t.Errorf("a filter on a flag Forward did not compute is unknown, not an empty list: %s %s", r.Status, r.Finding)
+	}
+	r, _ = vuln(t, routes, netIn+`,"view":"devices"}`)
+	d := r.Evidence[0].Detail
+	if d["exposure_unknown_devices"] != 1 || d["internet_addressable_devices"] != 0 {
+		t.Errorf("unfiltered, the device is listed with its flag unknown: %v", d)
+	}
+}
+
+func TestVulnerabilitiesDevicesViewRejectsTheOtherViewsInputs(t *testing.T) {
+	if _, _, err := runSkill(t, "inspect-vulnerabilities", devicesRoutes(), netIn+`,"view":"devices","cve_id":"CVE-2024-0001"}`); err == nil {
+		t.Error("cve_id belongs to the other view")
+	}
+	if _, _, err := runSkill(t, "inspect-vulnerabilities", devicesRoutes(), netIn+`,"view":"nope"}`); err == nil {
+		t.Error("an unknown view is refused")
+	}
+}

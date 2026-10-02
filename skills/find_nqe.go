@@ -122,6 +122,7 @@ func findNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.R
 // library (FQ_ ids) is searched by find-nqe-query but its source is not read here.
 func readNQEQuery(ctx context.Context, s *fwd.Session, in findNQEInput, cx result.Context) (result.Result, error) {
 	var src, intent, id, path, commit string
+	var limits []string
 	found := false
 	if in.QueryID != "" {
 		if !strings.HasPrefix(in.QueryID, "Q_") {
@@ -135,6 +136,13 @@ func readNQEQuery(ctx context.Context, s *fwd.Session, in findNQEInput, cx resul
 		if q != nil {
 			src, intent, id, found = q.SourceCode, q.Intent, in.QueryID, true
 			commit = firstNonEmpty(in.CommitID, "head")
+			// the by-id read does not carry the library path; the head listing does. A query renamed or deleted since has no head path.
+			if p, perr := s.OrgQueryPathByID(ctx, in.QueryID); perr == nil {
+				path = p
+			}
+			if path == "" {
+				limits = append(limits, "the library path is empty: the query id is not in the head listing (renamed or deleted since), and a by-id read at a commit does not carry its path")
+			}
 		}
 	} else {
 		q, err := s.OrgQueryAt(ctx, strings.TrimSpace(in.Path), in.CommitID)
@@ -151,7 +159,7 @@ func readNQEQuery(ctx context.Context, s *fwd.Session, in findNQEInput, cx resul
 			[]string{"matched exactly by id or path against the organization's library at the head or at the commit_id given (a path is looked up among the head's paths, so a query deleted since is found by its id, not its path)"}, result.Options{NextActions: []string{"author-nqe-query"}})
 	}
 	return result.Build(findNQEName, result.OK, fmt.Sprintf("Read the saved query %s (%d bytes)", map[bool]string{true: id, false: path}[in.QueryID != ""], len(src)), result.Deterministic, cx,
-		result.Options{NextActions: []string{"validate-nqe-query", "edit-nqe-query"},
+		result.Options{NextActions: []string{"validate-nqe-query", "edit-nqe-query"}, Limits: limits,
 			Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "getQuery", nil, map[string]any{"query_id": id, "path": path, "intent": intent, "commit_id": nilIfEmpty(commit), "source": src}, "")}})
 }
 

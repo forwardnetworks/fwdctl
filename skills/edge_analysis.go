@@ -72,7 +72,10 @@ func analyzeEdge(ctx context.Context, s *fwd.Session, q EdgeQuery, snap *forward
 	var errs [4]error
 	var wg sync.WaitGroup
 	wg.Add(4)
-	go func() { defer wg.Done(); routes, total, rtrunc, errs[0] = s.RunNQEAll(ctx, q.NetworkID, sid, defaultRouteQuery, maxModelRows) }()
+	go func() {
+		defer wg.Done()
+		routes, total, rtrunc, errs[0] = s.RunNQEAll(ctx, q.NetworkID, sid, defaultRouteQuery, maxModelRows)
+	}()
 	go func() { defer wg.Done(); addrs, atrunc, _, errs[1] = loadIfaceAddrs(ctx, s, q.NetworkID, sid) }()
 	go func() { defer wg.Done(); nbrs, ntrunc, errs[2] = loadNeighbors(ctx, s, q.NetworkID, sid) }()
 	go func() { defer wg.Done(); cl, errs[3] = loadClaims(ctx, s, q.NetworkID) }()

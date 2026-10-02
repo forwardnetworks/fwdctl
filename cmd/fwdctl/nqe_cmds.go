@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"github.com/forwardnetworks/fwdctl/skills"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,7 +17,7 @@ func (a *app) nqeCmd() *cobra.Command {
 			"Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or fwdctl login). Long queries: FORWARD_TIMEOUT, FORWARD_NQE_MODE, FORWARD_NQE_WAIT (fwdctl docs troubleshooting).",
 	})
 	c.AddCommand(a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
-		a.nqeTemplate(), a.nqeRun(), a.nqeBundle(), a.nqeSynth())
+		a.nqeTemplate(), a.nqeRun(), a.nqeBundle(), a.nqeExport(), a.nqePack(), a.nqeSynth())
 	return c
 }
 
@@ -27,7 +29,7 @@ func (a *app) nqeLint() *cobra.Command {
 			"type errors, and deprecations with Forward's own advice. Exit 1 on an error. The type check is gradual (it says nothing where it cannot tell a type), so\n" +
 			"validate-nqe-query, which runs the query on Forward, is still the last word. An import of your own organization's saved query (not @fwd/...) warns rather than being\n" +
 			"checked, since that library is per-organization and not sealed into this binary: `fwdctl nqe bundle` first for full coverage of it too.\n" +
-			"Dead code is warned about, never an error (exit stays 0): a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main\n" +
+			"Dead code is warned about, never an error (exit stays 0): an import none of whose names is used (unused-import), a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main\n" +
 			"expression or an export refers to (unused-definition). Lint a `nqe bundle` to find what a whole module tree never uses; an exported definition is never called dead, since\n" +
 			"another module may import it.",
 		Example: "  fwdctl nqe lint query.nqe\n  cat query.nqe | fwdctl nqe lint -",
@@ -151,6 +153,59 @@ Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 erro
 	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions([]string{"json", "jsonl", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp))
 	_ = c.RegisterFlagCompletionFunc("network", a.completeNetworks)
 	_ = c.RegisterFlagCompletionFunc("snapshot", a.completeSnapshots)
+	return c
+}
+
+func (a *app) nqePack() *cobra.Command {
+	var o nqePackOpts
+	c := &cobra.Command{
+		Use: "pack DIR", Short: "turn a folder tree of .nqe files into the input of edit-nqe-query, to commit it to a library as ONE commit",
+		Long: `Read DIR (as nqe export writes it: <library path>.nqe files, with manifest.json when there is one) and print the edit-nqe-query input that commits the tree in ONE commit:
+{"changes": [{"path", "source"}...]}. It only reads the directory and prints JSON; the write is the skill's own dry run, so pipe the file to "fwdctl run edit-nqe-query", read the plan,
+then add "apply": true. With a manifest, stderr says which files changed since the export, which are new and which are gone (pack never deletes), and --changed-only sends just the edited
+ones. --create-directory makes missing library folders in the same commit (needed to load a tree into a library that lacks them); --typecheck has Forward type every query and every
+importer first; --basis-commit-id C (or "manifest" for the export's commit) refuses the commit if the library head is not C. A commit carries at most ` + fmt.Sprint(skills.MaxQueryChanges) + ` queries.`,
+		Example: `  fwdctl nqe pack tree/ --message "Load parser modules" --create-directory --typecheck > load.json
+  fwdctl run edit-nqe-query < load.json                       # the dry run: the plan, the lint, Forward's typecheck
+  fwdctl nqe pack tree/ --changed-only --basis-commit-id manifest > edits.json   # push only what was edited since the export`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error { return a.exit(nqePackCmd(a, args[0], o)) },
+	}
+	f := c.Flags()
+	f.StringVar(&o.message, "message", "", "the commit title")
+	f.BoolVar(&o.createDirectory, "create-directory", false, "create missing library directories in the same commit")
+	f.BoolVar(&o.typecheck, "typecheck", false, "have Forward typecheck the changed queries and their importers before committing")
+	f.StringVar(&o.basis, "basis-commit-id", "", `refuse to commit if the library head is not this commit ("manifest": the commit the tree was exported at)`)
+	f.BoolVar(&o.changedOnly, "changed-only", false, "send only files that differ from manifest.json or are not in it")
+	return c
+}
+
+func (a *app) nqeExport() *cobra.Command {
+	var o nqeExportOpts
+	c := &cobra.Command{
+		Use: "export", Short: "write the entry and every library module it imports to a folder tree that mirrors the library",
+		Long: `Write the entry query and every organization library module it imports, transitively, to a folder tree: one <query name>.nqe per query under the library path
+(/Team/Sub/Mod is DIR/Team/Sub/Mod.nqe), import statements left exactly as they are (they already name library paths, so the tree re-imports as it is), and manifest.json with each
+file's library path, query id, commit id, sha256 and imports. Unlike bundle it inlines nothing. Imports of @fwd/... are listed, not fetched. The data files the queries read
+(network.extensions.<name>) are reported in the manifest and on stderr: they are organization uploads, not part of the export. --override and --add-module behave as in bundle, and
+one that matches nothing is an error. DIR must be empty (or pass --force); --zip also writes the same files as a zip.`,
+		Example: `  fwdctl nqe export --path "/Team/Entry" --commit-id 9f3c --out export/
+  fwdctl nqe export --query-id Q_abc --out export/ --zip export.zip`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error { return a.exit(nqeExportCmd(a, o)) },
+	}
+	f := c.Flags()
+	f.StringVar(&o.queryID, "query-id", "", "the entry query, by id (its library path is read from the head listing)")
+	f.StringVar(&o.path, "path", "", "the entry query, by library path")
+	f.StringVar(&o.commit, "commit-id", "", "the library commit to read at (default: the head, recorded in the manifest)")
+	f.StringVar(&o.out, "out", "", "the directory to write (required)")
+	f.StringVar(&o.zipFile, "zip", "", "also write the files as this zip")
+	f.BoolVar(&o.force, "force", false, "write into a directory that is not empty")
+	f.StringArrayVar(&o.overrides, "override", nil, "LIBRARY_PATH=FILE: use this local file instead of the module (or the entry) at that path; repeatable")
+	f.StringArrayVar(&o.added, "add-module", nil, "LIBRARY_PATH=FILE: a module that exists only locally; repeatable")
+	c.MarkFlagsMutuallyExclusive("query-id", "path")
+	c.MarkFlagsOneRequired("query-id", "path")
+	_ = c.MarkFlagRequired("out")
 	return c
 }
 

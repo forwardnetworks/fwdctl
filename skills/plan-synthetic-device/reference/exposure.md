@@ -44,6 +44,17 @@ the license or edition does to it is **UNKNOWN** (no facet check was found on th
 6. **The result is one yes or no per device.** The store keeps **one arbitrary qualifying interface per device** (`InternetExposure.trafficReceivingInterfaces`: "if a device has multiple, one is chosen arbitrarily"). The API field is `internetAddressable` on each device (what `inspect-vulnerabilities`
    `internet_addressable` reads). It says nothing about which interface, and a firewall is flagged if **any** of its interfaces terminates a valid path.
 
+## "Internet addressable" is not "open"
+
+The flag is one yes or no **per device** (point 6 above): a device is flagged when a valid path from the internet ends on **any one** of its interfaces, and Forward keeps one arbitrary qualifying interface without saying which. It is not per address, service or port. Two consequences for a reader:
+
+- A flagged load balancer or firewall can still deny a particular VIP or port. Seen on a real network: `investigate-reachability` from the internet to an F5 virtual IP ended "reaches the destination but is denied by security policy" (`security_denied` at the device's ingress interface) while Forward flagged that same F5 internet addressable. These do not contradict each other if the device is flagged through a different interface or address than the one traced. Which one qualified is not returned, so the flag alone cannot be matched to an address.
+- To say a specific address and port is open, trace that flow: `investigate-reachability` from the internet to the exact address, protocol and port. Report `delivered` or `security_denied` from the trace, and the flag only as "the device can receive some traffic from the internet".
+
+**Not established:** whether a path Forward classifies as denied by security policy on the terminal interface itself still counts toward the flag. Forward's documentation says only that the metric is devices "receiving traffic from internet" computed from advanced reachability, and the computation runs in a worker outside the source this project reads. The F5 observation is consistent with either reading, so do not state one as fact.
+
+**Reading the CVE views.** With `internet_addressable: true` Forward keeps only addressable devices before it counts results, so every count in that view is addressable-only (checked on a real network: a CVE listed as exposing 23 devices returned 23 devices, all flagged). A CVE row with `exposed_devices: 0` under the filter has addressable devices whose verdict is unsettled (`unsettled_devices`), not exposed ones. The unfiltered single-CVE view shows only the first `limit` devices, ordered by verdict and not by exposure, so a count of flagged devices among those shown says nothing about the rest; the finding now gives the count across all affected devices.
+
 ## Why a firewall has no zone, and what the role rests on (inspect-edge, view public_addresses)
 
 Checked read-only on a real network: nearly all of its firewalls were Cisco ASA and almost all of those were virtual contexts (name differs from the physical device), and `device.securityZones` held no row. Forward models security zones only for the platforms that have them (its parsers

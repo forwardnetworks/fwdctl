@@ -30,8 +30,10 @@ commit title), optional `basis_commit_id` (the library head the edits were made 
 use them), then discards the drafts** (Forward's discard drops them: the skill refuses to stage when you already have an uncommitted draft at one of the paths, since cleaning up would drop
 it, and says when a discard failed so you can look at the NQE editor). Any new error, or a change this login may not commit, is **failed** and nothing is committed. `apply: true` re-reads the head, commits all
 paths as ONE commit, reads each path back at the new head, and returns `previous_commit_id` and `commit_id` in the evidence (the commit call itself returns none; the head is read
-afterwards). Forward has no optimistic-concurrency check, so a commit landing between the head check and the commit is not caught. This form edits and adds; it does not delete or
-create directories.
+afterwards). Forward has no optimistic-concurrency check, so a commit landing between the head check and the commit is not caught. This form edits and adds; it does not delete. A new
+query needs its enclosing directories: without `create_directory: true` the plan is **failed** and names the missing ones (nothing is changed); with it the plan lists each directory as its own
+change, the apply adds them parents first and commits them with the queries in them, and a failure while staging discards the directory drafts again (deepest first) along with the query drafts.
+To load a whole folder tree, `fwdctl nqe pack DIR` builds this input from it (the counterpart of `fwdctl nqe export`); the skill itself never reads the filesystem.
 
 ## Discarding a stray draft
 

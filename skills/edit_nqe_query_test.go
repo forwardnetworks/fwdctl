@@ -141,6 +141,10 @@ func TestFindNQEQueryReadsASavedQueryByPathAndByID(t *testing.T) {
 	if r.Status != result.OK || !strings.Contains(evText(r), "list devices") {
 		t.Fatalf("by id: %s %s", r.Status, r.Finding)
 	}
+	// the by-id read must say where the query lives (it comes from the head listing), so an export can place the file
+	if got := r.Evidence[0].Detail["path"]; got != "/Team/q" {
+		t.Errorf("by id must carry the library path, got %q", got)
+	}
 	r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","path":"/Team/none"}`)
 	if r.Status != result.Unknown {
 		t.Fatalf("a path that is not there is unknown: %s", r.Status)

@@ -42,8 +42,13 @@ func multiLibrary(head *string, dry map[string]any) (map[string]fwdtest.Handler,
 	}
 	return map[string]fwdtest.Handler{
 		"GET /api/nqe/repos/org/commits/head": func(*http.Request, []byte) (int, any) { return 200, *head },
-		"GET /api/nqe/repos/org/commits/head/queries": fwdtest.Const(200, map[string]any{"queries": []any{
-			map[string]any{"path": "/Team/a", "lastCommitId": "c0", "queryId": "Q_a"}, map[string]any{"path": "/Team/b", "lastCommitId": "c0", "queryId": "Q_b"}}}),
+		"GET /api/nqe/repos/org/commits/head/queries": func(*http.Request, []byte) (int, any) {
+			var qs []any
+			for p := range state { // committed queries only: a staged draft is not in the head listing
+				qs = append(qs, map[string]any{"path": p, "lastCommitId": "c0", "queryId": "Q_" + strings.TrimPrefix(p, "/Team/")})
+			}
+			return 200, map[string]any{"queries": qs}
+		},
 		"GET /api/nqe/repos/org/commits/c1/queries": src,
 		"GET /api/nqe/repos/org/commits/c2/queries": src,
 		"GET /api/users/current/nqe/changes": func(r *http.Request, _ []byte) (int, any) {
@@ -87,13 +92,15 @@ func multiLibrary(head *string, dry map[string]any) (map[string]fwdtest.Handler,
 				}
 				draft[path] = stageSource(body)
 				log = append(log, "edit "+path)
+			case "addDir":
+				log = append(log, "adddir "+path)
 			case "bulkDiscard":
 				for p := range draft {
 					if strings.Contains(string(body), `"`+p+`"`) {
 						delete(draft, p)
 					}
 				}
-				log = append(log, "bulkDiscard")
+				log = append(log, "bulkDiscard "+string(body))
 			default:
 				return 400, map[string]any{"message": "unexpected action " + r.URL.Query().Get("action")}
 			}
@@ -248,5 +255,56 @@ func TestEditNQEQueryDiscardsOneOfYourOwnDraftsAndNothingElse(t *testing.T) {
 	}
 	if _, _, err := runSkill(t, "edit-nqe-query", routes, `{"path":"/Team/a","discard_draft":true,"source":"x"}`); err == nil {
 		t.Errorf("discard_draft takes only path")
+	}
+}
+
+const newTreeIn = `{"changes":[{"path":"/New/Sub/c","source":"` + goodQuery + `"},{"path":"/New/d","source":"` + goodQueryB + `"},{"path":"/Team/a","source":"` + goodQueryB + `"}],"message":"load"`
+
+func TestEditNQEQueriesNewQueriesNeedTheirDirectoriesAndCreateDirectoryMakesThemInOrder(t *testing.T) {
+	head := "c1"
+	routes, _, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	// without the flag: refused before anything is written, naming the missing directories
+	r, srv := mustRun(t, "edit-nqe-query", routes, newTreeIn+`}`)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "/New/") || !strings.Contains(r.Finding, "nothing was changed") || writes(srv) != 0 || len(*log) != 0 {
+		t.Fatalf("%s %s writes=%d %v", r.Status, r.Finding, writes(srv), *log)
+	}
+	// with it, the dry run plans the directories too and still writes nothing
+	r, srv = mustRun(t, "edit-nqe-query", routes, newTreeIn+`,"create_directory":true}`)
+	dirs := 0
+	for _, c := range r.Changes {
+		if c.Action == "create_directory" {
+			dirs++
+		}
+	}
+	if r.Status != result.OK || dirs != 2 || writes(srv) != 0 {
+		t.Fatalf("dry run: %s %s dirs=%d writes=%d", r.Status, r.Finding, dirs, writes(srv))
+	}
+	// applying: parents first (/New/ before /New/Sub/), directories before the queries, ONE commit
+	r, _ = mustRun(t, "edit-nqe-query", routes, newTreeIn+`,"create_directory":true,"apply":true}`)
+	if r.Status != result.OK {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	order := strings.Join(*log, ",")
+	i1, i2, iq := strings.Index(order, "adddir /New/,"), strings.Index(order, "adddir /New/Sub/"), strings.Index(order, "add /New/Sub/c")
+	if i1 < 0 || i2 < i1 || iq < i2 || strings.Count(order, "commit") != 1 {
+		t.Errorf("want /New/ then /New/Sub/ then the queries, one commit: %s", order)
+	}
+}
+
+func TestEditNQEQueriesACreateDirectoryRunThatFailsWhileStagingLeavesNothingBehind(t *testing.T) {
+	head := "c1"
+	routes, _, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	failStage["/Team/a"] = true // the edit of an existing query fails after the directories were staged
+	_, _, err := runSkill(t, "edit-nqe-query", routes, newTreeIn+`,"create_directory":true,"apply":true}`)
+	if err == nil {
+		t.Fatal("a failed staging is an error")
+	}
+	order := strings.Join(*log, ",")
+	if strings.Contains(order, "commit") || !strings.Contains(order, "bulkDiscard") {
+		t.Errorf("nothing may be committed and the drafts must be discarded: %s", order)
+	}
+	sub, top := strings.Index(order, `bulkDiscard {"paths":["/New/Sub/"]`), strings.Index(order, `bulkDiscard {"paths":["/New/"]`)
+	if sub < 0 || top < 0 || sub > top {
+		t.Errorf("both directory drafts must be discarded again: %s", order)
 	}
 }

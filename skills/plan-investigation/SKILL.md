@@ -100,7 +100,7 @@ A playbook is a procedure (it does not run): it names the skills to call, their 
 | "Which devices' config files changed between snapshots", what lines were added or removed | `compare-device-config` |
 | "Which link overrides differ between two snapshots", which manual links one snapshot has and another lacks | `inspect-topology` (`kind: link_overrides`, `compare_to_snapshot_id`) |
 | "Which CVEs affect us", "is device X vulnerable to CVE-Y" | `inspect-vulnerabilities` |
-| Which devices are internet addressable, or why internet exposure is unavailable: disabled, blocked or never triggered | `inspect-vulnerabilities` (`internet_addressable`) |
+| Which devices are internet addressable (a device list, not CVEs), or why internet exposure is unavailable: disabled, blocked or never triggered | `inspect-vulnerabilities` (`view: devices`, `internet_addressable: true`) |
 | "What changed in X between snapshots" for a kind of data: which rows of a saved query changed, were added or removed | `find-nqe-query`, then `compare-nqe-results` |
 | Anything not covered above (custom config questions) | write an NQE query (`author-nqe-query`) and check it with `validate-nqe-query` |
 | NQE syntax or data-model questions | `author-nqe-query` |

@@ -73,9 +73,10 @@ var wideReadSkills = map[string]int{
 	"inspect-device-files":     11,
 	"investigate-reachability": 10,
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.
-	"inspect-edge":      12, // view exits | public_addresses | trace_sources
-	"inspect-inventory": 9,  // kind ip_owner adds ips
-	"verify-change":     9,  // view describe adds device
+	"inspect-edge":            12, // view exits | public_addresses | trace_sources
+	"inspect-inventory":       9,  // kind ip_owner adds ips
+	"verify-change":           9,  // view describe adds device
+	"inspect-vulnerabilities": 9,  // view devices
 }
 
 func inputCount(m Meta) int {

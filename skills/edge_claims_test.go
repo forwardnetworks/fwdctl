@@ -100,7 +100,7 @@ func edgeTwoSnaps() fwdtest.Handler {
 
 func claimedL3() map[string]fwdtest.Handler {
 	return map[string]fwdtest.Handler{
-		snapsPath: edgeTwoSnaps(),
+		snapsPath:                            edgeTwoSnaps(),
 		"GET /api/networks/n1/internet-node": fwdtest.Const(200, map[string]any{"name": "internet", "connections": []any{synConn("wan1", "po1", 698, nil)}}),
 	}
 }
