@@ -1,6 +1,7 @@
 package skills_test
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -751,5 +752,53 @@ func TestCollectionSlowViewReadsTheTaskSeriesForTheGapAndClassifiesDevicesWithNo
 	}
 	if !strings.Contains(r.Finding, "up to 0 queued and 1 running during the gap") {
 		t.Errorf("the finding reports the queue during the gap: %s", r.Finding)
+	}
+}
+
+func TestCollectionHistoryMeasuresTheNewestRowsIdleStretchAndTimedOutSubtasksAndSaysWhenItCould(t *testing.T) {
+	routes := collectionHistRoutes()
+	var devs []any
+	for i := 0; i < 6; i++ {
+		devs = append(devs, map[string]any{"deviceName": "sw" + string(rune('0'+i)), "collectionStartTime": 0, "collectionDuration": 300_000})
+	}
+	for i := 0; i < 4; i++ { // a second batch after 25 idle minutes
+		devs = append(devs, map[string]any{"deviceName": "r" + string(rune('0'+i)), "collectionStartTime": 1_800_000, "collectionDuration": 300_000})
+	}
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s5", "collectionStartTime": 0, "collectionEndTime": 2_100_000, "metrics": devs})
+	routes["GET /api/collector-tasks/P1021"] = func(r *http.Request, _ []byte) (int, any) {
+		m := map[string]any{"id": "P1021", "type": "NETWORK_COLLECTION", "status": "DONE", "startedAt": "2026-10-02T06:00:14Z", "finishedAt": "2026-10-02T09:20:39Z"}
+		if r.URL.Query().Get("for") == "ui" {
+			m["subTasks"] = []any{map[string]any{"id": "a", "description": "fw1", "status": "TIMED_OUT", "startedAt": 0, "finishedAt": 10_800_000}}
+		}
+		return 200, m
+	}
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"history"}`)
+	d := r.Evidence[0].Detail
+	rows := d["snapshots"].([]map[string]any)
+	if rows[0]["longest_idle_seconds"] != int64(1500) || rows[0]["had_idle_gap"] != true || rows[0]["subtasks_timed_out"] != 1 {
+		t.Fatalf("the newest row is measured: %v", rows[0])
+	}
+	st := d["stats"].(map[string]any)
+	if st["collections_with_an_idle_gap"] == nil || st["collections_with_timed_out_subtasks"] != 1 {
+		t.Errorf("counts over the rows measured: %v", st)
+	}
+	if !strings.Contains(r.Finding, "the latest collection went idle for 25m00s (5m00s to 30m00s)") || !strings.Contains(r.Finding, "1 of its collector subtask(s) TIMED_OUT") {
+		t.Errorf("the headline says it: %s", r.Finding)
+	}
+	// nothing can be measured: null (not zero), the counts are null, and a note says why
+	delete(routes, "GET /api/networks/n1/collection-metrics")
+	routes["GET /api/collector-tasks/P1021"] = fwdtest.Const(500, map[string]any{"message": "boom"})
+	r, _ = collect(t, routes, `{"network_id":"n1","view":"history"}`)
+	d = r.Evidence[0].Detail
+	rows = d["snapshots"].([]map[string]any)
+	if v, has := rows[0]["longest_idle_seconds"]; !has || v != nil {
+		t.Errorf("an unmeasured row is null, not zero or absent: %v", rows[0])
+	}
+	st = d["stats"].(map[string]any)
+	if st["collections_with_an_idle_gap"] != nil || st["collections_with_timed_out_subtasks"] != nil {
+		t.Errorf("counts are null when nothing was measured: %v", st)
+	}
+	if !strings.Contains(fmt.Sprint(rows[0]["notes"]), "not measured") || !strings.Contains(r.Finding, "could not be measured") {
+		t.Errorf("the row and the headline say it was not measured: %v / %s", rows[0]["notes"], r.Finding)
 	}
 }

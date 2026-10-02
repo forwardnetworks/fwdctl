@@ -30,7 +30,8 @@ type historyPoint struct {
 	task    *forward.CollectorTask
 	notes   []string
 	// gap is the longest idle stretch inside the run (from the per-device start times), read for the newest few collections only
-	gap map[string]any
+	gap         map[string]any
+	gapMeasured bool
 	// timedOut is the collector subtasks that TIMED_OUT (-1: not read), for the same newest few collections
 	timedOut int
 }
@@ -95,6 +96,30 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 					p.notes = append(p.notes, "the collector task could not be read: "+err.Error())
 				}
 			}
+			if !withGap {
+				return
+			}
+			// the newest few rows also get the idle stretch and the timed-out subtasks; a measurement that fails is a note on the row and a null, never a zero
+			switch cm, _, err := s.Client.Snapshots.CollectionMetrics(ctx, in.NetworkID, string(p.sn.ID)); {
+			case err != nil && fwd.NotFound(err):
+				p.notes = append(p.notes, "idle stretch not measured: Forward holds no per-device collection metrics for this snapshot")
+			case err != nil:
+				p.notes = append(p.notes, "idle stretch not measured: "+err.Error())
+			case cm == nil || inFlightProfile(cm) == nil:
+				p.notes = append(p.notes, "idle stretch not measured: the devices carry no collection start times")
+			default:
+				p.gapMeasured = true
+				if gaps, ok := inFlightProfile(cm)["idle_gaps"].([]map[string]any); ok {
+					p.gap = gaps[0]
+				}
+			}
+			if p.sn.CollectionTaskID == "" {
+				p.notes = append(p.notes, "subtask timeouts not measured: the snapshot records no collector task")
+			} else if es, err := taskEndStates(ctx, s, string(p.sn.CollectionTaskID)); err != nil {
+				p.notes = append(p.notes, "subtask timeouts not measured: "+err.Error())
+			} else {
+				p.timedOut, _ = es["timed_out"].(int)
+			}
 		}(pts[i], i < idleGapRows)
 	}
 	wg.Wait()
@@ -121,15 +146,17 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 			row["collected_devices"] = p.metrics.NumSuccessfulDevices
 			row["collection_failed_devices"] = p.metrics.NumCollectionFailureDevices
 		}
-		if p.gap != nil {
-			if g, ok := p.gap["idle_seconds"]; ok {
-				row["longest_idle_seconds"], row["idle_gap_from_seconds"], row["idle_gap_to_seconds"] = g, p.gap["from_seconds"], p.gap["to_seconds"]
-			} else {
+		if i < idleGapRows {
+			row["longest_idle_seconds"], row["subtasks_timed_out"] = nil, nil // null: not measured
+			if p.gapMeasured {
 				row["longest_idle_seconds"] = 0
+				if g, ok := p.gap["idle_seconds"]; ok {
+					row["longest_idle_seconds"], row["idle_gap_from_seconds"], row["idle_gap_to_seconds"] = g, p.gap["from_seconds"], p.gap["to_seconds"]
+				}
 			}
-		}
-		if p.timedOut >= 0 {
-			row["subtasks_timed_out"] = p.timedOut
+			if p.timedOut >= 0 {
+				row["subtasks_timed_out"] = p.timedOut
+			}
 		}
 		if p.task != nil {
 			row["task_id"] = string(p.task.ID)
@@ -189,18 +216,33 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 		}
 		sort.SliceStable(orphans, func(i, j int) bool { return orphans[i]["finished_at"].(string) > orphans[j]["finished_at"].(string) })
 	}
-	withGap, withTimeouts := 0, 0
+	withGap, withTimeouts, gapMeasured, timeoutMeasured := 0, 0, 0, 0
 	for _, row := range rows {
-		if v, ok := row["subtasks_timed_out"].(int); ok && v > 0 {
-			withTimeouts++
+		if v, ok := row["subtasks_timed_out"].(int); ok {
+			timeoutMeasured++
+			if v > 0 {
+				withTimeouts++
+			}
 		}
-		if v, ok := row["longest_idle_seconds"].(int64); ok && v > 0 {
-			row["had_idle_gap"] = true
-			withGap++
+		if v, ok := row["longest_idle_seconds"].(int64); ok {
+			gapMeasured++
+			if v > 0 {
+				row["had_idle_gap"] = true
+				withGap++
+			}
+		} else if _, ok := row["longest_idle_seconds"].(int); ok {
+			gapMeasured++
 		}
 	}
 	var limits []string
-	stats := map[string]any{"collections_with_an_idle_gap": withGap, "collections_with_timed_out_subtasks": withTimeouts, "collected_snapshots_in_network": len(collected), "snapshots_read": len(rows), "with_collection_duration": len(secs)}
+	var gapCount, timeoutCount any // null when no row was measured: zero would read as "none"
+	if gapMeasured > 0 {
+		gapCount = withGap
+	}
+	if timeoutMeasured > 0 {
+		timeoutCount = withTimeouts
+	}
+	stats := map[string]any{"collections_with_an_idle_gap": gapCount, "collections_with_timed_out_subtasks": timeoutCount, "rows_measured_for_idle_stretch": gapMeasured, "rows_measured_for_timed_out_subtasks": timeoutMeasured, "collected_snapshots_in_network": len(collected), "snapshots_read": len(rows), "with_collection_duration": len(secs)}
 	finding := fmt.Sprintf("%d collected snapshot(s) read of %d", len(rows), len(collected))
 	if len(secs) >= 2 {
 		sorted := append([]float64(nil), secs...)
@@ -232,18 +274,27 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 	} else {
 		limits = append(limits, "none of the snapshots read has a recorded collection duration: Forward keeps none for an imported or partially collected snapshot, or for one that is still processing")
 	}
-	if withGap > 0 {
-		finding += fmt.Sprintf("; %d of the newest %d collection(s) went idle in the middle (longest_idle_seconds): a stall, not just more work", withGap, min(idleGapRows, len(rows)))
+	if len(rows) > 0 {
+		first := rows[0]
+		if v, ok := first["longest_idle_seconds"].(int64); ok && v > 0 {
+			finding += fmt.Sprintf("; the latest collection went idle for %s (%s to %s): a stall, not just more work", dur(float64(v)), dur(float64(first["idle_gap_from_seconds"].(int64))), dur(float64(first["idle_gap_to_seconds"].(int64))))
+		}
+		if v, ok := first["subtasks_timed_out"].(int); ok && v > 0 {
+			finding += fmt.Sprintf("; %d of its collector subtask(s) TIMED_OUT (view slow names them and whether the device's own collection had finished)", v)
+		}
+		if first["longest_idle_seconds"] == nil || first["subtasks_timed_out"] == nil {
+			finding += "; the latest collection's idle stretch or subtask timeouts could not be measured (see its notes)"
+		}
 	}
-	if withTimeouts > 0 {
-		finding += fmt.Sprintf("; %d of the newest %d had collector subtasks that TIMED_OUT (subtasks_timed_out; view slow names them and whether the device's own collection had finished)", withTimeouts, min(idleGapRows, len(rows)))
+	if withGap > 0 || withTimeouts > 0 {
+		finding += fmt.Sprintf("; across the newest %d: %d went idle in the middle, %d had subtasks that timed out", min(idleGapRows, len(rows)), withGap, withTimeouts)
 	}
 	limits = append(limits,
 		"the median is over collections that may have covered very different numbers of devices: read collection_seconds next to devices before calling a run slow, since a network that grew several times over is expected to take longer",
 		"a collection's duration is Forward's own figure for the snapshot (collection_seconds); task_seconds is the collector task's start to finish and includes time outside the device collection, so the two differ",
 		"devices and devices_change are the snapshot's device count against the next older collected snapshot; a jump is a change in what the network collects, not a slower collector, and the cause (devices added, a discovery or scope change) is not recorded by Forward on the snapshot",
 		"collection_end_to_processed_seconds is the collector task's end to the snapshot being processed; a snapshot reprocessed since has lost its original processing time and shows none",
-		fmt.Sprintf("longest_idle_seconds (and where the gap is) is measured from the per-device start times of the newest %d collections only, since that record is large; an idle stretch is at least 15 minutes with fewer than one device being collected (view slow on a snapshot shows the run's shape and what started after it); a row without the field was not measured; subtasks_timed_out is Forward's count of the collector task's subtasks with status TIMED_OUT for the same rows (a subtask can time out although its device's collection finished)", idleGapRows),
+		fmt.Sprintf("longest_idle_seconds (and where the gap is) is measured from the per-device start times of the newest %d collections only, since that record is large; an idle stretch is at least 15 minutes with fewer than one device being collected (view slow on a snapshot shows the run's shape and what started after it); a null means that measurement failed (the row's notes say why), and the counts in stats are null when no row was measured; subtasks_timed_out is Forward's count of the collector task's subtasks with status TIMED_OUT for the same rows (a subtask can time out although its device's collection finished)", idleGapRows),
 		"only Forward-collected snapshots are read; reprocesses, imports and predictions are not collections. To see which devices are slow in one of these collections, run view slow on that snapshot")
 	if len(collected) > len(rows) {
 		limits = append(limits, fmt.Sprintf("%d older collected snapshot(s) were not read; raise limit (at most %d) to read more", len(collected)-len(rows), maxCollectionHistory))

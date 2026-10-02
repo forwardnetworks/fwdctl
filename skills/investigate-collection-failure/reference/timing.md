@@ -48,7 +48,7 @@ How long each recent collection took, from the snapshots themselves, so it reach
 
 Only Forward-collected snapshots count: a reprocess, an import or a prediction is not a collection. A collection whose snapshot was replaced by a reprocess (the task survives) is listed under `collections_without_a_shown_snapshot` with the task's start, end and what its snapshot became, from Forward's recent collector tasks, so a collection older than that window can be missing. It does not wait for a newer snapshot that is still processing.
 
-`longest_idle_seconds` (with where the gap is), `had_idle_gap` and `subtasks_timed_out` are measured for the newest 5 collections only, since the per-device record is large. Seen: a collection that went from 52 minutes to 1h47m and then 3h20m as its device count went from about 4,500 to 40,000.
+`longest_idle_seconds` (with where the gap is), `had_idle_gap` and `subtasks_timed_out` are measured for the newest 5 collections only, since the per-device record is large. Each of the 5 rows carries both fields; a value of null means that measurement failed (the row's `notes` say why: metrics missing, no collector task, a timeout reading a large record), never zero. `stats.collections_with_an_idle_gap` and `collections_with_timed_out_subtasks` count only measured rows and are null when none was measured; the headline says when the latest collection went idle or had subtasks that timed out, or that it could not be measured. Seen: a collection that went from 52 minutes to 1h47m and then 3h20m as its device count went from about 4,500 to 40,000.
 
 ## view logs
 
