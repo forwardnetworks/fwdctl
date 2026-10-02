@@ -227,3 +227,87 @@ func (s *Session) SnapshotLog(ctx context.Context, snapshotID, device, level str
 	_, truncated, _, err = s.Client.Snapshots.Logs(ctx, snapshotID, forward.SnapshotLogOptions{DeviceName: device, Level: level}, maxBytes, &b)
 	return b.String(), truncated, err
 }
+
+// LogScan is one pass over a device's collection log: the head of it (for paging), and what only the whole log shows: how many lines there are, the first and last
+// line, the last lines, and the lines that say a task was cancelled or timed out.
+type LogScan struct {
+	Head          string
+	HeadTruncated bool // the head was cut at the head limit; the rest was still scanned
+	StreamCut     bool // the scan itself stopped at its byte limit, so the last line is not the log's last line
+	Lines         int
+	First, Last   string
+	Tail          []string
+	Marks         []string
+}
+
+const (
+	logScanTail  = 20
+	logScanMarks = 5
+)
+
+type logScanner struct {
+	headMax int64
+	scan    *LogScan
+	head    strings.Builder
+	partial strings.Builder
+}
+
+func (w *logScanner) Write(p []byte) (int, error) {
+	if int64(w.head.Len()) < w.headMax {
+		room := int(w.headMax) - w.head.Len()
+		if len(p) <= room {
+			w.head.Write(p)
+		} else {
+			w.head.Write(p[:room])
+			w.scan.HeadTruncated = true
+		}
+	} else {
+		w.scan.HeadTruncated = true
+	}
+	for _, c := range p {
+		if c != '\n' {
+			w.partial.WriteByte(c)
+			continue
+		}
+		w.line(w.partial.String())
+		w.partial.Reset()
+	}
+	return len(p), nil
+}
+
+func (w *logScanner) line(l string) {
+	l = strings.TrimRight(l, "\r")
+	if l == "" {
+		return
+	}
+	sc := w.scan
+	sc.Lines++
+	if sc.First == "" {
+		sc.First = l
+	}
+	sc.Last = l
+	if len(sc.Tail) == logScanTail {
+		sc.Tail = sc.Tail[1:]
+	}
+	sc.Tail = append(sc.Tail, l)
+	if len(sc.Marks) < logScanMarks {
+		if low := strings.ToLower(l); strings.Contains(low, "cancel") || strings.Contains(low, "timed out") || strings.Contains(low, "timeout") {
+			sc.Marks = append(sc.Marks, l)
+		}
+	}
+}
+
+// SnapshotLogScan reads a device's whole collection log (up to scanBytes) in one pass, keeping the first headBytes of it as text and the summary of all of it.
+func (s *Session) SnapshotLogScan(ctx context.Context, snapshotID, device, level string, headBytes, scanBytes int64) (*LogScan, error) {
+	sc := &LogScan{}
+	w := &logScanner{headMax: headBytes, scan: sc}
+	_, truncated, _, err := s.Client.Snapshots.Logs(ctx, snapshotID, forward.SnapshotLogOptions{DeviceName: device, Level: level}, scanBytes, w)
+	if err != nil {
+		return nil, err
+	}
+	if w.partial.Len() > 0 {
+		w.line(w.partial.String())
+	}
+	sc.Head, sc.StreamCut = w.head.String(), truncated
+	return sc, nil
+}

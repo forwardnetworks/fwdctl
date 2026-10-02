@@ -17,7 +17,8 @@ import (
 
 const (
 	defaultActivityWindow = 7 * 24 * time.Hour
-	activityFetch         = 2000 // records read to summarise; the rows shown are a page of them
+	activityPage          = forward.AuditLogMaxLimit
+	activityMaxRecords    = 30000 // records read to summarise; the rows shown are a page of them
 )
 
 var sinceRe = regexp.MustCompile(`^(\d+)([dhm])$`)
@@ -45,6 +46,21 @@ func accessActivity(ctx context.Context, s *fwd.Session, in inspectAccessInput, 
 	start, err := parseSince(in.Since, time.Now())
 	if err != nil {
 		return result.Result{}, err
+	}
+	var until time.Time
+	if in.Until != "" {
+		if until, err = parseSince(in.Until, time.Now()); err != nil {
+			return result.Result{}, fmt.Errorf("%w: until is a span back from now (2d), or an RFC 3339 time", ErrInvalidInput)
+		}
+		if !until.After(start) {
+			return result.Result{}, fmt.Errorf("%w: until must be after since", ErrInvalidInput)
+		}
+	}
+	status := strings.ToLower(strings.TrimSpace(in.Status))
+	switch status {
+	case "", "ok", "failed":
+	default:
+		return result.Result{}, fmt.Errorf("%w: status is ok (2xx and 3xx) or failed (4xx and 5xx)", ErrInvalidInput)
 	}
 	method := strings.ToUpper(strings.TrimSpace(in.Method))
 	switch method {
@@ -88,42 +104,69 @@ func accessActivity(ctx context.Context, s *fwd.Session, in inspectAccessInput, 
 			return result.NewUnknown(inspectAccessName, fmt.Sprintf("No user %q", in.User), cx, []string{fmt.Sprintf("%d users were read; none has that id, username or email", len(users))}, result.Options{})
 		}
 	}
-	logs, _, err := s.Client.AuditLogs.List(ctx, forward.AuditLogListOptions{StartTime: start, HTTPMethod: method, TargetURI: prefix, UserID: userID, Limit: activityFetch})
-	if err != nil {
-		return accessError(err, cx, "read the audit log")
+	var all []forward.AuditLogRecord
+	var total int64
+	for len(all) < activityMaxRecords {
+		page, _, perr := s.Client.AuditLogs.List(ctx, forward.AuditLogListOptions{StartTime: start, EndTime: until, HTTPMethod: method, TargetURI: prefix, UserID: userID, Limit: activityPage, Offset: len(all)})
+		if perr != nil {
+			return accessError(perr, cx, "read the audit log")
+		}
+		total = page.Paging.Total
+		all = append(all, page.Records...)
+		if len(page.Records) < activityPage || int64(len(all)) >= total {
+			break
+		}
 	}
-	recs := logs.Records
+	readAll := int64(len(all)) >= total
+	recs := all
+	if status != "" {
+		kept := recs[:0:0]
+		for _, r := range recs {
+			if failed := r.HTTPResponseCode >= 400; failed == (status == "failed") {
+				kept = append(kept, r)
+			}
+		}
+		recs = kept
+	}
 	limits = append(limits,
 		"the audit log records who called which route, from which address, when, and with what response code; it records no request bodies, so it cannot say WHICH devices or settings a call changed",
 		"it records POST, PUT, PATCH and DELETE, and a GET only on the few routes marked for auditing; a route can opt out of auditing, so no record is not proof nothing happened. Collector requests and failed logins are not in it, and only authenticated users are",
 		"a 4xx or 5xx code is an attempt that failed; a 2xx DELETE on a device route is a deletion. Sensitive query values (password, token, secret) are stored as <redacted>, and a route longer than 2048 characters is cut",
+		"the log records no request or response sizes and no item counts, so a batch call (deleteBatch, a POST of many devices) cannot be sized from it; what a batch changed is read by diffing the device lists of two snapshots (inspect-inventory kind devices with compare_to_snapshot_id)",
 		"route is matched as a case-insensitive PREFIX of the stored path, which has no /api in front; a match on 'contains' or 'ends with' is not possible, so filter by prefix and method and read the rows")
 	if len(recs) == 0 {
-		return result.NewUnknown(inspectAccessName, "No audited request matches", cx, append(limits, fmt.Sprintf("the window starts %s; widen since, loosen the route prefix or method, or ask a login that may view the audit log", start.Format("2006-01-02 15:04 UTC"))), result.Options{})
+		return result.NewUnknown(inspectAccessName, "No audited request matches", cx, append(limits, fmt.Sprintf("the window starts %s; widen since, loosen the route prefix or method, or ask a login that may view the audit log", start.UTC().Format("2006-01-02 15:04 UTC"))), result.Options{})
 	}
-	byUser, byMethod, byClass := map[string]int{}, map[string]int{}, map[string]int{}
+	byUser, byMethod, byClass, byDay, byRoute := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
 	rows := make([]map[string]any, 0, len(recs))
 	for _, r := range recs {
 		who := firstNonEmpty(names[string(r.UserID)], string(r.UserID), "(unauthenticated)")
 		byUser[who]++
 		byMethod[r.HTTPMethod]++
 		byClass[strconv.Itoa(r.HTTPResponseCode/100)+"xx"]++
+		byDay[r.Time.UTC().Format("2006-01-02")]++
+		byRoute[r.HTTPMethod+" "+routeShape(r.TargetURI)]++
 		row := map[string]any{"time": r.Time.UTC().Format(time.RFC3339), "user": who, "method": r.HTTPMethod, "route": r.TargetURI, "status": r.HTTPResponseCode, "from": r.RemoteIP}
 		if r.Impersonated {
 			row["impersonated"] = true
 		}
 		rows = append(rows, row)
 	}
-	total := logs.Paging.Total
-	if total > int64(len(recs)) {
-		limits = append(limits, fmt.Sprintf("%d audited requests match; the newest %d were read and summarised (by_user, by_method and by_outcome cover those)", total, len(recs)))
+	if !readAll {
+		limits = append(limits, fmt.Sprintf("%d audited requests match the time, route, method and user filters; the newest %d were read, so every count below covers only those (narrow since or until to see the rest)", total, len(all)))
+	}
+	if status != "" {
+		limits = append(limits, fmt.Sprintf("status %s is applied here after reading, to the records read", status))
 	}
 	win, wl, ok := window(rows, in.Limit, in.Offset, 25, 200, "requests")
 	if !ok {
 		return result.NewUnknown(inspectAccessName, fmt.Sprintf("Offset %d is beyond the %d requests read", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
 	limits = append(limits, wl...)
-	finding := fmt.Sprintf("%d audited request(s) since %s", total, start.Format("2006-01-02"))
+	finding := fmt.Sprintf("%d audited request(s) since %s", len(recs), start.UTC().Format("2006-01-02"))
+	if !until.IsZero() {
+		finding += " until " + until.UTC().Format("2006-01-02 15:04Z")
+	}
 	if prefix != "" {
 		finding += " under " + prefix
 	}
@@ -134,8 +177,8 @@ func accessActivity(ctx context.Context, s *fwd.Session, in inspectAccessInput, 
 		finding += fmt.Sprintf("; %d failed (4xx/5xx)", failed)
 	}
 	finding += fmt.Sprintf("; newest %s, oldest read %s", rows[0]["time"], rows[len(rows)-1]["time"])
-	detail := map[string]any{"total_matching": total, "read": len(recs), "since": start.UTC().Format(time.RFC3339), "route_prefix": prefix, "method": method,
-		"by_user": topDeviceCountRowsNamed(byUser, 10, "requests"), "by_method": byMethod, "by_outcome": byClass, "offset": in.Offset, "requests": win}
+	detail := map[string]any{"total_matching": len(recs), "read_from_forward": len(all), "since": start.UTC().Format(time.RFC3339), "route_prefix": prefix, "method": method,
+		"until": nilIfEmpty(until.UTC().Format(time.RFC3339)), "by_user": topDeviceCountRowsNamed(byUser, 10, "requests"), "by_method": byMethod, "by_outcome": byClass, "by_day": sortedCounts(byDay, false), "by_route": topDeviceCountRowsNamed(byRoute, 15, "requests"), "offset": in.Offset, "requests": win}
 	return result.Build(inspectAccessName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-access", "inspect-collection"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "getAuditLogs", nil, detail, finding)}})
 }
@@ -158,6 +201,45 @@ func topDeviceCountRowsNamed(m map[string]int, n int, key string) []map[string]a
 			break
 		}
 		out = append(out, map[string]any{"name": k, key: m[k]})
+	}
+	return out
+}
+
+// routeShape is a route without its query and with numeric ids and long hashes as {id}, so requests to the same endpoint group together; the network id is kept.
+func routeShape(uri string) string {
+	if i := strings.IndexByte(uri, '?'); i >= 0 {
+		q := uri[i:]
+		uri = uri[:i]
+		if a := regexp.MustCompile(`action=([A-Za-z]+)`).FindStringSubmatch(q); a != nil {
+			uri += "?action=" + a[1]
+		}
+	}
+	parts := strings.Split(uri, "/")
+	for i, p := range parts {
+		if i >= 3 && (idRe.MatchString(p) || len(p) > 24) {
+			parts[i] = "{id}"
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+var idRe = regexp.MustCompile(`^[0-9a-f-]{8,}$|^\d+$`)
+
+// sortedCounts is a count map as rows in key order (byCount false) or biggest first.
+func sortedCounts(m map[string]int, byCount bool) []map[string]any {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if byCount && m[keys[i]] != m[keys[j]] {
+			return m[keys[i]] > m[keys[j]]
+		}
+		return keys[i] < keys[j]
+	})
+	out := make([]map[string]any, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, map[string]any{"name": k, "requests": m[k]})
 	}
 	return out
 }

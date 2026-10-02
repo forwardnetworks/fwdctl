@@ -279,6 +279,10 @@ func TestCollectionLogsViewNeedsADeviceAndWindowsTheLines(t *testing.T) {
 	if r.Status != result.OK || r.Evidence[0].Detail["lines_read"] != 2 {
 		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Evidence)
 	}
+	lg := r.Evidence[0].Detail["log"].(map[string]any)
+	if lg["last_line"] != "2026-09-01 ERROR timed out" || lg["lines_in_log"] != 2 || len(lg["cancel_or_timeout_lines"].([]string)) != 1 {
+		t.Errorf("the whole-log summary gives the last line and the timeout line: %v", lg)
+	}
 	r, _ = collect(t, routes, `{"network_id":"n1","view":"logs","device":"other"}`)
 	if r.Status != result.Unknown {
 		t.Fatalf("an empty log is not proof of a clean collection: %s", r.Status)
@@ -657,5 +661,78 @@ func TestCollectionHistoryListsACollectionWhoseSnapshotWasReplacedByAReprocess(t
 	}
 	if !strings.Contains(r.Finding, "1 more collection(s) ran whose snapshot is not shown") {
 		t.Errorf("finding: %s", r.Finding)
+	}
+}
+
+func TestCollectionSlowViewTiesAGapToThePerDeviceTimeoutAndListsDevicesWithNoRecordedCollection(t *testing.T) {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	var devs []any
+	for i := 0; i < 6; i++ {
+		devs = append(devs, map[string]any{"deviceName": "sw" + string(rune('0'+i)), "deviceType": "SWITCH", "connTypeDisplayName": "SSH", "collectionStartTime": 0, "collectionDuration": 300_000})
+	}
+	for i := 0; i < 4; i++ { // the second batch starts exactly at the 30 minute per-device timeout
+		devs = append(devs, map[string]any{"deviceName": "r" + string(rune('0'+i)), "deviceType": "ROUTER", "connTypeDisplayName": "Cisco IOS-XE", "collectionStartTime": 1_800_000, "collectionDuration": 300_000})
+	}
+	// a firewall that started and never recorded a duration
+	devs = append(devs, map[string]any{"deviceName": "fw1", "deviceType": "PAN_OS", "connTypeDisplayName": "SSH", "collectionStartTime": 60_000})
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s1", "collectionStartTime": 0, "collectionEndTime": 2_100_000, "metrics": devs})
+	routes["GET /api/collection-settings"] = fwdtest.Const(200, map[string]any{"deviceCollectionTimeoutMinutes": 30})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow"}`)
+	st := r.Evidence[0].Detail["stats"].(map[string]any)
+	nd := st["no_recorded_duration"].(map[string]any)
+	shown := nd["shown"].([]map[string]any)
+	if nd["devices"] != 1 || shown[0]["device"] != "fw1" || shown[0]["start_offset_seconds"] != int64(60) {
+		t.Errorf("fw1 has no recorded collection: %v", nd)
+	}
+	if !strings.Contains(r.Finding, "30m00s per-device collection timeout") || !strings.Contains(r.Finding, "1 device(s) have no recorded collection") {
+		t.Errorf("the finding ties the gap to the timeout and counts devices without a duration: %s", r.Finding)
+	}
+	if st["org_collection_settings"].(map[string]any)["idle_gap_ends_at_the_timeout"] != true {
+		t.Errorf("%v", st["org_collection_settings"])
+	}
+	if first := st["in_flight"].(map[string]any)["started_after_the_longest_gap"].(map[string]any)["first_devices"].([]string); len(first) != 4 {
+		t.Errorf("names of the late starters: %v", first)
+	}
+}
+
+func TestCollectionSlowViewReadsTheTaskSeriesForTheGapAndClassifiesDevicesWithNoCollection(t *testing.T) {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	snap := fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")
+	snap["collectionTaskId"] = "500"
+	routes[snapsPath] = fwdtest.Snapshots(snap)
+	var devs []any
+	for i := 0; i < 6; i++ {
+		devs = append(devs, map[string]any{"deviceName": "sw" + string(rune('0'+i)), "deviceType": "SWITCH", "connTypeDisplayName": "SSH", "collectionStartTime": 0, "collectionDuration": 300_000})
+	}
+	for i := 0; i < 4; i++ {
+		devs = append(devs, map[string]any{"deviceName": "r" + string(rune('0'+i)), "deviceType": "ROUTER", "connTypeDisplayName": "Cisco IOS-XE", "collectionStartTime": 1_800_000, "collectionDuration": 300_000})
+	}
+	devs = append(devs, map[string]any{"deviceName": "fw1", "deviceType": "PAN_OS", "connTypeDisplayName": "SSH", "collectionStartTime": 60_000})
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s1", "collectionStartTime": 0, "collectionEndTime": 2_100_000, "metrics": devs})
+	routes["GET /api/collector-tasks"] = func(r *http.Request, _ []byte) (int, any) {
+		if r.URL.Query().Get("snapshotId") == "" {
+			return 200, []any{}
+		}
+		return 200, map[string]any{"timestamps": []int64{0, 200_000, 400_000, 1_000_000, 1_700_000, 1_800_000},
+			"queued": []int{0, 0, 0, 0, 0, 0}, "running": []int{7, 7, 1, 1, 1, 4}, "concurrency": []int{7, 7, 1, 1, 1, 4}, "succeeded": []int{0, 0, 6, 6, 6, 6},
+			"concurrencyLimits": map[string]any{"global": 128}}
+	}
+	routes["GET /api/collector-tasks/P500"] = fwdtest.Const(200, map[string]any{"id": "P500", "status": "FINISHED", "subTasks": []any{
+		map[string]any{"id": "a", "description": "fw1", "status": "TIMED_OUT", "startedAt": 60_000, "finishedAt": 10_860_000},
+		map[string]any{"id": "b", "description": "r9", "status": "CANCELED", "startedAt": 0, "finishedAt": 120_000}}})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow"}`)
+	st := r.Evidence[0].Detail["stats"].(map[string]any)
+	q := st["queue"].(map[string]any)
+	g := q["during_the_longest_idle_gap"].(map[string]any)
+	if g["max_queued"] != 0 || g["max_running"] != 1 || q["concurrency_limit"] != 128 {
+		t.Errorf("one device was still running in the gap and nothing queued: %v", q)
+	}
+	es := st["no_recorded_duration"].(map[string]any)["end_states"].(map[string]any)
+	bad := es["failed_timed_out_or_cancelled"].([]map[string]any)
+	if len(bad) != 2 || bad[0]["status"] != "CANCELED" || bad[1]["device"] != "fw1" || bad[1]["ran_seconds"] != 10800.0 {
+		t.Errorf("fw1 ran its full 3h and timed out: %v", bad)
+	}
+	if !strings.Contains(r.Finding, "up to 0 queued and 1 running during the gap") {
+		t.Errorf("the finding reports the queue during the gap: %s", r.Finding)
 	}
 }

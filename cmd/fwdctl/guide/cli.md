@@ -485,6 +485,7 @@ Flags:
       --input string    JSON file with the skill inputs (default: stdin)
       --list string     with --format table or csv: print this list (the key it sits under, such as by_vendor) instead of the largest; the others are named on stderr
       --ops             include the log of Forward calls the skill made (audit data; omitted by default to save tokens)
+      --quiet           with --format table or csv: print only the status line on stderr, not the limits and the other lists (the limits still matter: read them once)
 ```
 
 ## fwdctl update

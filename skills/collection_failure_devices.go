@@ -250,6 +250,7 @@ func unmodelledNeighbors(ctx context.Context, s *fwd.Session, in collectionInput
 
 const (
 	maxLogBytes     = 512 << 10
+	maxLogScanBytes = 64 << 20
 	defaultLogLines = 100
 	maxLogLines     = 500
 )
@@ -268,7 +269,7 @@ func deviceLog(ctx context.Context, s *fwd.Session, in collectionInput, cx resul
 	if strings.TrimSpace(in.Device) == "" {
 		return result.Result{}, fmt.Errorf("%w: view logs needs device (the name the device was collected under)", ErrInvalidInput)
 	}
-	text, trunc, err := s.SnapshotLog(ctx, fwd.SnapshotID(cx), in.Device, level, maxLogBytes)
+	scan, err := s.SnapshotLogScan(ctx, fwd.SnapshotID(cx), in.Device, level, maxLogBytes, maxLogScanBytes)
 	if fwd.NotFound(err) || fwd.NotAcceptable(err) {
 		return result.NewUnknown(collectionFailureName, "Forward holds no collection log for this snapshot", cx,
 			[]string{"Forward answered 404 or 406 for the log: an imported, forked or reprocessed snapshot keeps no collection log (a 406 is Forward refusing its own JSON error page for a text request, so the real cause is not stated); nothing was read. The log of the snapshot that was collected is the one to ask for"}, result.Options{NextActions: []string{"inspect-snapshots"}})
@@ -276,7 +277,7 @@ func deviceLog(ctx context.Context, s *fwd.Session, in collectionInput, cx resul
 	if err != nil {
 		return result.Result{}, err
 	}
-	text = strings.TrimRight(text, "\n")
+	text, trunc := strings.TrimRight(scan.Head, "\n"), scan.HeadTruncated
 	if text == "" {
 		return result.NewUnknown(collectionFailureName, fmt.Sprintf("No %s-or-higher log lines for %s", level, in.Device), cx,
 			[]string{"the log is empty at this level, or the device name is not the one it was collected under (Forward matches the requested name exactly): that is not proof the collection was clean. Try failure INFO, or find the name with view devices or slow"}, result.Options{})
@@ -293,6 +294,12 @@ func deviceLog(ctx context.Context, s *fwd.Session, in collectionInput, cx resul
 	limits = append(limits, "log lines are Forward's own collection log for this device at "+level+" and above; they can quote commands and device output, so do not paste them into an issue or a public place")
 	finding := fmt.Sprintf("%d %s-or-higher log line(s) for %s", len(lines), level, in.Device)
 	d := map[string]any{"device": in.Device, "level": level, "lines_read": len(lines), "offset": in.Offset, "lines": win}
+	// what only the whole log shows: its length, its last line and time, and any line that says the device was cancelled or timed out
+	d["log"] = map[string]any{"lines_in_log": scan.Lines, "first_line": scan.First, "last_line": scan.Last, "last_lines": scan.Tail, "cancel_or_timeout_lines": scan.Marks}
+	if scan.StreamCut {
+		limits = append(limits, fmt.Sprintf("the log is longer than %d MiB, so last_line is where the scan stopped, not the end of the log", maxLogScanBytes>>20))
+	}
+	limits = append(limits, "log.last_line and its time (the line's first token) say where the device's log ends; a log that ends mid-work with no line about cancelling or timing out is not proof the device hung. At level WARN the last line is the last WARN, so give failure INFO to see the real end. cancel_or_timeout_lines are the first lines that mention it (Forward's own wording is not documented)")
 	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
 		NextActions: []string{"inspect-device-files", "inspect-collection"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "getSnapshotLogs", cx.SnapshotID, d, finding)}})

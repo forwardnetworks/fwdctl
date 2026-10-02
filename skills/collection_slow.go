@@ -13,6 +13,9 @@ import (
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
+// maxNoDuration is how many devices without a recorded collection are listed by name.
+const maxNoDuration = 50
+
 type slowAgg struct {
 	durs    []int64
 	sum     int64
@@ -32,9 +35,29 @@ type slowSummary struct {
 	m                      *forward.SnapshotCollectionMetrics
 }
 
+// runOrigin is the start of the run in Forward's clock: the collection's own start when it precedes every device, else the first device's start. ok is false when no device has one.
+func runOrigin(m *forward.SnapshotCollectionMetrics) (int64, bool) {
+	var first int64 = math.MaxInt64
+	for _, d := range m.Devices {
+		if d.CollectionStartTimeMillis != nil {
+			first = min(first, *d.CollectionStartTimeMillis)
+		}
+	}
+	if first == math.MaxInt64 {
+		return 0, false
+	}
+	if m.CollectionStartTimeMillis != nil && *m.CollectionStartTimeMillis <= first {
+		first = *m.CollectionStartTimeMillis
+	}
+	return first, true
+}
+
 func summariseSlow(m *forward.SnapshotCollectionMetrics, filter string) *slowSummary {
 	sm := &slowSummary{m: m, stats: map[string]any{}, errorsByType: map[string]int{}}
 	var durs []int64
+	origin, haveOrigin := runOrigin(m)
+	var noDur []map[string]any
+	noDurByType := map[string]int{}
 	for _, d := range m.Devices {
 		if filter != "" && !strings.Contains(strings.ToLower(d.DeviceName), strings.ToLower(filter)) {
 			continue
@@ -50,6 +73,16 @@ func summariseSlow(m *forward.SnapshotCollectionMetrics, filter string) *slowSum
 		}
 		if d.SlowestCommandDurationMillis != nil {
 			row["slowest_command_ms"] = *d.SlowestCommandDurationMillis
+		}
+		if haveOrigin && d.CollectionStartTimeMillis != nil {
+			row["start_offset_seconds"] = (*d.CollectionStartTimeMillis - origin) / 1000
+		}
+		if d.CollectionDurationMillis == nil {
+			noDurByType[firstNonEmpty(d.DeviceType, "(no type)")]++
+			if len(noDur) < maxNoDuration {
+				noDur = append(noDur, map[string]any{"device": d.DeviceName, "device_type": d.DeviceType, "connection": d.ConnTypeDisplayName, "error": noneIsNil(d.Error),
+					"start_offset_seconds": row["start_offset_seconds"], "slowest_command": nilIfEmpty(d.SlowestCommand)})
+			}
 		}
 		if e, ok := row["error"].(string); ok {
 			sm.errs++
@@ -82,6 +115,9 @@ func summariseSlow(m *forward.SnapshotCollectionMetrics, filter string) *slowSum
 	if len(sm.errorsByType) > 0 {
 		sm.stats["errors_by_type"] = sm.errorsByType
 	}
+	if n := sm.devices - sm.timed; n > 0 {
+		sm.stats["no_recorded_duration"] = map[string]any{"devices": n, "by_device_type": noDurByType, "shown": noDur}
+	}
 	return sm
 }
 
@@ -112,6 +148,10 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		limits = append(limits, "Forward recorded no collection start and end for this snapshot, so the implied parallelism (total device time over wall time) is not computed")
 	}
 	concurrency, concDefault := 0, false
+	var timeout map[string]any
+	var timeoutMs int64
+	gapAtTimeout := false
+	atTimeout := 0
 	if in.Device == "" {
 		if name, conc, isDefault, cerr := s.CollectorConcurrency(ctx, in.NetworkID); cerr != nil {
 			limits = append(limits, "the collector's configured concurrency could not be read ("+cerr.Error()+"), so implied_parallelism has nothing to be compared with")
@@ -122,8 +162,26 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 				stats["concurrency_in_use_percent"] = sm.parallelism / float64(conc) * 100
 			}
 		}
+		if os, _, oerr := s.Client.Collectors.GetOrganizationSettings(ctx); oerr != nil {
+			limits = append(limits, "the organization's collection settings could not be read ("+oerr.Error()+"), so the per-device collection timeout is not compared with the run")
+		} else if os != nil {
+			tm := forward.DefaultDeviceCollectionTimeoutMinutes
+			if os.DeviceCollectionTimeoutMins != nil {
+				tm = *os.DeviceCollectionTimeoutMins
+			}
+			timeout = map[string]any{"device_collection_timeout_minutes": tm, "is_default": os.DeviceCollectionTimeoutMins == nil, "collection_retries": os.CollectionRetries, "retry_delay_ms": os.CollectionRetryDelayMillis}
+			stats["org_collection_settings"] = timeout
+			timeoutMs = int64(tm) * 60_000
+			for _, d := range m.Devices {
+				if d.CollectionDurationMillis != nil && *d.CollectionDurationMillis >= timeoutMs*98/100 {
+					atTimeout++
+				}
+			}
+			timeout["devices_that_ran_to_the_timeout"] = atTimeout
+		}
 		if prof := inFlightProfile(m); prof != nil {
 			stats["in_flight"] = prof
+			addQueue(ctx, s, in, cx, m, prof, stats, &limits)
 		} else {
 			limits = append(limits, "the devices carry no collection start time, so how many were in flight over the run is not computed")
 		}
@@ -152,6 +210,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		"in_flight counts a device from its recorded start to its recorded end, and that start can be when the device was handed to the collector rather than when it got a slot, so the count can exceed the collector's configured concurrency (seen: 1,788 in the first five minutes against 1,024); read it as 'started and not finished', and use idle_gaps and finished_by_seconds for the shape of the run",
 		"in_flight is built from each device's own start time and duration: devices_in_flight is the average number collecting during each bucket, and finished_by_seconds says when 50%, 90%, 99% and all of the devices had finished. It shows WHEN concurrency fell (a slow start, a mid-run stall, a long tail); it does not say why, which Forward does not record",
 		"errors_by_type counts every error class on the devices, including ones Forward tags on devices it did not collect (for example LICENSE_EXHAUSTED); the snapshot's collection-failure count (investigate-collection-failure view summary) was seen to leave such devices out, so the two totals need not agree",
+		"org_collection_settings is the organization's device collection timeout (Forward's default is 180 minutes; the collector cancels a device that runs that long) and retry settings; a gap ending at the timeout after the run began, or devices_that_ran_to_the_timeout above zero, says devices were held until the timeout. A device with no recorded duration was cancelled, timed out or never collected: its log (view logs, level INFO) says which. The settings may differ per collector; only the organization's are read",
 		"durations are milliseconds; Forward keeps only each device's slowest command (not every command), and a device with no duration has no recorded collection. error is the collection and processing error merged, so it is every error class, not only failures. For what a device did, read its log (view logs).")
 	finding := fmt.Sprintf("%d device(s); slowest collection %s", sm.devices, sm.rows[0]["device"])
 	if v, ok := sm.rows[0]["collection_ms"].(int64); ok {
@@ -179,6 +238,14 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	if prof, ok := stats["in_flight"].(map[string]any); ok {
 		if gaps, ok := prof["idle_gaps"].([]map[string]any); ok {
 			g := gaps[0]
+			if timeoutMs > 0 {
+				// a gap that ends within 2% (or 2 minutes) of the per-device timeout after the run began is probably devices held until Forward cut them off
+				to := g["to_seconds"].(int64) * 1000
+				if d := to - timeoutMs; d > -max(timeoutMs/50, 120_000) && d < max(timeoutMs/50, 120_000) {
+					timeout["idle_gap_ends_at_the_timeout"] = true
+					gapAtTimeout = true
+				}
+			}
 			finding += fmt.Sprintf("; NOTHING was being collected for %s (%s to %s)", dur(float64(g["idle_seconds"].(int64))), dur(float64(g["from_seconds"].(int64))), dur(float64(g["to_seconds"].(int64))))
 			if a, ok := prof["started_after_the_longest_gap"].(map[string]any); ok && a["devices"].(int) > 0 {
 				finding += fmt.Sprintf(", then %d more devices started", a["devices"])
@@ -187,6 +254,21 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 				}
 			}
 		}
+	}
+	if q, ok := stats["queue"].(map[string]any); ok {
+		if g, ok := q["during_the_longest_idle_gap"].(map[string]any); ok {
+			if g["max_queued"].(int) == 0 && g["max_running"].(int) == 0 {
+				finding += "; Forward's task series shows nothing queued or running during the gap"
+			} else {
+				finding += fmt.Sprintf("; Forward's task series shows up to %d queued and %d running during the gap (the concurrency limit is %d)", g["max_queued"], g["max_running"], q["concurrency_limit"])
+			}
+		}
+	}
+	if gapAtTimeout {
+		finding += fmt.Sprintf(" (the gap ends at the %s per-device collection timeout after the run began: devices that never finished were probably held until Forward cut them off)", dur(float64(timeoutMs)/1000))
+	}
+	if nd, ok := stats["no_recorded_duration"].(map[string]any); ok {
+		finding += fmt.Sprintf("; %d device(s) have no recorded collection (no_recorded_duration)", nd["devices"])
 	}
 	if cmp != nil {
 		finding += "; " + cmp.summary
@@ -216,10 +298,7 @@ func inFlightProfile(m *forward.SnapshotCollectionMetrics) map[string]any {
 	if len(spans) == 0 {
 		return nil
 	}
-	origin := first
-	if m.CollectionStartTimeMillis != nil && *m.CollectionStartTimeMillis <= first {
-		origin = *m.CollectionStartTimeMillis
-	}
+	origin, _ := runOrigin(m)
 	wall := last - origin
 	if wall <= 0 {
 		return nil
@@ -279,12 +358,15 @@ func inFlightProfile(m *forward.SnapshotCollectionMetrics) map[string]any {
 		end := gaps[0]["to_seconds"].(int64) * 1000
 		type key struct{ typ, conn string }
 		after, counts := 0, map[key]int{}
+		var names []string
 		for _, d := range m.Devices {
 			if d.CollectionStartTimeMillis != nil && d.CollectionDurationMillis != nil && *d.CollectionStartTimeMillis-origin >= end {
 				after++
 				counts[key{d.DeviceType, d.ConnTypeDisplayName}]++
+				names = append(names, d.DeviceName)
 			}
 		}
+		sort.Strings(names)
 		var ks []key
 		for k := range counts {
 			ks = append(ks, k)
@@ -302,7 +384,7 @@ func inFlightProfile(m *forward.SnapshotCollectionMetrics) map[string]any {
 			}
 			top = append(top, map[string]any{"device_type": k.typ, "connection": k.conn, "devices": counts[k]})
 		}
-		out["started_after_the_longest_gap"] = map[string]any{"devices": after, "most_common": top}
+		out["started_after_the_longest_gap"] = map[string]any{"devices": after, "most_common": top, "first_devices": names[:min(len(names), 10)]}
 	}
 	return out
 }
@@ -497,3 +579,4 @@ func errorLabel(e string) string {
 	}
 	return e
 }
+

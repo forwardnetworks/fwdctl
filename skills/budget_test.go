@@ -76,7 +76,7 @@ var wideReadSkills = map[string]int{
 	"inspect-edge":                   12, // view exits | public_addresses | trace_sources
 	"inspect-inventory":              10, // kind ip_owner adds ips; kind devices adds compare_to_snapshot_id
 	"verify-change":                  9,  // view describe adds device
-	"inspect-access":                 10, // view activity adds since and method
+	"inspect-access":                 12, // view activity adds since, until, method and status
 	"investigate-collection-failure": 9,  // view slow adds compare_to_snapshot_id
 	"inspect-vulnerabilities":        9,  // view devices
 }

@@ -33,7 +33,9 @@ type inspectAccessInput struct {
 	Offset int    `json:"offset"`
 	// Since (a span such as 7d, or an RFC 3339 time) and Method narrow view activity.
 	Since  string `json:"since"`
+	Until  string `json:"until"`
 	Method string `json:"method"`
+	Status string `json:"status"`
 }
 
 // inspectAccess answers "what can this login do, why was something refused, who has access". It reads: Forward's session (the roles in effect for this login, ACG grants and

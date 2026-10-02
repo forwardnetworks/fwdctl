@@ -204,8 +204,8 @@ func TestAccessActivitySummarisesAuditRecordsAndSaysWhatTheyCannotProve(t *testi
 	routes["GET /api/audit-logs"] = func(r *http.Request, _ []byte) (int, any) {
 		q = r.URL.RawQuery
 		return 200, map[string]any{"records": []map[string]any{
-			{"time": "2026-10-01T10:00:00Z", "userId": "u-bob", "httpMethod": "DELETE", "targetUri": "/networks/N1/classic-devices/r1", "httpResponseCode": 204, "remoteIp": "192.0.2.1"},
-			{"time": "2026-10-01T09:00:00Z", "userId": "u-bob", "httpMethod": "POST", "targetUri": "/networks/N1/classic-devices", "httpResponseCode": 403, "remoteIp": "192.0.2.1"},
+			{"timestamp": "2026-10-01T10:00:00Z", "userId": "u-bob", "httpMethod": "DELETE", "targetUri": "/networks/N1/classic-devices/r1", "httpResponseCode": 204, "remoteIp": "192.0.2.1"},
+			{"timestamp": "2026-10-01T09:00:00Z", "userId": "u-bob", "httpMethod": "POST", "targetUri": "/networks/N1/classic-devices", "httpResponseCode": 403, "remoteIp": "192.0.2.1"},
 		}, "paging": map[string]any{"total": 2}}
 	}
 	r, _ := mustRun(t, "inspect-access", routes, `{"view":"activity","network_id":"N1","match":"classic-devices","user":"bob@example.test","since":"48h"}`)
@@ -220,6 +220,16 @@ func TestAccessActivitySummarisesAuditRecordsAndSaysWhatTheyCannotProve(t *testi
 	}
 	if !strings.Contains(strings.Join(r.Limits, "|"), "no request bodies") {
 		t.Errorf("limits: %v", r.Limits)
+	}
+	r, _ = mustRun(t, "inspect-access", routes, `{"view":"activity","status":"failed","until":"2026-10-02T00:00:00Z","since":"2026-09-01T00:00:00Z"}`)
+	b = jsonOf(r)
+	for _, want := range []string{`"by_day":[{"name":"2026-10-01","requests":1}]`, `POST /networks/N1/classic-devices`, "endTime=2026-10-02"} {
+		if !strings.Contains(b, want) && !strings.Contains(q, want) {
+			t.Errorf("missing %s in %s / %s", want, b, q)
+		}
+	}
+	if strings.Contains(b, "DELETE /networks") || !strings.Contains(strings.Join(r.Limits, "|"), "no request or response sizes") {
+		t.Errorf("status failed keeps only the 4xx/5xx rows and says sizes are not recorded: %s", b)
 	}
 	routes["GET /api/audit-logs"] = fwdtest.Const(200, map[string]any{"records": []any{}, "paging": map[string]any{"total": 0}})
 	if r, _ = mustRun(t, "inspect-access", routes, `{"view":"activity"}`); r.Status != result.Unknown {

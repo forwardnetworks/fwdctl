@@ -52,7 +52,7 @@
     "since": {
       "type": "string",
       "minLength": 1,
-      "description": "activity: how far back, as a span (7d, 48h, 90m) or an RFC 3339 time; default 7d"
+      "description": "activity: start of the window, as a span back from now (7d, 48h, 90m) or an RFC 3339 time; default 7d"
     },
     "method": {
       "type": "string",
@@ -69,6 +69,19 @@
         "get"
       ],
       "description": "activity: only this HTTP method (a change is POST, PUT, PATCH or DELETE)"
+    },
+    "until": {
+      "type": "string",
+      "minLength": 1,
+      "description": "activity: end of the window, as a span back from now or an RFC 3339 time; default now"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "failed"
+      ],
+      "description": "activity: only requests that succeeded (2xx, 3xx) or failed (4xx, 5xx)"
     }
   }
 }

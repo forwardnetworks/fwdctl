@@ -24,6 +24,8 @@ type app struct {
 	session  func() (*fwd.Session, error)
 	conn     connOptions
 	top      string
+	// quiet drops the limit and other-list lines a table or CSV prints on stderr (the status line stays)
+	quiet bool
 }
 
 // connOptions are the connection flags every command accepts; applyConnectionOptions turns them (and the saved login) into the environment a session reads.
@@ -373,7 +375,7 @@ func (a *app) installCmd() *cobra.Command {
 // runCmd is `fwdctl run <skill>`: the skill's inputs as one JSON object on stdin (or --input FILE), the result envelope on stdout.
 func (a *app) runCmd() *cobra.Command {
 	var file, format, list string
-	var withOps bool
+	var withOps, quiet bool
 	c := &cobra.Command{
 		Use: "run <skill>", GroupID: "skills", Short: "run a skill: inputs as JSON on stdin, the result on stdout",
 		Long: "Run a skill. Reads the skill's inputs as a JSON object from --input FILE or stdin and prints the result envelope (status, evidence, limits, next actions).\n" +
@@ -389,12 +391,14 @@ func (a *app) runCmd() *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			a.quiet = quiet
 			return a.exit(a.runSkill(args[0], file, format, list, withOps))
 		},
 	}
 	c.Flags().StringVar(&file, "input", "", "JSON file with the skill inputs (default: stdin)")
 	c.Flags().StringVar(&format, "format", "json", "json (the whole result), or table or csv (the largest list of rows in the evidence, or the one --list names)")
 	c.Flags().StringVar(&list, "list", "", "with --format table or csv: print this list (the key it sits under, such as by_vendor) instead of the largest; the others are named on stderr")
+	c.Flags().BoolVar(&quiet, "quiet", false, "with --format table or csv: print only the status line on stderr, not the limits and the other lists (the limits still matter: read them once)")
 	c.Flags().BoolVar(&withOps, "ops", false, "include the log of Forward calls the skill made (audit data; omitted by default to save tokens)")
 	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions([]string{"json", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp))
 	// `run <skill> --help` is the skill's own help: what it answers, its inputs, an example
@@ -493,11 +497,13 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 		}
 		if len(rows) > 0 {
 			fmt.Fprintf(a.err, "status: %s; %s (%d rows from %s)\n", r.Status, r.Finding, len(rows), where)
-			if len(others) > 0 {
+			if len(others) > 0 && !a.quiet {
 				fmt.Fprintf(a.err, "other lists in this result (--list NAME prints one): %s\n", strings.Join(others, ", "))
 			}
 			for _, l := range r.Limits {
-				fmt.Fprintf(a.err, "limit: %s\n", l)
+				if !a.quiet {
+					fmt.Fprintf(a.err, "limit: %s\n", l)
+				}
 			}
 			if err := renderRows(a.out, rows, format); err != nil {
 				return fail("%v", err)
