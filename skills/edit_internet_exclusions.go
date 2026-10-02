@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -26,7 +27,20 @@ type editInternetExclusionsInput struct {
 	Apply              bool      `json:"apply"`
 }
 
-// reservedBlocks are the ranges Forward treats as not public for the internet node (private, loopback, link-local, CGNAT, documentation-free reserved).
+// forwardReservedBlocks are the ranges Forward's IpSubnetAddress.RESERVED_SUBNETS treats as not public (base/packet/IpSubnetAddress.java): multicast, future use 240/4, RFC 1918, 0/8,
+// loopback, link-local, shared/CGNAT 100.64/10, IETF 192.0.0/24, the three documentation blocks, benchmarking 198.18/15, 6to4 relay 192.88.99/24, and for IPv6 multicast,
+// link-local, unique local and the documentation block. Forward rejects an entry that lies ENTIRELY inside one of these; a wider block that mixes reserved and public space is accepted.
+var forwardReservedBlocks = func() []netip.Prefix {
+	var out []netip.Prefix
+	for _, s := range []string{"224.0.0.0/4", "240.0.0.0/4", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "0.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16", "100.64.0.0/10", "192.0.0.0/24",
+		"192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "198.18.0.0/15", "192.88.99.0/24", "ff00::/8", "fe80::/10", "fc00::/7", "2001:db8::/32"} {
+		out = append(out, netip.MustParsePrefix(s))
+	}
+	return out
+}()
+
+// reservedBlocks are the ranges inspect-edge treats as not public when it asks whether a next hop is a public address: broader than Forward's rule for excluded subnets (see
+// forwardReservedBlocks), and it leaves the documentation blocks alone so that synthetic fixtures can use them.
 var reservedBlocks = func() []netip.Prefix {
 	var out []netip.Prefix
 	for _, s := range []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16", "224.0.0.0/3", "::/8", "fc00::/7", "fe80::/10", "ff00::/8"} {
@@ -53,26 +67,40 @@ func normalizeExclusion(s string) (string, error) {
 	if p.Masked() != p {
 		return "", fmt.Errorf("%q has host bits set (did you mean %s?)", s, p.Masked())
 	}
-	for _, r := range reservedBlocks {
-		if r.Overlaps(p) {
-			return "", fmt.Errorf("%q overlaps private or reserved space %s; the internet node routes public addresses only", s, r)
+	for _, r := range forwardReservedBlocks {
+		if r.Bits() <= p.Bits() && r.Contains(p.Addr()) {
+			return "", fmt.Errorf("%q lies inside %s, which is private or reserved space", s, r)
 		}
 	}
 	return p.String(), nil
 }
 
+// normalizeExclusions normalizes every entry and refuses the whole list naming EVERY rejected entry (up to 20, then a count), so one dry run shows all of them.
 func normalizeExclusions(in []string) ([]string, error) {
 	seen := map[string]bool{}
 	out := []string{}
+	var bad []string
 	for _, s := range in {
 		n, err := normalizeExclusion(s)
 		if err != nil {
-			return nil, err
+			bad = append(bad, err.Error())
+			continue
 		}
 		if !seen[n] {
 			seen[n] = true
 			out = append(out, n)
 		}
+	}
+	if len(bad) > 0 {
+		shown := bad[:min(len(bad), 20)]
+		msg := fmt.Sprintf("%d of %d entries are not acceptable: %s", len(bad), len(in), strings.Join(shown, "; "))
+		if len(bad) > len(shown) {
+			msg += fmt.Sprintf("; and %d more", len(bad)-len(shown))
+		}
+		if len(in) > 100 {
+			msg += ". A long list usually comes from a routing-table dump, which can hold private, shared, benchmarking (198.18.0.0/15), documentation or multicast ranges: filter those out first"
+		}
+		return nil, errors.New(msg)
 	}
 	sort.Strings(out)
 	return out, nil

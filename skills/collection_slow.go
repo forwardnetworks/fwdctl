@@ -210,7 +210,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		"in_flight counts a device from its recorded start to its recorded end, and that start can be when the device was handed to the collector rather than when it got a slot, so the count can exceed the collector's configured concurrency (seen: 1,788 in the first five minutes against 1,024); read it as 'started and not finished', and use idle_gaps and finished_by_seconds for the shape of the run",
 		"in_flight is built from each device's own start time and duration: devices_in_flight is the average number collecting during each bucket, and finished_by_seconds says when 50%, 90%, 99% and all of the devices had finished. It shows WHEN concurrency fell (a slow start, a mid-run stall, a long tail); it does not say why, which Forward does not record",
 		"errors_by_type counts every error class on the devices, including ones Forward tags on devices it did not collect (for example LICENSE_EXHAUSTED); the snapshot's collection-failure count (investigate-collection-failure view summary) was seen to leave such devices out, so the two totals need not agree",
-		"org_collection_settings is the organization's device collection timeout (Forward's default is 180 minutes; the collector cancels a device that runs that long) and retry settings; a gap ending at the timeout after the run began, or devices_that_ran_to_the_timeout above zero, says devices were held until the timeout. A device with no recorded duration was cancelled, timed out or never collected: its log (view logs, level INFO) says which. The settings may differ per collector; only the organization's are read",
+		"org_collection_settings is the organization's device collection timeout (Forward's default is 180 minutes; the collector cancels a device that runs that long) and retry settings; a gap ending at the timeout after the run began only means devices were held when devices_that_ran_to_the_timeout is above zero; at zero, something that is not a recorded device held the run. A device with no recorded duration was cancelled, finished early, timed out or never collected (seen: most finished normally within minutes): its log (view logs, level INFO) says which, and so does no_recorded_duration.end_states when the task's subtasks could be read. The settings may differ per collector; only the organization's are read",
 		"durations are milliseconds; Forward keeps only each device's slowest command (not every command), and a device with no duration has no recorded collection. error is the collection and processing error merged, so it is every error class, not only failures. For what a device did, read its log (view logs).")
 	finding := fmt.Sprintf("%d device(s); slowest collection %s", sm.devices, sm.rows[0]["device"])
 	if v, ok := sm.rows[0]["collection_ms"].(int64); ok {
@@ -265,10 +265,14 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		}
 	}
 	if gapAtTimeout {
-		finding += fmt.Sprintf(" (the gap ends at the %s per-device collection timeout after the run began: devices that never finished were probably held until Forward cut them off)", dur(float64(timeoutMs)/1000))
+		if atTimeout > 0 {
+			finding += fmt.Sprintf(" (the gap ends at the %s per-device collection timeout after the run began, and %d device(s) ran to it)", dur(float64(timeoutMs)/1000), atTimeout)
+		} else {
+			finding += fmt.Sprintf(" (the gap ends at the %s per-device collection timeout after the run began, but NO device ran to it: a task that is not a recorded device, or something it depends on, held the run; stats.running_in_the_gap names what was running)", dur(float64(timeoutMs)/1000))
+		}
 	}
 	if nd, ok := stats["no_recorded_duration"].(map[string]any); ok {
-		finding += fmt.Sprintf("; %d device(s) have no recorded collection (no_recorded_duration)", nd["devices"])
+		finding += fmt.Sprintf("; %d device(s) ended without a recorded collection duration (no_recorded_duration: cancelled, finished early or never collected; stats say which when the task's subtasks could be read)", nd["devices"])
 	}
 	if cmp != nil {
 		finding += "; " + cmp.summary
@@ -350,7 +354,7 @@ func inFlightProfile(m *forward.SnapshotCollectionMetrics) map[string]any {
 	}
 	gaps := idleGaps(avgs, bucket)
 	out := map[string]any{"bucket_seconds": bucket / 1000, "devices_with_start_time": len(spans), "peak_devices_in_flight": math.Round(peak*10) / 10,
-		"peak_at_seconds": int64(peakAt) * bucket / 1000, "seconds_to_reach_90_percent_of_peak": int64(ramp) * bucket / 1000, "buckets": buckets,
+		"peak_at_seconds": int64(peakAt) * bucket / 1000, "seconds_to_reach_90_percent_of_peak": int64(ramp) * bucket / 1000, "in_flight_buckets": buckets,
 		"finished_by_seconds": map[string]float64{"p50": at(0.5), "p90": at(0.9), "p99": at(0.99), "max": float64(ends[len(ends)-1]) / 1000}}
 	if len(gaps) > 0 {
 		out["idle_gaps"] = gaps
@@ -579,4 +583,3 @@ func errorLabel(e string) string {
 	}
 	return e
 }
-

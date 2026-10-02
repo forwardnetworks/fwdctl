@@ -556,7 +556,7 @@ func slowProfileRoutes(endsAtMs int64, firstBatchMs int64) map[string]fwdtest.Ha
 func TestCollectionSlowViewShowsWhenConcurrencyFellNotJustTheAverage(t *testing.T) {
 	r, _ := collect(t, slowProfileRoutes(1_200_000, 300_000), `{"network_id":"n1","view":"slow"}`)
 	prof := r.Evidence[0].Detail["stats"].(map[string]any)["in_flight"].(map[string]any)
-	bk := prof["buckets"].([]map[string]any)
+	bk := prof["in_flight_buckets"].([]map[string]any)
 	got := []any{}
 	for _, b := range bk {
 		got = append(got, b["devices_in_flight"])
@@ -684,7 +684,7 @@ func TestCollectionSlowViewTiesAGapToThePerDeviceTimeoutAndListsDevicesWithNoRec
 	if nd["devices"] != 1 || shown[0]["device"] != "fw1" || shown[0]["start_offset_seconds"] != int64(60) {
 		t.Errorf("fw1 has no recorded collection: %v", nd)
 	}
-	if !strings.Contains(r.Finding, "30m00s per-device collection timeout") || !strings.Contains(r.Finding, "1 device(s) have no recorded collection") {
+	if !strings.Contains(r.Finding, "NO device ran to it") || !strings.Contains(r.Finding, "1 device(s) ended without a recorded collection duration") {
 		t.Errorf("the finding ties the gap to the timeout and counts devices without a duration: %s", r.Finding)
 	}
 	if st["org_collection_settings"].(map[string]any)["idle_gap_ends_at_the_timeout"] != true {
@@ -717,9 +717,14 @@ func TestCollectionSlowViewReadsTheTaskSeriesForTheGapAndClassifiesDevicesWithNo
 			"queued": []int{0, 0, 0, 0, 0, 0}, "running": []int{7, 7, 1, 1, 1, 4}, "concurrency": []int{7, 7, 1, 1, 1, 4}, "succeeded": []int{0, 0, 6, 6, 6, 6},
 			"concurrencyLimits": map[string]any{"global": 128}}
 	}
-	routes["GET /api/collector-tasks/P500"] = fwdtest.Const(200, map[string]any{"id": "P500", "status": "FINISHED", "subTasks": []any{
-		map[string]any{"id": "a", "description": "fw1", "status": "TIMED_OUT", "startedAt": 60_000, "finishedAt": 10_860_000},
-		map[string]any{"id": "b", "description": "r9", "status": "CANCELED", "startedAt": 0, "finishedAt": 120_000}}})
+	routes["GET /api/collector-tasks/P500"] = func(r *http.Request, _ []byte) (int, any) {
+		if r.URL.Query().Get("view") == "subtasks" {
+			return 200, []any{map[string]any{"id": "v", "description": "Cisco SD-WAN vsmart family", "status": "RUNNING", "startedAt": 0, "operation": "show omp routes"}}
+		}
+		return 200, map[string]any{"id": "P500", "status": "FINISHED", "subTasks": []any{
+			map[string]any{"id": "a", "description": "fw1", "status": "TIMED_OUT", "startedAt": 60_000, "finishedAt": 10_860_000},
+			map[string]any{"id": "b", "description": "r9", "status": "CANCELED", "startedAt": 0, "finishedAt": 120_000}}}
+	}
 	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow"}`)
 	st := r.Evidence[0].Detail["stats"].(map[string]any)
 	q := st["queue"].(map[string]any)
@@ -731,6 +736,10 @@ func TestCollectionSlowViewReadsTheTaskSeriesForTheGapAndClassifiesDevicesWithNo
 	bad := es["failed_timed_out_or_cancelled"].([]map[string]any)
 	if len(bad) != 2 || bad[0]["status"] != "CANCELED" || bad[1]["device"] != "fw1" || bad[1]["ran_seconds"] != 10800.0 {
 		t.Errorf("fw1 ran its full 3h and timed out: %v", bad)
+	}
+	run := st["running_in_the_gap"].(map[string]any)
+	if run["subtasks_in_progress"] != 1 || run["subtasks"].([]map[string]any)[0]["description"] != "Cisco SD-WAN vsmart family" {
+		t.Errorf("the subtask running mid-gap is named: %v", run)
 	}
 	if !strings.Contains(r.Finding, "up to 0 queued and 1 running during the gap") {
 		t.Errorf("the finding reports the queue during the gap: %s", r.Finding)

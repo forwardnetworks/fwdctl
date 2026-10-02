@@ -377,28 +377,28 @@ func inetRoutes(held bool, initial []any) map[string]fwdtest.Handler {
 }
 
 func TestEditInternetExclusionsShowsTheWholeListWritesItOnceAndVerifies(t *testing.T) {
-	cur := []any{"198.51.100.0/24"}
-	r, srv := mustRun(t, "edit-internet-exclusions", inetRoutes(true, cur), `{"network_id":"n1","add":["198.18.0.0/16","198.19.0.0/16"]}`)
-	if r.Status != result.OK || r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(fmt.Sprint(r.Changes[0].Before), "198.51.100.0/24") ||
-		!strings.Contains(fmt.Sprint(r.Changes[0].After), "198.51.100.0/24") || !strings.Contains(fmt.Sprint(r.Changes[0].After), "198.19.0.0/16") {
+	cur := []any{"45.0.0.0/24"}
+	r, srv := mustRun(t, "edit-internet-exclusions", inetRoutes(true, cur), `{"network_id":"n1","add":["44.1.0.0/16","44.2.0.0/16"]}`)
+	if r.Status != result.OK || r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(fmt.Sprint(r.Changes[0].Before), "45.0.0.0/24") ||
+		!strings.Contains(fmt.Sprint(r.Changes[0].After), "45.0.0.0/24") || !strings.Contains(fmt.Sprint(r.Changes[0].After), "44.2.0.0/16") {
 		t.Fatalf("dry run keeps the existing entry and sends nothing: %s %s %+v writes=%d", r.Status, r.Finding, r.Changes, writes(srv))
 	}
-	r, srv = mustRun(t, "edit-internet-exclusions", inetRoutes(true, cur), `{"network_id":"n1","add":["198.18.0.0/16"],"apply":true}`)
+	r, srv = mustRun(t, "edit-internet-exclusions", inetRoutes(true, cur), `{"network_id":"n1","add":["44.1.0.0/16"],"apply":true}`)
 	if r.Status != result.OK || !r.Changes[0].Applied || writes(srv) != 1 {
 		t.Fatalf("apply: %s %s writes=%d", r.Status, r.Finding, writes(srv))
 	}
 	for _, c := range srv.Calls() {
-		if c.Method == "PATCH" && fmt.Sprint(c.Body["subnetsToExclude"]) != "[198.18.0.0/16 198.51.100.0/24]" {
+		if c.Method == "PATCH" && fmt.Sprint(c.Body["subnetsToExclude"]) != "[44.1.0.0/16 45.0.0.0/24]" {
 			t.Errorf("the write must carry the WHOLE list, got %v", c.Body)
 		}
 		if c.Method == "PATCH" && len(c.Body) != 1 {
 			t.Errorf("only subnetsToExclude may be sent: %v", c.Body)
 		}
 	}
-	if r, _ := mustRun(t, "edit-internet-exclusions", inetRoutes(false, cur), `{"network_id":"n1","add":["198.18.0.0/16"],"apply":true}`); r.Status != result.Failed {
+	if r, _ := mustRun(t, "edit-internet-exclusions", inetRoutes(false, cur), `{"network_id":"n1","add":["44.1.0.0/16"],"apply":true}`); r.Status != result.Failed {
 		t.Fatalf("a list Forward did not keep is failed: %s", r.Status)
 	}
-	if r, srv := mustRun(t, "edit-internet-exclusions", inetRoutes(true, cur), `{"network_id":"n1","add":["198.51.100.0/24"],"apply":true}`); r.Status != result.OK || writes(srv) != 0 {
+	if r, srv := mustRun(t, "edit-internet-exclusions", inetRoutes(true, cur), `{"network_id":"n1","add":["45.0.0.0/24"],"apply":true}`); r.Status != result.OK || writes(srv) != 0 {
 		t.Fatalf("already excluded is a no-op: %s writes=%d", r.Status, writes(srv))
 	}
 	r, _ = mustRun(t, "edit-internet-exclusions", inetRoutes(true, cur), `{"network_id":"n1","set":[]}`)
@@ -433,5 +433,21 @@ func TestEditSyntheticQueryDiffsTheConnectionsAndWarnsWhenTheUndoIsGone(t *testi
 	}
 	if r.Changes[0].Reversible || !strings.Contains(r.Changes[0].Undo, "cannot be undone") || !strings.Contains(strings.Join(r.Limits, " "), "UNDO IS NOT POSSIBLE") {
 		t.Errorf("an undo to a query the library lost must be stated before the change: %+v %v", r.Changes[0], r.Limits)
+	}
+}
+
+func TestEditInternetExclusionsDryRunNamesEveryEntryForwardWouldRefuse(t *testing.T) {
+	cur := []any{"45.0.0.0/24"}
+	_, _, err := runSkill(t, "edit-internet-exclusions", inetRoutes(true, cur), `{"network_id":"n1","set":["44.1.0.0/16","198.18.0.0/16","198.19.0.0/16","10.1.0.0/16","203.0.113.0/24","192.168.0.0/15"]}`)
+	if err == nil {
+		t.Fatal("private, benchmarking and documentation blocks must be refused at plan time")
+	}
+	for _, want := range []string{"4 of 6 entries", "198.18.0.0/16", "198.19.0.0/16", "10.1.0.0/16", "203.0.113.0/24"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal names every bad entry; missing %q in %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "192.168.0.0/15") {
+		t.Errorf("a block that mixes reserved and public space is accepted by Forward: %v", err)
 	}
 }

@@ -64,7 +64,7 @@ func queueProfile(p *forward.SnapshotTaskProgress, origin time.Time, bucketSecon
 		b := buckets[k]
 		rows = append(rows, map[string]any{"offset_seconds": k * bucketSeconds, "max_queued": b.q, "max_running": b.r, "max_slots_held": b.c})
 	}
-	out := map[string]any{"samples": n, "bucket_seconds": bucketSeconds, "peak_queued": peakQ, "peak_running": peakR, "concurrency_limit": p.ConcurrencyLimits.Global, "buckets": rows}
+	out := map[string]any{"samples": n, "bucket_seconds": bucketSeconds, "peak_queued": peakQ, "peak_running": peakR, "concurrency_limit": p.ConcurrencyLimits.Global, "queue_buckets": rows}
 	if haveGap {
 		out["during_the_longest_idle_gap"] = map[string]any{"from_seconds": gap[0], "to_seconds": gap[1], "max_queued": gq, "max_running": gr, "max_slots_held": gc}
 	}
@@ -139,8 +139,8 @@ func addQueue(ctx context.Context, s *fwd.Session, in collectionInput, cx result
 		stats["queue"] = qp
 		*limits = append(*limits, "queue is Forward's own series of devices queued, running and holding concurrency slots, sampled at Forward's intervals and bucketed here by the highest value in each bucket; running at the concurrency limit means the limit was the ceiling, running far below it with devices queued means something other than the global limit held work back (a jump server or vCenter cap, or a dispatch delay), and nothing queued and nothing running is an idle collector")
 	}
-	nd, ok := stats["no_recorded_duration"].(map[string]any)
-	if !ok {
+	nd, hasND := stats["no_recorded_duration"].(map[string]any)
+	if !hasND && gap[1] <= gap[0] {
 		return
 	}
 	snaps, err := s.Snapshots(ctx, in.NetworkID)
@@ -151,6 +151,12 @@ func addQueue(ctx context.Context, s *fwd.Session, in collectionInput, cx result
 		if string(sn.ID) != snapID || sn.CollectionTaskID == "" {
 			continue
 		}
+		if gap[1] > gap[0] {
+			stats["running_in_the_gap"] = runningAt(ctx, s, string(sn.CollectionTaskID), time.UnixMilli(origin).Add(time.Duration(gap[0]+(gap[1]-gap[0])/2)*time.Second), time.UnixMilli(origin), limits)
+		}
+		if !hasND {
+			continue
+		}
 		es, err := taskEndStates(ctx, s, string(sn.CollectionTaskID))
 		if err != nil {
 			*limits = append(*limits, "the collector task's subtasks could not be read, so the devices with no recorded collection are not classified as timed out or cancelled: "+err.Error())
@@ -159,4 +165,30 @@ func addQueue(ctx context.Context, s *fwd.Session, in collectionInput, cx result
 		nd["end_states"] = es
 		*limits = append(*limits, "end_states counts the collector task's subtasks that did not simply succeed (Forward lists running, failed, timed-out and cancelled ones first, up to a cap): TIMED_OUT and CANCELED are Forward's own status, and a timed-out device's ran_seconds should match the per-device collection timeout; subtasks waiting in the queue are never listed")
 	}
+}
+
+// runningAt lists the collector subtasks in progress at an instant (started by then, not finished before it): what Forward was working on, by its own description, when the device
+// view shows nothing collecting. A subtask is usually one device but can be a batch of interdependent devices or a controller; its description says which.
+func runningAt(ctx context.Context, s *fwd.Session, taskID string, at, origin time.Time, limits *[]string) any {
+	if !strings.HasPrefix(taskID, "P") {
+		taskID = "P" + taskID
+	}
+	subs, _, err := s.Client.CollectorTasks.SubTasksAt(ctx, taskID, at)
+	if err != nil {
+		*limits = append(*limits, "the collector subtasks running in the gap could not be read: "+err.Error())
+		return nil
+	}
+	rows := []map[string]any{}
+	for i, st := range subs {
+		if i == maxEndStateShown {
+			break
+		}
+		row := map[string]any{"description": st.Description, "status": st.Status, "operation": nilIfEmpty(st.Operation), "note": nilIfEmpty(st.Note), "started_offset_seconds": int64(st.StartedAt.Sub(origin).Seconds())}
+		if !st.FinishedAt.IsZero() {
+			row["finished_offset_seconds"] = int64(st.FinishedAt.Sub(origin).Seconds())
+		}
+		rows = append(rows, row)
+	}
+	*limits = append(*limits, "running_in_the_gap is every collector subtask in progress at the middle of the longest idle gap (first 50, oldest start first), by Forward's own description: usually one device, but a controller or a family of interdependent devices (for example a Viptela vSmart with its edges, an ACI fabric, an F5 or ASA family) is collected as ONE subtask whose devices start inside it, so the devices' start times can trail the subtask's")
+	return map[string]any{"at_offset_seconds": int64(at.Sub(origin).Seconds()), "subtasks_in_progress": len(subs), "subtasks": rows}
 }
