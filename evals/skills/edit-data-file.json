@@ -1,0 +1,42 @@
+{
+ "skill": "edit-data-file",
+ "cases": [
+  {
+   "query": "Upload this CSV of site owners so I can join it in a query",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-data-file action upload dry run: name, file_type CSV, content",
+    "says it is organization-wide and that no SDK route deletes a file yet",
+    "does not apply without approval"
+   ]
+  },
+  {
+   "query": "Attach the sites data file to network 1001",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-data-file action attach dry run: name, network_id",
+    "says the effect starts on the network's next snapshot",
+    "undo is detach"
+   ]
+  },
+  {
+   "query": "Detach the sites data file from network 1001",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-data-file action detach dry run",
+    "says it reads MISSING once detached",
+    "undo is attach"
+   ]
+  },
+  {
+   "query": "What data files does this organization have, and what columns does sites.csv have?",
+   "should_trigger": false,
+   "note": "inspect-collection view config with data_file"
+  },
+  {
+   "query": "Upload a new STIG policy file",
+   "should_trigger": false,
+   "note": "refused: the STIG policy file has a fixed name and its own template, not handled by this skill"
+  }
+ ]
+}

@@ -62,5 +62,13 @@
  {
   "query": "Give user alice the OPERATOR role on network 1001",
   "skill": "edit-access"
+ },
+ {
+  "query": "Attach the data file sites.csv to network 1001",
+  "skill": "edit-data-file"
+ },
+ {
+  "query": "Run a connectivity test on data connector weather-feed",
+  "skill": "edit-data-connector"
  }
 ]

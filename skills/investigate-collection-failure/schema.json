@@ -16,6 +16,7 @@
     "view": {
       "enum": [
         "summary",
+        "triage",
         "devices",
         "platforms",
         "changes",

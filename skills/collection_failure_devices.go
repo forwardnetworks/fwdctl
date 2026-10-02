@@ -184,6 +184,10 @@ func failureDevices(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 func unmodelledNeighbors(ctx context.Context, s *fwd.Session, in collectionInput, cx result.Context) (result.Result, error) {
 	missing, err := s.MissingDevices(ctx, in.NetworkID, fwd.SnapshotID(cx))
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr == nil {
+			// a timeout against Forward, not a cancelled request: this one call can take minutes on a very large network, raise FORWARD_TIMEOUT rather than retry blind
+			return result.Result{}, fmt.Errorf("reading unmodelled neighbours failed (it is one REST call with no paging; on a large network it can run past the HTTP timeout): %w; FORWARD_TIMEOUT=10m raises the per-call limit", err)
+		}
 		return result.Result{}, err
 	}
 	if len(missing) == 0 {

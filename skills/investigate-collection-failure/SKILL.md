@@ -21,12 +21,18 @@ affects. The answer is read from Forward's own snapshot metrics and task records
 
 `network_id`. Optional `snapshot_id` (default: the newest snapshot in **any** state, since a
 failed collection is the point) and `view`: `summary` (default) counts failures by cause and takes
-`collector_task_id`; `devices` names the failed devices and takes `failure` (a category such as
+`collector_task_id`; `triage` is first contact with a network — one call merging `summary`, the slowest devices and the worst-failing platform group, takes no inputs of its own; `devices` names the failed devices and takes `failure` (a category such as
 `credentials`, `network_path`, `device_session`, `unclassified`, `processing`, or a type such as
 `CONNECTION_REFUSED`), `device` (name contains) and `limit`/`offset`; `exceptions` lists the collectors' logged exceptions and takes `device`, `limit`/`offset`; `neighbors` lists unmodelled
 neighbours and takes `limit`/`offset`; `slow` ranks devices by collection time and takes `device`, `limit`, `offset`; `logs` reads one
 device's collection log and takes `device` (required), `failure` (here the minimum level TRACE, DEBUG, INFO, WARN (default) or ERROR),
 `limit`, `offset`. See `schema.json`.
+
+**view triage.** First contact with a network's collection health in one call: runs `summary`, the 5 slowest devices (`slow`) and the
+worst-failing OS-version group (`platforms`), and merges them into one finding ("...; slowest: DEVICE; worst platform: VENDOR OS VER (N failed of M)")
+with the detail of each behind separate evidence items. It does not read the organization's license capacity (no API route exposes it) or
+per-device check compliance; for the full detail behind any one line, read that view on its own. No snapshot, or one still processing, is the
+whole answer and nothing else is added.
 
 **view devices.** Reads each device's recorded result from the snapshot's device model (NQE
 `device.snapshotInfo.result`) and returns one row per failed device: stage, category, error type,
@@ -62,6 +68,9 @@ It is where an error a collector **ignored** shows up: a collection can finish, 
 collector exceptions (a network administrator); without it the answer is **unknown** with what is needed. The text can quote what the collector was doing: keep it out of public places.
 
 **view neighbors.** Lists the neighbours Forward sees but does not model, with discovery method,
+This is ONE REST call with no paging; on a very large network (thousands of devices with many neighbours) it can run past the HTTP timeout (measured: timed out at 2 minutes on an
+~11,000-device network). The error then says so and names `FORWARD_TIMEOUT` (for example `FORWARD_TIMEOUT=10m`) to raise it. `view summary` reads the same call but treats a slow or
+failed read as a limit, not a failure to answer: it still reports what it could.
 addresses and which devices see them, and marks each that a modelled device peers with over BGP
 (`bgp_peer`, `bgp_sessions` with peer AS and state), BGP peers first: an unmodelled BGP peer is
 usually the upstream or edge. `plan-synthetic-device` covers modelling one.

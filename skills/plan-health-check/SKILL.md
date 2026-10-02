@@ -16,7 +16,7 @@ A procedure, not a skill that runs. Healthy is a claim about measured things; ab
 ## Steps
 
 1. **Is the data current?** `inspect-snapshots`: the newest processed collected snapshot and its age. Old data makes every later answer old.
-2. **Is collection working?** `inspect-collection` (view status): running, last task, collector connected, devices failing. For missing devices, `investigate-collection-failure` (first contact with a network: its `summary`, then `platforms` to see whether failures cluster on one platform, `changes` for what broke or recovered since the last snapshot, and `slow` for the devices and commands that take longest).
+2. **Is collection working?** `inspect-collection` (view status): running, last task, collector connected, devices failing. For missing devices, `investigate-collection-failure` view `triage` for first contact with a network in one call (summary, slowest devices, worst-failing platform); `platforms` to see whether failures cluster on one platform, `changes` for what broke or recovered since the last snapshot, and `exceptions` for errors the collector logged without failing the collection.
 3. **Are devices stressed?** `inspect-performance` unhealthy views. An empty list is trusted only if the skill says samples exist; otherwise it is unknown.
 4. **Does policy hold?** `check-network-compliance` with `view: read`: failing checks first.
 5. **Is a failure new?** For each failing check that matters, `inspect-history` to see when it last changed (`plan-what-changed` for the configuration behind it).

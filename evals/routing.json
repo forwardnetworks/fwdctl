@@ -481,5 +481,25 @@
   "query": "Make the netops group an OPERATOR on network 1001",
   "expect": "edit-access",
   "rival": "inspect-access"
+ },
+ {
+  "query": "Upload a CSV of custom device ownership for NQE to join",
+  "expect": "edit-data-file",
+  "rival": "edit-nqe-query"
+ },
+ {
+  "query": "What data files exist in this org and what's in sites.csv?",
+  "expect": "inspect-collection",
+  "rival": "edit-data-file"
+ },
+ {
+  "query": "Add a data connector that polls a vendor's REST API each collection",
+  "expect": "edit-data-connector",
+  "rival": "edit-data-file"
+ },
+ {
+  "query": "Show me the data connectors on this network and whether their last test passed",
+  "expect": "inspect-collection",
+  "rival": "edit-data-connector"
  }
 ]

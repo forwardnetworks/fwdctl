@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "required": ["action", "network_id", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "action": { "enum": ["add", "update", "delete", "test"] },
+    "network_id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1, "description": "add: the new connector's name; update/delete/test: an existing one, exact" },
+    "base_url": { "type": "string", "minLength": 1, "description": "add (required): scheme and host, e.g. https://api.example.com. update: replaces it" },
+    "disable_ssl_validation": { "type": "boolean" },
+    "refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "credential_id": { "type": "string", "description": "an HTTP credential's id" },
+        "proxy_server_id": { "type": "string" },
+        "collector_id": { "type": "string" }
+      },
+      "description": "update: a present-and-empty field clears it (no credential/proxy, or Forward picks a Collector); an absent field leaves it alone"
+    },
+    "extra_headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "non-secret HTTP headers; authenticate with refs.credential_id, not a header" },
+    "endpoints": {
+      "type": "array",
+      "items": { "type": "object", "required": ["name", "path"], "additionalProperties": false, "properties": { "name": { "type": "string", "minLength": 1 }, "path": { "type": "string", "minLength": 1 } } },
+      "description": "add (required, non-empty) or update (replaces the whole list): static endpoints only, pagination is not settable here"
+    },
+    "collect": { "type": "boolean", "description": "default true" },
+    "confirm": { "type": "string", "description": "delete: must equal name" },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

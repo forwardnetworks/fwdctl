@@ -46,6 +46,8 @@ var playbookFor = map[string]string{
 	"inspect-environment":            "plan-investigation",
 	"inspect-access":                 "plan-investigation",
 	"edit-access":                    "plan-health-check",
+	"edit-data-file":                 "plan-investigation",
+	"edit-data-connector":            "plan-investigation",
 	"edit-snapshot-note":             "plan-maintenance-window",
 }
 

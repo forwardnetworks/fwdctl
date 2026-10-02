@@ -271,7 +271,8 @@ Examples:
 
 Offline NQE check, no Forward connection: syntax errors with line and column, unknown names, wrong argument counts, fields and enum values the data model does not have,
 type errors, and deprecations with Forward's own advice. Exit 1 on an error. The type check is gradual (it says nothing where it cannot tell a type), so
-validate-nqe-query, which runs the query on Forward, is still the last word.
+validate-nqe-query, which runs the query on Forward, is still the last word. An import of your own organization's saved query (not @fwd/...) warns rather than being
+checked, since that library is per-organization and not sealed into this binary: `fwdctl nqe bundle` first for full coverage of it too.
 
 ```
 fwdctl nqe lint [FILE|-] [flags]

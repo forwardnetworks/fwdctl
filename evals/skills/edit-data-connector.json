@@ -1,0 +1,40 @@
+{
+ "skill": "edit-data-connector",
+ "cases": [
+  {
+   "query": "Add an HTTP data connector for this network to pull in weather-feed API data",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-data-connector action add dry run: name, base_url, endpoints",
+    "says only this network is affected",
+    "undo is delete"
+   ]
+  },
+  {
+   "query": "Run a connectivity test on the weather-feed data connector",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-data-connector action test",
+    "blocks until the collector answers, up to 60s",
+    "a failed test is a failed result, not an error"
+   ]
+  },
+  {
+   "query": "Clear the credential on the weather-feed connector and point it at a different proxy",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-data-connector action update with refs: credential_id empty string to clear, proxy_server_id set"
+   ]
+  },
+  {
+   "query": "What data connectors does this network have and what's their last test result?",
+   "should_trigger": false,
+   "note": "inspect-collection view config with data_connector"
+  },
+  {
+   "query": "Upload a CSV of custom device ownership for NQE to join",
+   "should_trigger": false,
+   "note": "edit-data-file: organization-wide upload, not a per-network HTTP source"
+  }
+ ]
+}

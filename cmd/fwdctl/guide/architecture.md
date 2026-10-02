@@ -57,7 +57,7 @@ The skills, by area:
 - **Health and collection:** `inspect-snapshots`, `inspect-collection`, `inspect-performance`, `inspect-environment`, `inspect-access`
 - **Inventory:** `inspect-networks`, `inspect-inventory`
 - **NQE:** `find-nqe-query`, `author-nqe-query`, `validate-nqe-query`, `compare-nqe-results`
-- **Edit (write, dry run first):** `edit-snapshot-note`, `edit-snapshot-reprocess`, `edit-advanced-reachability`, `edit-checks`, `edit-change-set`, `edit-collection`, `edit-endpoint-profile`, `edit-workspace`, `edit-org-property`, `edit-access`, `edit-nqe-query`, `edit-device-tags`, `edit-link-overrides`, `edit-synthetic-query`, `edit-wan-circuit`
+- **Edit (write, dry run first):** `edit-snapshot-note`, `edit-snapshot-reprocess`, `edit-advanced-reachability`, `edit-checks`, `edit-change-set`, `edit-collection`, `edit-endpoint-profile`, `edit-workspace`, `edit-org-property`, `edit-access`, `edit-data-file`, `edit-data-connector`, `edit-nqe-query`, `edit-device-tags`, `edit-link-overrides`, `edit-synthetic-query`, `edit-wan-circuit`
 
 The result every tool returns is small and structured, so the model spends its attention on the answer:
 - `status`: `ok`, `failed`, `unknown` (could not decide: never a pass) or `error`

@@ -19,6 +19,11 @@ type collectionConfigInput struct {
 	NetworkID string `json:"network_id"`
 	Limit     int    `json:"limit"`
 	Offset    int    `json:"offset"`
+	// DataFile names one of the org's data files (see detail.data_files) to also read its inferred NQE schema and a content preview.
+	// A read, not a write: Forward's inference needs no credential and stores nothing.
+	DataFile string `json:"data_file"`
+	// DataConnector names one of the network's data connectors (see detail.data_connectors) to also read its endpoints, status and last test result.
+	DataConnector string `json:"data_connector"`
 }
 
 // inspectCollectionConfig states what Forward is told to collect: devices, endpoints, jump servers and proxies. It never reads a
@@ -180,6 +185,126 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 		}
 		detail["cloud_setups"] = rows
 		limits = append(limits, "cloud_setups lists each cloud collection source with its configured regions and the result of its last connectivity TEST (not of the last collection: Forward keeps no per-setup collection outcome here). The regions decide which zones Forward keeps from the cloud's aggregated lists, so a missing instance can be a region that is not listed; collector errors during a collection are in investigate-collection-failure view exceptions, and inspect-inventory kind cloud_accounts shows whether each account was collected. Credentials are never read or shown")
+	}
+	if dfs, _, err := s.Client.DataFiles.List(ctx); err != nil {
+		limits = append(limits, "the organization's data files could not be read: "+err.Error())
+	} else if len(dfs) > 0 {
+		read++
+		total += len(dfs)
+		rows := make([]map[string]any, 0, len(dfs))
+		attachedHere := 0
+		for _, f := range dfs {
+			here := false
+			for _, nid := range f.NetworkIDs {
+				if nid == in.NetworkID {
+					here = true
+				}
+			}
+			if here {
+				attachedHere++
+			}
+			row := map[string]any{"name": f.Name, "nqe_name": f.NQEName, "type": f.Type, "attached_to_this_network": here, "attached_to_networks": len(f.NetworkIDs)}
+			if f.Description != "" {
+				row["description"] = f.Description
+			}
+			if f.IsEmpty {
+				row["empty"] = true
+			}
+			rows = append(rows, row)
+		}
+		detail["data_files"] = rows
+		limits = append(limits, fmt.Sprintf("data_files: %d org-wide (%d attached to this network); a query reads an attached one as network.extensions.<nqe_name>, a record {status: OK|MISSING|INVALID_DATA, value}. MISSING means no snapshot of this network has carried it yet (attaching a file affects only later snapshots). inspect-inventory has no kind for this, since the shape of value is per-file, not a fixed schema root; give data_file to see one's inferred fields", len(dfs), attachedHere))
+		if in.DataFile != "" {
+			found := false
+			for _, f := range dfs {
+				if f.Name == in.DataFile {
+					found = true
+				}
+			}
+			if !found {
+				limits = append(limits, fmt.Sprintf("data_file %q does not match any of the %d listed names; names are exact", in.DataFile, len(dfs)))
+			} else if inf, _, err := s.Client.DataFiles.Schema(ctx, in.DataFile); err != nil {
+				limits = append(limits, fmt.Sprintf("the inferred schema of data_file %q could not be read: %v", in.DataFile, err))
+			} else {
+				preview := map[string]any{"name": in.DataFile, "data_format": inf.Inference.DataFormat, "warnings": inf.Inference.Warnings, "errors": inf.Inference.Errors}
+				if len(inf.Inference.Schema) > 0 {
+					preview["schema"] = json.RawMessage(inf.Inference.Schema)
+				}
+				if len(inf.Content) > 2000 {
+					preview["content_preview"] = inf.Content[:2000] + "..."
+					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is truncated at 2000 of %d characters", in.DataFile, len(inf.Content)))
+				} else {
+					preview["content_preview"] = inf.Content
+				}
+				detail["data_file_schema"] = preview
+				if len(inf.Inference.Errors) > 0 {
+					limits = append(limits, fmt.Sprintf("data_file %q: Forward's own inference reports errors reading it as stored: %v", in.DataFile, inf.Inference.Errors))
+				}
+			}
+		}
+	} else if in.DataFile != "" {
+		limits = append(limits, fmt.Sprintf("data_file %q was given but this organization has no data files", in.DataFile))
+	}
+	if dcs, _, err := s.Client.DataConnectors.List(ctx, in.NetworkID, forward.DataConnectorReadOptions{Status: true}); err != nil {
+		limits = append(limits, "the network's data connectors could not be read: "+err.Error())
+	} else if len(dcs.Connectors) > 0 {
+		read++
+		total += len(dcs.Connectors)
+		rows := make([]map[string]any, 0, len(dcs.Connectors))
+		for _, c := range dcs.Connectors {
+			row := map[string]any{"name": c.Name, "base_url": c.BaseURL, "endpoints": len(c.Endpoints), "collect": c.Collects()}
+			if c.CredentialID != "" {
+				row["credential_set"] = true
+			}
+			switch {
+			case dcs.SnapshotID == "":
+				row["status"] = "unknown (no processed snapshot)"
+			case c.Status == nil:
+				row["status"] = "missing (not in the latest snapshot: never collected, or excluded)"
+			case c.Status.Error == "":
+				row["status"] = "ok"
+			default:
+				row["status"] = c.Status.Error
+			}
+			rows = append(rows, row)
+		}
+		detail["data_connectors"] = rows
+		limits = append(limits, fmt.Sprintf("data_connectors: %d on this network; a connector is a per-network HTTP source the Collector polls each collection, stored as network.dataConnectors (unlike a data file, which is organization-wide). status reflects snapshot %s; give data_connector to see one's endpoints and last connectivity test result. Credentials are never read or shown, only whether one is set", len(dcs.Connectors), dcs.SnapshotID))
+		if in.DataConnector != "" {
+			var found *forward.DataConnector
+			for i := range dcs.Connectors {
+				if dcs.Connectors[i].Name == in.DataConnector {
+					found = &dcs.Connectors[i]
+				}
+			}
+			if found == nil {
+				limits = append(limits, fmt.Sprintf("data_connector %q does not match any of the %d listed names; names are exact", in.DataConnector, len(dcs.Connectors)))
+			} else if c, _, err := s.Client.DataConnectors.Get(ctx, in.NetworkID, in.DataConnector, forward.DataConnectorReadOptions{Status: true, TestResult: true}); err != nil {
+				limits = append(limits, fmt.Sprintf("data_connector %q could not be read: %v", in.DataConnector, err))
+			} else if c == nil {
+				limits = append(limits, fmt.Sprintf("data_connector %q was listed but is gone now", in.DataConnector))
+			} else {
+				eps := make([]map[string]any, 0, len(c.Endpoints))
+				for _, e := range c.Endpoints {
+					eps = append(eps, map[string]any{"name": e.Name, "path": e.Path})
+				}
+				view := map[string]any{"name": c.Name, "base_url": c.BaseURL, "endpoints": eps, "collect": c.Collects()}
+				if c.ProxyServerID != "" {
+					view["proxy_set"] = true
+				}
+				if c.CollectorID != "" {
+					view["collector_id"] = c.CollectorID
+				}
+				if c.TestResult != nil {
+					view["last_test"] = map[string]any{"started_at": c.TestResult.StartedAt, "ended_at": c.TestResult.EndedAt, "error": c.TestResult.Error, "error_desc": c.TestResult.ErrorDesc}
+				} else {
+					limits = append(limits, fmt.Sprintf("data_connector %q has no stored test result; edit-data-connector can run one", in.DataConnector))
+				}
+				detail["data_connector_detail"] = view
+			}
+		}
+	} else if in.DataConnector != "" {
+		limits = append(limits, fmt.Sprintf("data_connector %q was given but this network has no data connectors", in.DataConnector))
 	}
 	limits = append(limits, "credentials are never read or shown; a device lists only whether one is set")
 	if read == 0 {

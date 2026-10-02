@@ -122,6 +122,81 @@ func TestCollectionConfigWithNothingConfiguredIsUnknown(t *testing.T) {
 	}
 }
 
+func TestCollectionConfigListsDataFilesWithAttachmentAndCanPreviewOneSchema(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
+		"GET /api/data-files": fwdtest.Const(200, []any{
+			map[string]any{"name": "sites", "nqeName": "sites", "type": "CSV", "description": "site ownership", "networkIds": []string{"n1", "n2"}},
+			map[string]any{"name": "empty-one", "nqeName": "emptyOne", "type": "JSON", "networkIds": []string{}, "isEmpty": true},
+		}),
+		"GET /api/data-files/sites/schema":     fwdtest.Const(200, map[string]any{"content": "site,owner\nnyc,ops\n", "inference": map[string]any{"dataFormat": "CSV", "warnings": []string{}, "errors": []string{}, "schema": map[string]any{"type": "List"}}}),
+		"GET /api/networks/n1/data-connectors": fwdtest.Const(200, map[string]any{"connectors": []any{}}),
+	}
+	r, srv := mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"data_files"`, `"attached_to_this_network":true`, `"nqe_name":"sites"`, `"empty":true`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	if r.Status != result.OK {
+		t.Fatalf("a network with no classic devices but a data file is configured: %s", r.Status)
+	}
+	// previewing one file's inferred schema is a second, separate call, and only happens when asked
+	if writes(srv) != 0 {
+		t.Errorf("reading data files and their schema must never write")
+	}
+	r, _ = mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1","data_file":"sites"}`)
+	b = jsonOf(r)
+	for _, want := range []string{`"data_file_schema"`, `"data_format":"CSV"`, `nyc,ops`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	// an exact-name mismatch is named, not guessed at
+	r, _ = mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1","data_file":"Sites"}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), `"Sites" does not match`) {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}
+
+func TestCollectionConfigListsDataConnectorsWithStatusAndCanShowOneDetail(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
+		"GET /api/data-files":                  fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/data-connectors": fwdtest.Const(200, map[string]any{
+			"snapshotId": "snap1",
+			"connectors": []any{
+				map[string]any{"name": "weather-feed", "baseUrl": "https://example.test", "endpoints": []any{map[string]any{"name": "ep1", "path": "/a"}}, "status": map[string]any{}},
+				map[string]any{"name": "broken-feed", "baseUrl": "https://example.test", "endpoints": []any{map[string]any{"name": "ep1", "path": "/a"}}},
+			},
+		}),
+		"GET /api/networks/n1/data-connectors/weather-feed": fwdtest.Const(200, map[string]any{
+			"name": "weather-feed", "baseUrl": "https://example.test",
+			"endpoints":  []any{map[string]any{"name": "ep1", "path": "/a"}},
+			"testResult": map[string]any{"startedAt": "t0", "endedAt": "t1"},
+		}),
+	}
+	r, _ := mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"data_connectors"`, `"name":"weather-feed"`, `"status":"ok"`, `"status":"missing (not in the latest snapshot: never collected, or excluded)"`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	r, _ = mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1","data_connector":"weather-feed"}`)
+	b = jsonOf(r)
+	for _, want := range []string{`"data_connector_detail"`, `"last_test"`, `"started_at":"t0"`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	r, _ = mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1","data_connector":"nope"}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), `"nope" does not match`) {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}
+
 func TestEnvironmentExplainsNonDefaultPropertiesAndNamesTheUnexplained(t *testing.T) {
 	r, _ := mustRun(t, "inspect-environment", map[string]fwdtest.Handler{
 		"GET /api/version": fwdtest.Const(200, map[string]any{"version": "1.0.0", "release": "r", "build": "b"}),

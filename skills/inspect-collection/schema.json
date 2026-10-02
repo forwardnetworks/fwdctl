@@ -28,6 +28,16 @@
       "type": "integer",
       "minimum": 0,
       "description": "view status: wait up to this many seconds (at most 120) for a running collection to finish"
+    },
+    "data_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "view config: the exact name of one of the organization's data files (see data_files in the result) to also read its inferred NQE schema and a content preview"
+    },
+    "data_connector": {
+      "type": "string",
+      "minLength": 1,
+      "description": "view config: the exact name of one of the network's data connectors (see data_connectors in the result) to also read its endpoints, proxy/collector and last connectivity test result"
     }
   }
 }

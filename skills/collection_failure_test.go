@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -366,5 +367,48 @@ func TestCollectionExceptionsViewShowsAnErrorTheCollectorIgnored(t *testing.T) {
 	r, _ = collect(t, routes, `{"network_id":"n1","view":"exceptions"}`)
 	if r.Status != result.Unknown || !strings.Contains(r.Finding, "VIEW_COLLECTOR_EXCEPTIONS") {
 		t.Errorf("%s %s", r.Status, r.Finding)
+	}
+}
+
+func TestCollectionSummarySurvivesAMissingDevicesTimeoutAsALimit(t *testing.T) {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	routes["GET /api/networks/n1/missing-devices"] = func(*http.Request, []byte) (int, any) { return 599, nil }
+	r, _ := collect(t, routes, "")
+	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "unmodelled neighbour devices could not be read") || !strings.Contains(strings.Join(r.Limits, " "), "FORWARD_TIMEOUT") {
+		t.Fatalf("a slow/failed missing-devices read must not block the summary: %s %v", r.Status, r.Limits)
+	}
+}
+
+func TestCollectionTriageMergesSummarySlowestAndWorstPlatform(t *testing.T) {
+	routes := platformRoutes() // two snapshots, synthetic Juniper devices, s2 has 2 new PARSER_EXCEPTION failures on JUNOS 23.2
+	routes["GET /api/networks/n1/endpoints"] = fwdtest.Const(200, []any{})
+	routes["GET /api/snapshots/s2/exceptions"] = fwdtest.Const(200, map[string]any{"exceptions": []any{}})
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s2", "metrics": []any{
+		map[string]any{"deviceName": "a2", "collectionDuration": 90000, "slowestCommand": "show tech", "slowestCommandDuration": 80000}}})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"triage"}`)
+	if r.Status != result.Failed {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	if !strings.Contains(r.Finding, "slowest: a2") || !strings.Contains(r.Finding, "worst platform: JUNIPER JUNOS 23.2") {
+		t.Fatalf("triage must merge the slowest device and the worst platform into the finding: %s", r.Finding)
+	}
+	var names []string
+	for _, e := range r.Evidence {
+		names = append(names, e.Source.Operation)
+	}
+	if !slices.Contains(names, "triageSlowest") || !slices.Contains(names, "triageWorstPlatform") {
+		t.Errorf("evidence sources: %v", names)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "does not read the organization's license capacity") {
+		t.Errorf("triage must say license capacity is not read: %v", r.Limits)
+	}
+}
+
+func TestCollectionTriageOnAHealthyNetworkIsStillOK(t *testing.T) {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"deviceMetrics": []any{}})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"triage"}`)
+	if r.Status != result.OK {
+		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
 }

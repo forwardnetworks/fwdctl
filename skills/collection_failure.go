@@ -63,9 +63,9 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	switch in.View {
-	case "", "summary", "devices", "platforms", "changes", "exceptions", "neighbors", "slow", "logs":
+	case "", "summary", "triage", "devices", "platforms", "changes", "exceptions", "neighbors", "slow", "logs":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be summary, devices, platforms, changes, exceptions, neighbors, slow or logs", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be summary, triage, devices, platforms, changes, exceptions, neighbors, slow or logs", ErrInvalidInput)
 	}
 	view := in.View
 	if view == "" {
@@ -73,6 +73,7 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 	}
 	if err := rejectForeignInputs(raw, collectionFailureName, "view", view, map[string][]string{
 		"summary":    {"collector_task_id"},
+		"triage":     {},
 		"devices":    {"failure", "device", "limit", "offset"},
 		"platforms":  {"failure", "device", "limit", "offset"},
 		"changes":    {"limit", "offset"},
@@ -105,6 +106,8 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 			[]string{fmt.Sprintf("snapshot state is %s; counts are incomplete until processing ends", state)}, result.Options{})
 	}
 	switch view {
+	case "triage":
+		return collectionTriage(ctx, s, in, cx)
 	case "devices":
 		return failureDevices(ctx, s, in, cx)
 	case "platforms":
@@ -183,9 +186,11 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 			map[string]any{"category": "processing", "types": m.ProcessingFailures, "devices": total}, "processing: "+typesText(m.ProcessingFailures)))
 	}
 
-	missing, err := s.MissingDevices(ctx, in.NetworkID, fwd.SnapshotID(cx))
-	if err != nil {
-		return result.Result{}, err
+	// On a very large network this read can run past the HTTP timeout; it is one signal among several here, so a slow or failed read is a limit, not a reason to give no
+	// answer at all (view neighbors, which exists to answer this question on its own, still raises the error).
+	missing, merr := s.MissingDevices(ctx, in.NetworkID, fwd.SnapshotID(cx))
+	if merr != nil {
+		limits = append(limits, "unmodelled neighbour devices could not be read, so a missing one is not counted here: "+merr.Error()+"; raise FORWARD_TIMEOUT if this is a timeout, or read view neighbors on its own")
 	}
 	if len(missing) > 0 {
 		names := make([]string, 0, len(missing))

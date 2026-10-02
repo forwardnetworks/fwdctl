@@ -25,7 +25,8 @@ func (a *app) nqeLint() *cobra.Command {
 		Use: "lint [FILE|-]", Short: "check a query offline: syntax, names, types, deprecations",
 		Long: "Offline NQE check, no Forward connection: syntax errors with line and column, unknown names, wrong argument counts, fields and enum values the data model does not have,\n" +
 			"type errors, and deprecations with Forward's own advice. Exit 1 on an error. The type check is gradual (it says nothing where it cannot tell a type), so\n" +
-			"validate-nqe-query, which runs the query on Forward, is still the last word.",
+			"validate-nqe-query, which runs the query on Forward, is still the last word. An import of your own organization's saved query (not @fwd/...) warns rather than being\n" +
+			"checked, since that library is per-organization and not sealed into this binary: `fwdctl nqe bundle` first for full coverage of it too.",
 		Example: "  fwdctl nqe lint query.nqe\n  cat query.nqe | fwdctl nqe lint -",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

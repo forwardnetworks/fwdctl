@@ -345,16 +345,23 @@ func parseSkill(name, src string) (Meta, error) {
 	return m, nil
 }
 
-// referencesOf lists a skill's reference files, as paths relative to the skill folder ("reference/rules.md").
+// referencesOf lists a skill's reference files, as paths relative to the skill folder ("reference/rules.md"). For
+// author-nqe-query this also lists the authoring references the binary seals (the language guides, the std-lib digest,
+// the cheat sheet): they are not files beside the skill (docs/internal.md, "the release build seals them"), but they are
+// real reference files all the same, and a caller listing this skill's references should see them.
 func referencesOf(name string) []string {
 	entries, err := docs.ReadDir(name + "/reference")
-	if err != nil {
-		return nil
-	}
 	var out []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
-			out = append(out, "reference/"+e.Name())
+	if err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+				out = append(out, "reference/"+e.Name())
+			}
+		}
+	}
+	if name == "author-nqe-query" {
+		for _, n := range knowledge.AuthoringRefs() {
+			out = append(out, "reference/"+n)
 		}
 	}
 	sort.Strings(out)
@@ -366,15 +373,15 @@ func Reference(name, ref string) (string, error) {
 	if !strings.Contains(ref, "/") {
 		ref = "reference/" + ref
 	}
+	if name == "author-nqe-query" { // the authoring references are served by the binary, not shipped beside the skill: try them before the embedded files
+		if t, ok := knowledge.AuthoringRef(ref); ok {
+			return t, nil
+		}
+	}
 	for _, r := range referencesOf(name) {
 		if r == ref || r == ref+".md" {
 			b, err := docs.ReadFile(name + "/" + r)
 			return string(b), err
-		}
-	}
-	if name == "author-nqe-query" { // the authoring references are served by the binary, not shipped beside the skill
-		if t, ok := knowledge.AuthoringRef(ref); ok {
-			return t, nil
 		}
 	}
 	return "", fmt.Errorf("%w: %s has no reference %q", ErrUnknown, name, ref)
