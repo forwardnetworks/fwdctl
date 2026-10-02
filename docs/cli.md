@@ -235,7 +235,8 @@ Examples:
 
 Write the entry query and every organization library module it imports, transitively, to a folder tree: one <query name>.nqe per query under the library path
 (/Team/Sub/Mod is DIR/Team/Sub/Mod.nqe), import statements left exactly as they are (they already name library paths, so the tree re-imports as it is), and manifest.json with each
-file's library path, query id, commit id, sha256 and imports. Unlike bundle it inlines nothing. Imports of @fwd/... are listed, not fetched. The data files the queries read
+file's library path, query id, commit id, sha256 and imports. Unlike bundle it inlines nothing. The tree and --zip are fwdctl's own format: the Forward UI's library import refuses them
+("missing file queries-export.proto"); --ui-zip writes the package the UI's Export produces and Import reads (checked against a package Forward itself exported: the same queries with identical sources; Forward lists them in an arbitrary order, so two exports differ in order only). Imports of @fwd/... are listed, not fetched. The data files the queries read
 (network.extensions.<name>) are reported in the manifest and on stderr: they are organization uploads, not part of the export. --override and --add-module behave as in bundle, and
 one that matches nothing is an error. DIR must be empty (or pass --force); --zip also writes the same files as a zip.
 
@@ -248,6 +249,7 @@ Examples:
 ```
   fwdctl nqe export --path "/Team/Entry" --commit-id 9f3c --out export/
   fwdctl nqe export --query-id Q_abc --out export/ --zip export.zip
+  fwdctl nqe export --query-id Q_abc --out export/ --ui-zip for-the-ui.zip   # what the Forward UI imports
 ```
 
 Flags:
@@ -260,7 +262,8 @@ Flags:
       --override stringArray     LIBRARY_PATH=FILE: use this local file instead of the module (or the entry) at that path; repeatable
       --path string              the entry query, by library path
       --query-id string          the entry query, by id (its library path is read from the head listing)
-      --zip string               also write the files as this zip
+      --ui-zip string            also write the queries in the Forward UI's library import format (a zip holding queries-export.proto)
+      --zip string               also write the tree and manifest as this zip (fwdctl's own format: the Forward UI cannot import it)
 ```
 
 ## fwdctl nqe fmt
@@ -346,11 +349,11 @@ Examples:
 Read DIR (as nqe export writes it: <library path>.nqe files, with manifest.json when there is one) and print the edit-nqe-query input that commits the tree in ONE commit:
 {"changes": [{"path", "source"}...]}. It only reads the directory and prints JSON; the write is the skill's own dry run, so pipe the file to "fwdctl run edit-nqe-query", read the plan,
 then add "apply": true. With a manifest, stderr says which files changed since the export, which are new and which are gone (pack never deletes), and --changed-only sends just the edited
-ones. --create-directory makes missing library folders in the same commit (needed to load a tree into a library that lacks them); --typecheck has Forward type every query and every
+ones. A zip in the Forward UI's export format (it holds queries-export.proto) is read too, so a package the UI's Export produced can be committed with fwdctl; it has no manifest, so there is no change report. --create-directory makes missing library folders in the same commit (needed to load a tree into a library that lacks them); --typecheck has Forward type every query and every
 importer first; --basis-commit-id C (or "manifest" for the export's commit) refuses the commit if the library head is not C. A commit carries at most 25 queries.
 
 ```
-fwdctl nqe pack DIR [flags]
+fwdctl nqe pack DIR|UI.zip [flags]
 ```
 
 Examples:

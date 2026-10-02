@@ -120,7 +120,13 @@ Runs the query on Forward against a snapshot: compile errors with positions, row
 organization has each one. The output directory must be empty (or `--force`); an `--override` or `--add-module` that matches nothing is an error and nothing is written. Bundling the exported tree with every file as an `--override`
 gives the same text as bundling the library (checked on a 13-query, 12-module library).
 
-`nqe pack DIR` is the way back: it reads a tree like the one `export` writes (any tree of `<library path>.nqe` files) and prints the `edit-nqe-query` input that commits it as ONE commit (`{"changes": [{path, source}...]}`,
+**The Forward UI uses a different package.** Its library Export and Import read and write a zip holding ONE file, `queries-export.proto`, a binary protobuf of `(path, source)` pairs (`NqeLibExportPB` in Forward's source). The tree, the manifest and `--zip` above are
+fwdctl's own format and the UI refuses them ("Invalid import; missing file queries-export.proto"). `--ui-zip FILE` writes the UI's format from the same export, at any commit and with any `--override`, so a hand-off to someone who will import it in the UI
+is `fwdctl nqe export ... --out tree/ --ui-zip for-the-ui.zip`. It holds the queries only, not the data files they read. Checked against a package Forward's own export produced for the same 13 queries: the same paths with identical sources (Forward lists them in an arbitrary
+order, so two exports differ only in order), and re-encoding Forward's own bytes reproduces them exactly. Not checked: importing the package through the UI itself (that writes drafts into a workspace). The UI's Import also re-roots a package under a chosen folder and rewrites the
+imports to match; `nqe pack` does not, so to load under a new root, change the paths and imports yourself. `nqe pack` reads a UI package too: `fwdctl nqe pack for-the-ui.zip`.
+
+`nqe pack DIR|UI.zip` is the way back: it reads a tree like the one `export` writes (any tree of `<library path>.nqe` files) and prints the `edit-nqe-query` input that commits it as ONE commit (`{"changes": [{path, source}...]}`,
 up to 25 queries). It only reads the directory; the write is the skill's own dry run, so `fwdctl nqe pack tree/ --create-directory --typecheck > load.json`, then `fwdctl run edit-nqe-query < load.json`, read the plan, and add `"apply": true` once it is
 approved. `--create-directory` makes missing library folders in the same commit, which loading into another library needs. With `manifest.json` present, stderr lists what changed since the export, what is new and what is gone (pack never
 deletes), `--changed-only` sends just the edited files, and `--basis-commit-id manifest` refuses the commit if the library head has moved since the export. A symbolic link in the tree is refused, never followed. Data files are not in a tree.

@@ -25,13 +25,30 @@ type nqePackOpts struct {
 func nqePackCmd(a *app, dir string, o nqePackOpts) int {
 	fail := func(code int, f string, v ...any) int { fmt.Fprintf(a.err, "error: "+f+"\n", v...); return code }
 	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
-		return fail(usage, "%s is not a directory", dir)
+	if err != nil || (!info.IsDir() && !strings.HasSuffix(strings.ToLower(dir), ".zip")) {
+		return fail(usage, "%s is not a directory or a .zip", dir)
+	}
+	var uiQueries []uiQuery // set when the argument is a package in the Forward UI's export format
+	if !info.IsDir() {
+		zb, err := os.ReadFile(dir)
+		if err != nil {
+			return fail(1, "%v", err)
+		}
+		qs, ok, err := readUIPackage(zb)
+		switch {
+		case err != nil:
+			return fail(1, "%s: %v", dir, err)
+		case !ok:
+			return fail(1, "%s holds no %s, so it is not a Forward UI export (a fwdctl tree zip is unzipped first, then the directory is packed)", dir, uiPackageEntry)
+		case o.changedOnly:
+			return fail(usage, "--changed-only compares with manifest.json, which a Forward UI export does not have")
+		}
+		uiQueries = qs
 	}
 	// the manifest, when there is one, says what each file was at export time
 	var m exportManifest
 	haveManifest := false
-	if b, err := os.ReadFile(filepath.Join(dir, "manifest.json")); err == nil {
+	if b, err := os.ReadFile(filepath.Join(dir, "manifest.json")); err == nil && uiQueries == nil {
 		if json.Unmarshal(b, &m) != nil || m.Format != "fwdctl-nqe-export/1" {
 			return fail(1, "%s/manifest.json is not a fwdctl nqe export manifest", dir)
 		}
@@ -59,7 +76,7 @@ func nqePackCmd(a *app, dir string, o nqePackOpts) int {
 	var changes []change
 	var modified, added, unchanged []string
 	seen := map[string]bool{}
-	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, werr error) error {
+	walk := func(p string, d fs.DirEntry, werr error) error {
 		if werr != nil {
 			return werr
 		}
@@ -96,7 +113,17 @@ func nqePackCmd(a *app, dir string, o nqePackOpts) int {
 		}
 		changes = append(changes, change{Path: lp, Source: string(b)})
 		return nil
-	})
+	}
+	if uiQueries != nil {
+		for _, q := range uiQueries {
+			if !strings.HasPrefix(q.Path, "/") || exportFileName(q.Path) == "" || strings.TrimSpace(q.Source) == "" {
+				return fail(1, "%s holds a query with an unusable path or an empty source: %q", dir, q.Path)
+			}
+			changes = append(changes, change{Path: q.Path, Source: q.Source})
+		}
+	} else {
+		err = filepath.WalkDir(dir, walk)
+	}
 	if err != nil {
 		return fail(1, "%v", err)
 	}

@@ -204,3 +204,86 @@ func TestPackRefusesWhatItCannotPackSafely(t *testing.T) {
 		t.Errorf("a symlink is refused, never followed: %d %s", code, errb)
 	}
 }
+
+// The bytes of one query, worked out by hand from NqeLibProtos.proto: path "/a" source "x".
+//
+//	QueryPathPB {path="/a"}      0a 02 2f 61
+//	NqeQuerySourcePB {src="x"}   0a 01 78
+//	ExportedQueryPB              0a 04 <path 4> 12 03 <source 3>          (11 bytes)
+//	NqeLibExportPB               0a 0b <exported 11>
+func TestUIPackageBytesMatchTheProtoSchemaByHand(t *testing.T) {
+	got := encodeUIPackage([]uiQuery{{Path: "/a", Source: "x"}})
+	want := []byte{0x0a, 0x0b, 0x0a, 0x04, 0x0a, 0x02, '/', 'a', 0x12, 0x03, 0x0a, 0x01, 'x'}
+	if string(got) != string(want) {
+		t.Fatalf("got % x want % x", got, want)
+	}
+	// a long source needs a multi-byte length: 300 bytes is varint ac 02
+	long := strings.Repeat("y", 300)
+	back, err := decodeUIPackage(encodeUIPackage([]uiQuery{{Path: "/Team/Sub/Name with space", Source: long}, {Path: "/b", Source: "é→"}}))
+	if err != nil || len(back) != 2 || back[0].Source != long || back[0].Path != "/Team/Sub/Name with space" || back[1].Source != "é→" {
+		t.Fatalf("round trip: %v %v", back, err)
+	}
+	z, err := zipUIPackage([]uiQuery{{Path: "/a", Source: "x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	qs, ok, err := readUIPackage(z)
+	if err != nil || !ok || len(qs) != 1 || qs[0].Path != "/a" {
+		t.Errorf("zip round trip: %v %v %v", qs, ok, err)
+	}
+	if _, err := decodeUIPackage([]byte{0x0a, 0x05, 0x01}); err == nil {
+		t.Error("a truncated field is an error, not a silent empty package")
+	}
+}
+
+func TestExportUIZipIsTheForwardImportFormatAndPackReadsItBack(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "tree")
+	uiZip := filepath.Join(t.TempDir(), "ui.zip")
+	treeZip := filepath.Join(t.TempDir(), "tree.zip")
+	code, _, errb := call(t, []string{"nqe", "export", "--path", "/Lib/Entry", "--out", out, "--ui-zip", uiZip, "--zip", treeZip}, "", exportLibrary())
+	if code != 0 || !strings.Contains(errb, "queries-export.proto") {
+		t.Fatalf("%d %s", code, errb)
+	}
+	// the UI package holds exactly the tree's queries, entry first, with library paths that start with a slash
+	zb, _ := os.ReadFile(uiZip)
+	qs, ok, err := readUIPackage(zb)
+	if err != nil || !ok || len(qs) != 3 || qs[0].Path != "/Lib/Entry" {
+		t.Fatalf("ui package: %v %v %v", qs, ok, err)
+	}
+	for _, q := range qs {
+		b, _ := os.ReadFile(filepath.Join(out, filepath.FromSlash(exportFileName(q.Path))))
+		if string(b) != q.Source {
+			t.Errorf("%s differs from the tree", q.Path)
+		}
+	}
+	// the Forward UI refuses the tree zip; the manifest and --help say so
+	tz, _ := os.ReadFile(treeZip)
+	if _, ok, _ := readUIPackage(tz); ok {
+		t.Error("the tree zip must not pretend to be a UI package")
+	}
+	mb, _ := os.ReadFile(filepath.Join(out, "manifest.json"))
+	if !strings.Contains(string(mb), "NOT what the Forward UI imports") {
+		t.Errorf("the manifest must say the tree is not the UI format")
+	}
+	if _, help, _ := call(t, []string{"nqe", "export", "--help"}, "", nil); !strings.Contains(help, "missing file queries-export.proto") {
+		t.Errorf("--help must say the UI refuses the tree")
+	}
+	// pack reads the UI package: same changes as packing the tree
+	fromZip, _, code := packJSON(t, uiZip, "--create-directory")
+	fromDir, _, code2 := packJSON(t, out, "--create-directory")
+	if code != 0 || code2 != 0 || len(fromZip["changes"].([]any)) != 3 {
+		t.Fatalf("pack of a UI zip: %d %d %v", code, code2, fromZip)
+	}
+	a, _ := json.Marshal(fromZip["changes"])
+	b, _ := json.Marshal(fromDir["changes"])
+	if string(a) != string(b) {
+		t.Errorf("a UI package and the tree it came from must pack to the same changes")
+	}
+	// a fwdctl tree zip is not a UI export, and pack says what to do
+	if _, errb, code := packJSON(t, treeZip); code != 1 || !strings.Contains(errb, "not a Forward UI export") {
+		t.Errorf("%d %s", code, errb)
+	}
+	if _, errb, code := packJSON(t, uiZip, "--changed-only"); code != 64 || !strings.Contains(errb, "manifest.json") {
+		t.Errorf("--changed-only needs a manifest: %d %s", code, errb)
+	}
+}

@@ -18,9 +18,9 @@ import (
 
 // nqeExportOpts are the flags of `fwdctl nqe export`.
 type nqeExportOpts struct {
-	queryID, path, commit, out, zipFile string
-	overrides, added                    []string
-	force                               bool
+	queryID, path, commit, out, zipFile, uiZip string
+	overrides, added                           []string
+	force                                      bool
 }
 
 type exportFile struct {
@@ -222,6 +222,7 @@ func nqeExportCmd(a *app, o nqeExportOpts) int {
 	m := exportManifest{Format: "fwdctl-nqe-export/1", Fwdctl: version, CommitID: commit, Entry: entryPath, DataFiles: data, Notes: []string{
 		"one <query name>.nqe per library query, under the library path; import statements are unchanged and already name library paths, so this tree re-imports as it is",
 		"imports of @fwd/... stay as written: they resolve against Forward's built-in library, which a commit does not version",
+		"this tree, its manifest and any --zip of it are fwdctl's own format and are NOT what the Forward UI imports (the UI reads a zip holding queries-export.proto: --ui-zip writes that); `fwdctl nqe pack` reads this tree back",
 		"data_files lists the organization data files the queries read as network.extensions.<nqe_name>; they are not part of this export and must be attached to the network the query runs on",
 	}}
 	for _, p := range order {
@@ -270,6 +271,20 @@ func nqeExportCmd(a *app, o nqeExportOpts) int {
 		if err := os.WriteFile(o.zipFile, buf.Bytes(), 0o644); err != nil {
 			return fail(3, "%v", err)
 		}
+	}
+	if o.uiZip != "" {
+		qs := make([]uiQuery, 0, len(order))
+		for _, p := range order {
+			qs = append(qs, uiQuery{Path: p, Source: files[p].src})
+		}
+		zb, err := zipUIPackage(qs)
+		if err != nil {
+			return fail(3, "%v", err)
+		}
+		if err := os.WriteFile(o.uiZip, zb, 0o644); err != nil {
+			return fail(3, "%v", err)
+		}
+		fmt.Fprintf(stderr, "wrote %s in the Forward UI's library import format (queries-export.proto); it holds the queries only, not the data files they read\n", o.uiZip)
 	}
 	fmt.Fprintf(stderr, "exported %d quer%s to %s at commit %s (manifest.json lists each file's query id, commit, sha256 and imports)\n", len(order), map[bool]string{true: "y", false: "ies"}[len(order) == 1], o.out, commit)
 	for _, d := range data {
