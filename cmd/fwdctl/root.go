@@ -248,7 +248,10 @@ func (a *app) contextCmd() *cobra.Command {
 			Use: kind + " <" + map[string]string{"nqe": "question", "schema": "term"}[kind] + ">", Short: short, Args: cobra.ExactArgs(1),
 			Example: map[string]string{"nqe": "  fwdctl context nqe \"bgp neighbors that are down\" -k 2", "schema": "  fwdctl context schema vrf"}[kind],
 			RunE: func(cmd *cobra.Command, args []string) error {
-				out, err := skills.Context(kind, args[0], k)
+				// context needs no login (it is read offline from this binary's sealed corpus); schema uses one when the
+				// environment has it configured, to search the organization's own live data model instead of the static one.
+				sess, _ := a.session()
+				out, err := skills.Context(cmd.Context(), kind, args[0], k, sess)
 				if err != nil {
 					return a.fail("%v", err)
 				}
