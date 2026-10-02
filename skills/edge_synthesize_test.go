@@ -65,10 +65,17 @@ func TestSynthesizeInternetDiscoveryChoices(t *testing.T) {
 		t.Fatal(err)
 	}
 	lintClean(t, r.Source)
-	for _, want := range []string{`SubnetDiscoveryMethod.bgpRoutes({ peerIps: [ipAddress("203.0.113.1")] })`, "disagree by hundreds", "unreconciled"} {
+	for _, want := range []string{
+		`bgpRoutesSource(peerIps: List<IpAddress>) : BgpRoutesSourceAttributes =`,
+		`SubnetDiscoveryMethod.bgpRoutes(bgpRoutesSource([ipAddress("203.0.113.1")]))`,
+		"disagree by hundreds", "unreconciled",
+	} {
 		if !strings.Contains(r.Source, want) {
 			t.Errorf("bgpRoutes: missing %q in\n%s", want, r.Source)
 		}
+	}
+	if strings.Contains(r.Source, "bgpRoutes({ peerIps:") {
+		t.Errorf("bgpRoutes: still emits a bare record literal (rejected by Forward as a record vs. nominal type mismatch):\n%s", r.Source)
 	}
 	if _, err = synth(t, nil, skills.SynthOptions{Discovery: "none"}); err == nil || !strings.Contains(err.Error(), "--subnets") {
 		t.Errorf("none without subnets is refused: %v", err)

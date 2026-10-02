@@ -226,6 +226,12 @@ func writeInetQuery(an *EdgeAnalysis, o SynthOptions, res *SynthResult) string {
 	b.WriteString("\n")
 	b.WriteString("// Helper function for an empty list of subnets.\nemptySubnets =\n  foreach x in fromTo(1, 0)\n  select null : IpSubnet;\n\n")
 	b.WriteString("// Helper function for an empty list of IfaceReference records.\nemptyInterfaces =\n  foreach x in fromTo(1, 0)\n  select null : IfaceReference;\n\n")
+	if o.Discovery == "bgpRoutes" {
+		// BgpRoutesSourceAttributes is a nominal record type: a bare { peerIps: [...] } literal passed directly as the bgpRoutes
+		// argument type-checks under NQE's gradual offline check but is rejected by Forward (record vs. nominal type mismatch).
+		// A function with this as its declared return type gives the literal the nominal type it needs.
+		b.WriteString("// Helper function giving the BgpRoutesSourceAttributes record its nominal type (a bare record literal does not type-check as the argument to SubnetDiscoveryMethod.bgpRoutes).\nbgpRoutesSource(peerIps: List<IpAddress>) : BgpRoutesSourceAttributes =\n  { peerIps: peerIps };\n\n")
+	}
 	subnets := "emptySubnets"
 	if len(o.Subnets) > 0 {
 		var qs []string
@@ -251,7 +257,7 @@ func writeInetQuery(an *EdgeAnalysis, o SynthOptions, res *SynthResult) string {
 				ps = append(ps, "ipAddress("+quote(p)+")")
 			}
 			sort.Strings(ps)
-			method = "SubnetDiscoveryMethod.bgpRoutes({ peerIps: [" + strings.Join(ps, ", ") + "] })"
+			method = "SubnetDiscoveryMethod.bgpRoutes(bgpRoutesSource([" + strings.Join(ps, ", ") + "]))"
 		}
 		fmt.Fprintf(&b, "    subnetDiscoveryMethod: %s,\n    subnets: %s,\n    backdoorInterfaces: emptyInterfaces\n  };\n\n", method, subnets)
 	}

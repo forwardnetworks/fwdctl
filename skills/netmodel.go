@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
 )
@@ -97,11 +98,12 @@ func num(v any) (int64, bool) {
 // loadIfaceAddrs reads every IPv4 interface address of the snapshot: on interfaces and subinterfaces, on routed-VLAN (SVI) interfaces, and the FHRP virtual addresses on those.
 // truncated says a read held more rows than maxModelRows. notes says which address class could not be read (an unknown is a limit, never a silent omission).
 func loadIfaceAddrs(ctx context.Context, s *fwd.Session, networkID, snapshotID string) (addrs []ifaceAddr, truncated bool, notes []string, err error) {
-	read := func(query, class string) (bool, error) {
+	read := func(query, class string) ([]ifaceAddr, bool, error) {
 		rows, _, trunc, err := s.RunNQEAll(ctx, networkID, snapshotID, query, maxModelRows)
 		if err != nil {
-			return false, err
+			return nil, false, err
 		}
+		var out []ifaceAddr
 		for _, r := range rows {
 			a, err := netip.ParseAddr(str(r["ip"]))
 			if err != nil {
@@ -115,22 +117,32 @@ func loadIfaceAddrs(ctx context.Context, s *fwd.Session, networkID, snapshotID s
 			if err != nil {
 				continue
 			}
-			addrs = append(addrs, ifaceAddr{Device: str(r["device"]), Iface: str(r["iface"]), Sub: str(r["sub"]), VRF: str(r["vrf"]), Class: class, Addr: a, Prefix: p})
+			out = append(out, ifaceAddr{Device: str(r["device"]), Iface: str(r["iface"]), Sub: str(r["sub"]), VRF: str(r["vrf"]), Class: class, Addr: a, Prefix: p})
 		}
-		return trunc, nil
+		return out, trunc, nil
 	}
-	trunc, err := read(ifaceAddressQuery, "")
-	if err != nil {
-		return nil, false, nil, err
+	// The three classes are independent reads (each its own NQE query, the first often the largest: every address on every interface and
+	// subinterface). Run them concurrently; each writes only to its own slot, merged in this fixed order once all three finish.
+	classes := []struct{ q, class, what string }{{ifaceAddressQuery, "", ""}, {sviAddressQuery, "svi", "routed-VLAN (SVI) interface addresses"}, {fhrpAddressQuery, "fhrp", "FHRP virtual addresses"}}
+	results := make([][]ifaceAddr, len(classes))
+	truncs := make([]bool, len(classes))
+	errs := make([]error, len(classes))
+	var wg sync.WaitGroup
+	wg.Add(len(classes))
+	for i, c := range classes {
+		i, c := i, c
+		go func() { defer wg.Done(); results[i], truncs[i], errs[i] = read(c.q, c.class) }()
 	}
-	truncated = trunc
-	for _, c := range []struct{ q, class, what string }{{sviAddressQuery, "svi", "routed-VLAN (SVI) interface addresses"}, {fhrpAddressQuery, "fhrp", "FHRP virtual addresses"}} {
-		t, rerr := read(c.q, c.class)
-		if rerr != nil {
-			notes = append(notes, c.what+" could not be read ("+rerr.Error()+"), so an address of that class may be reported as having no owner")
-			continue
+	wg.Wait()
+	if errs[0] != nil {
+		return nil, false, nil, errs[0]
+	}
+	for i, c := range classes {
+		addrs = append(addrs, results[i]...)
+		truncated = truncated || truncs[i]
+		if i > 0 && errs[i] != nil {
+			notes = append(notes, c.what+" could not be read ("+errs[i].Error()+"), so an address of that class may be reported as having no owner")
 		}
-		truncated = truncated || t
 	}
 	return addrs, truncated, notes, nil
 }

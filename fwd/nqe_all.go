@@ -2,8 +2,11 @@ package fwd
 
 import "context"
 
-// maxNQEPage is the page size RunNQEAll asks Forward for.
-const maxNQEPage = 1000
+// maxNQEPage is the page size RunNQEAll asks Forward for: Forward's own hard cap (a larger limit is refused, "'limit' cannot exceed
+// 10000"). Measured against a 38,000-device network: a page's own cost is roughly flat whether it holds 1,000 or 10,000 rows (around
+// half a second either way, dominated by fixed per-request cost, not row count), so the largest page Forward allows cuts the number of
+// round trips, and so the wall-clock time, by roughly 10x on a result large enough to need more than one page.
+const maxNQEPage = 10000
 
 // RunNQEAll runs a query and pages through every row, up to maxRows (0 means 50,000). truncated says the result held more than maxRows. Each page is a normal RunNQE,
 // so an unready snapshot is still an error and never an empty result.

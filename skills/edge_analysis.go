@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
+	"sync"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
@@ -56,17 +57,30 @@ func analyzeEdge(ctx context.Context, s *fwd.Session, q EdgeQuery, snap *forward
 	cx := fwd.Context(q.NetworkID, snap)
 	snapID := string(snap.ID)
 	sid := fwd.SnapshotID(cx)
-	routes, total, rtrunc, err := s.RunNQEAll(ctx, q.NetworkID, sid, defaultRouteQuery, maxModelRows)
-	if err != nil {
-		return nil, err
-	}
-	addrs, atrunc, _, err := loadIfaceAddrs(ctx, s, q.NetworkID, sid)
-	if err != nil {
-		return nil, err
-	}
-	nbrs, ntrunc, err := loadNeighbors(ctx, s, q.NetworkID, sid)
-	if err != nil {
-		return nil, err
+	// The four reads below are mutually independent (none uses another's result), and each can page through hundreds of thousands of
+	// rows on a large network (the default-route and interface-address tables alone can run well past 100,000 rows, dozens of round
+	// trips apiece at RunNQEAll's page size). Run them concurrently instead of one after another: wall-clock time becomes the slowest
+	// of the four, not their sum.
+	var routes []map[string]any
+	var total int64
+	var rtrunc bool
+	var addrs []ifaceAddr
+	var atrunc bool
+	var nbrs []neighborRow
+	var ntrunc bool
+	var cl *ClaimIndex
+	var errs [4]error
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() { defer wg.Done(); routes, total, rtrunc, errs[0] = s.RunNQEAll(ctx, q.NetworkID, sid, defaultRouteQuery, maxModelRows) }()
+	go func() { defer wg.Done(); addrs, atrunc, _, errs[1] = loadIfaceAddrs(ctx, s, q.NetworkID, sid) }()
+	go func() { defer wg.Done(); nbrs, ntrunc, errs[2] = loadNeighbors(ctx, s, q.NetworkID, sid) }()
+	go func() { defer wg.Done(); cl, errs[3] = loadClaims(ctx, s, q.NetworkID) }()
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
+		}
 	}
 	owners := ownersOf(addrs)
 	peerOwner := map[netip.Addr]neighborRow{} // a neighbor record whose peer is a modelled device: that address belongs to that device
@@ -207,10 +221,6 @@ func analyzeEdge(ctx context.Context, s *fwd.Session, q EdgeQuery, snap *forward
 	}
 	order(exits)
 	order(internal)
-	cl, err := loadClaims(ctx, s, q.NetworkID)
-	if err != nil {
-		return nil, err
-	}
 	for _, g := range append(append([]*edgeGroup{}, exits...), internal...) {
 		g.claims = map[string][]Claimant{}
 		for k := range g.egress {

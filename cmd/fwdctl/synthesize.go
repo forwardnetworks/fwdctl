@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/forwardnetworks/fwdctl/nqelint"
 	"github.com/forwardnetworks/fwdctl/skills"
@@ -36,6 +37,24 @@ func nqeSynthesizeCmd(a *app, o nqeSynthOpts) int {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return usage
 	}
+	// On a large network the route, interface-address and neighbor tables can each run past 100,000 rows; AnalyzeEdge reads them
+	// concurrently, but the whole call can still take a while. A heartbeat on stderr says so, instead of leaving the caller
+	// wondering whether the command is still working or stuck.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		t := time.NewTicker(20 * time.Second)
+		defer t.Stop()
+		start := time.Now()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				fmt.Fprintf(stderr, "note: still reading the network model (%s elapsed); a large network's route and interface tables can run past 100,000 rows\n", time.Since(start).Round(time.Second))
+			}
+		}
+	}()
 	an, err := skills.AnalyzeEdge(context.Background(), sess, skills.EdgeQuery{NetworkID: *network, SnapshotID: *snapshot, VRF: *vrf, Device: *device})
 	if err != nil {
 		if errors.Is(err, skills.ErrNoProcessedSnapshot) {
