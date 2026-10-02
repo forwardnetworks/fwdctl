@@ -29,8 +29,10 @@ type collectionInput struct {
 	// (CONNECTION_REFUSED, PARSER_EXCEPTION, ...) is this.
 	Failure string `json:"failure"`
 	Device  string `json:"device"`
-	Limit   int    `json:"limit"`
-	Offset  int    `json:"offset"`
+	// CompareToSnapshotID (view slow) sets a second collection beside the one asked about and reports the change.
+	CompareToSnapshotID string `json:"compare_to_snapshot_id"`
+	Limit               int    `json:"limit"`
+	Offset              int    `json:"offset"`
 	// GroupBy and CompareTo are set by the platforms and changes views; they are not inputs.
 	GroupBy   string `json:"-"`
 	CompareTo string `json:"-"`
@@ -79,7 +81,7 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		"changes":    {"limit", "offset"},
 		"exceptions": {"device", "limit", "offset"},
 		"neighbors":  {"limit", "offset"},
-		"slow":       {"device", "limit", "offset"},
+		"slow":       {"device", "limit", "offset", "compare_to_snapshot_id"},
 		"history":    {"limit"},
 		"logs":       {"failure", "device", "limit", "offset"},
 	}); err != nil {

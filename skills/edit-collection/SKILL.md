@@ -7,6 +7,8 @@ metadata:
   summary: "start or stop a collection"
   maturity: "3"
   class: write
+  effect: "network"
+  secrets: "false"
   reversible: "false"
   tools: "collector tasks, collectors"
 ---

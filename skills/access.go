@@ -26,11 +26,14 @@ type inspectAccessInput struct {
 	// Operation (EDIT_CHECKS, NetworkOperation.EDIT_CHECKS) or Error (Forward's 403 text) names what was refused, for view explain.
 	Operation string `json:"operation"`
 	Error     string `json:"error"`
-	// User narrows view users to one user (id, username or email); Match narrows users or groups by name.
+	// User narrows view users (or activity) to one user (id, username or email); Match narrows users or groups by name, or activity by route prefix.
 	User   string `json:"user"`
 	Match  string `json:"match"`
 	Limit  int    `json:"limit"`
 	Offset int    `json:"offset"`
+	// Since (a span such as 7d, or an RFC 3339 time) and Method narrow view activity.
+	Since  string `json:"since"`
+	Method string `json:"method"`
 }
 
 // inspectAccess answers "what can this login do, why was something refused, who has access". It reads: Forward's session (the roles in effect for this login, ACG grants and
@@ -50,8 +53,10 @@ func inspectAccess(ctx context.Context, s *fwd.Session, raw json.RawMessage) (re
 		return accessUsers(ctx, s, in, cx)
 	case "groups":
 		return accessGroups(ctx, s, in, cx)
+	case "activity":
+		return accessActivity(ctx, s, in, cx)
 	}
-	return result.Result{}, fmt.Errorf("%w: view must be me, explain, users or groups", ErrInvalidInput)
+	return result.Result{}, fmt.Errorf("%w: view must be me, explain, users, groups or activity", ErrInvalidInput)
 }
 
 var opText = regexp.MustCompile(`(?:(Org|Network)Operation\.|network operation )?\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b`)

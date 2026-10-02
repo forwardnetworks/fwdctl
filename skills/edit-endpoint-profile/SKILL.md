@@ -7,6 +7,8 @@ metadata:
   summary: "change what endpoints collect"
   maturity: "1"
   class: write
+  effect: "org"
+  secrets: "false"
   reversible: "true"
   tools: "endpoint profiles, endpoints"
 ---

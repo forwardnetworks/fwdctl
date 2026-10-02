@@ -7,6 +7,8 @@ metadata:
   summary: "change an org-wide setting"
   maturity: "1"
   class: write
+  effect: "org"
+  secrets: "false"
   reversible: "true"
   tools: "organization properties"
 ---

@@ -7,6 +7,8 @@ metadata:
   summary: "users, roles, access groups"
   maturity: "1"
   class: write
+  effect: "org"
+  secrets: "true"
   reversible: "true"
   tools: "users, roles, access control groups"
 ---

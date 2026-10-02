@@ -7,6 +7,8 @@ metadata:
   summary: "stage a Predict change set"
   maturity: "3"
   class: write
+  effect: "network"
+  secrets: "false"
   reversible: "false"
   tools: "predict change sets"
 ---

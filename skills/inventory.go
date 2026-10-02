@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
@@ -24,6 +25,8 @@ type inventoryInput struct {
 	Name       string `json:"name"`
 	Limit      int    `json:"limit"`
 	Offset     int    `json:"offset"`
+	// CompareToSnapshotID (kind devices) lists the devices added and removed since another snapshot.
+	CompareToSnapshotID string `json:"compare_to_snapshot_id"`
 	// IPs belongs to kind ip_owner: the IPv4 addresses whose owning interface to find.
 	IPs []string `json:"ips"`
 }
@@ -373,6 +376,9 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		return result.Result{}, err
 	}
 	cx := fwd.Context(in.NetworkID, snap)
+	if snap != nil && !fwd.IsReady(snap) {
+		return notReadySnapshot(inventoryName, cx, snap, "")
+	}
 	if !fwd.IsReady(snap) {
 		return result.NewUnknown(inventoryName, "No processed snapshot is available to read", cx,
 			[]string{"no processed snapshot; nothing was read"}, result.Options{NextActions: []string{"investigate-collection-failure"}})
@@ -380,6 +386,15 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	var limits []string
 	if cx.State == "predicted" {
 		limits = append(limits, "read from a predicted snapshot: these rows describe a prediction, not collected state")
+	}
+	if in.CompareToSnapshotID != "" {
+		if in.Kind != "devices" {
+			return result.Result{}, fmt.Errorf("%w: compare_to_snapshot_id is an input of kind devices (which devices were added and removed), not of kind %s", ErrInvalidInput, in.Kind)
+		}
+		if in.Device != "" || in.Name != "" {
+			return result.Result{}, fmt.Errorf("%w: kind devices with compare_to_snapshot_id compares the whole device lists; device and name filter one snapshot's rows", ErrInvalidInput)
+		}
+		return inventoryCompare(ctx, s, in, cx, limits)
 	}
 	if in.Kind == "summary" {
 		return inventorySummary(ctx, s, in, cx, limits)
@@ -540,6 +555,7 @@ func inventoryNext(kind string) []string {
 }
 
 func inventorySummary(ctx context.Context, s *fwd.Session, in inventoryInput, cx result.Context, limits []string) (result.Result, error) {
+	started := time.Now()
 	sid := fwd.SnapshotID(cx)
 	run := func(q string, limit int) (fwd.NQEOutcome, error) {
 		return s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: q, SnapshotID: sid, Limit: limit})
@@ -570,6 +586,9 @@ func inventorySummary(ctx context.Context, s *fwd.Session, in inventoryInput, cx
 	types, err := run(invSummaryTypes, 100)
 	if err != nil {
 		return result.Result{}, err
+	}
+	if took := time.Since(started); took > 20*time.Second {
+		limits = append(limits, fmt.Sprintf("this took %s: the first query against a large snapshot can take minutes while Forward loads it, and later ones take seconds (measured about one second warm on a 40,000-device snapshot), so ask again before concluding the summary itself is slow", took.Round(time.Second)))
 	}
 	detail := map[string]any{"kind": "summary", "counts": rows[0], "by_vendor": fwd.Records(vendors.Items), "by_device_type": fwd.Records(types.Items)}
 	return result.Build(inventoryName, result.OK, fmt.Sprintf("%d devices across %d vendors", devices, len(vendors.Items)),

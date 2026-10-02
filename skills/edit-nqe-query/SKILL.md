@@ -7,6 +7,8 @@ metadata:
   summary: "save or remove a query"
   maturity: "2"
   class: write
+  effect: "org"
+  secrets: "false"
   reversible: "true"
   tools: "nqe"
 ---

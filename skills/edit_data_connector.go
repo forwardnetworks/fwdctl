@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -95,6 +96,9 @@ func editDataConnector(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 	}
 	if u, err := url.Parse(in.BaseURL); in.BaseURL != "" && (err != nil || u.Scheme == "" || u.Host == "") {
 		return result.Result{}, fmt.Errorf("%w: base_url must be an absolute URL (scheme and host)", ErrInvalidInput)
+	}
+	if err := rejectSecretHeaders(in.ExtraHeaders); err != nil {
+		return result.Result{}, err
 	}
 	switch in.Action {
 	case "add":
@@ -270,4 +274,26 @@ func planDataConnectorTest(ctx context.Context, s *fwd.Session, in editDataConne
 	}
 	return result.Build(editDataConnectorName, result.OK, fmt.Sprintf("Data connector %q passed its connectivity test (%s to %s). Its stored test result was updated to this outcome", in.Name, res.StartedAt, res.EndedAt), result.Deterministic, cx,
 		result.Options{Mode: result.ModeApplied, Limits: limits, Evidence: dcEvidence("test", map[string]any{"started_at": res.StartedAt, "ended_at": res.EndedAt})})
+}
+
+// secretHeaderWords in a header name mean the value is a credential; extra_headers is stored and read back in the clear, so those go through refs.credential_id.
+var secretHeaderWords = []string{"authorization", "cookie", "token", "secret", "key", "password", "passwd", "credential", "auth", "bearer", "session"}
+
+// rejectSecretHeaders refuses, at plan time, an extra header whose name says it carries a credential.
+func rejectSecretHeaders(h map[string]string) error {
+	var bad []string
+	for name := range h {
+		l := strings.ToLower(name)
+		for _, w := range secretHeaderWords {
+			if strings.Contains(l, w) {
+				bad = append(bad, name)
+				break
+			}
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	sort.Strings(bad)
+	return fmt.Errorf("%w: extra_headers %s look like credentials (Authorization, Proxy-Authorization, Cookie and any name with token, secret, key, password or auth); they are stored in the clear, so authenticate with refs.credential_id instead", ErrInvalidInput, strings.Join(bad, ", "))
 }

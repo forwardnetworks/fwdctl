@@ -22,6 +22,8 @@ type collectionConfigInput struct {
 	// DataFile names one of the org's data files (see detail.data_files) to also read its inferred NQE schema and a content preview.
 	// A read, not a write: Forward's inference needs no credential and stores nothing.
 	DataFile string `json:"data_file"`
+	// IncludeContent also returns the first 2000 characters of that data file's stored content. Off by default: an uploaded file can hold anything, secrets included.
+	IncludeContent bool `json:"include_content"`
 	// DataConnector names one of the network's data connectors (see detail.data_connectors) to also read its endpoints, status and last test result.
 	DataConnector string `json:"data_connector"`
 }
@@ -255,11 +257,14 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 				if len(inf.Inference.Schema) > 0 {
 					preview["schema"] = json.RawMessage(inf.Inference.Schema)
 				}
-				if len(inf.Content) > 2000 {
+				if !in.IncludeContent {
+					preview["content_preview"] = "not shown: give include_content:true to read the first 2000 characters of the file (an uploaded file can hold secrets)"
+				} else if len(inf.Content) > 2000 {
 					preview["content_preview"] = inf.Content[:2000] + "..."
-					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is truncated at 2000 of %d characters", in.DataFile, len(inf.Content)))
+					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is truncated at 2000 of %d characters; it is the file as uploaded, unredacted", in.DataFile, len(inf.Content)))
 				} else {
 					preview["content_preview"] = inf.Content
+					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is the file as uploaded, unredacted", in.DataFile))
 				}
 				detail["data_file_schema"] = preview
 				if len(inf.Inference.Errors) > 0 {

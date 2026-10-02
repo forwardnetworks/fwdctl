@@ -7,6 +7,8 @@ metadata:
   summary: "note on a snapshot"
   maturity: "3"
   class: write
+  effect: "snapshot"
+  secrets: "false"
   reversible: "true"
   tools: "snapshots"
 ---

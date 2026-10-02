@@ -260,3 +260,27 @@ func TestRetiredSkillNamesSayWhatTheyAreNow(t *testing.T) {
 		t.Error("a current skill is not an alias")
 	}
 }
+
+// A result with several lists prints the largest by default, the one asked for with --list, and names the others.
+func TestPickListChoosesByNameAndNamesTheRest(t *testing.T) {
+	res := map[string]any{"evidence": []any{map[string]any{"detail": map[string]any{
+		"by_vendor":      []any{map[string]any{"name": "CISCO"}, map[string]any{"name": "ARISTA"}},
+		"by_device_type": []any{map[string]any{"name": "SWITCH"}, map[string]any{"name": "ROUTER"}, map[string]any{"name": "FIREWALL"}},
+		"counts":         map[string]any{"devices": 5},
+	}}}}
+	rows, where, others, ok := pickList(res, "")
+	if !ok || len(rows) != 3 || !strings.HasSuffix(where, ".by_device_type") || len(others) != 1 || others[0] != "by_vendor (2)" {
+		t.Errorf("default is the largest and the rest are named: %d %s %v %v", len(rows), where, others, ok)
+	}
+	rows, _, others, ok = pickList(res, "by_vendor")
+	if !ok || len(rows) != 2 || rows[0]["name"] != "CISCO" || len(others) != 1 || others[0] != "by_device_type (3)" {
+		t.Errorf("--list by_vendor: %v %v %v", rows, others, ok)
+	}
+	if _, _, others, ok := pickList(res, "nope"); ok || len(others) != 2 {
+		t.Errorf("an unknown name is refused and the real ones are offered: %v %v", others, ok)
+	}
+	// --list without a table or CSV format is a usage error, before anything is run
+	if code, _, errb := call(t, []string{"run", "inspect-networks", "--list", "x"}, "{}", nil); code != 64 || !strings.Contains(errb, "--format table or csv") {
+		t.Errorf("%d %s", code, errb)
+	}
+}

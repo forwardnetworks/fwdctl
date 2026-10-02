@@ -372,7 +372,7 @@ func (a *app) installCmd() *cobra.Command {
 
 // runCmd is `fwdctl run <skill>`: the skill's inputs as one JSON object on stdin (or --input FILE), the result envelope on stdout.
 func (a *app) runCmd() *cobra.Command {
-	var file, format string
+	var file, format, list string
 	var withOps bool
 	c := &cobra.Command{
 		Use: "run <skill>", GroupID: "skills", Short: "run a skill: inputs as JSON on stdin, the result on stdout",
@@ -389,11 +389,12 @@ func (a *app) runCmd() *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.exit(a.runSkill(args[0], file, format, withOps))
+			return a.exit(a.runSkill(args[0], file, format, list, withOps))
 		},
 	}
 	c.Flags().StringVar(&file, "input", "", "JSON file with the skill inputs (default: stdin)")
-	c.Flags().StringVar(&format, "format", "json", "json (the whole result), or table or csv (the largest list of rows in the evidence)")
+	c.Flags().StringVar(&format, "format", "json", "json (the whole result), or table or csv (the largest list of rows in the evidence, or the one --list names)")
+	c.Flags().StringVar(&list, "list", "", "with --format table or csv: print this list (the key it sits under, such as by_vendor) instead of the largest; the others are named on stderr")
 	c.Flags().BoolVar(&withOps, "ops", false, "include the log of Forward calls the skill made (audit data; omitted by default to save tokens)")
 	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions([]string{"json", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp))
 	// `run <skill> --help` is the skill's own help: what it answers, its inputs, an example
@@ -443,7 +444,7 @@ func (a *app) helpCmd(root *cobra.Command) *cobra.Command {
 }
 
 // runSkill is the body of `fwdctl run`.
-func (a *app) runSkill(name, file, format string, withOps bool) int {
+func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 	fail := func(f string, v ...any) int { fmt.Fprintf(a.err, "error: "+f+"\n", v...); return usage }
 	var raw []byte
 	var err error
@@ -465,6 +466,9 @@ func (a *app) runSkill(name, file, format string, withOps bool) int {
 	if !validFormat(format) || format == "jsonl" {
 		return fail("--format is json, table or csv")
 	}
+	if list != "" && format != "table" && format != "csv" {
+		return fail("--list chooses which list --format table or csv prints")
+	}
 	sess, err := a.session()
 	if err != nil {
 		return fail("%v", err)
@@ -482,8 +486,16 @@ func (a *app) runSkill(name, file, format string, withOps bool) int {
 		r.Operations = nil
 	}
 	if format == "table" || format == "csv" {
-		if rows, where := largestRows(r); len(rows) > 0 {
+		rows, where, others, found := pickList(r, list)
+		if !found {
+			fmt.Fprintf(a.err, "error: this result has no list named %q; it holds: %s\n", list, strings.Join(others, ", "))
+			return usage
+		}
+		if len(rows) > 0 {
 			fmt.Fprintf(a.err, "status: %s; %s (%d rows from %s)\n", r.Status, r.Finding, len(rows), where)
+			if len(others) > 0 {
+				fmt.Fprintf(a.err, "other lists in this result (--list NAME prints one): %s\n", strings.Join(others, ", "))
+			}
 			for _, l := range r.Limits {
 				fmt.Fprintf(a.err, "limit: %s\n", l)
 			}

@@ -7,6 +7,8 @@ metadata:
   summary: "recompute a snapshot"
   maturity: "2"
   class: write
+  effect: "snapshot"
+  secrets: "false"
   reversible: "false"
   tools: "snapshots"
 ---

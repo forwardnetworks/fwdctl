@@ -141,6 +141,87 @@ func largestRows(result any) (rows []map[string]any, where string) {
 	return rows, where
 }
 
+// namedList is a list of objects somewhere in a skill result's evidence: the key it sits under, its path, and its rows.
+type namedList struct {
+	key, path string
+	rows      []map[string]any
+}
+
+// allLists finds every list of objects in a skill result's evidence, in path order.
+func allLists(result any) []namedList {
+	var out []namedList
+	var walk func(v any, path, key string)
+	walk = func(v any, path, key string) {
+		switch x := v.(type) {
+		case []any:
+			var objs []map[string]any
+			for _, e := range x {
+				if m, ok := e.(map[string]any); ok {
+					objs = append(objs, m)
+				}
+			}
+			if len(objs) > 0 && len(objs) == len(x) {
+				out = append(out, namedList{key: key, path: path, rows: objs})
+			}
+			for i, e := range x {
+				walk(e, fmt.Sprintf("%s[%d]", path, i), key)
+			}
+		case map[string]any:
+			keys := make([]string, 0, len(x))
+			for k := range x {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				walk(x[k], path+"."+k, k)
+			}
+		}
+	}
+	var generic any
+	b, _ := json.Marshal(result)
+	_ = json.Unmarshal(b, &generic)
+	if m, ok := generic.(map[string]any); ok {
+		walk(m["evidence"], "evidence", "evidence")
+	}
+	return out
+}
+
+// pickList is the list a table or CSV should print: the one named (by the key it sits under, or by a path suffix) when a name is given, else the largest. others describes the
+// lists NOT printed ("by_vendor (6)"), so a reader knows what else the result holds. ok is false when a name was given and matches nothing.
+func pickList(result any, name string) (rows []map[string]any, where string, others []string, ok bool) {
+	lists := allLists(result)
+	// the evidence array itself is a list of objects (its items); it is the rows only when nothing inside the evidence is
+	var inner []namedList
+	for _, l := range lists {
+		if l.path != "evidence" {
+			inner = append(inner, l)
+		}
+	}
+	if len(inner) > 0 {
+		lists = inner
+	}
+	best := -1
+	for i, l := range lists {
+		if name != "" {
+			if l.key == name || l.path == name || strings.HasSuffix(l.path, "."+name) {
+				best = i
+				break
+			}
+		} else if best < 0 || len(l.rows) > len(lists[best].rows) {
+			best = i
+		}
+	}
+	for i, l := range lists {
+		if i != best {
+			others = append(others, fmt.Sprintf("%s (%d)", l.key, len(l.rows)))
+		}
+	}
+	if best < 0 {
+		return nil, "", others, name == ""
+	}
+	return lists[best].rows, lists[best].path, others, true
+}
+
 // nqeRunOpts are the flags of `fwdctl nqe run` (cobra fills them).
 type nqeRunOpts struct {
 	network, file, snapshot, format, countBy, queryID, commitID, paramsFile, metaOut string

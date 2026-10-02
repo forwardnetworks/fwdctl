@@ -75,6 +75,9 @@ func inspectDeviceFiles(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		return result.Result{}, err
 	}
 	cx := fwd.Context(in.NetworkID, snap)
+	if snap != nil && !fwd.IsReady(snap) {
+		return notReadySnapshot(deviceFilesName, cx, snap, "")
+	}
 	if !fwd.IsReady(snap) {
 		return result.NewUnknown(deviceFilesName, "No processed snapshot is available to read", cx,
 			[]string{"no processed snapshot; nothing was read"}, result.Options{NextActions: []string{"investigate-collection-failure"}})

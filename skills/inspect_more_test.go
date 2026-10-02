@@ -147,6 +147,10 @@ func TestCollectionConfigListsDataFilesWithAttachmentAndCanPreviewOneSchema(t *t
 		t.Errorf("reading data files and their schema must never write")
 	}
 	r, _ = mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1","data_file":"sites"}`)
+	if b = jsonOf(r); strings.Contains(b, "nyc,ops") || !strings.Contains(b, "include_content") {
+		t.Errorf("content must be opt-in: %s", b)
+	}
+	r, _ = mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1","data_file":"sites","include_content":true}`)
 	b = jsonOf(r)
 	for _, want := range []string{`"data_file_schema"`, `"data_format":"CSV"`, `nyc,ops`} {
 		if !strings.Contains(b, want) {

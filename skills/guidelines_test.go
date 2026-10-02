@@ -34,12 +34,20 @@ func TestSkillsFollowTheAuthoringGuidelines(t *testing.T) {
 			if _, ok := props.Properties["apply"]; !ok {
 				t.Errorf("%s: a write skill must take an apply input (dry run unless true)", name)
 			}
+			if m.Effect != "network" && m.Effect != "snapshot" && m.Effect != "org" {
+				t.Errorf("%s: a write skill declares metadata effect: network, snapshot or org (got %q)", name, m.Effect)
+			}
+			if !m.SecretsSet {
+				t.Errorf("%s: a write skill declares metadata secrets: \"true\" or \"false\" (true when it takes, references or can copy a secret)", name)
+			}
 			body := strings.ToLower(m.Body)
 			for _, need := range []string{"dry run", "undo"} {
 				if !strings.Contains(body, need) {
 					t.Errorf("%s: a write skill's SKILL.md must explain %q", name, need)
 				}
 			}
+		} else if m.Effect != "" || m.Secrets {
+			t.Errorf("%s: a read skill declares no effect or secrets", name)
 		} else if strings.Contains(string(m.InputSchema), `"apply"`) {
 			t.Errorf("%s: takes apply but is not class write", name)
 		}

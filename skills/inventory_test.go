@@ -275,3 +275,107 @@ func TestInventoryIGPNeighborsSaysItIsOSPFOnlyAndCloudKindsSendTheirQueries(t *t
 		}
 	}
 }
+
+func devRow(name, vendor, typ string) map[string]any {
+	return map[string]any{"Device": name, "Vendor": vendor, "Type": typ}
+}
+
+// byRun answers the device-index query with a different list per snapshot id.
+func devicesBySnapshot(lists map[string][]map[string]any) fwdtest.Handler {
+	return func(r *http.Request, _ []byte) (int, any) {
+		rows := lists[r.URL.Query().Get("snapshotId")]
+		return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
+	}
+}
+
+func compareSnaps() fwdtest.Handler {
+	return fwdtest.Snapshots(
+		fwdtest.Snap("old", "PROCESSED", "COLLECTION", "2026-09-20T00:00:00.000Z"),
+		fwdtest.Snap("new", "PROCESSED", "COLLECTION", "2026-09-29T00:00:00.000Z"),
+		map[string]any{"id": "raw", "state": "UNPROCESSED", "processingTrigger": "COLLECTION", "createdAt": "2026-09-25T00:00:00.000Z", "totalDevices": 4500},
+	)
+}
+
+func TestInventoryCompareListsAddedAndRemovedDevicesWithWhatTheyAre(t *testing.T) {
+	lists := map[string][]map[string]any{
+		"old": {devRow("al-sw1", "CISCO", "SWITCH"), devRow("al-r1", "CISCO", "ROUTER"), devRow("nc-fw1", "PALO_ALTO_NETWORKS", "FIREWALL"), devRow("gone-1", "ARISTA", "SWITCH")},
+		"new": {devRow("al-sw1", "CISCO", "SWITCH"), devRow("al-r1", "CISCO", "ROUTER"), devRow("nc-fw1", "PALO_ALTO_NETWORKS", "FIREWALL"),
+			devRow("tx-sw1", "CISCO", "SWITCH"), devRow("tx-sw2", "CISCO", "SWITCH"), devRow("tx-sw3", "CISCO", "SWITCH"), devRow("x_r9", "JUNIPER", "ROUTER")},
+	}
+	routes := map[string]fwdtest.Handler{snapsPath: compareSnaps(), nqePath: devicesBySnapshot(lists)}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"new","kind":"devices","compare_to_snapshot_id":"old"}`)
+	if r.Status != result.OK {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	d := r.Evidence[0].Detail
+	devs := d["devices"].(map[string]any)
+	if devs["baseline"] != 4 || devs["current"] != 7 || devs["added"] != 4 || devs["removed"] != 1 || devs["unchanged"] != 3 {
+		t.Errorf("counts: %v", devs)
+	}
+	if got := d["added"].([]string); len(got) != 4 || got[0] != "tx-sw1" || got[3] != "x_r9" {
+		t.Errorf("the added names, sorted: %v", got)
+	}
+	if got := d["removed"].([]string); len(got) != 1 || got[0] != "gone-1" {
+		t.Errorf("removed: %v", got)
+	}
+	byType := d["added_by_type"].([]map[string]any)
+	byPrefix := d["added_by_name_prefix"].([]map[string]any)
+	if byType[0]["name"] != "SWITCH" || byType[0]["devices"] != 3 || byPrefix[0]["name"] != "tx" || byPrefix[0]["devices"] != 3 {
+		t.Errorf("added by type %v, by prefix %v", byType, byPrefix)
+	}
+	net := d["net_by_vendor"].([]map[string]any)
+	if net[0]["name"] != "CISCO" || net[0]["change"] != 3 {
+		t.Errorf("net by vendor, largest change first: %v", net)
+	}
+	for _, want := range []string{"+3 devices between old and new", "4 added, 1 removed", "added mostly SWITCH (3)", "chiefly CISCO (3)"} {
+		if !strings.Contains(r.Finding, want) {
+			t.Errorf("finding missing %q: %s", want, r.Finding)
+		}
+	}
+}
+
+func TestInventoryCompareRefusesWhatItCannotCompareAndSaysWhyASnapshotCannotBeRead(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: compareSnaps(), nqePath: devicesBySnapshot(nil)}
+	if _, _, err := runSkill(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"interfaces","compare_to_snapshot_id":"old"}`); err == nil {
+		t.Error("compare_to_snapshot_id is an input of kind devices only")
+	}
+	// the baseline exists but was never processed: say so and name the fix, instead of a bare "no processed snapshot"
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"new","kind":"devices","compare_to_snapshot_id":"raw"}`)
+	joined := strings.Join(r.Limits, " | ")
+	if r.Status != result.Unknown || !strings.Contains(r.Finding, "raw is UNPROCESSED") || !strings.Contains(joined, "edit-snapshot-reprocess") || !strings.Contains(joined, "4500 devices") || r.NextActions[0] != "edit-snapshot-reprocess" {
+		t.Errorf("%s %s %v %v", r.Status, r.Finding, r.Limits, r.NextActions)
+	}
+	if r2, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"new","kind":"devices","compare_to_snapshot_id":"nope"}`); r2.Status != result.Unknown {
+		t.Errorf("a baseline that is not in the network is unknown: %s", r2.Status)
+	}
+}
+
+func TestInventoryOnAnUnprocessedSnapshotNamesItsStateAndTheFixNotJustNoProcessedSnapshot(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: compareSnaps(), nqePath: devicesBySnapshot(nil)}
+	for _, kind := range []string{"summary", "devices"} {
+		r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"raw","kind":"`+kind+`"}`)
+		if r.Status != result.Unknown || !strings.Contains(r.Finding, "UNPROCESSED") || r.NextActions[0] != "edit-snapshot-reprocess" {
+			t.Errorf("%s: %s %s %v", kind, r.Status, r.Finding, r.NextActions)
+		}
+	}
+}
+
+func TestInventoryCompareFlagsATypeThatLostAndGainedAboutTheSameNumberAsLikelyRenamed(t *testing.T) {
+	var oldL, newL []map[string]any
+	for i := 0; i < 60; i++ { // 60 firewalls renamed (a name scheme change), 5 switches really added
+		oldL = append(oldL, devRow("fw-old-"+string(rune('a'+i%26))+string(rune('a'+i/26)), "PALO_ALTO_NETWORKS", "FIREWALL"))
+		newL = append(newL, devRow("fw-new-"+string(rune('a'+i%26))+string(rune('a'+i/26)), "PALO_ALTO_NETWORKS", "FIREWALL"))
+	}
+	for i := 0; i < 5; i++ {
+		newL = append(newL, devRow("sw-"+string(rune('a'+i)), "CISCO", "SWITCH"))
+	}
+	routes := map[string]fwdtest.Handler{snapsPath: compareSnaps(), nqePath: devicesBySnapshot(map[string][]map[string]any{"old": oldL, "new": newL})}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"new","kind":"devices","compare_to_snapshot_id":"old"}`)
+	ch, _ := r.Evidence[0].Detail["likely_renamed_or_rescoped"].([]map[string]any)
+	if len(ch) != 1 || ch[0]["device_type"] != "FIREWALL" || ch[0]["added"] != 60 || ch[0]["removed"] != 60 || ch[0]["net"] != 0 {
+		t.Fatalf("the firewalls are a churn, the five switches are not: %v", ch)
+	}
+	if !strings.Contains(r.Finding, "LIKELY RENAMED, not new hardware: FIREWALL +60/-60") {
+		t.Errorf("the finding must say so: %s", r.Finding)
+	}
+}

@@ -7,6 +7,8 @@ metadata:
   summary: "tag or untag devices"
   maturity: "2"
   class: write
+  effect: "network"
+  secrets: "false"
   reversible: "true"
   tools: "device tags"
 ---

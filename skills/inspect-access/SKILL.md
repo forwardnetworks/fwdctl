@@ -1,6 +1,6 @@
 ---
 name: inspect-access
-description: Shows this login's Forward roles and what they allow, explains a refused operation, lists users and access groups. Read-only. Use when access or a 403 is the question.
+description: Shows this login's Forward roles and what they allow, explains a refused operation, lists users and groups, reads the audit log. Read-only. Use when access or a 403 is the question.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "access"
@@ -25,6 +25,7 @@ It reads and changes nothing. To change access use `edit-access`.
 | `explain` | `operation` (`EDIT_CHECKS`, `NetworkOperation.EDIT_CHECKS`) or `error` (Forward's 403 text), optional `network_id` | The operation, what it means, the lowest role that holds it, the role you hold, and the resolution: who grants what. A licence refusal is reported as a licence problem. |
 | `users` | optional `user`, `match`, `limit`, `offset` | Users with enabled state, sign-in source, organization admin, networks and roles, groups, last activity, API token use, two-factor state. Needs VIEW_USER_ACCOUNTS. |
 | `groups` | optional `match`, `limit`, `offset` | Access control groups: the identity-provider group names that put a user in it, the role per network, whether it makes organization administrators, device access labels. |
+| `activity` | optional `since` (7d, 48h or RFC 3339; default 7d), `method`, `user`, `network_id`, `match` (route prefix), `limit`, `offset` | Forward's audit log: who called which route, when, from which address, with what response code; totals by user, method and outcome. Needs VIEW_AUDIT_LOGS (organization administrator). It records requests, not bodies, so it says who touched the device list, not which devices. No record is not proof nothing happened. |
 
 ## The model in one page
 

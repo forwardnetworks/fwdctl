@@ -7,6 +7,8 @@ metadata:
   summary: "start advanced reachability"
   maturity: "1"
   class: write
+  effect: "snapshot"
+  secrets: "false"
   reversible: "false"
   tools: "snapshots"
 ---

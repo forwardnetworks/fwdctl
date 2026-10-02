@@ -47,6 +47,11 @@
     "offset": {
       "type": "integer",
       "minimum": 0
+    },
+    "compare_to_snapshot_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "view slow: a second snapshot to set beside the one asked about (total device time, parallelism, per-device figures, and per device type and connection)"
     }
   }
 }

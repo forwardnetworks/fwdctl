@@ -32,12 +32,16 @@
     "data_file": {
       "type": "string",
       "minLength": 1,
-      "description": "view config: the exact name of one of the organization's data files (see data_files in the result) to also read its inferred NQE schema and a content preview"
+      "description": "view config: the exact name of one of the organization's data files (see data_files in the result) to also read its inferred NQE schema"
     },
     "data_connector": {
       "type": "string",
       "minLength": 1,
       "description": "view config: the exact name of one of the network's data connectors (see data_connectors in the result) to also read its endpoints, proxy/collector and last connectivity test result"
+    },
+    "include_content": {
+      "type": "boolean",
+      "description": "view config, with data_file: also return the first 2000 characters of the file's stored content, unredacted. Off by default because an uploaded file can hold secrets"
     }
   }
 }

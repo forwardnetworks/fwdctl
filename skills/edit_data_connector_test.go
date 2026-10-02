@@ -134,3 +134,16 @@ func TestEditDataConnectorTestIsReadOnlyAndRefusesApply(t *testing.T) {
 		t.Fatalf("want an apply-not-allowed error, got %v", err)
 	}
 }
+
+func TestEditDataConnectorRefusesCredentialHeadersAtPlanTimeAndAllowsPlainOnes(t *testing.T) {
+	conns := []map[string]any{}
+	base := `{"action":"add","network_id":"n1","name":"weather-feed","base_url":"https://example.test","endpoints":[{"name":"ep1","path":"/a"}],"extra_headers":`
+	for _, h := range []string{`{"Authorization":"Bearer x"}`, `{"x-api-key":"k"}`, `{"Cookie":"a=b"}`, `{"X-Auth-Token":"t"}`, `{"Proxy-Authorization":"p"}`} {
+		if _, srv, err := runSkill(t, "edit-data-connector", dataConnectorsWorld(&conns), base+h+`}`); err == nil || !strings.Contains(err.Error(), "credential_id") || writes(srv) != 0 {
+			t.Errorf("%s must be refused at plan time: %v", h, err)
+		}
+	}
+	if r, _ := mustRun(t, "edit-data-connector", dataConnectorsWorld(&conns), base+`{"Accept":"application/json"}}`); r.Status != result.OK {
+		t.Errorf("a plain header is allowed: %s %s", r.Status, r.Finding)
+	}
+}

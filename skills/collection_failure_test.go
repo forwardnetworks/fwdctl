@@ -534,3 +534,128 @@ func TestCollectionSlowViewSumsDeviceTimeComparesItToTheCollectorAndGroupsIt(t *
 		t.Error("parallelism is a whole-run figure and must not be computed for a filtered slice")
 	}
 }
+
+// Ten devices over a 20 minute run: five run 0-5 min, nothing runs 5-10, five run 10-20. The profile has to show the start, the stall and the tail.
+func slowProfileRoutes(endsAtMs int64, firstBatchMs int64) map[string]fwdtest.Handler {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	var devs []any
+	for i := 0; i < 5; i++ {
+		devs = append(devs, map[string]any{"deviceName": "a" + string(rune('0'+i)), "deviceType": "SWITCH", "connTypeDisplayName": "SSH", "collectionStartTime": 0, "collectionDuration": firstBatchMs})
+	}
+	for i := 0; i < 5; i++ {
+		devs = append(devs, map[string]any{"deviceName": "b" + string(rune('0'+i)), "deviceType": "FIREWALL", "connTypeDisplayName": "PAN-OS", "collectionStartTime": 600_000, "collectionDuration": endsAtMs - 600_000})
+	}
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s1", "collectionStartTime": 0, "collectionEndTime": endsAtMs, "metrics": devs})
+	return routes
+}
+
+func TestCollectionSlowViewShowsWhenConcurrencyFellNotJustTheAverage(t *testing.T) {
+	r, _ := collect(t, slowProfileRoutes(1_200_000, 300_000), `{"network_id":"n1","view":"slow"}`)
+	prof := r.Evidence[0].Detail["stats"].(map[string]any)["in_flight"].(map[string]any)
+	bk := prof["buckets"].([]map[string]any)
+	got := []any{}
+	for _, b := range bk {
+		got = append(got, b["devices_in_flight"])
+	}
+	if len(bk) != 4 || got[0] != 5.0 || got[1] != 0.0 || got[2] != 5.0 || got[3] != 5.0 || prof["peak_devices_in_flight"] != 5.0 || prof["bucket_seconds"] != int64(300) {
+		t.Errorf("five devices, then a stall, then five again: %v", got)
+	}
+	fin := prof["finished_by_seconds"].(map[string]float64)
+	if fin["p50"] != 300 || fin["p99"] != 1200 || fin["max"] != 1200 {
+		t.Errorf("half the devices were done at 5 minutes, all at 20: %v", fin)
+	}
+	if !strings.Contains(r.Finding, "99% of devices had finished by 20m00s") {
+		t.Errorf("the finding must say when the tail ended: %s", r.Finding)
+	}
+}
+
+func TestCollectionSlowViewComparesTwoCollectionsAndOnlyInTheSlowView(t *testing.T) {
+	routes := slowProfileRoutes(1_200_000, 300_000)
+	// the baseline snapshot's metrics: the same devices, firewalls twice as fast, so less total time
+	base := slowProfileRoutes(900_000, 300_000)["GET /api/networks/n1/collection-metrics"]
+	cur := routes["GET /api/networks/n1/collection-metrics"]
+	routes["GET /api/networks/n1/collection-metrics"] = func(r *http.Request, b []byte) (int, any) {
+		if r.URL.Query().Get("snapshotId") == "base" {
+			return base(r, b)
+		}
+		return cur(r, b)
+	}
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow","compare_to_snapshot_id":"base"}`)
+	c, ok := r.Evidence[0].Detail["stats"].(map[string]any)["compare"].(map[string]any)
+	if !ok {
+		t.Fatalf("no comparison: %v %v", r.Finding, r.Limits)
+	}
+	ch := c["change"].(map[string]any)
+	// 5 x 300 s + 5 x 600 s = 4500 s now; 5 x 300 s + 5 x 300 s = 3000 s before
+	if ch["sum_ms"] != int64(1_500_000) || c["baseline_snapshot_id"] != "base" {
+		t.Errorf("change: %v", ch)
+	}
+	fw := c["by_device_type"].([]map[string]any)[0]
+	if fw["name"] != "FIREWALL" || fw["change_ms"] != int64(1_500_000) || fw["baseline_sum_ms"] != int64(1_500_000) {
+		t.Errorf("the firewalls carry the whole change and come first: %v", fw)
+	}
+	if !strings.Contains(r.Finding, "against base: total device time 50m00s to 1h15m") {
+		t.Errorf("the finding must carry the comparison: %s", r.Finding)
+	}
+	if _, _, err := runSkill(t, "investigate-collection-failure", routes, `{"network_id":"n1","view":"devices","compare_to_snapshot_id":"base"}`); err == nil {
+		t.Error("compare_to_snapshot_id belongs to view slow only")
+	}
+}
+
+func TestCollectionSlowViewFindsAnIdleStretchAndSaysWhatStartedAfterIt(t *testing.T) {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	var devs []any
+	for i := 0; i < 6; i++ { // a first batch of switches, 0 to 5 minutes
+		devs = append(devs, map[string]any{"deviceName": "sw" + string(rune('0'+i)), "deviceType": "SWITCH", "connTypeDisplayName": "SSH", "collectionStartTime": 0, "collectionDuration": 300_000})
+	}
+	for i := 0; i < 4; i++ { // a second batch of routers starting at 30 minutes, after 25 minutes with nothing running
+		devs = append(devs, map[string]any{"deviceName": "r" + string(rune('0'+i)), "deviceType": "ROUTER", "connTypeDisplayName": "Cisco IOS-XE", "collectionStartTime": 1_800_000, "collectionDuration": 300_000})
+	}
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s1", "collectionStartTime": 0, "collectionEndTime": 2_100_000, "metrics": devs})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow"}`)
+	prof := r.Evidence[0].Detail["stats"].(map[string]any)["in_flight"].(map[string]any)
+	gaps, _ := prof["idle_gaps"].([]map[string]any)
+	if len(gaps) != 1 || gaps[0]["from_seconds"] != int64(300) || gaps[0]["to_seconds"] != int64(1800) || gaps[0]["idle_seconds"] != int64(1500) {
+		t.Fatalf("one idle stretch from 5 to 30 minutes: %v", gaps)
+	}
+	after := prof["started_after_the_longest_gap"].(map[string]any)
+	top := after["most_common"].([]map[string]any)
+	if after["devices"] != 4 || top[0]["connection"] != "Cisco IOS-XE" || top[0]["device_type"] != "ROUTER" {
+		t.Errorf("the second batch is four IOS-XE routers: %v", after)
+	}
+	if !strings.Contains(r.Finding, "NOTHING was being collected for 25m00s (5m00s to 30m00s), then 4 more devices started, mostly Cisco IOS-XE ROUTER (4)") {
+		t.Errorf("the finding must name the gap and what came after it: %s", r.Finding)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " | "), "can exceed the collector's configured concurrency") {
+		t.Errorf("limits must warn that in-flight can exceed the configured concurrency: %v", r.Limits)
+	}
+	// a short stall (under three buckets) is not reported as a gap
+	r2, _ := collect(t, slowProfileRoutes(1_200_000, 300_000), `{"network_id":"n1","view":"slow"}`)
+	if _, has := r2.Evidence[0].Detail["stats"].(map[string]any)["in_flight"].(map[string]any)["idle_gaps"]; has {
+		t.Error("a one-bucket stall is not an idle stretch")
+	}
+}
+
+func TestCollectionHistoryListsACollectionWhoseSnapshotWasReplacedByAReprocess(t *testing.T) {
+	routes := collectionHistRoutes()
+	// 2026-10-01's collection (task P2000) now survives only as a reprocess of its snapshot; 2026-10-02 (P1021) is shown with s5
+	routes["GET /api/collector-tasks"] = fwdtest.Const(200, []any{
+		map[string]any{"id": "P1021", "networkId": "n1", "type": "NETWORK_COLLECTION", "status": "DONE", "startedAt": "2026-10-02T06:00:14Z", "finishedAt": "2026-10-02T09:20:39Z"},
+		map[string]any{"id": "P2000", "networkId": "n1", "type": "NETWORK_COLLECTION", "status": "DONE", "startedAt": "2026-10-01T06:06:03Z", "finishedAt": "2026-10-01T07:52:42Z"},
+		map[string]any{"id": "P2001", "networkId": "n1", "type": "NETWORK_COLLECTION", "status": "DONE", "startedAt": "2026-08-01T06:00:00Z", "finishedAt": "2026-08-01T07:00:00Z"}, // older than the rows read
+		map[string]any{"id": "P2002", "networkId": "n1", "type": "OTHER", "status": "DONE", "startedAt": "2026-10-01T10:00:00Z", "finishedAt": "2026-10-01T10:05:00Z"},
+	})
+	routes[snapsPath] = fwdtest.Snapshots(
+		collSnap("s1", "2026-09-10T06:00:00Z", "2026-09-10T07:10:00Z", 4500, ""),
+		collSnap("s5", "2026-10-02T09:46:00Z", "2026-10-02T09:46:53Z", 40000, "1021"),
+		map[string]any{"id": "rp", "state": "PROCESSED", "processingTrigger": "REPROCESS", "createdAt": "2026-10-01T07:53:00Z", "processedAt": "2026-10-02T14:00:00Z", "totalDevices": 20000, "collectionTaskId": "2000"},
+	)
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"history"}`)
+	or := r.Evidence[0].Detail["collections_without_a_shown_snapshot"].([]map[string]any)
+	if len(or) != 1 || or[0]["task_id"] != "P2000" || or[0]["task_seconds"] != 6399.0 || or[0]["snapshot_id"] != "rp" || !strings.Contains(or[0]["snapshot_kind"].(string), "REPROCESS") {
+		t.Fatalf("only the 10-01 collection: shown ones, other task types and tasks older than the rows are left out: %v", or)
+	}
+	if !strings.Contains(r.Finding, "1 more collection(s) ran whose snapshot is not shown") {
+		t.Errorf("finding: %s", r.Finding)
+	}
+}

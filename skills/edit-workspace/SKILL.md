@@ -7,6 +7,8 @@ metadata:
   summary: "temporary workspace network"
   maturity: "1"
   class: write
+  effect: "network"
+  secrets: "true"
   reversible: "true"
   tools: "networks, endpoints"
 ---

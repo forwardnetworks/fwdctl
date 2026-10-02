@@ -7,6 +7,8 @@ metadata:
   summary: "model a WAN circuit"
   maturity: "1"
   class: write
+  effect: "network"
+  secrets: "false"
   reversible: "true"
   tools: "synthetic nodes, snapshots"
 ---

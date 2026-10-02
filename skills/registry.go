@@ -40,6 +40,12 @@ type Meta struct {
 	// every Change with how to undo it. Reversible is false when any change it can make cannot be undone through the API.
 	Class      string `json:"class"`
 	Reversible bool   `json:"reversible,omitempty"`
+	// Effect is how far a write reaches: "network", "snapshot" or "org" (empty for a read). Secrets is true when the skill takes,
+	// references or can copy a secret (a password, a credential id, a header value, uploaded content); SecretsSet is whether the
+	// skill declared it, which a write skill must.
+	Effect     string `json:"effect,omitempty"`
+	Secrets    bool   `json:"secrets"`
+	SecretsSet bool   `json:"-"`
 	// Cluster is the area of the skill set a skill belongs to (see Clusters), and Summary a phrase of at most six words that
 	// stands for it in the compact list `fwdctl install agents` writes. Both come from metadata in SKILL.md; every skill must carry them.
 	Cluster string `json:"cluster,omitempty"`
@@ -310,6 +316,10 @@ func parseSkill(name, src string) (Meta, error) {
 					m.Summary = v
 				case "reversible":
 					m.Reversible = v == "true"
+				case "effect":
+					m.Effect = v
+				case "secrets":
+					m.Secrets, m.SecretsSet = v == "true", true
 				case "tools":
 					for _, t := range strings.Split(v, ",") {
 						if t = strings.TrimSpace(t); t != "" {

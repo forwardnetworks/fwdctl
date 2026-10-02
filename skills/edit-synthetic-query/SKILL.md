@@ -7,6 +7,8 @@ metadata:
   summary: "query-driven synthetic node"
   maturity: "1"
   class: write
+  effect: "network"
+  secrets: "false"
   reversible: "true"
   tools: "synthetic nodes, nqe"
 ---

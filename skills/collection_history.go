@@ -134,6 +134,45 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 		rows = append(rows, row)
 	}
 
+	// collections Forward ran whose snapshot is not among those shown: replaced by a reprocess, or older than the rows read. The collector task survives in Forward's recent-tasks window.
+	var orphans []map[string]any
+	var orphanNote string
+	if tasks, terr := s.RecentTasks(ctx, in.NetworkID, 100); terr != nil {
+		orphanNote = "collector tasks could not be read, so collections whose snapshot is gone are not listed: " + terr.Error()
+	} else {
+		shownTask := map[string]bool{}
+		for _, sn := range shown {
+			if id := strings.TrimPrefix(string(sn.CollectionTaskID), "P"); id != "" {
+				shownTask[id] = true
+			}
+		}
+		snapOf := map[string]forward.Snapshot{}
+		for _, sn := range all {
+			if id := strings.TrimPrefix(string(sn.CollectionTaskID), "P"); id != "" {
+				snapOf[id] = sn
+			}
+		}
+		oldest := shown[len(shown)-1].CreatedAt
+		for _, t := range tasks {
+			id := strings.TrimPrefix(string(t.ID), "P")
+			if t.Type != "NETWORK_COLLECTION" || t.FinishedAt == "" || shownTask[id] || t.FinishedAt < oldest {
+				continue
+			}
+			row := map[string]any{"task_id": string(t.ID), "status": t.Status, "started_at": t.StartedAt, "finished_at": t.FinishedAt}
+			if a, aok := rfc(t.StartedAt); aok {
+				if b, bok := rfc(t.FinishedAt); bok {
+					row["task_seconds"] = b.Sub(a).Seconds()
+				}
+			}
+			if sn, ok := snapOf[id]; ok {
+				row["snapshot_id"], row["snapshot_kind"] = string(sn.ID), kindOf(sn)
+			} else {
+				row["snapshot_kind"] = "none in the snapshot list"
+			}
+			orphans = append(orphans, row)
+		}
+		sort.SliceStable(orphans, func(i, j int) bool { return orphans[i]["finished_at"].(string) > orphans[j]["finished_at"].(string) })
+	}
 	var limits []string
 	stats := map[string]any{"collected_snapshots_in_network": len(collected), "snapshots_read": len(rows), "with_collection_duration": len(secs)}
 	finding := fmt.Sprintf("%d collected snapshot(s) read of %d", len(rows), len(collected))
@@ -180,6 +219,16 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 		return result.NewUnknown(collectionFailureName, "No collected snapshot could be read", cx, limits, result.Options{})
 	}
 	d := map[string]any{"stats": stats, "snapshots": rows}
+	if len(orphans) > 0 {
+		d["collections_without_a_shown_snapshot"] = orphans
+		finding += fmt.Sprintf("; %d more collection(s) ran whose snapshot is not shown (collections_without_a_shown_snapshot: the task's start, end and what became of its snapshot)", len(orphans))
+		limits = append(limits, "collections_without_a_shown_snapshot comes from Forward's recent collector tasks, not from snapshots: it has the task's own start and end but not the device count or the processing time, and its snapshot was replaced (a reprocess keeps the task id but is not a collection) or is older than the rows read")
+	}
+	if orphanNote != "" {
+		limits = append(limits, orphanNote)
+	} else {
+		limits = append(limits, "Forward lists the organization's newest collector tasks first and filters by network afterwards, so a collection older than that window can be missing from collections_without_a_shown_snapshot")
+	}
 	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
 		NextActions: []string{"investigate-collection-failure", "inspect-collection", "inspect-snapshots"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "getSnapshotMetrics", fwd.SnapshotIDPtr(&shown[0]), d, finding)}})

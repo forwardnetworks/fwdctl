@@ -197,3 +197,35 @@ func TestEditAccessAppliesAndReadsBack(t *testing.T) {
 		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
 }
+
+func TestAccessActivitySummarisesAuditRecordsAndSaysWhatTheyCannotProve(t *testing.T) {
+	routes := accessRoutes(sessionJSON([]string{"ADMIN"}, nil), map[string]string{})
+	var q string
+	routes["GET /api/audit-logs"] = func(r *http.Request, _ []byte) (int, any) {
+		q = r.URL.RawQuery
+		return 200, map[string]any{"records": []map[string]any{
+			{"time": "2026-10-01T10:00:00Z", "userId": "u-bob", "httpMethod": "DELETE", "targetUri": "/networks/N1/classic-devices/r1", "httpResponseCode": 204, "remoteIp": "192.0.2.1"},
+			{"time": "2026-10-01T09:00:00Z", "userId": "u-bob", "httpMethod": "POST", "targetUri": "/networks/N1/classic-devices", "httpResponseCode": 403, "remoteIp": "192.0.2.1"},
+		}, "paging": map[string]any{"total": 2}}
+	}
+	r, _ := mustRun(t, "inspect-access", routes, `{"view":"activity","network_id":"N1","match":"classic-devices","user":"bob@example.test","since":"48h"}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "most by bob@example.test (2)") || !strings.Contains(r.Finding, "1 failed") {
+		t.Fatalf("%s %s", r.Status, b)
+	}
+	for _, want := range []string{"userId=u-bob", "targetUri=%2Fnetworks%2FN1%2Fclassic-devices"} {
+		if !strings.Contains(q, want) {
+			t.Errorf("query %q lacks %s", q, want)
+		}
+	}
+	if !strings.Contains(strings.Join(r.Limits, "|"), "no request bodies") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+	routes["GET /api/audit-logs"] = fwdtest.Const(200, map[string]any{"records": []any{}, "paging": map[string]any{"total": 0}})
+	if r, _ = mustRun(t, "inspect-access", routes, `{"view":"activity"}`); r.Status != result.Unknown {
+		t.Errorf("no records is not proof: %s", r.Status)
+	}
+	if _, _, err := runSkill(t, "inspect-access", routes, `{"view":"activity","since":"soon"}`); err == nil {
+		t.Errorf("a bad since must be refused")
+	}
+}

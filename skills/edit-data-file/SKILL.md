@@ -7,7 +7,9 @@ metadata:
   summary: "add a data file"
   maturity: "1"
   class: write
-  reversible: "true"
+  effect: "org"
+  secrets: "true"
+  reversible: "false"
   tools: "data files"
 ---
 

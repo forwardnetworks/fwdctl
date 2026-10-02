@@ -7,6 +7,8 @@ metadata:
   summary: "data connector"
   maturity: "1"
   class: write
+  effect: "network"
+  secrets: "true"
   reversible: "true"
   tools: "data connectors"
 ---

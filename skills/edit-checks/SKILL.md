@@ -7,6 +7,8 @@ metadata:
   summary: "create or deactivate a check"
   maturity: "3"
   class: write
+  effect: "snapshot"
+  secrets: "false"
   reversible: "false"
   tools: "checks"
 ---
