@@ -3,7 +3,7 @@ name: edit-access
 description: Manages Forward users and access groups: create or disable users, grant org admin, set a network role for a user or group. Dry run unless apply is true. Use for access changes.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
-  cluster: "environment"
+  cluster: "access"
   summary: "users, roles, access groups"
   maturity: "1"
   class: write

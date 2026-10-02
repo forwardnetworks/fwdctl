@@ -273,6 +273,9 @@ Offline NQE check, no Forward connection: syntax errors with line and column, un
 type errors, and deprecations with Forward's own advice. Exit 1 on an error. The type check is gradual (it says nothing where it cannot tell a type), so
 validate-nqe-query, which runs the query on Forward, is still the last word. An import of your own organization's saved query (not @fwd/...) warns rather than being
 checked, since that library is per-organization and not sealed into this binary: `fwdctl nqe bundle` first for full coverage of it too.
+Dead code is warned about, never an error (exit stays 0): a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main
+expression or an export refers to (unused-definition). Lint a `nqe bundle` to find what a whole module tree never uses; an exported definition is never called dead, since
+another module may import it.
 
 ```
 fwdctl nqe lint [FILE|-] [flags]

@@ -104,6 +104,7 @@ type Cluster struct {
 // Clusters lists the areas, in the order the compact skill list prints them.
 var Clusters = []Cluster{
 	{"environment", "Start here and protocol"},
+	{"access", "Access and org settings"},
 	{"investigate", "Connectivity and triage"},
 	{"snapshots", "Snapshots and collection"},
 	{"inventory-topology", "Inventory, topology, device state"},
@@ -111,8 +112,7 @@ var Clusters = []Cluster{
 	{"compliance", "Compliance and history"},
 	{"security", "Security and vulnerabilities"},
 	{"nqe", "NQE queries"},
-	{"edge-synthetic", "Edge and synthetic devices"},
-	{"link-overrides", "Link overrides"},
+	{"edge-synthetic", "Edge, synthetic devices, overrides"},
 }
 
 // Resolve returns the skill an old or current name stands for and the inputs it fixes.

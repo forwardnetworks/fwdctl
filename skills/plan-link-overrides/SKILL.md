@@ -3,7 +3,7 @@ name: plan-link-overrides
 description: Sequences the skills that diagnose and fix missing or drifted link overrides. Use when a manual or suppressed link is missing.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
-  cluster: "link-overrides"
+  cluster: "edge-synthetic"
   summary: "missing or drifted overrides"
   maturity: "1"
   tools: "inspect-snapshots, inspect-topology, inspect-inventory, edit-link-overrides"

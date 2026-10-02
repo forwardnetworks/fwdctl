@@ -3,7 +3,7 @@ name: edit-link-overrides
 description: Adds or removes a snapshot's manual and suppressed links, showing the change. Dry run unless apply is true. Use when adding an undiscovered link, ignoring a wrong one or undoing an override.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
-  cluster: "link-overrides"
+  cluster: "edge-synthetic"
   summary: "add or remove link overrides"
   maturity: "2"
   class: write

@@ -26,7 +26,10 @@ func (a *app) nqeLint() *cobra.Command {
 		Long: "Offline NQE check, no Forward connection: syntax errors with line and column, unknown names, wrong argument counts, fields and enum values the data model does not have,\n" +
 			"type errors, and deprecations with Forward's own advice. Exit 1 on an error. The type check is gradual (it says nothing where it cannot tell a type), so\n" +
 			"validate-nqe-query, which runs the query on Forward, is still the last word. An import of your own organization's saved query (not @fwd/...) warns rather than being\n" +
-			"checked, since that library is per-organization and not sealed into this binary: `fwdctl nqe bundle` first for full coverage of it too.",
+			"checked, since that library is per-organization and not sealed into this binary: `fwdctl nqe bundle` first for full coverage of it too.\n" +
+			"Dead code is warned about, never an error (exit stays 0): a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main\n" +
+			"expression or an export refers to (unused-definition). Lint a `nqe bundle` to find what a whole module tree never uses; an exported definition is never called dead, since\n" +
+			"another module may import it.",
 		Example: "  fwdctl nqe lint query.nqe\n  cat query.nqe | fwdctl nqe lint -",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

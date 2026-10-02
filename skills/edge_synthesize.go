@@ -224,7 +224,9 @@ func writeInetQuery(an *EdgeAnalysis, o SynthOptions, res *SynthResult) string {
 	}
 	c("- Derived from one snapshot: once saved and attached Forward re-runs the query on each processed snapshot, but the evidence above is not re-read, so regenerate it after the edge changes.")
 	b.WriteString("\n")
-	b.WriteString("// Helper function for an empty list of subnets.\nemptySubnets =\n  foreach x in fromTo(1, 0)\n  select null : IpSubnet;\n\n")
+	if len(o.Subnets) == 0 { // the helper is only written when a row uses it: an unused definition is dead code
+		b.WriteString("// Helper function for an empty list of subnets.\nemptySubnets =\n  foreach x in fromTo(1, 0)\n  select null : IpSubnet;\n\n")
+	}
 	b.WriteString("// Helper function for an empty list of IfaceReference records.\nemptyInterfaces =\n  foreach x in fromTo(1, 0)\n  select null : IfaceReference;\n\n")
 	if o.Discovery == "bgpRoutes" {
 		// BgpRoutesSourceAttributes is a nominal record type: a bare { peerIps: [...] } literal passed directly as the bgpRoutes

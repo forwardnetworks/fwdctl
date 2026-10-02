@@ -3,7 +3,7 @@ name: inspect-access
 description: Shows this login's Forward roles and what they allow, explains a refused operation, lists users and access groups. Read-only. Use when access or a 403 is the question.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
-  cluster: "environment"
+  cluster: "access"
   summary: "roles, a refusal explained, users, groups"
   maturity: "1"
   class: read

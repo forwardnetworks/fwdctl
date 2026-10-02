@@ -42,6 +42,14 @@ from files next to the query (`import "helpers";` reads `helpers.nqe` in the sam
 import, an import cycle, and `Errors found in module 'm'` when an imported module has errors. A module found nowhere is not
 guessed at: names that might come from it are not reported.
 
+**Dead code.** Three warnings (exit status stays 0, the query still runs): `unused-param` (a parameter nothing reads), `unused-let` (a `let` nothing
+reads) and `unused-definition` (a top-level definition that nothing reachable from the `@query`, the main expression or an `export` refers to; references
+are followed to a fixed point, so two definitions that only use each other are both reported). Names `dummy` or starting with `_` are deliberately
+unused, a function passed by name (`maxBy(xs, f)`) keeps its parameters, and a query's own parameters are bound by whoever runs it. An exported definition is
+never called dead, since another module may import it. The useful target is a bundle: `fwdctl nqe bundle ... | fwdctl nqe lint -` reports what the whole
+module tree never uses. An unused `foreach` variable is not reported: `foreach x in fromTo(1, 0) select ...` and counting with `length(foreach ...)` are
+intended uses of a loop whose variable is never read.
+
 How far to trust it: the checker is gradual. Where it cannot tell a type (for example the capture types of a pattern),
 it says nothing rather than guess, so a clean result is not proof that Forward will accept the query, but an
 error it reports is one Forward reports too. Against Forward's own test suite it accepts all 909 queries Forward accepts, and
