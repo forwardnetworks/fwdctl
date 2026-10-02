@@ -45,7 +45,7 @@ func findIPOwner(ctx context.Context, s *fwd.Session, in findIPOwnerInput) (resu
 		return result.NewUnknown(findIPOwnerName, "No processed snapshot is available to answer from", cx, []string{"no processed snapshot; nothing was measured"},
 			result.Options{NextActions: []string{"investigate-collection-failure"}})
 	}
-	addrs, truncated, err := loadIfaceAddrs(ctx, s, in.NetworkID, fwd.SnapshotID(cx))
+	addrs, truncated, notes, err := loadIfaceAddrs(ctx, s, in.NetworkID, fwd.SnapshotID(cx))
 	if err != nil {
 		return result.Result{}, err
 	}
@@ -85,12 +85,13 @@ func findIPOwner(ctx context.Context, s *fwd.Session, in findIPOwnerInput) (resu
 				row["note"] = "no modelled interface has this exact address: it is inside a connected subnet, so it is a host or a device that is not collected"
 			} else {
 				row["owner"] = nil
-				row["note"] = "no modelled owner and not inside any connected subnet"
+				row["note"] = "no modelled owner and not inside any connected subnet (interface, SVI and FHRP virtual addresses were searched; see the limits for any class that could not be read)"
 			}
 		}
 		rows = append(rows, row)
 	}
-	limits := []string{"owner means an interface of a collected device carries the address in this snapshot; IPv4 only; an address with no owner may be outside the network or on a device Forward does not collect"}
+	limits := []string{"owner means an interface of a collected device carries the address in this snapshot, read from interfaces, subinterfaces, routed-VLAN (SVI) interfaces and FHRP virtual addresses (each owner row says which, and its VRF); IPv4 only; an address with no owner may be outside the network, in a class this read does not cover, or on a device Forward does not collect"}
+	limits = append(limits, notes...)
 	if truncated {
 		limits = append(limits, fmt.Sprintf("the interface-address read hit its %d-row bound, so an owner may be missing", maxModelRows))
 	}

@@ -171,7 +171,7 @@ func TestInventoryAPredictedSnapshotIsFlagged(t *testing.T) {
 }
 
 func TestInventoryABadKindIsRejectedBeforeAnyCall(t *testing.T) {
-	_, srv, err := runSkill(t, "inspect-inventory", map[string]fwdtest.Handler{}, `{"network_id":"n1","kind":"routes"}`)
+	_, srv, err := runSkill(t, "inspect-inventory", map[string]fwdtest.Handler{}, `{"network_id":"n1","kind":"bogus"}`)
 	if err == nil || len(srv.Calls()) != 0 {
 		t.Fatalf("err %v calls %d", err, len(srv.Calls()))
 	}
@@ -186,5 +186,92 @@ func TestInventoryCloudAccountsShowsWhichAccountWasNotCollected(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(r.NextActions, " "), "investigate-collection-failure") {
 		t.Errorf("next actions %v", r.NextActions)
+	}
+}
+
+func TestInventoryDevicesNameIsACaseInsensitiveSubstringAndNoOtherKindTakesAFilterItIgnores(t *testing.T) {
+	_, srv := inv(t, map[string]fwdtest.Handler{"platform.osVersion": rowsOf(1, map[string]any{"Device": "sjc-bldg2-fw01"})}, nil, `{"network_id":"n1","kind":"devices","name":"BLDG2-fw"}`)
+	params, _ := lastNQEBody(srv)["parameters"].(map[string]any)
+	if params["nameGlob"] != "*bldg2-fw*" || params["deviceName"] != "" {
+		t.Errorf("name is a lower-cased substring glob parameter: %v", params)
+	}
+	for _, bad := range []string{
+		`{"network_id":"n1","kind":"devices","name":"fw*"}`,        // a pattern, not a substring
+		`{"network_id":"n1","kind":"summary","device":"r1"}`,       // summary takes no filter
+		`{"network_id":"n1","kind":"cloud_accounts","name":"vpc"}`, // accounts take account only
+		`{"network_id":"n1","kind":"routes","account":"a"}`,
+	} {
+		if _, srv, err := runSkill(t, "inspect-inventory", map[string]fwdtest.Handler{}, bad); err == nil || len(srv.Calls()) != 0 {
+			t.Errorf("%s: a filter the kind does not take is refused before any call (err %v, calls %d)", bad, err, len(srv.Calls()))
+		}
+	}
+}
+
+func TestInventoryInterfacesReadsSVIAddressesAndVRFs(t *testing.T) {
+	_, srv := inv(t, map[string]fwdtest.Handler{"Interface: interface.name": rowsOf(1, map[string]any{"Interface": "vlan101", "IPv4 addresses": []string{"10.20.101.2"}, "VRFs": []string{"ENG"}})}, nil, `{"network_id":"n1","kind":"interfaces"}`)
+	q, _ := lastNQEBody(srv)["query"].(string)
+	if !strings.Contains(q, "routedVlan") || !strings.Contains(q, "VRFs:") {
+		t.Errorf("the interfaces query must read routed-VLAN (SVI) addresses and the VRFs: %s", q)
+	}
+}
+
+func TestInventoryIPOwnerFindsAnSVIAndAnFHRPAddressWithTheirVRFAndSaysWhenAClassWasNotRead(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), nqePath: func(_ *http.Request, body []byte) (int, any) {
+		q := string(body)
+		rows := func(r ...map[string]any) (int, any) { return 200, map[string]any{"items": r, "totalNumItems": len(r)} }
+		switch {
+		case strings.Contains(q, "fhrpAddresses"):
+			return rows(map[string]any{"device": "core1", "iface": "vlan101", "sub": "", "vrf": "ENG", "ip": "10.20.101.1", "prefixLength": 24})
+		case strings.Contains(q, "routedVlan.ipv4.addresses"):
+			return rows(map[string]any{"device": "core1", "iface": "vlan101", "sub": "", "vrf": "ENG", "ip": "10.20.101.2", "prefixLength": 24})
+		case strings.Contains(q, "sub.ipv4.addresses"):
+			return rows(map[string]any{"device": "core1", "iface": "e1", "sub": "e1", "vrf": "default", "ip": "10.0.0.1", "prefixLength": 24})
+		}
+		return 400, map[string]any{"message": "unexpected query"}
+	}}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"ip_owner","ips":["10.20.101.2","10.20.101.1"]}`)
+	rowsOut := r.Evidence[0].Detail["addresses"].([]map[string]any)
+	for i, wantKind := range []string{"routed VLAN (SVI) interface", "FHRP virtual address"} {
+		owner := rowsOut[i]["owner"].([]map[string]any)[0]
+		if owner["kind"] != wantKind || owner["vrf"] != "ENG" || owner["device"] != "core1" {
+			t.Errorf("address %d owner: %v", i, owner)
+		}
+	}
+	// the SVI class cannot be read: the limits say so, the answer is not a quiet "no owner"
+	routes[nqePath] = func(_ *http.Request, body []byte) (int, any) {
+		if strings.Contains(string(body), "sub.ipv4.addresses") {
+			return 200, map[string]any{"items": []any{}, "totalNumItems": 0}
+		}
+		return 400, map[string]any{"message": "boom"}
+	}
+	r, _ = mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"ip_owner","ips":["10.20.101.2"]}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "SVI) interface addresses could not be read") {
+		t.Errorf("limits %v", r.Limits)
+	}
+}
+
+func TestInventoryRoutesSaysWhichVRFsHaveNoDefaultRoute(t *testing.T) {
+	r, _ := inv(t, map[string]fwdtest.Handler{
+		"hop in entry.nextHops": rowsOf(2, map[string]any{"Device": "core1", "VRF": "ENG", "Prefix": "10.20.101.0/24", "Protocol": "DIRECT_CONNECTED"}),
+		"Default route":         rowsOf(2, map[string]any{"Device": "core1", "VRF": "default", "Routes": 40, "Default route": true}, map[string]any{"Device": "core1", "VRF": "ENG", "Routes": 3, "Default route": false}),
+	}, nil, `{"network_id":"n1","kind":"routes","device":"core1"}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "1 of 2 VRF(s) listed have NO IPv4 default route") {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	if _, ok := r.Evidence[0].Detail["default_route_by_vrf"]; !ok {
+		t.Errorf("the per-VRF default route facts are in the evidence")
+	}
+}
+
+func TestInventoryIGPNeighborsSaysItIsOSPFOnlyAndCloudKindsSendTheirQueries(t *testing.T) {
+	r, _ := inv(t, map[string]fwdtest.Handler{"neighbor in area.neighbors": rowsOf(1, map[string]any{"Device": "core1", "Protocol": "OSPF", "Area": "0.0.0.0"})}, nil, `{"network_id":"n1","kind":"igp_neighbors"}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "OSPF adjacencies only") {
+		t.Errorf("limits %v", r.Limits)
+	}
+	for kind, marker := range map[string]string{"cloud_subnets": "vpc.subnets", "cloud_instances": "vpc.computeInstances"} {
+		r, _ := inv(t, map[string]fwdtest.Handler{marker: rowsOf(1, map[string]any{"Account": "a", "VPC": "v"})}, nil, `{"network_id":"n1","kind":"`+kind+`","account":"a"}`)
+		if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "not that every resource type was read") {
+			t.Errorf("%s: %s %v", kind, r.Status, r.Limits)
+		}
 	}
 }

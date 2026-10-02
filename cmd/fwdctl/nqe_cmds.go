@@ -49,7 +49,8 @@ func (a *app) nqeFmt() *cobra.Command {
 	var write, check bool
 	c := &cobra.Command{
 		Use: "fmt [FILE...]", Short: "format NQE in the standard style",
-		Long: "Lay NQE out in the standard style. With no file it filters stdin to stdout. -w rewrites the files; --check prints the files that would change and exits 1 if any would.",
+		Example: "  fwdctl nqe fmt -w queries/*.nqe\n  fwdctl nqe fmt --check queries/*.nqe",
+		Long:    "Lay NQE out in the standard style. With no file it filters stdin to stdout. -w rewrites the files; --check prints the files that would change and exits 1 if any would.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var tool []string
 			if write {
@@ -69,8 +70,9 @@ func (a *app) nqeFmt() *cobra.Command {
 func (a *app) nqeLSP() *cobra.Command {
 	return &cobra.Command{
 		Use: "lsp", Short: "a language server for NQE (editors: diagnostics, completion, hover, quick fixes)",
-		Long: "A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch.",
-		Args: cobra.NoArgs,
+		Example: "  fwdctl nqe lsp   # an editor launches this over stdin/stdout",
+		Long:    "A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch.",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.exit(nqeTool([]string{"lsp"}, a.in, a.out, a.err))
 		},
@@ -80,6 +82,7 @@ func (a *app) nqeLSP() *cobra.Command {
 func (a *app) nqePos(name, short string) *cobra.Command {
 	return &cobra.Command{
 		Use: name + " FILE|- LINE COL", Short: short + " (1-based line and column)", Args: cobra.ExactArgs(3),
+		Example: "  fwdctl nqe " + name + " query.nqe 3 12",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.exit(nqeTool(append([]string{name}, args...), a.in, a.out, a.err))
 		},
@@ -90,7 +93,8 @@ func (a *app) nqeTemplate() *cobra.Command {
 	kinds := nqelint.SyntheticKindNames()
 	return &cobra.Command{
 		Use: "template KIND", Short: "a starter query for a synthetic device (" + join(kinds) + ")", Args: cobra.ExactArgs(1), ValidArgs: kinds,
-		Long: "Print a starter query for a synthetic device (the CLI's \"add new query from template\").",
+		Example: "  fwdctl nqe template internet > internet.nqe",
+		Long:    "Print a starter query for a synthetic device (the CLI's \"add new query from template\").",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.exit(nqeTool([]string{"template", args[0]}, a.in, a.out, a.err))
 		},
@@ -141,6 +145,8 @@ Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 erro
 	f.DurationVar(&o.waitMax, "timeout", 10*time.Minute, "how long to wait: the whole synchronous request (response included; the default HTTP limit is 120s), or with --async the execution")
 	c.MarkFlagsMutuallyExclusive("file", "query-id")
 	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions([]string{"json", "jsonl", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp))
+	_ = c.RegisterFlagCompletionFunc("network", a.completeNetworks)
+	_ = c.RegisterFlagCompletionFunc("snapshot", a.completeSnapshots)
 	return c
 }
 
@@ -189,6 +195,8 @@ func (a *app) nqeSynth() *cobra.Command {
 	f.BoolVar(&o.unlikely, "include-unlikely", false, "also write rows for unowned exits that are not likely internet edges")
 	f.StringVar(&o.snapshot, "snapshot", "", "snapshot id (default: the latest processed)")
 	_ = internet.MarkFlagRequired("network")
+	_ = internet.RegisterFlagCompletionFunc("network", a.completeNetworks)
+	_ = internet.RegisterFlagCompletionFunc("snapshot", a.completeSnapshots)
 	_ = internet.RegisterFlagCompletionFunc("discovery", cobra.FixedCompletions([]string{"interfaceAddresses", "bgpRoutes", "ipRoutes", "none"}, cobra.ShellCompDirectiveNoFileComp))
 	c.AddCommand(internet)
 	return c

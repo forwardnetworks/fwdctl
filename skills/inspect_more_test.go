@@ -155,3 +155,25 @@ func TestCollectionConfigShowsTheEndpointProfilesInUseAndHidesHeaderValues(t *te
 		t.Fatalf("%s %s", r.Status, b)
 	}
 }
+
+func TestCollectionConfigShowsCloudSetupsWithRegionsAndTheLastTestAndNeverACredential(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection-config", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{map[string]any{"type": "AWS", "name": "prod-aws", "collect": true, "username": "AKIA-SECRET-KEY", "password": "s3cret-value", "concurrency": 8,
+			"regions": map[string]any{"us-east-1": map[string]any{"error": "NONE", "testInstant": 1790000000000}, "us-west-2": map[string]any{"error": "AUTHENTICATION_FAILED", "testInstant": 1790000000000}, "eu-west-1": nil}}}),
+	}, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	for _, leak := range []string{"AKIA-SECRET-KEY", "s3cret-value"} {
+		if strings.Contains(b, leak) {
+			t.Errorf("%q leaked into the result: %s", leak, b)
+		}
+	}
+	for _, want := range []string{`"cloud_setups"`, `"prod-aws"`, `"region":"us-west-2"`, `"last_test":"AUTHENTICATION_FAILED"`, `"last_test":"ok"`, `"last_test":"never tested"`, `"failing_tests":1`, "1 cloud setups"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	if r.Status != result.OK {
+		t.Errorf("a network whose only source is a cloud setup is configured, not unknown: %s", r.Status)
+	}
+}

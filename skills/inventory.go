@@ -31,9 +31,9 @@ type inventoryInput struct {
 // Every filter is a query parameter; "" means no filter. Nothing from the caller is spliced into the query text.
 const (
 	invDevices = `@query
-query(deviceName: String) =
+query(deviceName: String, nameGlob: String) =
 foreach device in network.devices
-where deviceName == "" || device.name == deviceName
+where (deviceName == "" || device.name == deviceName) && (nameGlob == "" || matches(toLowerCase(device.name), nameGlob))
 select {
   Device: device.name,
   Vendor: device.platform.vendor,
@@ -46,15 +46,22 @@ select {
 }
 order by Device asc natural;
 `
+	// invInterfaces lists the addresses on subinterfaces AND on routed-VLAN (SVI) interfaces, which Forward models under routedVlan, not under a subinterface, and the VRFs they are in
 	invInterfaces = `@query
 query(deviceName: String, ifaceName: String) =
 foreach device in network.devices
 where deviceName == "" || device.name == deviceName
 foreach interface in device.interfaces
 where ifaceName == "" || interface.name == ifaceName
-let addresses = (foreach sub in interface.subinterfaces
-                 foreach address in sub.ipv4.addresses
-                 select address.ip)
+let subAddresses = (foreach sub in interface.subinterfaces
+                    foreach address in sub.ipv4.addresses
+                    select address.ip)
+let sviAddresses = (foreach svi in [interface.routedVlan]
+                    where isPresent(svi) && isPresent(svi.ipv4)
+                    foreach address in svi.ipv4.addresses
+                    select address.ip)
+let subVrfs = (foreach sub in interface.subinterfaces select distinct sub.networkInstanceName)
+let sviVrf = (foreach svi in [interface.routedVlan] where isPresent(svi) select svi.networkInstanceName)
 select {
   Device: device.name,
   Interface: interface.name,
@@ -64,7 +71,8 @@ select {
   MTU: interface.mtu,
   "Speed (Mbps)": interface.ethernet.speedMbps,
   MAC: interface.ethernet.macAddress,
-  "IPv4 addresses": addresses,
+  "IPv4 addresses": subAddresses + sviAddresses,
+  VRFs: subVrfs + sviVrf,
   Description: interface.description
 }
 order by Device asc natural, Interface asc natural;
@@ -96,6 +104,118 @@ foreach host in device.hosts
 where hostName == "" || host.name == hostName
 select { Device: device.name, Host: host.name, Type: host.hostType, Addresses: host.addresses, MAC: host.macAddress, Interfaces: host.interfaces }
 order by Device asc natural, Host asc natural;
+`
+	invCloudSubnets = `@query
+query(accountName: String, vpcName: String) =
+foreach account in network.cloudAccounts
+where accountName == "" || account.name == accountName
+foreach vpc in account.vpcs
+where vpcName == "" || vpc.name == vpcName
+foreach subnet in vpc.subnets
+select {
+  Account: account.name,
+  VPC: vpc.name,
+  Subnet: subnet.name,
+  ID: subnet.id,
+  Region: subnet.region,
+  Zone: subnet.availabilityZone,
+  Addresses: subnet.addresses,
+  Interfaces: length(subnet.ifaces),
+  "Route table": subnet.routeTableId
+}
+order by Account asc natural, VPC asc natural, Subnet asc natural;
+`
+	invCloudInstances = `@query
+query(accountName: String, vpcName: String) =
+foreach account in network.cloudAccounts
+where accountName == "" || account.name == accountName
+foreach vpc in account.vpcs
+where vpcName == "" || vpc.name == vpcName
+foreach instance in vpc.computeInstances
+let addresses = (foreach subnet in vpc.subnets
+                 foreach iface in subnet.ifaces
+                 where iface.computeInstanceId == instance.id
+                 foreach ip in iface.ipAddresses
+                 select ip)
+select {
+  Account: account.name,
+  VPC: vpc.name,
+  Instance: instance.name,
+  ID: instance.id,
+  Type: instance.instanceType,
+  Image: instance.imageName,
+  Up: instance.isUp,
+  Interfaces: length(instance.instanceIfaces),
+  Addresses: addresses,
+  Tags: instance.tags
+}
+order by Account asc natural, VPC asc natural, Instance asc natural;
+`
+	// invRoutes is the forwarding table Forward modelled: one row per next hop of every IPv4 route, per device and VRF
+	invRoutes = `@query
+query(deviceName: String, vrfName: String) =
+foreach device in network.devices
+where deviceName == "" || device.name == deviceName
+foreach instance in device.networkInstances
+where vrfName == "" || instance.name == vrfName
+where isPresent(instance.afts) && isPresent(instance.afts.ipv4Unicast)
+foreach entry in instance.afts.ipv4Unicast.ipEntries
+foreach hop in entry.nextHops
+select {
+  Device: device.name,
+  VRF: instance.name,
+  Prefix: entry.prefix,
+  Protocol: hop.originProtocol,
+  "Next hop": hop.ipAddress,
+  Interface: hop.interfaceName,
+  Type: hop.nextHopType
+}
+order by Device asc natural, VRF asc natural, Prefix asc;
+`
+	// invDefaultRoutes says, per device and VRF, whether an IPv4 default route is in the table (the one fact a blackhole investigation wants first)
+	invDefaultRoutes = `@query
+query(deviceName: String, vrfName: String) =
+foreach device in network.devices
+where deviceName == "" || device.name == deviceName
+foreach instance in device.networkInstances
+where vrfName == "" || instance.name == vrfName
+where isPresent(instance.afts) && isPresent(instance.afts.ipv4Unicast)
+let defaults = (foreach entry in instance.afts.ipv4Unicast.ipEntries
+                where entry.prefix == ipSubnet("0.0.0.0/0")
+                select entry)
+select {
+  Device: device.name,
+  VRF: instance.name,
+  Routes: length(instance.afts.ipv4Unicast.ipEntries),
+  "Default route": length(defaults) > 0
+}
+order by Device asc natural, VRF asc natural;
+`
+	// invIGPNeighbors: OSPF adjacencies as Forward modelled them (it models no IS-IS, EIGRP or RIP adjacency)
+	invIGPNeighbors = `@query
+query(deviceName: String, vrfName: String) =
+foreach device in network.devices
+where deviceName == "" || device.name == deviceName
+foreach instance in device.networkInstances
+where vrfName == "" || instance.name == vrfName
+foreach protocol in instance.protocols
+where isPresent(protocol.ospf)
+foreach area in protocol.ospf.areas
+foreach neighbor in area.neighbors
+select {
+  Device: device.name,
+  VRF: instance.name,
+  Protocol: "OSPF",
+  Area: area.id,
+  Process: area.processId,
+  Role: neighbor.role,
+  "Remote router ID": neighbor.remoteRouterId,
+  "Remote address": neighbor.remoteInterfaceIp,
+  "Local interface": neighbor.localInterface,
+  Cost: neighbor.cost,
+  "Remote device": neighbor.remotePeer?.deviceName
+}
+order by Device asc natural, VRF asc natural, Area asc;
 `
 	// invCloudAccounts is one row per cloud account with the collected flag, so a VPC list with no instances can be judged: an account Forward collected that is empty, or an
 	// account it never collected.
@@ -239,6 +359,9 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	if len(in.IPs) > 0 {
 		return result.Result{}, fmt.Errorf("%w: ips is an input of kind ip_owner, not of kind %s", ErrInvalidInput, in.Kind)
 	}
+	if err := checkKindFilters(in, raw); err != nil {
+		return result.Result{}, err
+	}
 	if in.Limit <= 0 {
 		in.Limit = defaultInventoryLimit
 	}
@@ -265,7 +388,11 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	params := map[string]any{}
 	switch in.Kind {
 	case "devices":
-		query, params["deviceName"] = invDevices, in.Device
+		glob, gerr := nameGlobOf(in.Name)
+		if gerr != nil {
+			return result.Result{}, gerr
+		}
+		query, params["deviceName"], params["nameGlob"] = invDevices, in.Device, glob
 	case "interfaces":
 		query, params["deviceName"], params["ifaceName"] = invInterfaces, in.Device, in.Name
 	case "vlans":
@@ -274,6 +401,12 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		query, params["deviceName"], params["vrfName"] = invVRFs, in.Device, in.Name
 	case "hosts":
 		query, params["deviceName"], params["hostName"] = invHosts, in.Device, in.Name
+	case "routes", "igp_neighbors":
+		query = map[string]string{"routes": invRoutes, "igp_neighbors": invIGPNeighbors}[in.Kind]
+		params["deviceName"], params["vrfName"] = in.Device, in.Name
+	case "cloud_subnets", "cloud_instances":
+		query = map[string]string{"cloud_subnets": invCloudSubnets, "cloud_instances": invCloudInstances}[in.Kind]
+		params["accountName"], params["vpcName"] = in.Account, in.Name
 	case "cloud_accounts":
 		query, params["accountName"] = invCloudAccounts, in.Account
 	case "cloud", "cloud_routes", "cloud_security", "cloud_gateways":
@@ -301,6 +434,12 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			reason = "none match the filters"
 		}
 		limits = append(limits, fmt.Sprintf("no %s were returned (%s); the entity may not exist, or a filter may be wrong (names are matched exactly), and this skill cannot tell which", noun(in.Kind), reason))
+		switch in.Kind {
+		case "igp_neighbors":
+			limits = append(limits, "OSPF adjacencies only: Forward's model has no IS-IS, EIGRP or RIP adjacencies, so an empty list does not mean none run (inspect-device-files can read the device's own routing-protocol output)")
+		case "cloud_subnets", "cloud_instances", "cloud", "cloud_accounts":
+			limits = append(limits, "nothing here proves the cloud account is empty: Collected true does not mean every resource type was read. Check cloud_accounts for Collected, investigate-collection-failure view exceptions for collector errors, and inspect-collection view config for the cloud setup's regions")
+		}
 		return result.NewUnknown(inventoryName, fmt.Sprintf("No %s were returned", noun(in.Kind)), cx, limits, result.Options{})
 	}
 	if len(out.Items) == 0 {
@@ -327,6 +466,34 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			next = []string{"inspect-collection", "investigate-collection-failure"}
 		}
 	}
+	switch in.Kind {
+	case "interfaces":
+		limits = append(limits, "IPv4 addresses are those on subinterfaces and on routed-VLAN (SVI) interfaces, with the VRFs they are in; IPv6 addresses and FHRP virtual addresses are not in this list (inspect-inventory kind ip_owner reads the FHRP ones)")
+	case "routes":
+		limits = append(limits, "the forwarding table as Forward modelled it from the collected state, one row per next hop of every IPv4 route (IPv6 and MPLS tables are not read); filter by device and name (the VRF), page with offset")
+		if dr, derr := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: invDefaultRoutes, Parameters: params, SnapshotID: fwd.SnapshotID(cx), Limit: maxInventoryLimit}); derr != nil {
+			limits = append(limits, "whether each VRF has a default route could not be read: "+derr.Error())
+		} else {
+			defs := fwd.Records(dr.Items)
+			missing := 0
+			for _, d := range defs {
+				if v, ok := d["Default route"].(bool); ok && !v {
+					missing++
+				}
+			}
+			detail["default_route_by_vrf"] = defs
+			if missing > 0 {
+				finding += fmt.Sprintf("; %d of %d VRF(s) listed have NO IPv4 default route", missing, len(defs))
+			}
+			if int64(len(defs)) < dr.Total {
+				limits = append(limits, fmt.Sprintf("default_route_by_vrf lists the first %d of %d VRFs; narrow with device or name", len(defs), dr.Total))
+			}
+		}
+	case "igp_neighbors":
+		limits = append(limits, "OSPF adjacencies only: Forward's model has no IS-IS, EIGRP or RIP adjacencies, so an empty list does not mean none run; a listed neighbor is a modelled adjacency, and its state (FULL, DOWN) is not in the model (inspect-device-files can read the device's own OSPF output)")
+	case "cloud_accounts", "cloud", "cloud_subnets", "cloud_instances":
+		limits = append(limits, "Collected true means Forward collected the account, not that every resource type was read: a collector can ignore an error from one cloud API (a quota or permission call, say) and still return the rest. When instances or subnets are fewer than expected, read investigate-collection-failure view exceptions, and inspect-collection view config for the cloud setup's regions")
+	}
 	return result.Build(inventoryName, result.OK, finding,
 		result.Deterministic, cx, result.Options{Limits: limits, NextActions: next,
 			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", fwd.SnapshotIDPtr(snap), detail,
@@ -338,6 +505,14 @@ func noun(kind string) string {
 	switch kind {
 	case "cloud_accounts":
 		return "cloud accounts"
+	case "cloud_subnets":
+		return "cloud subnets"
+	case "cloud_instances":
+		return "cloud compute instances"
+	case "routes":
+		return "route next hops"
+	case "igp_neighbors":
+		return "OSPF neighbors"
 	case "cloud":
 		return "cloud VPCs"
 	case "cloud_routes":
@@ -358,6 +533,8 @@ func inventoryNext(kind string) []string {
 		return []string{"investigate-reachability"}
 	case "cloud_accounts":
 		return []string{"inspect-collection", "investigate-collection-failure"}
+	case "routes", "igp_neighbors":
+		return []string{"investigate-reachability", "inspect-bgp-neighbors"}
 	}
 	return []string{"check-network-compliance"}
 }
@@ -398,4 +575,57 @@ func inventorySummary(ctx context.Context, s *fwd.Session, in inventoryInput, cx
 	return result.Build(inventoryName, result.OK, fmt.Sprintf("%d devices across %d vendors", devices, len(vendors.Items)),
 		result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-vulnerabilities", "investigate-collection-failure"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, detail, strings.TrimSpace(fmt.Sprintf("%d devices", devices)))}})
+}
+
+// kindFilters are the filter inputs each kind of rows takes; a filter a kind does not take is refused, never silently ignored (a no-op filter that still says "123 match" misleads).
+var kindFilters = map[string][]string{
+	"summary": {}, "devices": {"device", "name"}, "interfaces": {"device", "name"}, "vlans": {"device", "name"}, "vrfs": {"device", "name"}, "hosts": {"device", "name"},
+	"routes": {"device", "name"}, "igp_neighbors": {"device", "name"},
+	"cloud": {"account", "name"}, "cloud_routes": {"account", "name"}, "cloud_security": {"account", "name"}, "cloud_gateways": {"account", "name"},
+	"cloud_subnets": {"account", "name"}, "cloud_instances": {"account", "name"}, "cloud_accounts": {"account"},
+}
+
+// kindFilterMeaning says what name means for a kind, for the refusal message.
+var kindNameMeaning = map[string]string{"devices": "a case-insensitive substring of the device name (device is the exact name)", "routes": "the VRF name", "igp_neighbors": "the VRF name"}
+
+func checkKindFilters(in inventoryInput, raw json.RawMessage) error {
+	allowed, ok := kindFilters[in.Kind]
+	if !ok {
+		return nil // an unknown kind is reported by the caller
+	}
+	var present map[string]json.RawMessage
+	if json.Unmarshal(raw, &present) != nil {
+		return nil
+	}
+	ok2 := map[string]bool{}
+	for _, k := range allowed {
+		ok2[k] = true
+	}
+	var bad []string
+	for _, k := range []string{"device", "account", "name"} {
+		if _, there := present[k]; there && !ok2[k] {
+			bad = append(bad, k)
+		}
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("%w: kind %s does not take %s (it takes: %s)", ErrInvalidInput, in.Kind, strings.Join(bad, ", "), strings.Join(allowed, ", "))
+	}
+	if in.Kind == "devices" {
+		if _, err := nameGlobOf(in.Name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// nameGlobOf turns a device-name substring into the glob the query matches the lower-cased name against. A glob character in it is refused: name is a substring, not a pattern.
+func nameGlobOf(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", nil
+	}
+	if strings.ContainsAny(name, "*?[]\\") {
+		return "", fmt.Errorf("%w: name is a plain substring of the device name (case-insensitive), not a pattern: it may not contain * ? [ ] or a backslash", ErrInvalidInput)
+	}
+	return "*" + strings.ToLower(name) + "*", nil
 }

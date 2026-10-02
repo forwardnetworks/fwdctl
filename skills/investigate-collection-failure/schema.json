@@ -19,6 +19,7 @@
         "devices",
         "platforms",
         "changes",
+        "exceptions",
         "neighbors",
         "slow",
         "logs"

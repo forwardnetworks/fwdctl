@@ -37,8 +37,8 @@ which `go.mod` pins; read the SDK's README there for how that client is built an
 
 ```bash
 git clone https://github.com/forwardnetworks/fwdctl && cd fwdctl
-go build -o fwdctl ./cmd/fwdctl      # a working fwdctl
-go vet ./... && go test ./...        # the tests of this tree
+go build -tags fwdctl_cli -o fwdctl ./cmd/fwdctl      # a working fwdctl (the tag enables deleting a workspace network)
+go vet ./... && go test ./... && go test -tags fwdctl_cli ./fwd   # the tests of this tree
 ```
 
 **The source build is not the release build.** This repository is the API client: `fwdctl`, the skill runners and the Go SDK calls they make. Everything about

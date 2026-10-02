@@ -27,7 +27,11 @@
         "cloud_routes",
         "cloud_security",
         "cloud_gateways",
-        "ip_owner"
+        "ip_owner",
+        "cloud_subnets",
+        "cloud_instances",
+        "routes",
+        "igp_neighbors"
       ]
     },
     "device": {

@@ -163,6 +163,10 @@ func listDeviceFiles(ctx context.Context, s *fwd.Session, in deviceFilesInput, c
 	for _, f := range files {
 		rows = append(rows, map[string]any{"name": f.Name, "bytes": f.Bytes, "command": f.Command})
 	}
+	only := len(files) == 1 && strings.EqualFold(files[0].Name, "snapshot_time.txt")
+	if only {
+		limits = append(limits, "this device lists only snapshot_time.txt: that is what Forward keeps as files for a cloud account (the cloud collector's raw JSON, such as the instance lists, is not exposed as a device file), so \"did the collector receive instances, and in what shape?\" cannot be answered from here. Use inspect-inventory kinds cloud_accounts, cloud_subnets and cloud_instances for what Forward modelled, and investigate-collection-failure view exceptions for errors the collector logged")
+	}
 	return result.Build(deviceFilesName, result.OK, fmt.Sprintf("%d collected files for %s", len(files), in.Device), result.Deterministic, cx,
 		result.Options{Limits: limits,
 			Evidence: []result.Evidence{result.NewEvidence(result.EvConfig, "listDeviceFiles", cx.SnapshotID, map[string]any{"device": in.Device, "files": rows}, fmt.Sprintf("%d files", len(files)))}})

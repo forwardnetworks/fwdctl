@@ -23,7 +23,7 @@ affects. The answer is read from Forward's own snapshot metrics and task records
 failed collection is the point) and `view`: `summary` (default) counts failures by cause and takes
 `collector_task_id`; `devices` names the failed devices and takes `failure` (a category such as
 `credentials`, `network_path`, `device_session`, `unclassified`, `processing`, or a type such as
-`CONNECTION_REFUSED`), `device` (name contains) and `limit`/`offset`; `neighbors` lists unmodelled
+`CONNECTION_REFUSED`), `device` (name contains) and `limit`/`offset`; `exceptions` lists the collectors' logged exceptions and takes `device`, `limit`/`offset`; `neighbors` lists unmodelled
 neighbours and takes `limit`/`offset`; `slow` ranks devices by collection time and takes `device`, `limit`, `offset`; `logs` reads one
 device's collection log and takes `device` (required), `failure` (here the minimum level TRACE, DEBUG, INFO, WARN (default) or ERROR),
 `limit`, `offset`. See `schema.json`.
@@ -56,6 +56,10 @@ device output: keep it out of issues and public places. Not yet run against a li
 **Parser failures.** Forward marks a supported device PARSER_EXCEPTION whenever processing fails, even when it stored no exception, so an
 empty exception list is expected and no message, class or line exists to read: the device list, its category and `collectionError`
 (sometimes the root cause) and the raw files are what there is.
+
+**view exceptions** (takes `device`, `limit`, `offset`). The exceptions the collectors logged while collecting the snapshot, deduplicated by Forward: the first line of each stack trace, how many times, and which devices or cloud accounts.
+It is where an error a collector **ignored** shows up: a collection can finish, and a cloud account read as collected, with an exception in the log (a quota or permission API call that failed, say). Needs the permission to view
+collector exceptions (a network administrator); without it the answer is **unknown** with what is needed. The text can quote what the collector was doing: keep it out of public places.
 
 **view neighbors.** Lists the neighbours Forward sees but does not model, with discovery method,
 addresses and which devices see them, and marks each that a modelled device peers with over BGP

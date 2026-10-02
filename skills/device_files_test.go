@@ -127,3 +127,12 @@ func TestDeviceFilesRedactsSNMPCommunityButNotBGPCommunity(t *testing.T) {
 		t.Errorf("routing community was redacted: %s", d)
 	}
 }
+
+func TestDeviceFilesOfACloudAccountSaysTheCollectedJSONIsNotReachable(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"),
+		"GET /api/networks/n1/devices/gcp-prod/files": fwdtest.Const(200, map[string]any{"files": []any{map[string]any{"name": "snapshot_time.txt", "bytes": 29}}})}
+	r, _ := mustRun(t, "inspect-device-files", routes, `{"network_id":"n1","device":"gcp-prod","mode":"list"}`)
+	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "only snapshot_time.txt") || !strings.Contains(strings.Join(r.Limits, " "), "cloud_instances") {
+		t.Fatalf("%s %v", r.Status, r.Limits)
+	}
+}

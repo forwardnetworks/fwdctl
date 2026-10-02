@@ -63,22 +63,23 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	switch in.View {
-	case "", "summary", "devices", "platforms", "changes", "neighbors", "slow", "logs":
+	case "", "summary", "devices", "platforms", "changes", "exceptions", "neighbors", "slow", "logs":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be summary, devices, platforms, changes, neighbors, slow or logs", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be summary, devices, platforms, changes, exceptions, neighbors, slow or logs", ErrInvalidInput)
 	}
 	view := in.View
 	if view == "" {
 		view = "summary"
 	}
 	if err := rejectForeignInputs(raw, collectionFailureName, "view", view, map[string][]string{
-		"summary":   {"collector_task_id"},
-		"devices":   {"failure", "device", "limit", "offset"},
-		"platforms": {"failure", "device", "limit", "offset"},
-		"changes":   {"limit", "offset"},
-		"neighbors": {"limit", "offset"},
-		"slow":      {"device", "limit", "offset"},
-		"logs":      {"failure", "device", "limit", "offset"},
+		"summary":    {"collector_task_id"},
+		"devices":    {"failure", "device", "limit", "offset"},
+		"platforms":  {"failure", "device", "limit", "offset"},
+		"changes":    {"limit", "offset"},
+		"exceptions": {"device", "limit", "offset"},
+		"neighbors":  {"limit", "offset"},
+		"slow":       {"device", "limit", "offset"},
+		"logs":       {"failure", "device", "limit", "offset"},
 	}); err != nil {
 		return result.Result{}, err
 	}
@@ -112,6 +113,8 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 	case "changes":
 		in.CompareTo = "previous"
 		return failureCompare(ctx, s, in, cx)
+	case "exceptions":
+		return collectorExceptions(ctx, s, in, cx)
 	case "neighbors":
 		return unmodelledNeighbors(ctx, s, in, cx)
 	case "slow":

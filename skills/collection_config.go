@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
@@ -132,6 +133,54 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			limits = append(limits, "schedules are as configured: Forward does not return a next run time, and an empty time zone means the organization's preferred zone. days_of_week is empty when every day applies or none was set")
 		}
 	}
+	if ca, _, err := s.Client.CloudAccounts.List(ctx, in.NetworkID); err != nil {
+		limits = append(limits, "the cloud setups could not be read: "+err.Error())
+	} else if len(ca) > 0 {
+		read++
+		total += len(ca)
+		rows := make([]map[string]any, 0, len(ca))
+		for _, c := range ca {
+			row := map[string]any{"name": c.Name, "type": c.Type, "collect": c.Collect}
+			var regions []map[string]any
+			failing := 0
+			for _, name := range sortedKeys(c.Regions) {
+				r := c.Regions[name]
+				entry := map[string]any{"region": name, "last_test": testOutcome(r.Error, r.TestInstant)}
+				if r.TestInstant > 0 {
+					entry["tested_at"] = time.UnixMilli(r.TestInstant).UTC().Format(time.RFC3339)
+				}
+				if r.Error != "" && r.Error != "NONE" {
+					failing++
+				}
+				regions = append(regions, entry)
+			}
+			for _, name := range sortedKeys(c.TestResults) { // Azure carries its test per subscription
+				r := c.TestResults[name]
+				entry := map[string]any{"subscription": name, "last_test": testOutcome(r.Error, r.TestInstant)}
+				if r.Error != "" && r.Error != "NONE" {
+					failing++
+				}
+				regions = append(regions, entry)
+			}
+			if len(regions) > 0 {
+				row["regions"] = regions
+			} else {
+				row["regions"] = "none configured or none reported: the setup's own region list is not in the answer"
+			}
+			if failing > 0 {
+				row["failing_tests"] = failing
+			}
+			if c.ProxyServerID != "" {
+				row["proxy_server_id"] = c.ProxyServerID
+			}
+			if c.Concurrency != nil {
+				row["concurrency"] = *c.Concurrency
+			}
+			rows = append(rows, row)
+		}
+		detail["cloud_setups"] = rows
+		limits = append(limits, "cloud_setups lists each cloud collection source with its configured regions and the result of its last connectivity TEST (not of the last collection: Forward keeps no per-setup collection outcome here). The regions decide which zones Forward keeps from the cloud's aggregated lists, so a missing instance can be a region that is not listed; collector errors during a collection are in investigate-collection-failure view exceptions, and inspect-inventory kind cloud_accounts shows whether each account was collected. Credentials are never read or shown")
+	}
 	limits = append(limits, "credentials are never read or shown; a device lists only whether one is set")
 	if read == 0 {
 		return result.NewUnknown(collectionConfigName, "The collection configuration could not be read", cx, limits, result.Options{})
@@ -141,6 +190,9 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			append(limits, "nothing to collect is configured through these routes; devices may arrive by snapshot upload or a cloud setup instead"), result.Options{})
 	}
 	finding := fmt.Sprintf("%v devices, %v endpoints, %d jump servers, %d proxies configured", detail["device_count"], detail["endpoint_count"], lenAny(detail["jump_servers"]), lenAny(detail["proxies"]))
+	if cs := lenAny(detail["cloud_setups"]); cs > 0 {
+		finding += fmt.Sprintf(", %d cloud setups", cs)
+	}
 	return result.Build(collectionConfigName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
 		NextActions: []string{"inspect-collection", "investigate-collection-failure"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "inspectCollectionConfig", nil, detail, finding)}})
@@ -232,4 +284,24 @@ func weekdays(d []int) []string {
 		}
 	}
 	return out
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// testOutcome names a connectivity test's result: Forward stores the collection-error name ("NONE" is success) and when it ran; none stored means it was never tested.
+func testOutcome(errName string, at int64) string {
+	switch {
+	case errName == "" && at == 0:
+		return "never tested"
+	case errName == "" || errName == "NONE":
+		return "ok"
+	}
+	return errName
 }

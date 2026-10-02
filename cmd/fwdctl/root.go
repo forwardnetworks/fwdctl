@@ -114,7 +114,7 @@ func (a *app) newRoot() *cobra.Command {
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		a.top = topLevel(cmd)
 		switch a.top {
-		case "redact-check", "dogfood-note", "completion", "help", "__complete", "__completeNoDesc", "":
+		case "redact-check", "dogfood-note", "completion", "help", "man", "__complete", "__completeNoDesc", "":
 			// these read no connection (and the first two must never read the token file)
 		default:
 			if err := applyConnectionOptions(a.conn); err != nil {
@@ -128,6 +128,7 @@ func (a *app) newRoot() *cobra.Command {
 	root.AddCommand(a.listCmd(), a.describeCmd(), a.runCmd(), a.whichCmd(), a.contextCmd())
 	root.AddCommand(a.nqeCmd())
 	root.AddCommand(a.installCmd(), a.loginCmd(), a.whoamiCmd(), a.updateCmd(), a.docsCmd(), a.versionCmd())
+	root.AddCommand(a.manCmd())
 	root.AddCommand(a.redactCmd(), a.noteCmd()) // DOGFOOD-TEMP
 	root.SetCompletionCommandGroupID("setup")
 	root.SetHelpCommand(a.helpCmd(root))
@@ -159,8 +160,9 @@ func skillNames(toComplete string) []string {
 func (a *app) listCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "list", GroupID: "skills", Short: "every skill: name, description, input schema (JSON)",
-		Long: "Prints every skill as JSON: name, description, input_schema, class (read or write), runnable.",
-		Args: cobra.NoArgs,
+		Example: "  fwdctl list | jq -r '.[] | select(.class==\"write\") | .name'",
+		Long:    "Prints every skill as JSON: name, description, input_schema, class (read or write), runnable.",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			all, err := skills.All()
 			if err != nil {
@@ -175,8 +177,9 @@ func (a *app) listCmd() *cobra.Command {
 func (a *app) describeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "describe <skill> [reference-file]", GroupID: "skills", Short: "one skill's procedure (JSON); with a reference file name, that file's text",
-		Long: "Prints a skill's procedure. A skill's reference files (see \"references\") print as plain text when named.",
-		Args: cobra.RangeArgs(1, 2),
+		Example: "  fwdctl describe plan-investigation\n  fwdctl describe inspect-environment properties.md",
+		Long:    "Prints a skill's procedure. A skill's reference files (see \"references\") print as plain text when named.",
+		Args:    cobra.RangeArgs(1, 2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) == 0 {
 				return skillNames(toComplete), cobra.ShellCompDirectiveNoFileComp
@@ -243,6 +246,7 @@ func (a *app) contextCmd() *cobra.Command {
 		short := map[string]string{"nqe": "NQE worked examples closest to a question", "schema": "real NQE field names (and enum values) matching a term"}[kind]
 		sub := &cobra.Command{
 			Use: kind + " <" + map[string]string{"nqe": "question", "schema": "term"}[kind] + ">", Short: short, Args: cobra.ExactArgs(1),
+			Example: map[string]string{"nqe": "  fwdctl context nqe \"bgp neighbors that are down\" -k 2", "schema": "  fwdctl context schema vrf"}[kind],
 			RunE: func(cmd *cobra.Command, args []string) error {
 				out, err := skills.Context(kind, args[0], k)
 				if err != nil {
@@ -261,15 +265,17 @@ func (a *app) contextCmd() *cobra.Command {
 func (a *app) whoamiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "whoami", GroupID: "setup", Short: "who this connects as: Forward URL, login, organization, Forward version",
-		Long: "Prints the Forward URL, the login, the organization and the Forward version this connects with (one request each); exit 3 if the login does not work.",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error { return a.exit(whoami(a.session, a.out, a.err)) },
+		Example: "  fwdctl whoami",
+		Long:    "Prints the Forward URL, the login, the organization and the Forward version this connects with (one request each); exit 3 if the login does not work.",
+		Args:    cobra.NoArgs,
+		RunE:    func(cmd *cobra.Command, args []string) error { return a.exit(whoami(a.session, a.out, a.err)) },
 	}
 }
 
 func (a *app) versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "version", GroupID: "setup", Short: "the release this binary was built from", Args: cobra.NoArgs,
+		Example: "  fwdctl version",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(a.out, "fwdctl %s (commit %s, built %s)\n", version, commit, date)
 			return nil
@@ -286,6 +292,7 @@ func (a *app) docsCmd() *cobra.Command {
 	sort.Strings(topics)
 	return &cobra.Command{
 		Use: "docs [topic]", Aliases: []string{"guide"}, GroupID: "setup", Short: "the built-in guide, readable offline",
+		Example:   "  fwdctl docs\n  fwdctl docs nqe\n  fwdctl docs cli",
 		Long:      "The built-in guide, readable offline. Topics: " + strings.Join(topics, ", ") + ".",
 		Args:      cobra.MaximumNArgs(1),
 		ValidArgs: topics,
@@ -319,6 +326,7 @@ func (a *app) updateCmd() *cobra.Command {
 	var tag string
 	c := &cobra.Command{
 		Use: "update", GroupID: "setup", Short: "update fwdctl to the newest release (checksum verified)",
+		Example: "  fwdctl update --check\n  fwdctl update",
 		Long: "Replaces this binary with the newest release after checking it against the release's SHA256SUMS. --check only reports (exit 2 when an update\n" +
 			"exists). A private repository needs GITHUB_TOKEN. FWDCTL_AUTO_UPDATE=1 applies updates by itself; FWDCTL_NO_UPDATE_CHECK=1 silences the daily notice.\n" +
 			"A Homebrew install is updated with: brew upgrade fwdctl.",
@@ -341,6 +349,7 @@ func (a *app) installCmd() *cobra.Command {
 	var dir, file string
 	claude := &cobra.Command{
 		Use: "claude", Short: "write the skills where Claude Code loads them (default ~/.claude/skills)", Args: cobra.NoArgs,
+		Example: "  fwdctl install claude",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.exit(installRun("claude", dir, "", a.out, a.err))
 		},
@@ -348,6 +357,7 @@ func (a *app) installCmd() *cobra.Command {
 	claude.Flags().StringVar(&dir, "dir", "", "directory to write the skills into (default ~/.claude/skills)")
 	agents := &cobra.Command{
 		Use: "agents", Short: "add a managed skills section to an AGENTS.md / CLAUDE.md style file (stdout without --file)", Args: cobra.NoArgs,
+		Example: "  fwdctl install agents --file AGENTS.md",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.exit(installRun("agents", "", file, a.out, a.err))
 		},

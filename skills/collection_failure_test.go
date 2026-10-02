@@ -343,3 +343,28 @@ func TestCollectionDevicesComparesWithThePreviousSnapshot(t *testing.T) {
 		t.Errorf("%s", r.Finding)
 	}
 }
+
+func TestCollectionExceptionsViewShowsAnErrorTheCollectorIgnored(t *testing.T) {
+	routes := cfRoutes("PROCESSED", map[string]any{"numSuccessfulDevices": 3}, nil)
+	routes["GET /api/collector/exceptions"] = fwdtest.Const(200, map[string]any{"actualNumDedupedExceptions": 2, "dedupedExceptions": []any{
+		map[string]any{"stackTrace": "com.example.GcpQuotaException: HTTP 400 quota api\n\tat frame1", "actualNumOccurrences": 7, "collectorVersion": "2.0.1",
+			"occurrences": []any{map[string]any{"collectorId": "c1", "deviceName": "gcp-prod"}, map[string]any{"collectorId": "c1", "deviceName": "gcp-prod"}}},
+		map[string]any{"stackTrace": "java.net.SocketTimeoutException: read timed out", "actualNumOccurrences": 1,
+			"occurrences": []any{map[string]any{"collectorId": "c1", "deviceName": "edge1"}}}}})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"exceptions"}`)
+	d := r.Evidence[0].Detail
+	ex := d["exceptions"].([]map[string]any)
+	if r.Status != result.Failed || len(ex) != 2 || ex[0]["message"] != "com.example.GcpQuotaException: HTTP 400 quota api" || ex[0]["occurrences"] != 7 || !strings.Contains(r.Finding, "GcpQuotaException") {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, d)
+	}
+	r, _ = collect(t, routes, `{"network_id":"n1","view":"exceptions","device":"edge"}`)
+	if got := r.Evidence[0].Detail["exceptions"].([]map[string]any); len(got) != 1 {
+		t.Errorf("filter by device or account name: %v", got)
+	}
+	// without the permission: an explained unknown, not an error
+	routes["GET /api/collector/exceptions"] = fwdtest.Const(403, map[string]any{"message": "Missing permission: OrgOperation.VIEW_COLLECTOR_EXCEPTIONS"})
+	r, _ = collect(t, routes, `{"network_id":"n1","view":"exceptions"}`)
+	if r.Status != result.Unknown || !strings.Contains(r.Finding, "VIEW_COLLECTOR_EXCEPTIONS") {
+		t.Errorf("%s %s", r.Status, r.Finding)
+	}
+}

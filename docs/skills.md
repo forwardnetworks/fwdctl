@@ -46,7 +46,7 @@ Policy checks, evidence, a device or a site under review.
 - **Playbook** `plan-compliance-audit`: Audit against policy: checks, missing rules as NQE, evidence, history.
 - **Playbook** `plan-device-audit`: Everything known about one device or a group: connections, config, exposure, load, history, tags.
 - `check-network-compliance`: Does the network satisfy a policy (Forward checks and/or an NQE query)? view read: which checks exist and fail, what one found, which predefined checks exist.
-- `inspect-inventory`: What is in the network: counts and vendors, and the devices, interfaces, VLANs, VRFs, hosts and cloud VPCs, with filters and paging? kind ip_owner: which modelled interface owns an IPv4 address, or which connected subnet it falls in.
+- `inspect-inventory`: What is in the network: counts and vendors, and the devices, interfaces (with SVI addresses and VRFs), VLANs, VRFs, hosts, routes (with a per-VRF default-route fact), OSPF neighbors, and cloud accounts, VPCs, subnets and instances, with filters and paging? kind ip_owner: which modelled interface, SVI or FHRP address owns an IPv4 address, or which connected subnet it falls in.
 - `edit-checks` *(writes, dry run first)*: Create a check (local to its snapshot unless persistent) or deactivate one.
 
 ### Health and collection
@@ -68,7 +68,7 @@ Is the data current, is collection working, is anything stressed.
 What is in the network and how it connects.
 
 - `inspect-networks`: Which Forward networks can this login see, and what is the id of the one I mean?
-- `inspect-inventory`: What is in the network: counts and vendors, and the devices, interfaces, VLANs, VRFs, hosts and cloud VPCs, with filters and paging? kind ip_owner: which modelled interface owns an IPv4 address, or which connected subnet it falls in.
+- `inspect-inventory`: What is in the network: counts and vendors, and the devices, interfaces (with SVI addresses and VRFs), VLANs, VRFs, hosts, routes (with a per-VRF default-route fact), OSPF neighbors, and cloud accounts, VPCs, subnets and instances, with filters and paging? kind ip_owner: which modelled interface, SVI or FHRP address owns an IPv4 address, or which connected subnet it falls in.
 - `inspect-topology`: What is connected to what, which locations, tags and aliases exist, how is the edge modelled (kind external), and which link overrides does a snapshot have, or have gained and lost against an earlier one (kind link_overrides, `compare_to_snapshot_id`)?
 - `edit-endpoint-profile` *(writes, dry run first)*: Create an SNMP endpoint profile as a copy of another plus extra OIDs, repoint endpoints at a profile, or delete one; profiles are organization-wide, only assigned endpoints use them; undo is reassign then delete.
 - `inspect-access`: What can this login do and why was an operation refused (a 403 explained from Forward's role definition, with who can resolve it), which users and access control groups exist and what they hold.

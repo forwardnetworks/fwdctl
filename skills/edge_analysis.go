@@ -60,7 +60,7 @@ func analyzeEdge(ctx context.Context, s *fwd.Session, q EdgeQuery, snap *forward
 	if err != nil {
 		return nil, err
 	}
-	addrs, atrunc, err := loadIfaceAddrs(ctx, s, q.NetworkID, sid)
+	addrs, atrunc, _, err := loadIfaceAddrs(ctx, s, q.NetworkID, sid)
 	if err != nil {
 		return nil, err
 	}

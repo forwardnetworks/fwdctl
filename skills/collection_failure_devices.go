@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	forward "github.com/forwardnetworks/forward-go-sdk"
+
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
 )
@@ -372,4 +374,73 @@ func noneIsNil(e string) any {
 		return nil
 	}
 	return e
+}
+
+// collectorExceptions is view exceptions: the exceptions the collectors hit while collecting the snapshot (deduplicated by Forward), each with the head of its stack trace, how many
+// times it happened, and which devices (or cloud accounts) it happened on. It is where an error a collector ignored (a quota call that returned 400, a permission that was missing)
+// shows up even though the collection finished and the account reads as collected.
+func collectorExceptions(ctx context.Context, s *fwd.Session, in collectionInput, cx result.Context) (result.Result, error) {
+	lim := int32(200)
+	occ := int32(50)
+	ex, _, err := s.Client.Snapshots.CollectionExceptions(ctx, fwd.SnapshotID(cx), forward.CollectionExceptionOptions{Limit: &lim, OccurrencesLimit: &occ})
+	if err != nil {
+		if dr, ok := denialResult(collectionFailureName, err, cx, "read the collectors' exceptions"); ok {
+			return dr, nil
+		}
+		return result.Result{}, err
+	}
+	var rows []map[string]any
+	for _, e := range ex.Exceptions {
+		devs := map[string]int{}
+		for _, o := range e.Occurrences {
+			if o.DeviceName != "" {
+				devs[o.DeviceName]++
+			}
+		}
+		if in.Device != "" {
+			hit := false
+			for d := range devs {
+				if strings.Contains(strings.ToLower(d), strings.ToLower(in.Device)) {
+					hit = true
+				}
+			}
+			if !hit {
+				continue
+			}
+		}
+		names := make([]string, 0, len(devs))
+		for d := range devs {
+			names = append(names, d)
+		}
+		sort.Strings(names)
+		if len(names) > 25 {
+			names = names[:25]
+		}
+		row := map[string]any{"message": firstLine(e.StackTrace), "occurrences": e.TotalOccurrences, "devices": names}
+		if e.CollectorVersion != "" {
+			row["collector_version"] = e.CollectorVersion
+		}
+		rows = append(rows, row)
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i]["occurrences"].(int) > rows[j]["occurrences"].(int) })
+	limits := []string{"these are the exceptions the collectors logged while collecting this snapshot, deduplicated by Forward; a collection can finish, and an account read as collected, with some of them in the log (an ignored warning from one API call, for example). The message is the first line of the stack trace; it can quote what the collector was doing, so keep it out of public places",
+		"reading them needs the permission to view collector exceptions (a network administrator)"}
+	if ex.Total > len(ex.Exceptions) {
+		limits = append(limits, fmt.Sprintf("%d distinct exceptions exist; the first %d are read", ex.Total, len(ex.Exceptions)))
+	}
+	if len(rows) == 0 {
+		if in.Device != "" {
+			return result.NewUnknown(collectionFailureName, fmt.Sprintf("No collector exception names a device or account containing %q", in.Device), cx,
+				append(limits, fmt.Sprintf("%d distinct exception(s) exist in all", ex.Total)), result.Options{})
+		}
+		return result.Build(collectionFailureName, result.OK, "The collectors logged no exception for this snapshot", result.Deterministic, cx, result.Options{Limits: limits,
+			Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "collectionExceptions", cx.SnapshotID, map[string]any{"total": ex.Total, "exceptions": []any{}}, "")}})
+	}
+	win, wl, ok := window(rows, in.Limit, in.Offset, 20, 100, "exceptions")
+	if !ok {
+		return result.NewUnknown(collectionFailureName, fmt.Sprintf("Offset %d is beyond the %d exceptions", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
+	}
+	finding := fmt.Sprintf("%d distinct collector exception(s); most frequent: %v (%v time(s))", len(rows), win[0]["message"], win[0]["occurrences"])
+	return result.Build(collectionFailureName, result.Failed, finding, result.Deterministic, cx, result.Options{Limits: append(limits, wl...), NextActions: []string{"inspect-collection", "inspect-device-files"},
+		Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "collectionExceptions", cx.SnapshotID, map[string]any{"total": ex.Total, "offset": in.Offset, "exceptions": win}, finding)}})
 }
