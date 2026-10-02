@@ -20,8 +20,11 @@ type reprocessSnapshotInput struct {
 }
 
 // reprocessSnapshot recomputes the derived model of one snapshot from the data it holds. It is for a snapshot whose processing
-// failed or that was processed before a Forward upgrade or setting changed; it collects nothing and changes no device. It never
-// invalidates without reprocessing, and refuses a snapshot that is still being processed.
+// failed, that was processed before a Forward upgrade or setting changed, or that is UNPROCESSED (never processed, or invalidated
+// by a backdate: edit-synthetic-query, edit-link-overrides, edit-wan-circuit and the rest leave the snapshots they invalidate in
+// this state, and Forward does not start processing them by itself -- confirmed live, 2026-10-02: Forward's own API accepts and
+// starts processing a plain UNPROCESSED snapshot the same as a FAILED one). It collects nothing and changes no device. It never
+// invalidates without reprocessing, and refuses only a snapshot that is still actively being worked on.
 func reprocessSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
 	var in reprocessSnapshotInput
 	if err := json.Unmarshal(raw, &in); err != nil {
@@ -52,10 +55,10 @@ func reprocessSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 		return []result.Evidence{result.NewEvidence(result.EvState, "reprocessSnapshot", cx.SnapshotID, d, "")}
 	}
 	next := []string{"inspect-snapshots", "investigate-collection-failure"}
-	if sn.State != "PROCESSED" && sn.State != "FAILED" {
-		return result.Build(reprocessSnapshotName, result.Failed, fmt.Sprintf("Snapshot %s is %s, not PROCESSED or FAILED; it is not reprocessed while it is in that state", in.SnapshotID, sn.State),
+	if activelyBusy(sn.State) {
+		return result.Build(reprocessSnapshotName, result.Failed, fmt.Sprintf("Snapshot %s is %s, which means it is already being worked on; it is not reprocessed while it is in that state", in.SnapshotID, sn.State),
 			result.Deterministic, cx, result.Options{Mode: mode, Evidence: ev(nil), NextActions: next,
-				Limits: []string{"nothing was changed; wait for the snapshot to finish processing, then run this again"}})
+				Limits: []string{"nothing was changed; wait for the snapshot to finish, then run this again if it still needs it"}})
 	}
 	ch := result.Change{Action: "reprocess", Target: "snapshot " + in.SnapshotID, Before: sn.State, After: "PROCESSED (after reprocessing)", Reversible: false,
 		Undo: "none: reprocessing recomputes the derived data from the same collected data, so running it again gives the same result; nothing collected is lost"}

@@ -164,8 +164,8 @@ func editWanCircuit(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			return result.Build(editWanCircuitName, result.Failed, fmt.Sprintf("The circuit change was applied but the backdate to snapshot %s failed: %v", in.BackdateSnapshotID, err), result.Deterministic, cx,
 				result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"held": true}), Limits: append(limits, "the circuit change applies from the next snapshot; retry the backdate or wait for one"), NextActions: []string{"inspect-snapshots"}})
 		}
-		finding += fmt.Sprintf("; backdated to snapshot %s (%d snapshot(s) are reprocessing)", in.BackdateSnapshotID, len(plan.Affected))
-		next = []string{"inspect-snapshots", "inspect-topology", "investigate-reachability"}
+		finding += fmt.Sprintf("; backdated to snapshot %s (%d snapshot(s) now UNPROCESSED; Forward does not reprocess them by itself: run edit-snapshot-reprocess for each one, then edit-advanced-reachability if internet exposure is needed, since that only runs after a snapshot is PROCESSED)", in.BackdateSnapshotID, len(plan.Affected))
+		next = []string{"edit-snapshot-reprocess", "edit-advanced-reachability", "inspect-snapshots", "inspect-topology", "investigate-reachability"}
 	}
 	return result.Build(editWanCircuitName, result.OK, finding, result.Deterministic, cx,
 		result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"held": true}), Limits: limits, NextActions: next})

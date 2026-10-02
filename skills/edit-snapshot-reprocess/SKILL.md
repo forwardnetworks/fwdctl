@@ -1,6 +1,6 @@
 ---
 name: edit-snapshot-reprocess
-description: Recomputes a snapshot's derived data from what it collected, showing what would start. Dry run unless apply is true. Use when a snapshot failed to process or looks stale after an upgrade.
+description: Recomputes a snapshot's derived data from what it collected, showing what would start. Dry run unless apply is true. Use for a failed, stale or UNPROCESSED snapshot.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
@@ -16,7 +16,10 @@ metadata:
 ## Intent
 
 Make Forward rebuild the model of a snapshot (paths, checks, NQE answers) from the configuration and state it already holds. It collects
-nothing and touches no device. It is the fix for a snapshot stuck in FAILED, or one whose answers predate a Forward upgrade.
+nothing and touches no device. It is the fix for a snapshot stuck in FAILED, one whose answers predate a Forward upgrade, or one that is
+UNPROCESSED: a snapshot a write skill's `backdate_snapshot_id` invalidated (`edit-synthetic-query`, `edit-link-overrides`,
+`edit-wan-circuit`, and others), or one that was simply never processed. Forward does not start processing an invalidated snapshot by
+itself; this skill does (confirmed live: Forward's reprocess call works the same on UNPROCESSED as on FAILED).
 
 ## Inputs
 
@@ -30,7 +33,8 @@ before and after). Show it to the person who asked before applying.
 ## Procedure
 
 1. Find the snapshot in the network. If it is not there the answer is **unknown** and nothing is changed.
-2. Only a PROCESSED or FAILED snapshot is reprocessed. One that is still processing is **failed** (nothing changed): wait, then retry.
+2. A snapshot that is actively being worked on (UNPACKING, PROCESSING or RESTORING) is refused: **failed**, nothing changed. Every other
+   state, including UNPROCESSED, is reprocessed.
 3. Dry run: return the plan. With `apply: true`: ask Forward to reprocess and report the state it returns.
 4. The skill does not wait for the reprocess to finish; use `inspect-snapshots` to see the state change.
 

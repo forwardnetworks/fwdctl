@@ -41,8 +41,9 @@ Without `apply: true` nothing is changed. The skill reads the node, then asks Fo
 ## Backdate (optional): apply it now
 
 By default a change reaches the **next** processed snapshot. With `backdate_snapshot_id` the skill, after attaching, backdates the node kind's configuration to that snapshot: that snapshot and **every later one are
-invalidated and reprocess**, so their answers (paths, checks, NQE) are unavailable until they finish. The dry run lists the snapshots affected. Ask for it only when the person wants the change applied now; get approval of the
-backdate itself, separately from the query change. The backdate cannot be undone (reprocessing recomputes the same data from what was collected); the query change still can.
+invalidated**, set to UNPROCESSED. Forward does **not** reprocess them by itself: run `edit-snapshot-reprocess` for each one, then `edit-advanced-reachability` if internet exposure is needed (it only runs after a
+snapshot is PROCESSED). The dry run lists the snapshots affected. Ask for it only when the person wants the change applied now; get approval of the backdate itself, separately from the query change. The backdate cannot
+be undone (reprocessing recomputes the same data from what was collected); the query change still can.
 
 ## Undo
 

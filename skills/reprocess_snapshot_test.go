@@ -45,9 +45,18 @@ func TestReprocessApplyStartsItOnceAndReportsTheState(t *testing.T) {
 	}
 }
 
+// An UNPROCESSED snapshot (a backdate's invalidated one, or one simply never processed) must be reprocessed, not refused: Forward's
+// reprocess call works the same on it as on FAILED (confirmed live against a real network, 2026-10-02).
+func TestReprocessAcceptsAnUnprocessedSnapshot(t *testing.T) {
+	r, srv := mustRun(t, "edit-snapshot-reprocess", reprocessRoutes("UNPROCESSED"), `{"network_id":"n1","snapshot_id":"s1","apply":true}`)
+	if r.Status != result.OK || r.Mode != result.ModeApplied || !r.Changes[0].Applied || writes(srv) != 1 {
+		t.Fatalf("%s %s %+v writes=%d", r.Status, r.Mode, r.Changes, writes(srv))
+	}
+}
+
 func TestReprocessRefusesASnapshotThatIsProcessingAndAMissingOne(t *testing.T) {
 	r, srv := mustRun(t, "edit-snapshot-reprocess", reprocessRoutes("PROCESSING"), `{"network_id":"n1","snapshot_id":"s1","apply":true}`)
-	if r.Status != result.Failed || writes(srv) != 0 || !strings.Contains(r.Finding, "not PROCESSED or FAILED") {
+	if r.Status != result.Failed || writes(srv) != 0 || !strings.Contains(r.Finding, "already being worked on") {
 		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
 	r, srv = mustRun(t, "edit-snapshot-reprocess", reprocessRoutes("FAILED"), `{"network_id":"n1","snapshot_id":"nope","apply":true}`)
