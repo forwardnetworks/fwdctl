@@ -527,6 +527,43 @@ Examples:
   fwdctl version
 ```
 
+## fwdctl wait
+
+Blocks, printing one progress line per poll on stderr, until Forward reaches the state asked for. For the work that takes an hour (a reprocess after a backdate, advanced
+reachability) so it does not need a polling loop that dies with the session. Exit 0: reached. 1: Forward ended in a failed, canceled or timed-out state that will not change
+by itself. 2: --timeout passed first (the work may still be running; run the wait again). 3: an error (bad input, Forward unreachable for several polls in a row).
+
+```
+fwdctl wait
+```
+
+## fwdctl wait snapshot
+
+Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.
+A FAILED, CANCELED or TIMED_OUT state ends the wait with exit 1: Forward does not retry those by itself (a reprocess clears them). The last line on stdout is a JSON object: status,
+snapshot_id, state, advanced_reachability, waited_seconds. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.
+Nothing here starts the work: a reprocess or advanced reachability that was never started (edit-snapshot-reprocess, edit-advanced-reachability) stays UNPROCESSED, and the wait says so after a few polls and ends at --timeout.
+
+```
+fwdctl wait snapshot --network ID --snapshot ID [--advanced-reachability] [--timeout 2h] [flags]
+```
+
+Examples:
+
+```
+  fwdctl wait snapshot --network N --snapshot S --advanced-reachability --timeout 3h
+```
+
+Flags:
+
+```
+      --advanced-reachability   also wait for the snapshot's advanced reachability to be PROCESSED
+      --interval duration       time between polls (at least 1s) (default 30s)
+      --network string          network id
+      --snapshot string         snapshot id
+      --timeout duration        give up after this long (exit 2) (default 2h0m0s)
+```
+
 ## fwdctl which
 
 Ranks the rows of the router table (plan-investigation) against the question and prints the best skills and playbooks, with the row that matched.

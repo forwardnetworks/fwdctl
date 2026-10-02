@@ -210,7 +210,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		"in_flight counts a device from its recorded start to its recorded end, and that start can be when the device was handed to the collector rather than when it got a slot, so the count can exceed the collector's configured concurrency (seen: 1,788 in the first five minutes against 1,024); read it as 'started and not finished', and use idle_gaps and finished_by_seconds for the shape of the run",
 		"in_flight is built from each device's own start time and duration: devices_in_flight is the average number collecting during each bucket, and finished_by_seconds says when 50%, 90%, 99% and all of the devices had finished. It shows WHEN concurrency fell (a slow start, a mid-run stall, a long tail); it does not say why, which Forward does not record",
 		"errors_by_type counts every error class on the devices, including ones Forward tags on devices it did not collect (for example LICENSE_EXHAUSTED); the snapshot's collection-failure count (investigate-collection-failure view summary) was seen to leave such devices out, so the two totals need not agree",
-		"org_collection_settings is the organization's device collection timeout (Forward's default is 180 minutes; the collector cancels a device that runs that long) and retry settings; a gap ending at the timeout after the run began only means devices were held when devices_that_ran_to_the_timeout is above zero; at zero, something that is not a recorded device held the run. A device with no recorded duration was cancelled, finished early, timed out or never collected (seen: most finished normally within minutes): its log (view logs, level INFO) says which, and so does no_recorded_duration.end_states when the task's subtasks could be read. The settings may differ per collector; only the organization's are read",
+		"org_collection_settings is the organization's device collection timeout (Forward's default is 180 minutes; the collector cancels a device that runs that long) and retry settings; a device's recorded collection can be short while its collector SUBTASK runs on to the timeout (seen: devices whose own log says the collection finished in a minute, with the subtask TIMED_OUT 3 h later), so check running_in_the_gap (status TIMED_OUT) and subtasks_not_succeeded, not only devices_that_ran_to_the_timeout. A device with no recorded duration was cancelled, finished early, timed out or never collected (seen: most finished normally within minutes): its log (view logs, level INFO) says which, and so does subtasks_not_succeeded when the task's subtasks could be read. The settings may differ per collector; only the organization's are read",
 		"durations are milliseconds; Forward keeps only each device's slowest command (not every command), and a device with no duration has no recorded collection. error is the collection and processing error merged, so it is every error class, not only failures. For what a device did, read its log (view logs).")
 	finding := fmt.Sprintf("%d device(s); slowest collection %s", sm.devices, sm.rows[0]["device"])
 	if v, ok := sm.rows[0]["collection_ms"].(int64); ok {
@@ -265,14 +265,25 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		}
 	}
 	if gapAtTimeout {
-		if atTimeout > 0 {
+		run, _ := stats["running_in_the_gap"].(map[string]any)
+		timedOut, _ := run["timed_out"].(int)
+		switch {
+		case timedOut > 0:
+			var names []string
+			for _, r := range run["subtasks"].([]map[string]any) {
+				if r["status"] == forward.CollectorTaskTimedOut && len(names) < 5 {
+					names = append(names, fmt.Sprint(r["description"]))
+				}
+			}
+			finding += fmt.Sprintf(" (the gap ends at the %s per-device collection timeout after the run began: %d collector subtask(s) running in the gap TIMED_OUT at it, %s; check each device's own log (view logs, failure INFO): a subtask that timed out although its device's collection finished is a collector subtask that did not complete, which is a Forward issue, not a slow device)", dur(float64(timeoutMs)/1000), timedOut, strings.Join(names, ", "))
+		case atTimeout > 0:
 			finding += fmt.Sprintf(" (the gap ends at the %s per-device collection timeout after the run began, and %d device(s) ran to it)", dur(float64(timeoutMs)/1000), atTimeout)
-		} else {
-			finding += fmt.Sprintf(" (the gap ends at the %s per-device collection timeout after the run began, but NO device ran to it: a task that is not a recorded device, or something it depends on, held the run; stats.running_in_the_gap names what was running)", dur(float64(timeoutMs)/1000))
+		default:
+			finding += fmt.Sprintf(" (the gap ends at the %s per-device collection timeout after the run began, but no device's recorded collection ran to it and no subtask running in the gap is marked timed out: something that is not a recorded device, or that it depends on, held the run; stats.running_in_the_gap names what was running)", dur(float64(timeoutMs)/1000))
 		}
 	}
 	if nd, ok := stats["no_recorded_duration"].(map[string]any); ok {
-		finding += fmt.Sprintf("; %d device(s) ended without a recorded collection duration (no_recorded_duration: cancelled, finished early or never collected; stats say which when the task's subtasks could be read)", nd["devices"])
+		finding += fmt.Sprintf("; %d device(s) ended without a recorded collection duration (no_recorded_duration: cancelled, finished early or never collected; subtasks_not_succeeded says which when the task's subtasks could be read)", nd["devices"])
 	}
 	if cmp != nil {
 		finding += "; " + cmp.summary

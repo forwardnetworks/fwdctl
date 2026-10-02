@@ -684,7 +684,7 @@ func TestCollectionSlowViewTiesAGapToThePerDeviceTimeoutAndListsDevicesWithNoRec
 	if nd["devices"] != 1 || shown[0]["device"] != "fw1" || shown[0]["start_offset_seconds"] != int64(60) {
 		t.Errorf("fw1 has no recorded collection: %v", nd)
 	}
-	if !strings.Contains(r.Finding, "NO device ran to it") || !strings.Contains(r.Finding, "1 device(s) ended without a recorded collection duration") {
+	if !strings.Contains(r.Finding, "no device's recorded collection ran to it") || !strings.Contains(r.Finding, "1 device(s) ended without a recorded collection duration") {
 		t.Errorf("the finding ties the gap to the timeout and counts devices without a duration: %s", r.Finding)
 	}
 	if st["org_collection_settings"].(map[string]any)["idle_gap_ends_at_the_timeout"] != true {
@@ -709,6 +709,7 @@ func TestCollectionSlowViewReadsTheTaskSeriesForTheGapAndClassifiesDevicesWithNo
 	}
 	devs = append(devs, map[string]any{"deviceName": "fw1", "deviceType": "PAN_OS", "connTypeDisplayName": "SSH", "collectionStartTime": 60_000})
 	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s1", "collectionStartTime": 0, "collectionEndTime": 2_100_000, "metrics": devs})
+	routes["GET /api/collection-settings"] = fwdtest.Const(200, map[string]any{"deviceCollectionTimeoutMinutes": 30})
 	routes["GET /api/collector-tasks"] = func(r *http.Request, _ []byte) (int, any) {
 		if r.URL.Query().Get("snapshotId") == "" {
 			return 200, []any{}
@@ -719,7 +720,8 @@ func TestCollectionSlowViewReadsTheTaskSeriesForTheGapAndClassifiesDevicesWithNo
 	}
 	routes["GET /api/collector-tasks/P500"] = func(r *http.Request, _ []byte) (int, any) {
 		if r.URL.Query().Get("view") == "subtasks" {
-			return 200, []any{map[string]any{"id": "v", "description": "Cisco SD-WAN vsmart family", "status": "RUNNING", "startedAt": 0, "operation": "show omp routes"}}
+			return 200, []any{map[string]any{"id": "v", "description": "Cisco SD-WAN vsmart family", "status": "RUNNING", "startedAt": 0, "operation": "show omp routes"},
+				map[string]any{"id": "w", "description": "edge-aars01", "status": "TIMED_OUT", "startedAt": 60_000}}
 		}
 		return 200, map[string]any{"id": "P500", "status": "FINISHED", "subTasks": []any{
 			map[string]any{"id": "a", "description": "fw1", "status": "TIMED_OUT", "startedAt": 60_000, "finishedAt": 10_860_000},
@@ -732,14 +734,20 @@ func TestCollectionSlowViewReadsTheTaskSeriesForTheGapAndClassifiesDevicesWithNo
 	if g["max_queued"] != 0 || g["max_running"] != 1 || q["concurrency_limit"] != 128 {
 		t.Errorf("one device was still running in the gap and nothing queued: %v", q)
 	}
-	es := st["no_recorded_duration"].(map[string]any)["end_states"].(map[string]any)
+	es := st["subtasks_not_succeeded"].(map[string]any)
 	bad := es["failed_timed_out_or_cancelled"].([]map[string]any)
 	if len(bad) != 2 || bad[0]["status"] != "CANCELED" || bad[1]["device"] != "fw1" || bad[1]["ran_seconds"] != 10800.0 {
 		t.Errorf("fw1 ran its full 3h and timed out: %v", bad)
 	}
 	run := st["running_in_the_gap"].(map[string]any)
-	if run["subtasks_in_progress"] != 1 || run["subtasks"].([]map[string]any)[0]["description"] != "Cisco SD-WAN vsmart family" {
+	if !strings.Contains(r.Finding, "1 collector subtask(s) running in the gap TIMED_OUT at it, edge-aars01") {
+		t.Errorf("the finding names the subtask that timed out: %s", r.Finding)
+	}
+	if run["subtasks_in_progress"] != 2 || run["subtasks"].([]map[string]any)[0]["description"] != "Cisco SD-WAN vsmart family" {
 		t.Errorf("the subtask running mid-gap is named: %v", run)
+	}
+	if es["timed_out"] != 1 {
+		t.Errorf("the task's subtasks are read whenever a gap exists: %v", st["subtasks_not_succeeded"])
 	}
 	if !strings.Contains(r.Finding, "up to 0 queued and 1 running during the gap") {
 		t.Errorf("the finding reports the queue during the gap: %s", r.Finding)

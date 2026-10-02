@@ -105,7 +105,7 @@ func taskEndStates(ctx context.Context, s *fwd.Session, taskID string) (map[stri
 		b, _ := bad[j]["ran_seconds"].(float64)
 		return a > b
 	})
-	out := map[string]any{"subtasks_read": len(t.SubTasks), "by_status": counts, "task_progress": t.Progress}
+	out := map[string]any{"subtasks_read": len(t.SubTasks), "by_status": counts, "task_progress": t.Progress, "timed_out": counts[forward.CollectorTaskTimedOut]}
 	if len(bad) > maxEndStateShown {
 		out["more_not_shown"] = len(bad) - maxEndStateShown
 		bad = bad[:maxEndStateShown]
@@ -139,7 +139,7 @@ func addQueue(ctx context.Context, s *fwd.Session, in collectionInput, cx result
 		stats["queue"] = qp
 		*limits = append(*limits, "queue is Forward's own series of devices queued, running and holding concurrency slots, sampled at Forward's intervals and bucketed here by the highest value in each bucket; running at the concurrency limit means the limit was the ceiling, running far below it with devices queued means something other than the global limit held work back (a jump server or vCenter cap, or a dispatch delay), and nothing queued and nothing running is an idle collector")
 	}
-	nd, hasND := stats["no_recorded_duration"].(map[string]any)
+	_, hasND := stats["no_recorded_duration"].(map[string]any)
 	if !hasND && gap[1] <= gap[0] {
 		return
 	}
@@ -154,7 +154,7 @@ func addQueue(ctx context.Context, s *fwd.Session, in collectionInput, cx result
 		if gap[1] > gap[0] {
 			stats["running_in_the_gap"] = runningAt(ctx, s, string(sn.CollectionTaskID), time.UnixMilli(origin).Add(time.Duration(gap[0]+(gap[1]-gap[0])/2)*time.Second), time.UnixMilli(origin), limits)
 		}
-		if !hasND {
+		if !hasND && gap[1] <= gap[0] {
 			continue
 		}
 		es, err := taskEndStates(ctx, s, string(sn.CollectionTaskID))
@@ -162,8 +162,8 @@ func addQueue(ctx context.Context, s *fwd.Session, in collectionInput, cx result
 			*limits = append(*limits, "the collector task's subtasks could not be read, so the devices with no recorded collection are not classified as timed out or cancelled: "+err.Error())
 			return
 		}
-		nd["end_states"] = es
-		*limits = append(*limits, "end_states counts the collector task's subtasks that did not simply succeed (Forward lists running, failed, timed-out and cancelled ones first, up to a cap): TIMED_OUT and CANCELED are Forward's own status, and a timed-out device's ran_seconds should match the per-device collection timeout; subtasks waiting in the queue are never listed")
+		stats["subtasks_not_succeeded"] = es
+		*limits = append(*limits, "subtasks_not_succeeded counts the collector task's subtasks that did not simply succeed (Forward lists running, failed, timed-out and cancelled ones first, up to a cap): TIMED_OUT and CANCELED are Forward's own status, and a timed-out device's ran_seconds should match the per-device collection timeout; subtasks waiting in the queue are never listed")
 	}
 }
 
@@ -190,5 +190,11 @@ func runningAt(ctx context.Context, s *fwd.Session, taskID string, at, origin ti
 		rows = append(rows, row)
 	}
 	*limits = append(*limits, "running_in_the_gap is every collector subtask in progress at the middle of the longest idle gap (first 50, oldest start first), by Forward's own description: usually one device, but a controller or a family of interdependent devices (for example a Viptela vSmart with its edges, an ACI fabric, an F5 or ASA family) is collected as ONE subtask whose devices start inside it, so the devices' start times can trail the subtask's")
-	return map[string]any{"at_offset_seconds": int64(at.Sub(origin).Seconds()), "subtasks_in_progress": len(subs), "subtasks": rows}
+	timedOut := 0
+	for _, st := range subs {
+		if st.Status == forward.CollectorTaskTimedOut {
+			timedOut++
+		}
+	}
+	return map[string]any{"at_offset_seconds": int64(at.Sub(origin).Seconds()), "subtasks_in_progress": len(subs), "timed_out": timedOut, "subtasks": rows}
 }

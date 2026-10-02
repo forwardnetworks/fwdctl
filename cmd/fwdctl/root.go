@@ -128,7 +128,7 @@ func (a *app) newRoot() *cobra.Command {
 	}
 
 	root.AddCommand(a.listCmd(), a.describeCmd(), a.runCmd(), a.whichCmd(), a.contextCmd())
-	root.AddCommand(a.nqeCmd())
+	root.AddCommand(a.nqeCmd(), a.waitCmd())
 	root.AddCommand(a.installCmd(), a.loginCmd(), a.whoamiCmd(), a.updateCmd(), a.docsCmd(), a.versionCmd())
 	root.AddCommand(a.manCmd())
 	root.AddCommand(a.redactCmd(), a.noteCmd()) // DOGFOOD-TEMP
