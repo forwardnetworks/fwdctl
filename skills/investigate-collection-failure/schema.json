@@ -23,6 +23,7 @@
         "exceptions",
         "neighbors",
         "slow",
+        "history",
         "logs"
       ],
       "default": "summary"

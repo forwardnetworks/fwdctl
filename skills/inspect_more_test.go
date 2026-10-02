@@ -252,3 +252,22 @@ func TestCollectionConfigShowsCloudSetupsWithRegionsAndTheLastTestAndNeverACrede
 		t.Errorf("a network whose only source is a cloud setup is configured, not unknown: %s", r.Status)
 	}
 }
+
+func TestCollectionConfigSummarisesTheWholeDeviceListNotJustThePage(t *testing.T) {
+	devs := []any{}
+	for i := 0; i < 5; i++ {
+		d := map[string]any{"name": "sw" + string(rune('0'+i)), "host": "10.0.0.1", "type": "CISCO_IOS_XE", "cliCredentialId": "c1", "enableSnmpCollection": i < 2}
+		devs = append(devs, d)
+	}
+	devs = append(devs, map[string]any{"name": "fw1", "host": "10.0.0.9", "type": "PALO_ALTO_PANOS"}, map[string]any{"name": "x", "host": "10.0.0.8"})
+	routes := map[string]fwdtest.Handler{"GET /api/networks/n1/classic-devices": fwdtest.Const(200, devs), "GET /api/data-files": fwdtest.Const(200, []any{})}
+	r, _ := mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1","limit":2}`)
+	sum := r.Evidence[0].Detail["summary"].(map[string]any)
+	by := sum["by_type"].([]map[string]any)
+	if len(r.Evidence[0].Detail["devices"].([]map[string]any)) != 2 || by[0]["name"] != "CISCO_IOS_XE" || by[0]["devices"] != 5 || sum["without_cli_credential"] != 2 || sum["snmp_collection_on"] != 2 {
+		t.Errorf("a two-row page must still summarise all seven devices: %v / %v", sum, by)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " | "), "view history") {
+		t.Errorf("the limit must say what cannot be read and where the growth is: %v", r.Limits)
+	}
+}

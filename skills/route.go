@@ -40,6 +40,13 @@ func stem(w string) string {
 	return w
 }
 
+// routeDiagnostic are (stemmed) words of a question about why something is bad; routeAction are words that ask for a change.
+var routeDiagnostic = map[string]bool{"why": true, "slow": true, "slower": true, "long": true, "fail": true, "cause": true, "wrong": true, "miss": true, "broken": true, "error": true,
+	"took": true, "timeout": true, "stuck": true, "hour": true, "bottleneck": true, "healthy": true}
+var routeAction = map[string]bool{"create": true, "add": true, "set": true, "change": true, "delete": true, "remove": true, "enable": true, "disable": true, "start": true, "stop": true,
+	"apply": true, "upload": true, "attach": true, "save": true, "update": true, "edit": true, "tag": true, "label": true, "model": true, "stage": true, "reprocess": true, "cancel": true,
+	"collect now": true, "note": true}
+
 var routeSkill = regexp.MustCompile("`([a-z][a-z0-9-]+)`")
 
 // Route ranks the rows of plan-investigation's tables (the playbook table and the symptom table) against a question and returns the best
@@ -108,6 +115,21 @@ func Route(question string, limit int) ([]Suggestion, error) {
 			}
 			if cur, have := best[name]; !have || s > cur.Score {
 				best[name] = Suggestion{Skill: name, Playbook: !meta.Runnable, Matched: strings.TrimSpace(phrase), Score: s}
+			}
+		}
+	}
+	// A question that asks why something is slow, failing or wrong, and names no action, is about reading, not changing: an edit-* skill that happens to share words
+	// with it ("production", "collection") must not outrank the skill that diagnoses it.
+	diagnostic, action := false, false
+	for w := range want {
+		diagnostic = diagnostic || routeDiagnostic[w]
+		action = action || routeAction[w]
+	}
+	if diagnostic && !action {
+		for n, s := range best {
+			if strings.HasPrefix(n, "edit-") {
+				s.Score *= 0.4
+				best[n] = s
 			}
 		}
 	}

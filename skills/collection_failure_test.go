@@ -412,3 +412,125 @@ func TestCollectionTriageOnAHealthyNetworkIsStillOK(t *testing.T) {
 		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
 }
+
+func collSnap(id, created, processed string, devices int, task string) map[string]any {
+	m := map[string]any{"id": id, "state": "PROCESSED", "processingTrigger": "COLLECTION", "createdAt": created, "processedAt": processed, "totalDevices": devices}
+	if task != "" {
+		m["collectionTaskId"] = task
+	}
+	return m
+}
+
+func collectionHistRoutes() map[string]fwdtest.Handler {
+	metrics := func(collectionMs, processingMs int64, ok int) fwdtest.Handler {
+		return fwdtest.Const(200, map[string]any{"snapshotId": "x", "numSuccessfulDevices": ok, "numCollectionFailureDevices": 3, "collectionDuration": collectionMs, "processingDuration": processingMs})
+	}
+	return map[string]fwdtest.Handler{
+		snapsPath: fwdtest.Snapshots(
+			collSnap("s1", "2026-09-10T06:00:00Z", "2026-09-10T07:10:00Z", 4500, ""),
+			collSnap("s2", "2026-09-17T06:00:00Z", "2026-09-17T07:10:00Z", 4510, ""),
+			collSnap("s3", "2026-09-24T06:00:00Z", "2026-09-24T07:10:00Z", 4520, ""),
+			collSnap("s4", "2026-10-01T09:00:00Z", "2026-10-01T10:30:00Z", 20000, ""),
+			collSnap("s5", "2026-10-02T09:46:00Z", "2026-10-02T09:46:53Z", 40000, "1021"),
+			// a reprocess of the oldest, processed today: not a collection, and must not count as the newest
+			map[string]any{"id": "rp", "state": "PROCESSED", "processingTrigger": "REPROCESS", "createdAt": "2026-09-10T06:00:00Z", "processedAt": "2026-10-02T14:00:00Z", "totalDevices": 4500},
+			map[string]any{"id": "pr", "state": "PROCESSED", "processingTrigger": "PREDICT", "processedAt": "2026-10-02T15:00:00Z"},
+		),
+		"GET /api/snapshots/s1/metrics":  metrics(3_700_000, 600_000, 4497),
+		"GET /api/snapshots/s2/metrics":  metrics(3_500_000, 610_000, 4507),
+		"GET /api/snapshots/s3/metrics":  metrics(3_600_000, 600_000, 4517),
+		"GET /api/snapshots/s4/metrics":  metrics(6_400_000, 900_000, 19990),
+		"GET /api/snapshots/s5/metrics":  metrics(12_000_000, 1_500_000, 39900),
+		"GET /api/collector-tasks/P1021": fwdtest.Const(200, map[string]any{"id": "P1021", "type": "NETWORK_COLLECTION", "status": "DONE", "startedAt": "2026-10-02T06:00:14Z", "finishedAt": "2026-10-02T09:20:39Z"}),
+	}
+}
+
+func TestCollectionHistoryShowsDurationsDeviceGrowthAndFlagsTheSlowOnes(t *testing.T) {
+	r, _ := collect(t, collectionHistRoutes(), `{"network_id":"n1","view":"history"}`)
+	if r.Status != result.OK {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	d := r.Evidence[0].Detail
+	rows := d["snapshots"].([]map[string]any)
+	if len(rows) != 5 || rows[0]["snapshot_id"] != "s5" || rows[4]["snapshot_id"] != "s1" {
+		t.Fatalf("five COLLECTION snapshots, newest first, no reprocess and no prediction: %v", rows)
+	}
+	if rows[0]["collection_seconds"] != 12000.0 || rows[0]["processing_seconds"] != 1500.0 || rows[0]["devices"] != 40000 || rows[0]["devices_change"] != 20000 {
+		t.Errorf("latest: %v", rows[0])
+	}
+	// the collector task gives the real start and end, and the lag from the collection ending to the snapshot being usable
+	if rows[0]["task_seconds"] != 12025.0 || rows[0]["collection_end_to_processed_seconds"] != 1574.0 {
+		t.Errorf("task timing: %v", rows[0])
+	}
+	stats := d["stats"].(map[string]any)
+	if stats["median_collection_seconds"] != 3700.0 || stats["slower_than_usual"] != 2 {
+		t.Errorf("median 3700s and two collections above 1.5x it (s4 and s5): %v", stats)
+	}
+	if rows[0]["slower_than_usual"] != true || rows[1]["slower_than_usual"] != true || rows[2]["slower_than_usual"] == true || rows[3]["slower_than_usual"] == true {
+		t.Errorf("only s5 and s4 are flagged: %v %v %v %v", rows[0]["slower_than_usual"], rows[1]["slower_than_usual"], rows[2]["slower_than_usual"], rows[3]["slower_than_usual"])
+	}
+	if !strings.Contains(r.Finding, "3h20m") || !strings.Contains(r.Finding, "3.2x") || !strings.Contains(r.Finding, "+20000 devices") {
+		t.Errorf("the finding must say how long, against what, and the device change: %s", r.Finding)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " | "), "not collections") {
+		t.Errorf("limits must say reprocesses are excluded: %v", r.Limits)
+	}
+}
+
+func TestCollectionHistoryDoesNotWaitForASnapshotStillProcessingAndRejectsForeignInputs(t *testing.T) {
+	routes := collectionHistRoutes()
+	routes[snapsPath] = fwdtest.Snapshots(
+		collSnap("s1", "2026-09-10T06:00:00Z", "2026-09-10T07:10:00Z", 4500, ""),
+		map[string]any{"id": "s2", "state": "PROCESSING", "processingTrigger": "COLLECTION", "createdAt": "2026-10-02T09:00:00Z"},
+	)
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"history"}`)
+	if r.Status == result.Unknown && strings.Contains(r.Finding, "still") {
+		t.Errorf("history reads finished collections and must not wait for the one in progress: %s", r.Finding)
+	}
+	if _, _, err := runSkill(t, "investigate-collection-failure", routes, `{"network_id":"n1","view":"history","device":"x"}`); err == nil {
+		t.Error("device belongs to other views")
+	}
+}
+
+func TestCollectionSlowViewSumsDeviceTimeComparesItToTheCollectorAndGroupsIt(t *testing.T) {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	dev := func(name, typ, conn string, ms int, errText string) map[string]any {
+		m := map[string]any{"deviceName": name, "deviceType": typ, "connTypeDisplayName": conn, "collectionDuration": ms}
+		if errText != "" {
+			m["error"] = errText
+		}
+		return m
+	}
+	// 4 devices, 100s of device time each = 400s, over a 100s collection: 4 devices at once on average
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s1", "collectionStartTime": 1_000_000, "collectionEndTime": 1_100_000, "metrics": []any{
+		dev("fw1", "FIREWALL", "SSH", 100000, ""), dev("fw2", "FIREWALL", "SSH", 100000, "LICENSE_EXHAUSTED: no slot"),
+		dev("sw1", "SWITCH", "SNMP", 100000, "LICENSE_EXHAUSTED: no slot"), dev("sw2", "SWITCH", "SNMP", 100000, "")}})
+	routes["GET /api/networks/n1/collector"] = fwdtest.Const(200, map[string]any{"id": "7", "name": "Garland", "connectionStatus": "CONNECTED"})
+	routes["GET /api/collectors/7/collection-settings"] = fwdtest.Const(200, map[string]any{})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow"}`)
+	st := r.Evidence[0].Detail["stats"].(map[string]any)
+	if st["sum_ms"] != int64(400000) || st["collection_wall_ms"] != int64(100000) || st["implied_parallelism"] != 4.0 {
+		t.Errorf("sum, wall and implied parallelism: %v", st)
+	}
+	c, _ := st["collector"].(map[string]any)
+	if c["name"] != "Garland" || c["concurrency"] != 128 || c["concurrency_is_default"] != true || st["concurrency_in_use_percent"] != 4.0/128*100 {
+		t.Errorf("an unset concurrency is the documented default (128), said so, and compared with the parallelism: %v", st)
+	}
+	groups := st["by_device_type"].([]map[string]any)
+	if len(groups) != 2 || groups[0]["devices_timed"] != 2 || groups[0]["sum_ms"] != int64(200000) {
+		t.Errorf("by device type: %v", groups)
+	}
+	if e := st["errors_by_type"].(map[string]int); e["LICENSE_EXHAUSTED"] != 2 {
+		t.Errorf("errors are grouped by class, not by text: %v", e)
+	}
+	for _, want := range []string{"4 devices at once", "collector Garland runs 128 at once, the default", "total device time"} {
+		if !strings.Contains(r.Finding, want) {
+			t.Errorf("the headline numbers go in the finding (a table rendering prints only that): missing %q in %q", want, r.Finding)
+		}
+	}
+	// a name filter sees a slice of the run, so the whole-run parallelism is not claimed for it
+	r, _ = collect(t, routes, `{"network_id":"n1","view":"slow","device":"fw"}`)
+	if _, has := r.Evidence[0].Detail["stats"].(map[string]any)["implied_parallelism"]; has {
+		t.Error("parallelism is a whole-run figure and must not be computed for a filtered slice")
+	}
+}

@@ -61,3 +61,27 @@ func (s *Session) StopCollectorTask(ctx context.Context, taskID, action, note st
 	_, err := s.Client.CollectorTasks.Stop(ctx, taskID, action, note)
 	return err
 }
+
+// CollectorConcurrency says how many devices the network's collector collects at once: the configured value when one is set, the documented default otherwise (isDefault).
+// A collector is attached per network; a network with none, or a login that may not read collectors, is an error for the caller to say as a limit.
+func (s *Session) CollectorConcurrency(ctx context.Context, networkID string) (name string, concurrency int, isDefault bool, err error) {
+	a, err := s.CollectorAttachment(ctx, networkID)
+	if err != nil {
+		return "", 0, false, err
+	}
+	if a == nil || (a.CollectorID == "" && a.CollectorName == "") {
+		return "", 0, false, errors.New("no collector is attached to this network")
+	}
+	id := string(a.CollectorID)
+	if id == "" {
+		id = a.CollectorName
+	}
+	st, _, err := s.Client.Collectors.GetSettings(ctx, id)
+	if err != nil {
+		return a.CollectorName, 0, false, err
+	}
+	if st == nil {
+		return a.CollectorName, forward.DefaultCollectorConcurrency, true, nil
+	}
+	return a.CollectorName, st.EffectiveConcurrency(), st.Concurrency == nil, nil
+}

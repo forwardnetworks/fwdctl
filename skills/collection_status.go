@@ -133,6 +133,13 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 		signals++
 		set := a.IsSet || a.CollectorName != "" || a.ConnectionStatus != ""
 		att := map[string]any{"set": set, "name": a.CollectorName, "connection": a.ConnectionStatus, "update": a.UpdateStatus}
+		if set {
+			if _, conc, isDefault, cerr := s.CollectorConcurrency(ctx, in.NetworkID); cerr == nil {
+				att["concurrency"], att["concurrency_is_default"] = conc, isDefault
+			} else {
+				limits = append(limits, "the collector's configured concurrency could not be read: "+cerr.Error())
+			}
+		}
 		detail["collector"] = att
 		if set && a.ConnectionStatus != "" && !strings.EqualFold(a.ConnectionStatus, "CONNECTED") {
 			failed = append(failed, fmt.Sprintf("the collector %q is %s", a.CollectorName, a.ConnectionStatus))

@@ -175,3 +175,43 @@ func TestInspectSnapshotsWithoutANetworkSaysWhatIsProcessingAnywhere(t *testing.
 		t.Errorf("kind needs a network_id")
 	}
 }
+
+// A reprocess keeps createdAt and moves processedAt. A week-old snapshot reprocessed today is still the OLDEST data, so it must neither become
+// "the newest processed collected" snapshot nor move a backdate's starting point to today.
+func reprocessedList() fwdtest.Handler {
+	return fwdtest.Snapshots(
+		map[string]any{"id": "old", "state": "PROCESSED", "processingTrigger": "REPROCESS", "createdAt": "2026-09-22T07:00:00.000Z", "processedAt": "2026-10-02T14:49:00.000Z"},
+		map[string]any{"id": "mid", "state": "PROCESSED", "processingTrigger": "COLLECTION", "createdAt": "2026-09-28T07:00:00.000Z", "processedAt": "2026-09-28T07:30:00.000Z"},
+		map[string]any{"id": "new", "state": "PROCESSED", "processingTrigger": "COLLECTION", "createdAt": "2026-10-01T07:00:00.000Z", "processedAt": "2026-10-01T07:30:00.000Z"},
+	)
+}
+
+func TestInspectSnapshotsOrdersByWhenTheDataWasCollectedNotWhenItWasLastProcessed(t *testing.T) {
+	r, _ := mustRun(t, "inspect-snapshots", map[string]fwdtest.Handler{snapsPath: reprocessedList()}, `{"network_id":"n1"}`)
+	d := r.Evidence[0].Detail
+	if d["latest_readable"] != "new" {
+		t.Fatalf("the newest collected snapshot is the one created last, not the one reprocessed last: %v", d["latest_readable"])
+	}
+	rows := d["snapshots"].([]map[string]any)
+	if rows[0]["id"] != "new" || rows[2]["id"] != "old" {
+		t.Errorf("rows must be newest data first: %v", rows)
+	}
+	if rows[2]["at"] != "2026-09-22T07:00:00.000Z" || rows[2]["processed_at"] != "2026-10-02T14:49:00.000Z" {
+		t.Errorf("at is the collection time and a reprocess shows up as processed_at: %v", rows[2])
+	}
+	if _, has := rows[0]["processed_at"]; has && rows[0]["processed_at"] != "2026-10-01T07:30:00.000Z" {
+		t.Errorf("processed_at must be the real processing time: %v", rows[0])
+	}
+}
+
+func TestABackdateFromAReprocessedSnapshotStillReachesEverythingCreatedSince(t *testing.T) {
+	routes := wanRoutes(true)
+	routes[snapsPath] = reprocessedList()
+	in := `{"network_id":"n1","name":"wan-01","connection1":{"device":"r1","port":"Gi0/1","vlan":150},"connection2":{"device":"r2","port":"Gi0/1","vlan":200},"backdate_snapshot_id":"old"}`
+	r, _ := mustRun(t, "edit-wan-circuit", routes, in)
+	// Forward backdates from the snapshot's creation instant: old (Sep 22), mid and new were all created at or after it. Ordering by processedAt
+	// would start at today (the reprocess) and have reached only "old" itself.
+	if !strings.Contains(r.Finding, "invalidating 3 snapshot") {
+		t.Errorf("want all 3 snapshots created since old: %s", r.Finding)
+	}
+}

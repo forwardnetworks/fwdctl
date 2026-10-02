@@ -51,7 +51,7 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		return snapshotDetail(ctx, s, in, all, cx)
 	}
 	// newest processed collected snapshot (what the other skills read by default), and newest of any kind
-	sort.SliceStable(all, func(i, j int) bool { return snapTime(all[i]) > snapTime(all[j]) })
+	sort.SliceStable(all, func(i, j int) bool { return snapCreated(all[i]) > snapCreated(all[j]) })
 	latestReadable := ""
 	for _, sn := range all {
 		if sn.State == "PROCESSED" && !sn.Predicted() && !sn.IsDraft {
@@ -172,8 +172,12 @@ func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInpu
 func snapshotRow(sn forward.Snapshot, latestReadable string) map[string]any {
 	row := map[string]any{"id": string(sn.ID), "state": sn.State, "kind": kindOf(sn)}
 	row["advanced_reachability"] = map[string]any{"state": advancedState(sn)}
-	if t := snapTime(sn); t != "" {
+	// at is when the data was collected (createdAt); a reprocess changes processedAt but never createdAt, so a week-old snapshot reprocessed today is still a week old
+	if t := snapCreated(sn); t != "" {
 		row["at"] = t
+	}
+	if sn.ProcessedAt != "" && sn.ProcessedAt != sn.CreatedAt {
+		row["processed_at"] = sn.ProcessedAt
 	}
 	if sn.TotalDevices > 0 {
 		row["devices"] = sn.TotalDevices
@@ -214,6 +218,16 @@ func kindOf(sn forward.Snapshot) string {
 	return "collected"
 }
 
+// snapCreated is when the snapshot's data was collected: createdAt, which a reprocess keeps. Forward orders snapshots, and a backdate reaches "from the snapshot's
+// creation instant", by this, so "newest" and "which snapshots a backdate affects" use it, never processedAt.
+func snapCreated(sn forward.Snapshot) string {
+	if sn.CreatedAt != "" {
+		return sn.CreatedAt
+	}
+	return sn.ProcessedAt
+}
+
+// snapTime is the last time the snapshot was processed (createdAt when it never was): what a snapshot that is being worked on right now has been at since.
 func snapTime(sn forward.Snapshot) string {
 	if sn.ProcessedAt != "" {
 		return sn.ProcessedAt

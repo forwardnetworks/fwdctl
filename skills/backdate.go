@@ -25,7 +25,7 @@ func planBackdate(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 	var from string
 	for _, sn := range all {
 		if string(sn.ID) == snapshotID {
-			from = snapTime(sn)
+			from = snapCreated(sn)
 		}
 	}
 	if from == "" {
@@ -33,7 +33,7 @@ func planBackdate(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 	}
 	var hit []string
 	for _, sn := range all {
-		if snapTime(sn) >= from {
+		if snapCreated(sn) >= from {
 			hit = append(hit, string(sn.ID))
 		}
 	}

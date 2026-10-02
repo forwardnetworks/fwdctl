@@ -46,11 +46,11 @@ func inspectHistory(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	var readable []string
 	times := map[string]string{}
-	sort.SliceStable(all, func(i, j int) bool { return snapTime(all[i]) > snapTime(all[j]) })
+	sort.SliceStable(all, func(i, j int) bool { return snapCreated(all[i]) > snapCreated(all[j]) })
 	for _, sn := range all {
 		if sn.State == "PROCESSED" && !sn.Predicted() && !sn.IsDraft {
 			readable = append(readable, string(sn.ID))
-			times[string(sn.ID)] = snapTime(sn)
+			times[string(sn.ID)] = snapCreated(sn)
 		}
 	}
 	if len(readable) == 0 {

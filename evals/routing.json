@@ -501,5 +501,15 @@
   "query": "Show me the data connectors on this network and whether their last test passed",
   "expect": "inspect-collection",
   "rival": "edit-data-connector"
+ },
+ {
+  "query": "the latest snapshot of our production network has really long collection times; why?",
+  "expect": "investigate-collection-failure",
+  "rival": "edit-workspace"
+ },
+ {
+  "query": "collection takes hours now and it used to take about one; is the collector the bottleneck?",
+  "expect": "investigate-collection-failure",
+  "rival": "inspect-collection"
  }
 ]

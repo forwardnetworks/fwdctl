@@ -24,7 +24,7 @@ failed collection is the point) and `view`: `summary` (default) counts failures 
 `collector_task_id`; `triage` is first contact with a network — one call merging `summary`, the slowest devices and the worst-failing platform group, takes no inputs of its own; `devices` names the failed devices and takes `failure` (a category such as
 `credentials`, `network_path`, `device_session`, `unclassified`, `processing`, or a type such as
 `CONNECTION_REFUSED`), `device` (name contains) and `limit`/`offset`; `exceptions` lists the collectors' logged exceptions and takes `device`, `limit`/`offset`; `neighbors` lists unmodelled
-neighbours and takes `limit`/`offset`; `slow` ranks devices by collection time and takes `device`, `limit`, `offset`; `logs` reads one
+neighbours and takes `limit`/`offset`; `slow` ranks devices by collection time and takes `device`, `limit`, `offset`; `history` reads how long each recent collection took and takes `limit` (snapshots, default 10, at most 30); `logs` reads one
 device's collection log and takes `device` (required), `failure` (here the minimum level TRACE, DEBUG, INFO, WARN (default) or ERROR),
 `limit`, `offset`. See `schema.json`.
 
@@ -53,7 +53,18 @@ failures whose type changed, and how many new failures are on a device whose OS 
 **view slow.** Forward's per-device collection metrics: collection duration, the slowest command and its duration, source and device type,
 jump server, and the merged collection-and-processing error (so every error class, not only failures), slowest first, with the median, p95
 and max. Forward keeps one slowest command per device, not every command, and saves nothing for an imported, forked or partially collected
-snapshot (then **unknown**). Not yet run against a live full collection: the networks available at release time held only imports.
+snapshot (then **unknown**). The stats also give `sum_ms` (total device time), `collection_wall_ms` and `implied_parallelism` (total device time over the collection's wall time: the average number of devices being collected at once, computed for the whole run, not for a `device` filter), the
+collector's configured concurrency beside it (`stats.collector`; 128 when unset, said so) with the share of it in use, `by_device_type` and `by_connection` (devices, total and median time, errors; the eight that took the most total time) and `errors_by_type`. The finding carries the headline numbers because a
+table or CSV rendering prints the finding, not the stats. Read the parallelism against the concurrency: well under it means the collector's slots are not the limit (a long tail of slow devices, a per-second rate limit or the devices themselves are);
+near it means the collector is. Checked on a 38,709-device collection: 173 devices at once against a configured 1,024, firewalls (2.7% of devices) using 17% of the total device time (98 of 577 hours), with a median 201 s against 33 s for switches. `errors_by_type` counts every error class, including devices Forward
+tags but did not collect (LICENSE_EXHAUSTED was seen on tens of thousands), while the snapshot's collection-failure count (view summary) was seen to leave those out: the two totals need not agree. There is no per-device command count or sum, so a device whose
+collection time far exceeds its slowest command (a PAN-OS firewall at 1,500 to 2,100 s with a slowest command of 20 to 80 s was seen) has time Forward does not attribute; the log (view logs) is the only other evidence.
+
+**view history** (takes `limit`: snapshots, default 10, at most 30). How long each recent collection took, from the snapshots themselves, so it reaches further back than the few tasks `inspect-collection` lists: per collected snapshot its `collection_seconds` and
+`processing_seconds` (Forward's own figures), `devices` and `devices_change` against the next older collected snapshot (a jump is a change in what is collected, not a slower collector), the devices collected and failed, and, where the snapshot records its
+collector task, `task_seconds` (the task's start to finish) and `collection_end_to_processed_seconds` (the collection ending to the snapshot being usable). It gives the median and flags any collection more than 1.5 times it (`slower_than_usual`, only when at least four have a duration), and the
+finding says how the latest compares. The median mixes collections of different sizes, so read it beside `devices`. Only Forward-collected snapshots count: a reprocess, an import or a prediction is not a collection. It does not wait for a newer snapshot that is still processing.
+Checked on a network whose collection went from 52 minutes to 1h47m and then 3h20m as its device count went from about 4,500 to 40,000.
 
 **view logs.** A window of one device's collection log at or above a level (`failure`, default WARN), read up to 512 KiB. `device` must be
 the name the device was collected under. An empty log is **unknown**, not clean; an import has no log. The text can quote commands and

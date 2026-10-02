@@ -58,6 +58,7 @@ A playbook is a procedure (it does not run): it names the skills to call, their 
 | Internet-bound path | `investigate-reachability` with destination 8.8.8.8; source "internet" for inbound |
 | "Did this change work", "is it safe to push" | `verify-change` |
 | "What does this change touch", "how big is it", the extent of a change, which areas differ, which subnets lose connectivity | `verify-change` with `view: impact` |
+| Collection takes too long, a slow or long collection, how long collection runs, the collection duration got worse, hours instead of minutes, is the collector the bottleneck, why a snapshot took so long, how collection time trended | `investigate-collection-failure` (view `history` for each collection's duration and device count over time, view `slow` for the slowest devices, total device time and how many ran at once) |
 | A device is missing, a snapshot looks incomplete, a collection failed; which devices failed collection (refused, timed out, authentication), a parser failure, a slow or longest collection, a collection log, unmodelled neighbours | `investigate-collection-failure` (view devices, slow, logs or neighbors) |
 | "Are we compliant", does the network comply with a rule, "does anything violate X" | `check-network-compliance` |
 | "What version is this", "which features does this Forward have", is a feature or preview flag enabled, what value a property has | `inspect-environment` |

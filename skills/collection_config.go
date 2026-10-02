@@ -63,6 +63,31 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			}
 		}
 		detail["device_count"] = len(rows)
+		// a summary of the WHOLE list, whatever page is shown: a network of tens of thousands of devices is read by its totals first
+		byType := map[string]int{}
+		noCLI, snmpOn, snmpUnknown := 0, 0, 0
+		for _, d := range devs {
+			t := d.Type
+			if t == "" {
+				t = "(none)"
+			}
+			byType[t]++
+			if d.CLICredentialID == "" {
+				noCLI++
+			}
+			switch {
+			case d.EnableSNMPCollection == nil:
+				snmpUnknown++
+			case *d.EnableSNMPCollection:
+				snmpOn++
+			}
+		}
+		summary := map[string]any{"by_type": topDeviceCounts(byType, 15), "without_cli_credential": noCLI, "snmp_collection_on": snmpOn}
+		if snmpUnknown > 0 {
+			summary["snmp_collection_unstated"] = snmpUnknown
+		}
+		detail["summary"] = summary
+		limits = append(limits, "summary counts the whole device list, not the page shown. Forward's device records carry no vendor, jump server or creation time, so a count by vendor or jump server, and when a device was added, cannot be read here: the device count of each collection over time is in investigate-collection-failure view history")
 		notCollected := 0
 		for _, r := range rows {
 			if r["collect"] == false {
@@ -429,4 +454,32 @@ func testOutcome(errName string, at int64) string {
 		return "ok"
 	}
 	return errName
+}
+
+// topDeviceCounts is the n largest groups of a count map, largest first (ties by name), as rows; the rest are folded into one "(other N groups)" row so the total still adds up.
+func topDeviceCounts(m map[string]int, n int) []map[string]any {
+	names := make([]string, 0, len(m))
+	for k := range m {
+		names = append(names, k)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if m[names[i]] != m[names[j]] {
+			return m[names[i]] > m[names[j]]
+		}
+		return names[i] < names[j]
+	})
+	var out []map[string]any
+	rest, restN := 0, 0
+	for i, k := range names {
+		if i < n {
+			out = append(out, map[string]any{"name": k, "devices": m[k]})
+		} else {
+			rest += m[k]
+			restN++
+		}
+	}
+	if restN > 0 {
+		out = append(out, map[string]any{"name": fmt.Sprintf("(other %d groups)", restN), "devices": rest})
+	}
+	return out
 }

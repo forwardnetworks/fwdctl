@@ -63,9 +63,9 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	switch in.View {
-	case "", "summary", "triage", "devices", "platforms", "changes", "exceptions", "neighbors", "slow", "logs":
+	case "", "summary", "triage", "devices", "platforms", "changes", "exceptions", "neighbors", "slow", "history", "logs":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be summary, triage, devices, platforms, changes, exceptions, neighbors, slow or logs", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be summary, triage, devices, platforms, changes, exceptions, neighbors, slow, history or logs", ErrInvalidInput)
 	}
 	view := in.View
 	if view == "" {
@@ -80,6 +80,7 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		"exceptions": {"device", "limit", "offset"},
 		"neighbors":  {"limit", "offset"},
 		"slow":       {"device", "limit", "offset"},
+		"history":    {"limit"},
 		"logs":       {"failure", "device", "limit", "offset"},
 	}); err != nil {
 		return result.Result{}, err
@@ -101,6 +102,10 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 	}
 	sid := fwd.SnapshotIDPtr(snap)
 	state := fwd.StateOf(snap)
+	if view == "history" {
+		// past collections stay valid while a newer snapshot is still processing, so this view does not wait for it
+		return collectionHistory(ctx, s, in, cx)
+	}
 	if fwd.InProgress(state) {
 		return result.NewUnknown(collectionFailureName, fmt.Sprintf("The snapshot is still %s; failures are not final", strings.ToLower(state)), cx,
 			[]string{fmt.Sprintf("snapshot state is %s; counts are incomplete until processing ends", state)}, result.Options{})

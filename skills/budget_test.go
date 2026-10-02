@@ -157,7 +157,7 @@ func TestEverySkillHasARoutingCaseAgainstARival(t *testing.T) {
 // model-based eval (cmd/skill-eval --routing). Raise the floor when you improve the table; never lower it to land a change.
 func TestOfflineRoutingDoesNotRegress(t *testing.T) {
 	n, top1, top4, misses := routingOffline(t)
-	const floor1, floor4 = 60, 81 // v0.5.25 measured 47 and 61 of 72 cases; v0.5.26 55 and 70 of 75; v0.5.27 59 and 79 of 82; v0.5.28 60 and 81 of 84
+	const floor1, floor4 = 70, 92 // v0.5.57 measured 72 and 94 of 101 (duration questions, and edit-* down-weighted for diagnostic ones); v0.5.25 measured 47 and 61 of 72 cases; v0.5.26 55 and 70 of 75; v0.5.27 59 and 79 of 82; v0.5.28 60 and 81 of 84
 	t.Logf("offline routing: %d cases, first %d, top four %d", n, top1, top4)
 	if top1 < floor1 || top4 < floor4 {
 		t.Errorf("offline routing fell: first %d (floor %d), top four %d (floor %d); missed: %s", top1, floor1, top4, floor4, strings.Join(misses, " | "))
