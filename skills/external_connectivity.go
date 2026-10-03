@@ -403,6 +403,25 @@ func externalOneNode(ctx context.Context, s *fwd.Session, in externalConnInput, 
 }
 
 // nodeQueryCount is how many connections the node's query generated (0 when it has none or has not run).
+// inertInternetNodeLimit is the sentence that stops "0 devices exposed" being read as "safe": it is returned when the network has no internet node, or one with no connection and no
+// query rows, since Forward then computes no internet exposure at all. "" when the node is live or could not be read (a failed read is not evidence either way).
+func inertInternetNodeLimit(ctx context.Context, s *fwd.Session, networkID string) string {
+	if networkID == "" {
+		return ""
+	}
+	n, err := s.InternetNode(ctx, networkID)
+	if err != nil {
+		return ""
+	}
+	if n == nil {
+		return "this network has no internet node, so Forward computes no internet exposure for it: zero devices internet addressable here is the absence of the analysis, not evidence that nothing is exposed (inspect-topology kind external, plan-synthetic-device)"
+	}
+	if len(n.Connections)+nodeQueryCount(n) == 0 {
+		return "the internet node has NO connection, so it owns no addresses and Forward computes no internet exposure: zero devices internet addressable here is the absence of the analysis, not evidence that nothing is exposed (give the node a connection first: plan-synthetic-device)"
+	}
+	return ""
+}
+
 func nodeQueryCount(n *forward.SyntheticNode) int {
 	if n == nil || n.QueryResult == nil {
 		return 0

@@ -175,6 +175,15 @@ func checkDetail(ctx context.Context, s *fwd.Session, in inspectChecksInput, sid
 	if d.Status == "FAIL" {
 		st = result.Failed
 	}
+	if d.Diagnosis != nil {
+		var kinds []string
+		for _, det := range d.Diagnosis.Details {
+			kinds = append(kinds, det.FlowTypes()...)
+		}
+		if len(kinds) > 0 {
+			limits = append(limits, fmt.Sprintf("the diagnosis names violation kind(s) %s and no flow or device (a loop violation carries none): Forward gives no witness for it here, so finding one means path searches (investigate-reachability)", strings.Join(kinds, ", ")))
+		}
+	}
 	if d.Status == "ERROR" || d.Status == "TIMEOUT" {
 		reason := ""
 		if d.Diagnosis != nil {

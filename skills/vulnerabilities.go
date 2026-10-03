@@ -146,6 +146,9 @@ func vulnNetwork(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 	}
 	if in.InternetAddressable != nil && *in.InternetAddressable {
 		limits = append(limits, "only CVE results on internet-addressable devices are counted here; "+addressableCaveat)
+		if l := inertInternetNodeLimit(ctx, s, in.NetworkID); l != "" {
+			limits = append(limits, l)
+		}
 	}
 	shown := kept
 	if len(shown) > in.Limit {

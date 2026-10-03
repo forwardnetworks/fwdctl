@@ -239,3 +239,14 @@ func TestAccessActivitySummarisesAuditRecordsAndSaysWhatTheyCannotProve(t *testi
 		t.Errorf("a bad since must be refused")
 	}
 }
+
+func TestAccessActivitySaysWhenUsersInTheRecordsAreNotInTheUserList(t *testing.T) {
+	routes := accessRoutes(sessionJSON([]string{"ADMIN"}, nil), map[string]string{})
+	routes["GET /api/audit-logs"] = fwdtest.Const(200, map[string]any{"records": []map[string]any{
+		{"timestamp": "2026-10-01T10:00:00Z", "userId": "u-ghost", "httpMethod": "POST", "targetUri": "/networks/N1/classic-devices", "httpResponseCode": 201, "remoteIp": "192.0.2.1"}},
+		"paging": map[string]any{"total": 1}})
+	r, _ := mustRun(t, "inspect-access", routes, `{"view":"activity"}`)
+	if !strings.Contains(strings.Join(r.Limits, "|"), "1 user id(s) in these records are not in the user list") || !strings.Contains(jsonOf(r), `"user":"u-ghost"`) {
+		t.Errorf("an id with no user is shown as the id and said: %v", r.Limits)
+	}
+}

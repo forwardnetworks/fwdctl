@@ -19,7 +19,7 @@ const editDataFileName = "edit-data-file"
 func init() { Register(editDataFileName, editDataFile) }
 
 type editDataFileInput struct {
-	// Action: upload (a new org-wide data file), attach (to a network), detach (from a network).
+	// Action: upload (a new org-wide data file), attach (to a network), detach (from a network), delete (remove the file from the organization).
 	Action string `json:"action"`
 	// Name is the data file's name: for upload, the new name (Forward lower-cases it); for attach/detach, an existing one, exact.
 	Name string `json:"name"`
@@ -31,7 +31,9 @@ type editDataFileInput struct {
 	Content     string   `json:"content"`
 	// NetworkID is the network to attach to or detach from.
 	NetworkID string `json:"network_id"`
-	Apply     bool   `json:"apply"`
+	// Confirm must equal name to delete.
+	Confirm string `json:"confirm"`
+	Apply   bool   `json:"apply"`
 }
 
 const maxDataFileContent = 500_000 // bytes; Forward's own cap is 50MB, this keeps the input to a size a tool call should carry
@@ -63,8 +65,10 @@ func editDataFile(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return planDataFileUpload(ctx, s, in, cx, mode)
 	case "attach", "detach":
 		return planDataFileAttachment(ctx, s, in, cx, mode)
+	case "delete":
+		return planDataFileDelete(ctx, s, in, cx, mode)
 	default:
-		return result.Result{}, fmt.Errorf("%w: action must be upload, attach or detach", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: action must be upload, attach, detach or delete", ErrInvalidInput)
 	}
 }
 
@@ -116,8 +120,8 @@ func planDataFileUpload(ctx context.Context, s *fwd.Session, in editDataFileInpu
 		after["headers"] = in.Headers
 	}
 	limits := []string{"a data file is organization-wide: once uploaded, any network can attach it. Content is validated by Forward on upload, not previewed here first (inspect-collection view config with data_file previews an existing file's inferred schema, not content you have not uploaded yet)",
-		"this build's SDK has no delete route for a data file: once uploaded there is no undo through this skill. Remove it from Forward's UI, or ask for the delete route to be added"}
-	ch := result.Change{Action: "upload_data_file", Target: "data file " + lower, Before: nil, After: after, Reversible: false, Undo: "none: no SDK route deletes a data file (see limits)"}
+		"the undo of an upload is action delete on the same name; it is only clean while no network has attached the file"}
+	ch := result.Change{Action: "upload_data_file", Target: "data file " + lower, Before: nil, After: after, Reversible: true, Undo: "delete data file " + lower + " (edit-data-file action delete, confirm " + lower + ")"}
 	if !in.Apply {
 		return result.Build(editDataFileName, result.OK, fmt.Sprintf("Dry run: would upload data file %q (%s, nqe_name %s). Nothing was changed; run again with apply=true", lower, ft, nqeName),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: dfEvidence("upload", after)})
@@ -144,6 +148,9 @@ func planDataFileUpload(ctx context.Context, s *fwd.Session, in editDataFileInpu
 func planDataFileAttachment(ctx context.Context, s *fwd.Session, in editDataFileInput, cx result.Context, mode string) (result.Result, error) {
 	if in.Name == "" || in.NetworkID == "" {
 		return result.Result{}, fmt.Errorf("%w: %s needs name and network_id", ErrInvalidInput, in.Action)
+	}
+	if in.Confirm != "" {
+		return result.Result{}, fmt.Errorf("%w: confirm belongs to delete", ErrInvalidInput)
 	}
 	if in.NQEName != "" || in.Description != "" || in.FileType != "" || len(in.Headers) > 0 || in.Content != "" {
 		return result.Result{}, fmt.Errorf("%w: nqe_name, description, file_type, headers and content belong to upload", ErrInvalidInput)
@@ -204,4 +211,57 @@ func planDataFileAttachment(ctx context.Context, s *fwd.Session, in editDataFile
 	return result.Build(editDataFileName, result.OK, fmt.Sprintf("%s data file %q %s network %s (read back)", verb, in.Name, map[string]string{"attach": "to", "detach": "from"}[in.Action], in.NetworkID),
 		result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"inspect-collection", "edit-collection"},
 			Evidence: dfEvidence(in.Action, after)})
+}
+
+// planDataFileDelete removes a data file from the organization's library, and so from every network that carries it. Forward keeps the content nowhere else, so this has no undo.
+func planDataFileDelete(ctx context.Context, s *fwd.Session, in editDataFileInput, cx result.Context, mode string) (result.Result, error) {
+	if in.Name == "" {
+		return result.Result{}, fmt.Errorf("%w: delete needs name", ErrInvalidInput)
+	}
+	if in.NetworkID != "" || in.NQEName != "" || in.Description != "" || in.FileType != "" || len(in.Headers) > 0 || in.Content != "" {
+		return result.Result{}, fmt.Errorf("%w: delete takes only name, confirm and apply (it removes the file from the whole organization; detach removes it from one network)", ErrInvalidInput)
+	}
+	if in.Apply && in.Confirm != in.Name {
+		return result.Result{}, fmt.Errorf("%w: delete cannot be undone; set confirm to the exact name %q to apply", ErrInvalidInput, in.Name)
+	}
+	existing, err := s.DataFiles(ctx)
+	if err != nil {
+		return result.Result{}, err
+	}
+	var file *forward.DataFile
+	for i := range existing {
+		if existing[i].Name == in.Name {
+			file = &existing[i]
+		}
+	}
+	if file == nil {
+		return result.Build(editDataFileName, result.Failed, fmt.Sprintf("Refused, nothing was changed: no data file named %q (names are exact; inspect-collection view config lists them)", in.Name),
+			result.Deterministic, cx, result.Options{Mode: mode, Evidence: dfEvidence("delete", map[string]any{"name": in.Name, "found": false})})
+	}
+	if file.Type == forward.DataFileSTIG {
+		return result.Build(editDataFileName, result.Failed, "Refused, nothing was changed: the STIG policy file is built in and cannot be deleted", result.Deterministic, cx,
+			result.Options{Mode: mode, Evidence: dfEvidence("delete", map[string]any{"name": in.Name, "type": "STIG"})})
+	}
+	before := map[string]any{"name": file.Name, "nqe_name": file.NQEName, "type": file.Type, "attached_to_networks": len(file.NetworkIDs), "network_ids": file.NetworkIDs, "content_md5": file.ContentMD5Hex}
+	limits := []string{"deleting removes the file from the whole organization and from every network that carries it: a query reading network.extensions." + file.NQEName + " sees no such field from each network's NEXT snapshot onward (a query that requires it fails to compile there)",
+		"Forward keeps the content nowhere else: there is no undo. Read it first if it may be needed again (inspect-collection view config with data_file and include_content shows only the first 2000 characters; Forward's UI downloads all of it)"}
+	ch := result.Change{Action: "delete_data_file", Target: "data file " + file.Name, Before: before, After: nil, Reversible: false, Undo: "none: the content is not kept; upload the file again from your own copy (edit-data-file action upload)"}
+	if !in.Apply {
+		return result.Build(editDataFileName, result.OK, fmt.Sprintf("Dry run: would delete data file %q, attached to %d network(s). Nothing was changed; run again with apply=true and confirm=%q", file.Name, len(file.NetworkIDs), file.Name),
+			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: dfEvidence("delete", before)})
+	}
+	if err := s.DeleteDataFile(ctx, in.Name); err != nil {
+		return result.Result{}, fmt.Errorf("the delete failed, nothing is known to have changed: %w", err)
+	}
+	ch.Applied = true
+	now, rerr := s.DataFiles(ctx)
+	if rerr != nil {
+		return result.Result{}, fmt.Errorf("the delete was sent but reading the data files back failed, so it is not proven: %w", rerr)
+	}
+	if slices.ContainsFunc(now, func(f forward.DataFile) bool { return f.Name == in.Name }) {
+		return result.Build(editDataFileName, result.Failed, fmt.Sprintf("Forward accepted the delete but %q is still listed", in.Name), result.Deterministic, cx,
+			result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, Evidence: dfEvidence("delete", before)})
+	}
+	return result.Build(editDataFileName, result.OK, fmt.Sprintf("Deleted data file %q from the organization (it was attached to %d network(s))", in.Name, len(file.NetworkIDs)),
+		result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"inspect-collection"}, Evidence: dfEvidence("delete", before)})
 }

@@ -68,6 +68,16 @@ func dataFilesWorld(files *[]map[string]any) map[string]fwdtest.Handler {
 			}
 			return 204, nil
 		},
+		"DELETE /api/data-files/sites.csv": func(*http.Request, []byte) (int, any) {
+			var kept []map[string]any
+			for _, f := range *files {
+				if f["name"] != "sites.csv" {
+					kept = append(kept, f)
+				}
+			}
+			*files = kept
+			return 204, nil
+		},
 		"GET /api/networks/n1/data-files": func(*http.Request, []byte) (int, any) {
 			var names []string
 			for _, f := range *files {
@@ -86,7 +96,7 @@ func TestEditDataFileUploadDryRunThenAppliesAndReadsBack(t *testing.T) {
 	files := []map[string]any{}
 	in := `{"action":"upload","name":"sites.csv","file_type":"CSV","content":"site,owner\nnyc,ops\n"`
 	r, srv := mustRun(t, "edit-data-file", dataFilesWorld(&files), in+`}`)
-	if r.Status != result.OK || r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(r.Changes[0].Undo, "none") {
+	if r.Status != result.OK || r.Mode != result.ModeDryRun || writes(srv) != 0 || !r.Changes[0].Reversible || !strings.Contains(r.Changes[0].Undo, "action delete") {
 		t.Fatalf("%s %s writes=%d undo=%q", r.Status, r.Finding, writes(srv), r.Changes[0].Undo)
 	}
 	r, _ = mustRun(t, "edit-data-file", dataFilesWorld(&files), in+`,"apply":true}`)
@@ -153,5 +163,26 @@ func TestEditDataFileRefusesTheStigFileByEitherAction(t *testing.T) {
 	r, srv := mustRun(t, "edit-data-file", world, `{"action":"detach","name":"stig-policy","network_id":"n1","apply":true}`)
 	if r.Status != result.Failed || !strings.Contains(r.Finding, "cannot be excluded") || writes(srv) != 0 {
 		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+}
+
+func TestEditDataFileDeleteNeedsConfirmShowsWhereItIsAttachedAndSaysThereIsNoUndo(t *testing.T) {
+	files := []map[string]any{{"name": "sites.csv", "nqeName": "sites", "type": "CSV", "networkIds": []string{"n1", "n2"}}}
+	r, srv := mustRun(t, "edit-data-file", dataFilesWorld(&files), `{"action":"delete","name":"sites.csv"}`)
+	if r.Status != result.OK || r.Mode != result.ModeDryRun || writes(srv) != 0 || r.Changes[0].Reversible || !strings.Contains(r.Finding, "attached to 2 network(s)") {
+		t.Fatalf("dry run: %s %s %+v writes=%d", r.Status, r.Finding, r.Changes, writes(srv))
+	}
+	if _, _, err := runSkill(t, "edit-data-file", dataFilesWorld(&files), `{"action":"delete","name":"sites.csv","apply":true}`); err == nil || !strings.Contains(err.Error(), "confirm") {
+		t.Errorf("apply without confirm must be refused: %v", err)
+	}
+	if _, _, err := runSkill(t, "edit-data-file", dataFilesWorld(&files), `{"action":"delete","name":"sites.csv","network_id":"n1"}`); err == nil {
+		t.Errorf("delete takes no network_id: it is org-wide")
+	}
+	r, srv = mustRun(t, "edit-data-file", dataFilesWorld(&files), `{"action":"delete","name":"sites.csv","confirm":"sites.csv","apply":true}`)
+	if r.Status != result.OK || !r.Changes[0].Applied || len(files) != 0 || writes(srv) != 1 {
+		t.Fatalf("apply: %s %s files=%v", r.Status, r.Finding, files)
+	}
+	if r, _ := mustRun(t, "edit-data-file", dataFilesWorld(&files), `{"action":"delete","name":"sites.csv"}`); r.Status != result.Failed {
+		t.Errorf("a missing file is a refusal: %s", r.Status)
 	}
 }

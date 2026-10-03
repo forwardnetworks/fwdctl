@@ -99,3 +99,10 @@ func TestManageChecksRejectsBadInput(t *testing.T) {
 		}
 	}
 }
+
+func TestEditChecksRefusesANameOnAPredefinedCheckBeforeAnythingIsSent(t *testing.T) {
+	_, srv, err := runSkill(t, "edit-checks", mcRoutes(), `{"network_id":"n1","action":"create","name":"loops","definition":{"checkType":"Predefined","predefinedCheckType":"LOOP"},"apply":true}`)
+	if err == nil || !strings.Contains(err.Error(), "leave name out") || writes(srv) != 0 {
+		t.Fatalf("a predefined check takes no name: %v", err)
+	}
+}

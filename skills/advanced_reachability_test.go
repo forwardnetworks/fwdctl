@@ -203,3 +203,16 @@ func TestInspectSnapshotsReportsAdvancedReachabilityForEverySnapshot(t *testing.
 		t.Errorf("%v", r.Limits)
 	}
 }
+
+func TestAdvancedReachabilityWarnsWhenTheInternetNodeCannotProduceExposure(t *testing.T) {
+	routes := advRoutes("UNPROCESSED", "PROCESSING", accept())
+	routes["GET /api/networks/n1/internet-node"] = fwdtest.Const(200, map[string]any{"name": "internet", "connections": []any{}})
+	r, _ := mustRun(t, "edit-advanced-reachability", routes, `{"network_id":"n1","snapshot_id":"s1"}`)
+	if !strings.Contains(strings.Join(r.Limits, "|"), "NO connection") {
+		t.Errorf("zero exposed must not be read as safe: %v", r.Limits)
+	}
+	routes["GET /api/networks/n1/internet-node"] = fwdtest.Const(404, map[string]any{"message": "none"})
+	if r, _ := mustRun(t, "edit-advanced-reachability", routes, `{"network_id":"n1","snapshot_id":"s1"}`); !strings.Contains(strings.Join(r.Limits, "|"), "no internet node") {
+		t.Errorf("no node is said too: %v", r.Limits)
+	}
+}

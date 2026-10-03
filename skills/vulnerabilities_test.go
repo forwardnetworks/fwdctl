@@ -321,7 +321,7 @@ func TestVulnerabilitiesDevicesViewListsTheAddressableSetInOneCall(t *testing.T)
 	if !strings.Contains(strings.Join(r.Limits, " | "), "per DEVICE, not per address") || !strings.Contains(strings.Join(r.Limits, " | "), "not every addressable device") {
 		t.Errorf("limits %v", r.Limits)
 	}
-	if n := len(srv.Calls()); n != 2 { // the snapshot list and the one device-level call
+	if n := len(srv.Calls()); n != 3 { // the snapshot list, the one device-level call, and the internet node (read to say whether exposure can be computed)
 		t.Errorf("one device call, not one per CVE: %d calls", n)
 	}
 }

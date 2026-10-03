@@ -124,6 +124,9 @@ func vulnDevices(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 	limits = append(limits,
 		"only devices with at least one CVE matching the filters are listed: a device Forward flags addressable that has none is not here, so this counts addressable devices with CVEs, not every addressable device",
 		addressableCaveat)
+	if l := inertInternetNodeLimit(ctx, s, in.NetworkID); l != "" {
+		limits = append(limits, l)
+	}
 	if all.IndexCreatedAt != "" {
 		limits = append(limits, "CVE index created "+all.IndexCreatedAt)
 	}

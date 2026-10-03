@@ -137,10 +137,14 @@ func accessActivity(ctx context.Context, s *fwd.Session, in inspectAccessInput, 
 	if len(recs) == 0 {
 		return result.NewUnknown(inspectAccessName, "No audited request matches", cx, append(limits, fmt.Sprintf("the window starts %s; widen since, loosen the route prefix or method, or ask a login that may view the audit log", start.UTC().Format("2006-01-02 15:04 UTC"))), result.Options{})
 	}
+	unresolved := map[string]bool{}
 	byUser, byMethod, byClass, byDay, byRoute := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
 	rows := make([]map[string]any, 0, len(recs))
 	for _, r := range recs {
 		who := firstNonEmpty(names[string(r.UserID)], string(r.UserID), "(unauthenticated)")
+		if names[string(r.UserID)] == "" && r.UserID != "" {
+			unresolved[string(r.UserID)] = true
+		}
 		byUser[who]++
 		byMethod[r.HTTPMethod]++
 		byClass[strconv.Itoa(r.HTTPResponseCode/100)+"xx"]++
@@ -151,6 +155,9 @@ func accessActivity(ctx context.Context, s *fwd.Session, in inspectAccessInput, 
 			row["impersonated"] = true
 		}
 		rows = append(rows, row)
+	}
+	if len(unresolved) > 0 && uerr == nil {
+		limits = append(limits, fmt.Sprintf("%d user id(s) in these records are not in the user list and are shown as ids: a deleted user, an API token or service account, or a login the user list does not return", len(unresolved)))
 	}
 	if !readAll {
 		limits = append(limits, fmt.Sprintf("%d audited requests match the time, route, method and user filters; the newest %d were read, so every count below covers only those (narrow since or until to see the rest)", total, len(all)))

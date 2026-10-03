@@ -72,6 +72,9 @@ func createCheck(ctx context.Context, s *fwd.Session, in manageChecksInput, sn *
 	if in.Persistent {
 		scope = "persistent: every later snapshot of the network and every Predict run will inherit and evaluate it"
 	}
+	if ct, _ := in.Definition["checkType"].(string); strings.EqualFold(ct, "Predefined") && in.Name != "" {
+		return result.Result{}, fmt.Errorf("%w: a predefined check is named by Forward from its predefinedCheckType, and Forward answers 400 when a name is sent: leave name out (note, tags and priority are allowed)", ErrInvalidInput)
+	}
 	if in.Name != "" {
 		names, err := s.AllChecks(ctx, sid, nil)
 		if err != nil {

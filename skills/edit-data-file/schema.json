@@ -1,16 +1,62 @@
 {
   "type": "object",
-  "required": ["action"],
+  "required": [
+    "action"
+  ],
   "additionalProperties": false,
   "properties": {
-    "action": { "enum": ["upload", "attach", "detach"] },
-    "name": { "type": "string", "minLength": 1, "description": "upload: the new file's name; attach/detach: an existing file's exact name" },
-    "nqe_name": { "type": "string", "minLength": 1, "description": "upload: the field name under network.extensions a query reads it by (default: name without its extension)" },
-    "description": { "type": "string", "description": "upload: a human-readable note" },
-    "file_type": { "type": "string", "minLength": 1, "description": "upload: CSV, JSON, XML, YAML or TEXT (XLSX and STIG are not handled by this skill)" },
-    "headers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "upload: CSV only, column names for a file with no header row" },
-    "content": { "type": "string", "minLength": 1, "description": "upload: the file's text content" },
-    "network_id": { "type": "string", "minLength": 1, "description": "attach/detach: the network to attach the file to or detach it from" },
-    "apply": { "type": "boolean", "default": false }
+    "action": {
+      "enum": [
+        "upload",
+        "attach",
+        "detach",
+        "delete"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "upload: the new file's name; attach/detach: an existing file's exact name"
+    },
+    "nqe_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "upload: the field name under network.extensions a query reads it by (default: name without its extension)"
+    },
+    "description": {
+      "type": "string",
+      "description": "upload: a human-readable note"
+    },
+    "file_type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "upload: CSV, JSON, XML, YAML or TEXT (XLSX and STIG are not handled by this skill)"
+    },
+    "headers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "upload: CSV only, column names for a file with no header row"
+    },
+    "content": {
+      "type": "string",
+      "minLength": 1,
+      "description": "upload: the file's text content"
+    },
+    "network_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "attach/detach: the network to attach the file to or detach it from"
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    },
+    "confirm": {
+      "type": "string",
+      "description": "delete: must equal name"
+    }
   }
 }

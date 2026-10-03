@@ -1,6 +1,6 @@
 ---
 name: edit-data-file
-description: Uploads a CSV/JSON/XML/YAML/TEXT dataset for NQE to join, or attaches/detaches one on a network. Dry run unless apply is true. Use when a query needs data Forward does not collect.
+description: Uploads a CSV/JSON/XML/YAML/TEXT dataset for NQE to join, attaches or detaches it on a network, or deletes it. Dry run unless apply is true. Use when a query needs data Forward lacks.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "nqe"
@@ -26,9 +26,10 @@ existing file's inferred schema; this skill only writes.
 
 | `action` | Inputs | Undo |
 |---|---|---|
-| `upload` | `name`, `file_type` (CSV, JSON, XML, YAML or TEXT), `content`, optional `nqe_name`, `description`, `headers` (CSV only) | **none**: no SDK route deletes a data file yet (remove it from Forward's UI) |
+| `upload` | `name`, `file_type` (CSV, JSON, XML, YAML or TEXT), `content`, optional `nqe_name`, `description`, `headers` (CSV only) | `delete` the same name (clean while no network has attached it) |
 | `attach` | `name`, `network_id` | `detach` the same file and network |
 | `detach` | `name`, `network_id` | `attach` the same file and network |
+| `delete` | `name`, `confirm` (must equal `name`) | **none**: Forward keeps the content nowhere else; read or download it first |
 
 A file is **organization-wide**: `upload` is visible to every network once it exists, independent of any attachment. `attach`/`detach` change
 only one network. Forward lower-cases the uploaded name; an empty `nqe_name` defaults to the name without its extension. `XLSX` is a binary
@@ -45,7 +46,7 @@ file by either action; `attach` on a file already attached, or `detach` on one n
 
 1. Read the organization's data files (`inspect-collection` has already shown them; this skill re-reads to check for a name clash or confirm
    the file exists before `attach`/`detach`).
-2. Dry run: show the plan, the before and after, and the undo (or say there is none, for `upload`).
+2. Dry run: show the plan, the before and after, and the undo (or say there is none, for `delete`).
 3. Apply: send the one call, then read back (the organization's file list for `upload`, the network's attached names for `attach`/`detach`) and
    report **failed** if the state does not match what was asked.
 

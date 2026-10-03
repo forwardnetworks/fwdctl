@@ -97,6 +97,9 @@ func editAdvancedReachability(ctx context.Context, s *fwd.Session, raw json.RawM
 		flowLimit(flow),
 		"a request for a snapshot in a final state is ignored by Forward, which is why this skill refuses those; the call needs the same role as a reprocess and view-paths access",
 	}
+	if l := inertInternetNodeLimit(ctx, s, in.NetworkID); l != "" {
+		limits = append(limits, l)
+	}
 	ch := result.Change{Action: "compute-advanced-reachability", Target: "snapshot " + in.SnapshotID, Before: before, After: "PROCESSING, then PROCESSED when it finishes", Reversible: false,
 		Undo: "none: it adds computed analysis and removes nothing; a reprocess of the snapshot would clear it"}
 	if !in.Apply {

@@ -23,6 +23,8 @@ type inspectSnapshotsInput struct {
 	Kind       string `json:"kind"`
 	Limit      int    `json:"limit"`
 	Offset     int    `json:"offset"`
+	// Retention reads the network's snapshot thinning policy and what the next cleanup would delete, instead of listing snapshots.
+	Retention bool `json:"retention"`
 }
 
 // inspectSnapshots is how a caller picks the right before and after: which snapshots exist, which is the newest one worth
@@ -34,10 +36,16 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	if in.NetworkID == "" {
-		if in.SnapshotID != "" || in.Kind != "" || in.Limit != 0 || in.Offset != 0 {
+		if in.SnapshotID != "" || in.Kind != "" || in.Limit != 0 || in.Offset != 0 || in.Retention {
 			return result.Result{}, fmt.Errorf("%w: without network_id this skill answers one question, which snapshots are in progress anywhere; snapshot_id, kind, limit and offset need a network_id", ErrInvalidInput)
 		}
 		return busyAcrossOrg(ctx, s, result.Context{Scope: "account", State: "current"})
+	}
+	if in.Retention {
+		if in.SnapshotID != "" || in.Kind != "" || in.Offset != 0 {
+			return result.Result{}, fmt.Errorf("%w: retention reads the network's policy; snapshot_id, kind and offset do not apply (limit caps the snapshots listed)", ErrInvalidInput)
+		}
+		return snapshotRetention(ctx, s, in, cx)
 	}
 	all, err := s.Snapshots(ctx, in.NetworkID)
 	if err != nil {

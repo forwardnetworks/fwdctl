@@ -275,3 +275,41 @@ func TestCollectionConfigSummarisesTheWholeDeviceListNotJustThePage(t *testing.T
 		t.Errorf("the limit must say what cannot be read and where the growth is: %v", r.Limits)
 	}
 }
+
+func TestSnapshotsRetentionShowsThePolicyAndWhatTheNextCleanupWouldDelete(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/snapshotRetentionPolicy": fwdtest.Const(200, map[string]any{"enabled": true, "lastWeek": "ALL", "lastMonth": "ONE_PER_DAY", "lastQuarter": "ONE_PER_WEEK", "lastYear": "ONE_PER_MONTH", "older": "NONE"}),
+		"POST /api/networks/n1/snapshotRetentionPolicy/trigger": fwdtest.Const(200, map[string]any{"count": 3, "deletedSnapshots": []any{
+			map[string]any{"id": "s1", "createdAt": "2026-01-01T00:00:00Z"}, map[string]any{"id": "s2", "createdAt": "2026-01-02T00:00:00Z"}, map[string]any{"id": "s3", "createdAt": "2026-01-03T00:00:00Z"}}}),
+	}
+	r, srv := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1","retention":true,"limit":2}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "last month ONE_PER_DAY") || !strings.Contains(r.Finding, "would delete 3") || !strings.Contains(b, `"snapshot_id":"s2"`) || strings.Contains(b, `"snapshot_id":"s3"`) {
+		t.Fatalf("%s %s", r.Finding, b)
+	}
+	for _, c := range srv.Calls() {
+		if c.Method == "POST" && c.Query["dryRun"] != "true" {
+			t.Errorf("the preview must be a dry run: %+v", c)
+		}
+	}
+	if !strings.Contains(strings.Join(r.Limits, "|"), "2 of the 3 snapshots") {
+		t.Errorf("a cut list says so: %v", r.Limits)
+	}
+	// the preview needs a permission the policy read does not: the policy is still answered
+	routes["POST /api/networks/n1/snapshotRetentionPolicy/trigger"] = fwdtest.Const(403, map[string]any{"message": "Missing permission: NetworkOperation.DELETE_SNAPSHOT"})
+	if r, _ := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1","retention":true}`); r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, "|"), "DELETE_SNAPSHOT") {
+		t.Errorf("a refused preview is a limit: %s %v", r.Status, r.Limits)
+	}
+	if _, _, err := runSkill(t, "inspect-snapshots", routes, `{"retention":true}`); err == nil {
+		t.Errorf("retention needs a network")
+	}
+}
+
+func TestChecksDetailReadsALoopViolationWhoseQueryIsAnObject(t *testing.T) {
+	r, _ := mustRun(t, "inspect-checks", map[string]fwdtest.Handler{snapsPath: ready1(), "GET /api/snapshots/s1/checks/7": fwdtest.Const(200, map[string]any{
+		"id": "7", "name": "No Forwarding Loop", "status": "FAIL", "numViolations": 1,
+		"diagnosis": map[string]any{"details": []any{map[string]any{"query": map[string]any{"flowTypes": []string{"LOOP"}}}}}})}, `{"network_id":"n1","check_id":"7"}`)
+	if r.Status != result.Failed || !strings.Contains(strings.Join(r.Limits, "|"), "violation kind(s) LOOP") || !strings.Contains(jsonOf(r), `"flowTypes":["LOOP"]`) {
+		t.Fatalf("%s %v %s", r.Status, r.Limits, jsonOf(r))
+	}
+}

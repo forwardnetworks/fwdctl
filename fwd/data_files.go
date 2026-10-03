@@ -42,3 +42,9 @@ func (s *Session) DataFilesForNetwork(ctx context.Context, networkID string) ([]
 	names, _, err := s.Client.DataFiles.ListForNetwork(ctx, networkID)
 	return names, err
 }
+
+// DeleteDataFile removes a data file from the organization's library and so from every network that carries it; a file that does not exist counts as success. The content is not kept.
+func (s *Session) DeleteDataFile(ctx context.Context, name string) error {
+	_, err := s.Client.DataFiles.Delete(ctx, name)
+	return err
+}
