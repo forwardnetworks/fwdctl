@@ -140,6 +140,11 @@
   "rival": "author-nqe-query"
  },
  {
+  "query": "Create an alias web-servers for 10.1.0.0/24 so a check can refer to it",
+  "expect": "edit-alias",
+  "rival": "edit-checks"
+ },
+ {
   "query": "Label the newest snapshot 'before the BGP change'",
   "expect": "edit-snapshot-note",
   "rival": "inspect-snapshots"

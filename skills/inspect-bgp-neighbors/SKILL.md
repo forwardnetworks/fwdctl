@@ -22,6 +22,8 @@ advertised to it after output policy, for the neighbor's own VRF.
 
 `network_id`. Optional filters: `device`, `vrf`, `peer` (an address), `peer_as`, `state` (for example `ESTABLISHED`), `unmodelled_only`; `skip_adj_rib_out`; paging `limit` (default 50, at most 200) and `offset`; `snapshot_id`. See `schema.json`.
 
+**`advertised`** (an object; needs `device` and `peer`, and `vrf` for a non-default VRF) answers a different question: which prefixes this device sends to this peer. It lists them instead of neighbor rows, as the minimal set (a prefix inside another advertised prefix is dropped), paged by `limit` (default 100, at most 1,000) and `offset`, with `distinct_prefixes` and `after_dropping_covered` counts and `by_containing_16`. `advertised: {"outside": ["204.64.0.0/14", ...]}` keeps only prefixes not inside any given block (a prefix wider than a block counts as outside). The result may include private, shared or documentation space the device advertises (`edit-internet-exclusions` refuses those), so review it before using it as an exclusion set. Read from the Adj-RIB-Out after output policy, IPv4 unicast, for that peer address and VRF; only Junos, IOS, IOS-XE, NX-OS and IOS-XR devices report it, and no rows is **unknown**, not 'sends nothing'.
+
 ## Procedure
 
 1. Read the snapshot; none ready is **unknown**.

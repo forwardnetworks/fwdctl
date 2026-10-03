@@ -80,3 +80,57 @@ func TestWaitSaysWhenNothingIsProducingTheStateItWaitsFor(t *testing.T) {
 		t.Errorf("an UNPROCESSED snapshot is called out: %s", errs)
 	}
 }
+
+func TestEstimateRowsBytesCatchesAHugeResultFromASample(t *testing.T) {
+	row := map[string]any{"device": strings.Repeat("x", 100)}
+	rows := make([]map[string]any, 1_000_000)
+	for i := range rows {
+		rows[i] = row
+	}
+	if est := estimateRowsBytes(rows); est < maxOutputBytes {
+		t.Errorf("a million 100-byte rows is over the limit: %d", est)
+	}
+	if estimateRowsBytes(nil) != 0 || estimateRowsBytes(rows[:10]) > 10_000 {
+		t.Errorf("small results are small")
+	}
+}
+
+func TestRunWithAFwdctlCommandOrATypoAnswersAtOnceWithoutReadingStdin(t *testing.T) {
+	for _, name := range []string{"list", "nosuchskill"} {
+		var out, errb bytes.Buffer
+		blocked := &blockingReader{}
+		a := &app{in: blocked, out: &out, err: &errb}
+		a.newRoot()
+		if code := a.runSkill(name, "", "json", "", false); code != usage || blocked.read {
+			t.Errorf("%s: code %d, stdin read %v, %s", name, code, blocked.read, errb.String())
+		}
+		if name == "list" && !strings.Contains(errb.String(), "fwdctl command, not a name to run") {
+			t.Errorf("%s", errb.String())
+		}
+	}
+}
+
+// blockingReader fails the test if anything reads it: a run with a bad name must not wait for stdin.
+type blockingReader struct{ read bool }
+
+func (b *blockingReader) Read([]byte) (int, error) { b.read = true; return 0, errors.New("read") }
+
+func TestRunWithNoNameListsWhatCanFollowAndATypoSuggestsNames(t *testing.T) {
+	var out, errb bytes.Buffer
+	a := &app{in: strings.NewReader(""), out: &out, err: &errb}
+	a.newRoot()
+	if code := a.runMenu(); code != 0 {
+		t.Fatalf("asking what can follow is not an error: %d", code)
+	}
+	for _, want := range []string{"inspect-networks", "fwdctl run NAME --help", "fwdctl which", "fwdctl help --tree", "edit-"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("the menu lacks %q:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "plan-investigation") {
+		t.Errorf("a playbook is read, not run, so it is not in the run menu")
+	}
+	if got := nearNames("inspect-netwrks", 3); len(got) == 0 || got[0] != "inspect-networks" {
+		t.Errorf("a typo finds its name: %v", got)
+	}
+}

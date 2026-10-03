@@ -144,6 +144,7 @@ Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 erro
 	f.StringVar(&o.commitID, "commit-id", "", "with --query-id: the library commit to run it at (default: the head)")
 	f.StringVar(&o.paramsFile, "params", "", "JSON file with the query's parameters, an object of name to typed value")
 	f.StringArrayVar(&o.params, "param", nil, "one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params")
+	f.BoolVar(&o.allowLarge, "allow-large", false, "write a result of more than 100 MB (by default it is refused before anything is written, so a redirect cannot fill the disk)")
 	f.BoolVar(&o.asyncRun, "async", false, "run through Forward's asynchronous execution API (the execution key and outcome are in --meta)")
 	f.StringVar(&o.metaOut, "meta", "", "write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr")
 	f.IntVar(&o.pageOffset, "offset", 0, "read one page: skip this many rows (with --limit; the page, the total and the offset are in --meta)")
@@ -161,7 +162,7 @@ func (a *app) nqePack() *cobra.Command {
 	c := &cobra.Command{
 		Use: "pack DIR|UI.zip", Short: "turn a folder tree of .nqe files into the input of edit-nqe-query, to commit it to a library as ONE commit",
 		Long: `Read DIR (as nqe export writes it: <library path>.nqe files, with manifest.json when there is one) and print the edit-nqe-query input that commits the tree in ONE commit:
-{"changes": [{"path", "source"}...]}. It only reads the directory and prints JSON; the write is the skill's own dry run, so pipe the file to "fwdctl run edit-nqe-query", read the plan,
+{"changes": [{"path", "source"}...]}. It only reads the directory and prints JSON; the write is edit-nqe-query's own dry run, so pipe the file to "fwdctl run edit-nqe-query", read the plan,
 then add "apply": true. With a manifest, stderr says which files changed since the export, which are new and which are gone (pack never deletes), and --changed-only sends just the edited
 ones. A zip in the Forward UI's export format (it holds queries-export.proto) is read too, so a package the UI's Export produced can be committed with fwdctl; it has no manifest, so there is no change report. --create-directory makes missing library folders in the same commit (needed to load a tree into a library that lacks them); --typecheck has Forward type every query and every
 importer first; --basis-commit-id C (or "manifest" for the export's commit) refuses the commit if the library head is not C. A commit carries at most ` + fmt.Sprint(skills.MaxQueryChanges) + ` queries.`,

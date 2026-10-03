@@ -4,7 +4,7 @@ description: Shows which devices' config files changed between two snapshots and
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "change"
-  summary: "config lines changed between snapshots"
+  summary: "config lines changed"
   maturity: "3"
   tools: "snapshots, devices, diffs"
 ---

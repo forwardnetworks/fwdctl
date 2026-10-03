@@ -65,10 +65,10 @@ Flags:
 
 ## fwdctl describe
 
-Prints a skill's procedure. A skill's reference files (see "references") print as plain text when named.
+Prints one name's full procedure: what it answers, its inputs, how to read the result and its limits. Its reference files (see "references") print as plain text when named.
 
 ```
-fwdctl describe <skill> [reference-file]
+fwdctl describe NAME [reference-file]
 ```
 
 Examples:
@@ -144,7 +144,7 @@ Flags:
 
 ## fwdctl list
 
-Prints every skill as JSON: name, description, input_schema, class (read or write), runnable.
+Prints every runnable name as JSON: name, description, input_schema, class (read or write), effect, secrets, runnable. `fwdctl run` with no name prints the same as a short readable menu.
 
 ```
 fwdctl list
@@ -347,7 +347,7 @@ Examples:
 ## fwdctl nqe pack
 
 Read DIR (as nqe export writes it: <library path>.nqe files, with manifest.json when there is one) and print the edit-nqe-query input that commits the tree in ONE commit:
-{"changes": [{"path", "source"}...]}. It only reads the directory and prints JSON; the write is the skill's own dry run, so pipe the file to "fwdctl run edit-nqe-query", read the plan,
+{"changes": [{"path", "source"}...]}. It only reads the directory and prints JSON; the write is edit-nqe-query's own dry run, so pipe the file to "fwdctl run edit-nqe-query", read the plan,
 then add "apply": true. With a manifest, stderr says which files changed since the export, which are new and which are gone (pack never deletes), and --changed-only sends just the edited
 ones. A zip in the Forward UI's export format (it holds queries-export.proto) is read too, so a package the UI's Export produced can be committed with fwdctl; it has no manifest, so there is no change report. --create-directory makes missing library folders in the same commit (needed to load a tree into a library that lacks them); --typecheck has Forward type every query and every
 importer first; --basis-commit-id C (or "manifest" for the export's commit) refuses the commit if the library head is not C. A commit carries at most 25 queries.
@@ -396,6 +396,7 @@ Examples:
 Flags:
 
 ```
+      --allow-large         write a result of more than 100 MB (by default it is refused before anything is written, so a redirect cannot fill the disk)
       --async               run through Forward's asynchronous execution API (the execution key and outcome are in --meta)
       --commit-id string    with --query-id: the library commit to run it at (default: the head)
       --count-by string     print how many rows have each value of this field instead of the rows
@@ -463,11 +464,11 @@ Examples:
 
 ## fwdctl run
 
-Run a skill. Reads the skill's inputs as a JSON object from --input FILE or stdin and prints the result envelope (status, evidence, limits, next actions).
-Exit status: 0 ok, 1 failed, 2 unknown (never a pass), 3 error, 64 bad usage. `fwdctl run <skill> --help` shows that skill's inputs and an example.
+Run one named analysis. Reads its inputs as a JSON object from --input FILE or stdin and prints the result envelope (status, evidence, limits, next actions).
+With no name it lists every name and what it answers. Exit status: 0 ok, 1 failed, 2 unknown (never a pass), 3 error, 64 bad usage. `fwdctl run NAME --help` shows that name's inputs and an example.
 
 ```
-fwdctl run <skill> [flags]
+fwdctl run [NAME] [flags]
 ```
 
 Examples:
@@ -482,9 +483,9 @@ Flags:
 
 ```
       --format string   json (the whole result), or table or csv (the largest list of rows in the evidence, or the one --list names) (default "json")
-      --input string    JSON file with the skill inputs (default: stdin)
+      --input string    JSON file with the inputs (default: stdin)
       --list string     with --format table or csv: print this list (the key it sits under, such as by_vendor) instead of the largest; the others are named on stderr
-      --ops             include the log of Forward calls the skill made (audit data; omitted by default to save tokens)
+      --ops             include the log of Forward calls the run made (audit data; omitted by default to save tokens)
       --quiet           with --format table or csv: print only the status line on stderr, not the limits and the other lists (the limits still matter: read them once)
 ```
 
@@ -566,8 +567,8 @@ Flags:
 
 ## fwdctl which
 
-Ranks the rows of the router table (plan-investigation) against the question and prints the best skills and playbooks, with the row that matched.
-Offline, no model: a first guess. `fwdctl describe plan-investigation` is the full table.
+Ranks the built-in question index against the question and prints the best names, with the row that matched.
+Offline, no model: a first guess. `fwdctl run` lists every name with what it answers.
 
 ```
 fwdctl which <question>

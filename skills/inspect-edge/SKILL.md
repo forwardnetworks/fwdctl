@@ -4,7 +4,7 @@ description: Finds where traffic leaves the network (view exits), its public int
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "edge-synthetic"
-  summary: "default-route exits, public IPs, trace sources"
+  summary: "exits, public IPs, trace sources"
   maturity: "1"
   class: read
   reversible: "n/a"

@@ -45,10 +45,16 @@ func inspectBGPNeighbors(ctx context.Context, s *fwd.Session, raw json.RawMessag
 	if in.NetworkID == "" {
 		return result.Result{}, fmt.Errorf("%w: network_id is required", ErrInvalidInput)
 	}
-	if in.Limit <= 0 {
-		in.Limit = defaultBGPLimit
+	adv, wantAdv, aerr := parseAdvertised(raw)
+	if aerr != nil {
+		return result.Result{}, aerr
 	}
-	in.Limit = min(in.Limit, maxBGPLimit)
+	if !wantAdv {
+		if in.Limit <= 0 {
+			in.Limit = defaultBGPLimit
+		}
+		in.Limit = min(in.Limit, maxBGPLimit)
+	}
 	snap, err := resolveSnapshot(ctx, s, in.NetworkID, in.SnapshotID)
 	if err != nil {
 		return result.Result{}, err
@@ -59,6 +65,9 @@ func inspectBGPNeighbors(ctx context.Context, s *fwd.Session, raw json.RawMessag
 			result.Options{NextActions: []string{"investigate-collection-failure"}})
 	}
 	sid := fwd.SnapshotID(cx)
+	if wantAdv {
+		return bgpAdvertised(ctx, s, in, adv, sid, cx)
+	}
 	rows, _, trunc, err := s.RunNQEAll(ctx, in.NetworkID, sid, bgpNeighborQuery, maxModelRows)
 	if err != nil {
 		return result.Result{}, err

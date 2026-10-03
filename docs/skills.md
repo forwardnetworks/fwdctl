@@ -48,6 +48,7 @@ Policy checks, evidence, a device or a site under review.
 - `check-network-compliance`: Does the network satisfy a policy (Forward checks and/or an NQE query)? view read: which checks exist and fail, what one found, which predefined checks exist.
 - `inspect-inventory`: What is in the network: counts and vendors, and the devices, interfaces (with SVI addresses and VRFs), VLANs, VRFs, hosts, routes (with a per-VRF default-route fact), OSPF neighbors, and cloud accounts, VPCs, subnets and instances, with filters and paging? kind ip_owner: which modelled interface, SVI or FHRP address owns an IPv4 address, or which connected subnet it falls in.
 - `edit-checks` *(writes, dry run first)*: Create a check (local to its snapshot unless persistent) or deactivate one.
+- `edit-alias` *(writes, dry run first)*: Create, replace or end an alias (a named group of hosts, devices, interfaces or headers that checks refer to by name); it applies from the snapshot it is put on.
 
 ### Health and collection
 

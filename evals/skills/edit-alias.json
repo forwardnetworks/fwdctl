@@ -1,0 +1,42 @@
+{
+ "skill": "edit-alias",
+ "cases": [
+  {
+   "query": "Create an alias called web-servers for 10.1.0.0/24 and 10.1.1.0/24",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-alias (dry run first)"
+   ]
+  },
+  {
+   "query": "Change the dmz-hosts alias to add 192.0.2.10",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-alias"
+   ]
+  },
+  {
+   "query": "Remove the old-core alias, nothing uses it any more",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-alias",
+    "a dry run showing the definition to put back"
+   ]
+  },
+  {
+   "query": "List the aliases on the latest snapshot",
+   "should_trigger": false,
+   "note": "inspect-topology kind aliases"
+  },
+  {
+   "query": "Add a check that no host in web-servers can reach the database",
+   "should_trigger": false,
+   "note": "edit-checks"
+  },
+  {
+   "query": "Give this router a second name",
+   "should_trigger": false,
+   "note": "not an alias in Forward's sense; not offered"
+  }
+ ]
+}

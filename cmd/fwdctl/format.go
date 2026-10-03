@@ -227,6 +227,7 @@ type nqeRunOpts struct {
 	network, file, snapshot, format, countBy, queryID, commitID, paramsFile, metaOut string
 	max, pageOffset, pageLimit                                                       int
 	asyncRun                                                                         bool
+	allowLarge                                                                       bool
 	waitMax                                                                          time.Duration
 	params                                                                           []string
 }
@@ -382,6 +383,10 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 		})
 		rows = out
 	}
+	if est := estimateRowsBytes(rows); est > maxOutputBytes && !o.allowLarge {
+		fmt.Fprintf(stderr, "error: this result is about %d MB as text (%d rows), over the %d MB limit, and nothing was written: redirecting it to a file can fill the disk. Narrow the query, page it (--limit/--offset), summarise it (--count-by FIELD), or pass --allow-large and write to a disk with room\n", est>>20, len(rows), maxOutputBytes>>20)
+		return 1
+	}
 	if err := renderRows(stdout, rows, *format); err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 3
@@ -420,4 +425,21 @@ func nqeParams(file string, kv []string) (map[string]any, error) {
 		out[name] = v
 	}
 	return out, nil
+}
+
+// maxOutputBytes is the largest result nqe run writes without --allow-large (about what its text form takes).
+const maxOutputBytes = 100 << 20
+
+// estimateRowsBytes sizes a result by encoding a sample of its rows, so a huge result is caught before any of it is written.
+func estimateRowsBytes(rows []map[string]any) int64 {
+	if len(rows) == 0 {
+		return 0
+	}
+	n := min(len(rows), 500)
+	var total int64
+	for _, r := range rows[:n] {
+		b, _ := json.Marshal(r)
+		total += int64(len(b)) + 1
+	}
+	return total / int64(n) * int64(len(rows))
 }

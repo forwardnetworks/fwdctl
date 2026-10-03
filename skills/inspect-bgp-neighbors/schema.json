@@ -1,18 +1,66 @@
 {
   "type": "object",
-  "required": ["network_id"],
+  "required": [
+    "network_id"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "device": { "type": "string", "minLength": 1 },
-    "vrf": { "type": "string", "minLength": 1 },
-    "peer": { "type": "string", "minLength": 1 },
-    "peer_as": { "type": "integer", "minimum": 1 },
-    "unmodelled_only": { "type": "boolean", "default": false },
-    "state": { "type": "string", "minLength": 1 },
-    "skip_adj_rib_out": { "type": "boolean", "default": false },
-    "limit": { "type": "integer", "minimum": 1 },
-    "offset": { "type": "integer", "minimum": 0 },
-    "snapshot_id": { "type": "string", "minLength": 1 }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1
+    },
+    "vrf": {
+      "type": "string",
+      "minLength": 1
+    },
+    "peer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "peer_as": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unmodelled_only": {
+      "type": "boolean",
+      "default": false
+    },
+    "state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skip_adj_rib_out": {
+      "type": "boolean",
+      "default": false
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "advertised": {
+      "type": "object",
+      "description": "list the prefixes device advertises to peer (needs device and peer; vrf for a non-default VRF) as a paged list instead of neighbor rows; outside: CIDR blocks, keep only prefixes not inside any of them",
+      "properties": {
+        "outside": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
   }
 }

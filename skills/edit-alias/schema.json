@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": ["network_id", "action", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": { "type": "string", "minLength": 1 },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "action": { "type": "string", "enum": ["put", "deactivate"] },
+    "name": { "type": "string", "minLength": 1 },
+    "definition": {
+      "type": "object",
+      "description": "put only: {type: HOSTS | DEVICES | INTERFACES | HEADERS | LOGICAL_NETWORK} and that type's fields (values, locations, vlanIds, vlanIntfTypes, isExposurePoint, headerValues, devices, edgeNodes)",
+      "properties": { "type": { "type": "string", "enum": ["HOSTS", "DEVICES", "INTERFACES", "HEADERS", "LOGICAL_NETWORK"] } },
+      "required": ["type"]
+    },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

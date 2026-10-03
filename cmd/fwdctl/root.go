@@ -24,6 +24,7 @@ type app struct {
 	session  func() (*fwd.Session, error)
 	conn     connOptions
 	top      string
+	root     *cobra.Command
 	// quiet drops the limit and other-list lines a table or CSV prints on stderr (the status line stays)
 	quiet bool
 }
@@ -46,11 +47,11 @@ func (a *app) fail(format string, args ...any) error {
 	return exitCode(usage)
 }
 
-const rootLong = `fwdctl runs Forward Skills: questions about a Forward network, answered with evidence. A skill is run with a JSON object on stdin and returns one result
-(status, evidence, limits, next actions). Skills that write (named edit-*) change nothing unless the input says "apply": true.
+const rootLong = `fwdctl asks questions about a Forward network and answers them with evidence. Each question is a named analysis: give "fwdctl run NAME" a JSON object on stdin and it returns one result
+(status, evidence, limits, next actions). Names that start with edit- change Forward and do nothing unless the input says "apply": true.
 
-Start here: "echo '{}' | fwdctl run inspect-networks" lists the networks you can see, "fwdctl list" shows every skill, and "fwdctl describe plan-investigation" says which
-skill answers which question. Every command answers --help; "fwdctl run <skill> --help" shows one skill's inputs and an example.
+Start here: "fwdctl run" lists every name and what it answers, "echo '{}' | fwdctl run inspect-networks" lists the networks you can see, "fwdctl which \"<question>\"" finds the name for a
+question, and "fwdctl help --tree" lists every command. Every command answers --help; "fwdctl run NAME --help" shows one name's inputs and an example.
 
 Credentials (environment): FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (an API token's access key and secret work).
 Or flags: --url URL --username NAME --password-file FILE [--insecure] [--config FILE]; or a saved login (fwdctl login), or a file
@@ -88,7 +89,7 @@ func (a *app) execute(args []string) int {
 func (a *app) newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "fwdctl",
-		Short:         "Forward Networks: skills, NQE and the Forward API from a shell or an agent",
+		Short:         "Forward Networks: questions, NQE and the Forward API from a shell or an agent",
 		Long:          rootLong,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -100,6 +101,7 @@ func (a *app) newRoot() *cobra.Command {
 			return exitCode(usage)
 		},
 	}
+	a.root = root
 	root.SetVersionTemplate("fwdctl {{.Version}}\n")
 	root.AddGroup(
 		&cobra.Group{ID: "skills", Title: "Skills:"},
@@ -163,7 +165,7 @@ func (a *app) listCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "list", GroupID: "skills", Short: "every skill: name, description, input schema (JSON)",
 		Example: "  fwdctl list | jq -r '.[] | select(.class==\"write\") | .name'",
-		Long:    "Prints every skill as JSON: name, description, input_schema, class (read or write), runnable.",
+		Long:    "Prints every runnable name as JSON: name, description, input_schema, class (read or write), effect, secrets, runnable. `fwdctl run` with no name prints the same as a short readable menu.",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			all, err := skills.All()
@@ -178,9 +180,9 @@ func (a *app) listCmd() *cobra.Command {
 
 func (a *app) describeCmd() *cobra.Command {
 	return &cobra.Command{
-		Use: "describe <skill> [reference-file]", GroupID: "skills", Short: "one skill's procedure (JSON); with a reference file name, that file's text",
+		Use: "describe NAME [reference-file]", GroupID: "skills", Short: "one name's full procedure (JSON); with a reference file name, that file's text",
 		Example: "  fwdctl describe plan-investigation\n  fwdctl describe inspect-environment properties.md",
-		Long:    "Prints a skill's procedure. A skill's reference files (see \"references\") print as plain text when named.",
+		Long:    "Prints one name's full procedure: what it answers, its inputs, how to read the result and its limits. Its reference files (see \"references\") print as plain text when named.",
 		Args:    cobra.RangeArgs(1, 2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) == 0 {
@@ -201,7 +203,7 @@ func (a *app) describeCmd() *cobra.Command {
 			if len(args) == 2 { // a reference file is plain markdown, not JSON: it is meant to be read
 				text, err := skills.Reference(args[0], args[1])
 				if err != nil {
-					return a.fail("%v; this skill's references: %s", err, strings.Join(m.References, ", "))
+					return a.fail("%v; this name's references: %s", err, strings.Join(m.References, ", "))
 				}
 				fmt.Fprint(a.out, text)
 				return nil
@@ -218,9 +220,9 @@ func (a *app) describeCmd() *cobra.Command {
 
 func (a *app) whichCmd() *cobra.Command {
 	return &cobra.Command{
-		Use: "which <question>", GroupID: "skills", Short: "which skill or playbook answers a question (an offline first guess)",
-		Long: "Ranks the rows of the router table (plan-investigation) against the question and prints the best skills and playbooks, with the row that matched.\n" +
-			"Offline, no model: a first guess. `fwdctl describe plan-investigation` is the full table.",
+		Use: "which <question>", GroupID: "skills", Short: "which name answers a question in words (an offline first guess)",
+		Long: "Ranks the built-in question index against the question and prints the best names, with the row that matched.\n" +
+			"Offline, no model: a first guess. `fwdctl run` lists every name with what it answers.",
 		Example: `  fwdctl which "why can't host A reach host B"`,
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -377,13 +379,13 @@ func (a *app) runCmd() *cobra.Command {
 	var file, format, list string
 	var withOps, quiet bool
 	c := &cobra.Command{
-		Use: "run <skill>", GroupID: "skills", Short: "run a skill: inputs as JSON on stdin, the result on stdout",
-		Long: "Run a skill. Reads the skill's inputs as a JSON object from --input FILE or stdin and prints the result envelope (status, evidence, limits, next actions).\n" +
-			"Exit status: 0 ok, 1 failed, 2 unknown (never a pass), 3 error, 64 bad usage. `fwdctl run <skill> --help` shows that skill's inputs and an example.",
+		Use: "run [NAME]", GroupID: "skills", Short: "run an analysis by name: inputs as JSON on stdin, the result on stdout (no name: list them)",
+		Long: "Run one named analysis. Reads its inputs as a JSON object from --input FILE or stdin and prints the result envelope (status, evidence, limits, next actions).\n" +
+			"With no name it lists every name and what it answers. Exit status: 0 ok, 1 failed, 2 unknown (never a pass), 3 error, 64 bad usage. `fwdctl run NAME --help` shows that name's inputs and an example.",
 		Example: `  echo '{}' | fwdctl run inspect-networks
   echo '{"network_id": "123"}' | fwdctl run inspect-snapshots
   fwdctl run edit-org-property --input plan.json`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) == 0 {
 				return skillNames(toComplete), cobra.ShellCompDirectiveNoFileComp
@@ -391,15 +393,19 @@ func (a *app) runCmd() *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				// nothing to run yet: say what can follow, so the next call needs no outside knowledge
+				return a.exit(a.runMenu())
+			}
 			a.quiet = quiet
 			return a.exit(a.runSkill(args[0], file, format, list, withOps))
 		},
 	}
-	c.Flags().StringVar(&file, "input", "", "JSON file with the skill inputs (default: stdin)")
+	c.Flags().StringVar(&file, "input", "", "JSON file with the inputs (default: stdin)")
 	c.Flags().StringVar(&format, "format", "json", "json (the whole result), or table or csv (the largest list of rows in the evidence, or the one --list names)")
 	c.Flags().StringVar(&list, "list", "", "with --format table or csv: print this list (the key it sits under, such as by_vendor) instead of the largest; the others are named on stderr")
 	c.Flags().BoolVar(&quiet, "quiet", false, "with --format table or csv: print only the status line on stderr, not the limits and the other lists (the limits still matter: read them once)")
-	c.Flags().BoolVar(&withOps, "ops", false, "include the log of Forward calls the skill made (audit data; omitted by default to save tokens)")
+	c.Flags().BoolVar(&withOps, "ops", false, "include the log of Forward calls the run made (audit data; omitted by default to save tokens)")
 	_ = c.RegisterFlagCompletionFunc("format", cobra.FixedCompletions([]string{"json", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp))
 	// `run <skill> --help` is the skill's own help: what it answers, its inputs, an example
 	def := c.HelpFunc()
@@ -419,9 +425,11 @@ func (a *app) runCmd() *cobra.Command {
 }
 
 func (a *app) helpCmd(root *cobra.Command) *cobra.Command {
-	return &cobra.Command{
-		Use: "help [command | skill]", GroupID: "setup", Short: "help for any command, or for one skill",
-		Long: "Help for any command (fwdctl help nqe run), or for a skill (fwdctl help inspect-snapshots: what it answers, its inputs, an example).",
+	var tree bool
+	c := &cobra.Command{
+		Use: "help [command | name]", GroupID: "setup", Short: "help for any command, or for one runnable name; --tree lists every command",
+		Long: "Help for any command (fwdctl help nqe run), or for a name `fwdctl run` accepts (fwdctl help inspect-snapshots: what it answers, its inputs, an example).\n" +
+			"--tree prints every command and subcommand with its one-line purpose, so the whole command set can be read in one call. `fwdctl run` with no name lists the runnable names.",
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			var out []string
 			for _, c := range root.Commands() {
@@ -432,6 +440,10 @@ func (a *app) helpCmd(root *cobra.Command) *cobra.Command {
 			return append(out, skillNames(toComplete)...), cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if tree {
+				printCommandTree(a.out, root, "")
+				return nil
+			}
 			if len(args) == 0 {
 				return root.Help()
 			}
@@ -442,19 +454,51 @@ func (a *app) helpCmd(root *cobra.Command) *cobra.Command {
 				skillHelp(a.out, args[0])
 				return nil
 			}
-			return a.fail("no command or skill %q; `fwdctl help` lists the commands", strings.Join(args, " "))
+			return a.fail("no command or name %q; `fwdctl help --tree` lists the commands and `fwdctl run` the runnable names", strings.Join(args, " "))
 		},
+	}
+	c.Flags().BoolVar(&tree, "tree", false, "print every command and subcommand with its purpose")
+	return c
+}
+
+// printCommandTree writes each command path with its one-line purpose, depth first, skipping hidden commands and the generated completion and help machinery.
+func printCommandTree(w io.Writer, c *cobra.Command, prefix string) {
+	for _, sub := range c.Commands() {
+		if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" || !sub.IsAvailableCommand() {
+			continue
+		}
+		path := strings.TrimSpace(prefix + " " + sub.Name())
+		fmt.Fprintf(w, "fwdctl %-30s %s\n", path, sub.Short)
+		printCommandTree(w, sub, path)
 	}
 }
 
 // runSkill is the body of `fwdctl run`.
 func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 	fail := func(f string, v ...any) int { fmt.Fprintf(a.err, "error: "+f+"\n", v...); return usage }
+	// the name is checked before anything is read, so a typo or a fwdctl command given to `run` answers at once instead of waiting for stdin
+	if _, err := skills.Describe(name); err != nil {
+		if a.root != nil {
+			if c, _, ferr := a.root.Find([]string{name}); ferr == nil && c != nil && c != a.root && c.Name() == name {
+				return fail("%q is a fwdctl command, not a name to run: run `fwdctl %s` (`fwdctl run` lists the names)", name, name)
+			}
+		}
+		msg := fmt.Sprintf("no command named %q", name)
+		if near := nearNames(name, 4); len(near) > 0 {
+			msg += "; did you mean " + strings.Join(near, ", ") + "?"
+		}
+		return fail("%s. `fwdctl run` lists every name, `fwdctl which \"<question>\"` finds one for a question", msg)
+	}
 	var raw []byte
 	var err error
 	if file != "" {
 		raw, err = os.ReadFile(file)
 	} else {
+		if f, ok := a.in.(*os.File); ok {
+			if st, serr := f.Stat(); serr == nil && st.Mode()&os.ModeCharDevice != 0 {
+				return fail("`run %s` reads its inputs as JSON from stdin, and stdin is a terminal: pipe them (echo '{}' | fwdctl run %s) or give --input FILE", name, name)
+			}
+		}
 		raw, err = io.ReadAll(a.in)
 	}
 	if err != nil {
@@ -463,9 +507,6 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 	var obj map[string]any
 	if json.Unmarshal(raw, &obj) != nil || obj == nil {
 		return fail("inputs must be a JSON object")
-	}
-	if _, err := skills.Describe(name); err != nil {
-		return fail("%v; try `list`", err)
 	}
 	if !validFormat(format) || format == "jsonl" {
 		return fail("--format is json, table or csv")
@@ -547,4 +588,97 @@ func parent(c *cobra.Command) *cobra.Command {
 		return cmd.Help()
 	}
 	return c
+}
+
+// runMenu is `fwdctl run` with no name: every runnable name with what it answers, grouped by area, and how to go on from one. It writes to stdout and exits 0, since asking what can
+// follow is not an error.
+func (a *app) runMenu() int {
+	byCluster := map[string][]string{}
+	var unlisted []string
+	for _, n := range skills.Names() {
+		m, err := skills.Describe(n)
+		if err != nil || !m.Runnable {
+			continue // a playbook is read, not run
+		}
+		line := fmt.Sprintf("  %-34s %s", n, m.Summary)
+		if m.Cluster == "" {
+			unlisted = append(unlisted, line)
+			continue
+		}
+		byCluster[m.Cluster] = append(byCluster[m.Cluster], line)
+	}
+	fmt.Fprintln(a.out, "fwdctl run NAME   reads one question's inputs as a JSON object on stdin and prints one result (status, evidence, limits, next actions).")
+	fmt.Fprintln(a.out, "Names starting edit- change Forward and do nothing until the input says \"apply\": true; the rest only read.")
+	fmt.Fprintln(a.out)
+	for _, c := range skills.Clusters {
+		lines := byCluster[c.Name]
+		if len(lines) == 0 {
+			continue
+		}
+		sort.Strings(lines)
+		fmt.Fprintf(a.out, "%s:\n%s\n\n", c.Title, strings.Join(lines, "\n"))
+	}
+	if len(unlisted) > 0 {
+		sort.Strings(unlisted)
+		fmt.Fprintf(a.out, "Other:\n%s\n\n", strings.Join(unlisted, "\n"))
+	}
+	fmt.Fprintln(a.out, "Next:")
+	fmt.Fprintln(a.out, "  fwdctl run NAME --help              the inputs of one name and an example")
+	fmt.Fprintln(a.out, "  echo '{}' | fwdctl run inspect-networks   a first call: the networks you can see (their ids go in network_id)")
+	fmt.Fprintln(a.out, "  fwdctl which \"<question>\"           the name that answers a question in words")
+	fmt.Fprintln(a.out, "  fwdctl help --tree                  every fwdctl command in one page")
+	return 0
+}
+
+// nearNames are up to n runnable names close to name: those that contain it or share its prefix first, then by edit distance.
+func nearNames(name string, n int) []string {
+	type cand struct {
+		name string
+		d    int
+	}
+	var cs []cand
+	low := strings.ToLower(name)
+	for _, s := range skills.Names() {
+		d := editDistance(low, s)
+		if strings.Contains(s, low) || strings.HasPrefix(s, low) {
+			d = 0
+		}
+		if d <= max(3, len(low)/3) {
+			cs = append(cs, cand{s, d})
+		}
+	}
+	sort.Slice(cs, func(i, j int) bool {
+		if cs[i].d != cs[j].d {
+			return cs[i].d < cs[j].d
+		}
+		return cs[i].name < cs[j].name
+	})
+	var out []string
+	for i, c := range cs {
+		if i == n {
+			break
+		}
+		out = append(out, c.name)
+	}
+	return out
+}
+
+func editDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
 }

@@ -20,7 +20,7 @@ const (
 	maxDescription     = 190   // characters, every skill
 	maxPlaybookDesc    = 140   // characters, plan-* playbooks
 	maxGapDescription  = 100   // plan-report-skill-gap is DOGFOOD-TEMP and must cost almost nothing in every listing
-	alwaysLoadedBudget = 10450 // +edit-data-connector (a per-network HTTP source, a different object and undo from every other write skill, including edit-data-file); +edit-data-file (uploading and attaching a dataset is a different object and undo from every other write skill: upload has none at all); +inspect-access and edit-access (access is a different object, with its own refusal explanation, from every other skill); +edit-org-property (an org-wide setting is a different object and undo from every other write skill);  +edit-workspace (a temporary network to try a collection change off production; a different object and undo from edit-collection and edit-endpoint-profile);  +edit-endpoint-profile (the only way to try an extra OID on one endpoint, a new object with its own undo, not a view of edit-collection);  sum of len(name)+len(description) over all skills; v0.5.26 measured 10,218 for 56 skills, v0.5.27 9,064 for 50 (merged views)
+	alwaysLoadedBudget = 10600 // +edit-alias (a named group of hosts, devices, interfaces or headers that checks refer to by name: a different object, with its own per-snapshot effect and undo, from every other write skill; its fields do not fit edit-checks within the input ceiling); +edit-data-connector (a per-network HTTP source, a different object and undo from every other write skill, including edit-data-file); +edit-data-file (uploading and attaching a dataset is a different object and undo from every other write skill: upload has none at all); +inspect-access and edit-access (access is a different object, with its own refusal explanation, from every other skill); +edit-org-property (an org-wide setting is a different object and undo from every other write skill);  +edit-workspace (a temporary network to try a collection change off production; a different object and undo from edit-collection and edit-endpoint-profile);  +edit-endpoint-profile (the only way to try an extra OID on one endpoint, a new object with its own undo, not a view of edit-collection);  sum of len(name)+len(description) over all skills; v0.5.26 measured 10,218 for 56 skills, v0.5.27 9,064 for 50 (merged views)
 )
 
 func descriptionCap(name string) int {
@@ -69,7 +69,7 @@ const (
 
 var wideReadSkills = map[string]int{
 	"check-network-compliance": 11,
-	"inspect-bgp-neighbors":    11,
+	"inspect-bgp-neighbors":    12,
 	"inspect-device-files":     11,
 	"investigate-reachability": 10,
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.

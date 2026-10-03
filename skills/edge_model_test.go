@@ -357,3 +357,55 @@ func TestFindPublicAddressesFiltersAndPages(t *testing.T) {
 		}
 	}
 }
+
+func TestBGPAdvertisedListsTheMinimalSetOutsideTheGivenBlocksAndCountsByContaining16(t *testing.T) {
+	routes := modelRoutes()
+	routes[nqePath] = func(_ *http.Request, body []byte) (int, any) {
+		if !strings.Contains(string(body), `device.name == \"wan1\"`) {
+			return 400, map[string]any{"message": "unexpected query: " + string(body)}
+		}
+		p := func(vrf any, peer, afi, prefix string) map[string]any {
+			return map[string]any{"peer": peer, "afi": afi, "vrf": vrf, "prefix": prefix}
+		}
+		items := []map[string]any{
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "204.64.0.0/14"),   // inside the internal block
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "204.65.1.0/24"),   // inside it, and inside the /14 above
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "198.51.100.0/24"), // outside
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "198.51.100.0/25"), // inside the /24: dropped by aggregation
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "192.0.2.0/24"),
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "192.0.2.0/24"),  // duplicate
+			p("INET", "203.0.113.1", "IPV6_UNICAST", "2001:db8::/32"), // another family
+			p("OTHER", "203.0.113.1", "IPV4_UNICAST", "8.8.8.0/24"),   // another VRF
+			p("INET", "203.0.113.9", "IPV4_UNICAST", "1.1.1.0/24"),    // another peer
+		}
+		return 200, map[string]any{"items": items, "totalNumItems": len(items)}
+	}
+	r, _ := mustRun(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.1","vrf":"INET","advertised":{"outside":["204.64.0.0/14"]}}`)
+	d := r.Evidence[0].Detail
+	if d["distinct_prefixes"] != 5 || d["after_dropping_covered"] != 3 || d["listed"] != 2 {
+		t.Fatalf("5 distinct, 3 after aggregation (the /25 and the /24 inside the /14 go), 2 outside the /14 (the /14 and its /24 are inside): %v", d)
+	}
+	b := jsonOf(r)
+	for _, want := range []string{`"prefix":"192.0.2.0/24"`, `"prefix":"198.51.100.0/24"`, `"block":"198.51.0.0/16"`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	for _, not := range []string{"8.8.8.0", "1.1.1.0", "2001:db8", "204.65.1.0"} {
+		if strings.Contains(b, `"prefix":"`+not) {
+			t.Errorf("%s must not be listed", not)
+		}
+	}
+	if !strings.Contains(strings.Join(r.Limits, "|"), "other VRFs or address families") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+	for _, bad := range []string{`{"network_id":"n1","advertised":{}}`, `{"network_id":"n1","device":"wan1","peer":"nope","advertised":{}}`, `{"network_id":"n1","device":"wan1","peer":"203.0.113.1","advertised":{"outside":["x"]}}`} {
+		if _, _, err := runSkill(t, "inspect-bgp-neighbors", routes, bad); err == nil {
+			t.Errorf("%s must be refused", bad)
+		}
+	}
+	// a peer or VRF with nothing is unknown, never "advertises nothing"
+	if r, _ := mustRun(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.77","advertised":{}}`); r.Status != result.Unknown {
+		t.Errorf("no rows is not proof: %s", r.Status)
+	}
+}
