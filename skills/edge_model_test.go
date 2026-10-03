@@ -367,16 +367,20 @@ func TestBGPAdvertisedListsTheMinimalSetOutsideTheGivenBlocksAndCountsByContaini
 		p := func(vrf any, peer, afi, prefix string) map[string]any {
 			return map[string]any{"peer": peer, "afi": afi, "vrf": vrf, "prefix": prefix}
 		}
+		withAttrs := func(m map[string]any, nextHop, origin string, asPath []any) map[string]any {
+			m["nextHop"], m["origin"], m["asPath"], m["active"] = nextHop, origin, asPath, true
+			return m
+		}
 		items := []map[string]any{
-			p("INET", "203.0.113.1", "IPV4_UNICAST", "204.64.0.0/14"),   // inside the internal block
-			p("INET", "203.0.113.1", "IPV4_UNICAST", "204.65.1.0/24"),   // inside it, and inside the /14 above
-			p("INET", "203.0.113.1", "IPV4_UNICAST", "198.51.100.0/24"), // outside
-			p("INET", "203.0.113.1", "IPV4_UNICAST", "198.51.100.0/25"), // inside the /24: dropped by aggregation
-			p("INET", "203.0.113.1", "IPV4_UNICAST", "192.0.2.0/24"),
-			p("INET", "203.0.113.1", "IPV4_UNICAST", "192.0.2.0/24"),  // duplicate
-			p("INET", "203.0.113.1", "IPV6_UNICAST", "2001:db8::/32"), // another family
-			p("OTHER", "203.0.113.1", "IPV4_UNICAST", "8.8.8.0/24"),   // another VRF
-			p("INET", "203.0.113.9", "IPV4_UNICAST", "1.1.1.0/24"),    // another peer
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "204.64.0.0/14"),                                                                             // inside the internal block
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "204.65.1.0/24"),                                                                             // inside it, and inside the /14 above
+			withAttrs(p("INET", "203.0.113.1", "IPV4_UNICAST", "198.51.100.0/24"), "10.9.9.9", "IGP", []any{float64(4259840021), float64(65001)}), // outside, learned from an internal peer
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "198.51.100.0/25"),                                                                           // inside the /24: dropped by aggregation
+			withAttrs(p("INET", "203.0.113.1", "IPV4_UNICAST", "192.0.2.0/24"), "0.0.0.0", "INCOMPLETE", nil),                                     // outside, local
+			p("INET", "203.0.113.1", "IPV4_UNICAST", "192.0.2.0/24"),                                                                              // duplicate
+			p("INET", "203.0.113.1", "IPV6_UNICAST", "2001:db8::/32"),                                                                             // another family
+			p("OTHER", "203.0.113.1", "IPV4_UNICAST", "8.8.8.0/24"),                                                                               // another VRF
+			p("INET", "203.0.113.9", "IPV4_UNICAST", "1.1.1.0/24"),                                                                                // another peer
 		}
 		return 200, map[string]any{"items": items, "totalNumItems": len(items)}
 	}
@@ -394,6 +398,11 @@ func TestBGPAdvertisedListsTheMinimalSetOutsideTheGivenBlocksAndCountsByContaini
 	for _, not := range []string{"8.8.8.0", "1.1.1.0", "2001:db8", "204.65.1.0"} {
 		if strings.Contains(b, `"prefix":"`+not) {
 			t.Errorf("%s must not be listed", not)
+		}
+	}
+	for _, want := range []string{`"origin_type":"local"`, `"origin_type":"learned"`, `"next_hop":"10.9.9.9"`, `"as_path":"4259840021 65001"`, `"learned_by_next_hop":[{"name":"10.9.9.9","prefixes":1}]`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("per-prefix origin: missing %s in %s", want, b)
 		}
 	}
 	if !strings.Contains(strings.Join(r.Limits, "|"), "other VRFs or address families") {

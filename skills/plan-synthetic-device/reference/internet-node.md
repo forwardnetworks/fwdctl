@@ -95,6 +95,8 @@ the exclude list and a connection's `subnets`: both are simply subtracted. **Unk
 4. what remains is the exclude set. A prefix advertised *to* the upstream is yours and is already off the internet node; a prefix you only learned *from* the upstream (a default route is the usual case) is not yours and must not be excluded.
 Aggregate before saving (a /16 rather than a thousand /24s inside it) and keep the list as short as the truth allows; it is replaced as a whole, so every edit is a read, a diff and a replace.
 
+**Advertised to the upstream is not proof of internet intent.** What a device advertises to its upstream is an export to that upstream. If the upstream is a provider WAN or a private carrier rather than an internet transit, or the output policy permits everything except one community, the list mixes locally originated routes with routes re-advertised from internal peers and says nothing about what is meant to be reachable from the internet. Read the policy first (`inspect-bgp-neighbors` `reference/policy.md`) and settle intent with the customer.
+
 **Deriving the set.** The advertised side is `inspect-bgp-neighbors` with `advertised` (device, peer, vrf, and `outside` for your internal blocks): the aggregated prefixes sent to the upstream, paged, no query to write. The queries below are what it and the routes read run (both were run read-only on a real network). The prefixes the gateway advertises to its upstream (the Adj-RIB-Out after output policy; only on Junos, IOS, IOS-XE, NX-OS and IOS-XR devices; `adjRibOutPost` and `bgpRib` are
 nullable, so the checks are required):
 

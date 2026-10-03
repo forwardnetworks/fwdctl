@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
@@ -34,7 +35,8 @@ foreach afi in device.bgpRib.afiSafis
 foreach n in afi.neighbors
 where isPresent(n.adjRibOutPost)
 foreach route in n.adjRibOutPost.routes
-select {peer: n.neighborAddress, afi: afi.afiSafiName, vrf: route.vrf, prefix: route.prefix}`
+foreach attr in route.pathAttributes
+select {peer: n.neighborAddress, afi: afi.afiSafiName, vrf: route.vrf, prefix: route.prefix, nextHop: attr.nextHop, origin: attr.origin, asPath: attr.asPath?.members, active: attr.activeRoute}`
 }
 
 // bgpAdvertised is inspect-bgp-neighbors with advertised: the prefixes a device advertises to one BGP peer after output policy, for IPv4 unicast in one VRF, as the minimal set
@@ -70,7 +72,13 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	if err != nil {
 		return result.Result{}, err
 	}
+	type attrs struct {
+		nextHop, origin string
+		asPath          []string
+		active          bool
+	}
 	var seen = map[netip.Prefix]bool{}
+	info := map[netip.Prefix]attrs{}
 	var other int
 	for _, r := range rows {
 		rp, perr := netip.ParseAddr(strings.TrimSpace(str(r["peer"])))
@@ -85,7 +93,23 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		if perr != nil {
 			continue
 		}
-		seen[p.Masked()] = true
+		mp := p.Masked()
+		seen[mp] = true
+		a := attrs{nextHop: strings.TrimSpace(str(r["nextHop"])), origin: str(r["origin"])}
+		if l, ok := r["asPath"].([]any); ok {
+			for _, m := range l {
+				if f, ok := m.(float64); ok { // AS numbers can exceed 2^31: print them whole, not as 4.25e+09
+					a.asPath = append(a.asPath, strconv.FormatFloat(f, 'f', -1, 64))
+					continue
+				}
+				a.asPath = append(a.asPath, fmt.Sprint(m))
+			}
+		}
+		a.active, _ = r["active"].(bool)
+		// several paths for one prefix (multipath): keep the active one, else the first seen
+		if cur, ok := info[mp]; !ok || (a.active && !cur.active) {
+			info[mp] = a
+		}
 	}
 	cx.State = "current"
 	if len(seen) == 0 {
@@ -145,8 +169,21 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		by16[key]++
 	}
 	rowsOut := make([]map[string]any, 0, len(list))
+	byOrigin, byNextHop, byOriginCode := map[string]int{}, map[string]int{}, map[string]int{}
 	for _, p := range list {
-		rowsOut = append(rowsOut, map[string]any{"prefix": p.String()})
+		a := info[p]
+		row := map[string]any{"prefix": p.String(), "origin_type": originType(a.nextHop), "next_hop": nilIfEmpty(a.nextHop), "origin_code": nilIfEmpty(a.origin), "as_path_length": len(a.asPath)}
+		if len(a.asPath) > 0 {
+			row["as_path"] = strings.Join(a.asPath, " ")
+		}
+		rowsOut = append(rowsOut, row)
+		byOrigin[originType(a.nextHop)]++
+		if a.nextHop != "" && originType(a.nextHop) == "learned" {
+			byNextHop[a.nextHop]++
+		}
+		if a.origin != "" {
+			byOriginCode[a.origin]++
+		}
 	}
 	limit := in.Limit
 	if limit <= 0 {
@@ -165,6 +202,7 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		"read from the device's Adj-RIB-Out after output policy (not the route-map: that is not in Forward's model), IPv4 unicast, for this peer address and VRF; only Junos, IOS, IOS-XE, NX-OS and IOS-XR devices report it",
 		"the list is the minimal covering set: a prefix inside another advertised prefix is dropped, so it has fewer entries than the neighbor's advertised_prefixes counter and adj_rib_out_distinct_prefixes; the distinct count above is before dropping",
 		"outside means not inside any given block: a prefix wider than a block, or one that overlaps it without being inside, is listed as outside; check those by hand",
+		"origin_type is read from the path's next hop: local means 0.0.0.0 (the device itself originates or redistributes the route), learned means a next hop elsewhere (re-advertised from a peer: learned_by_next_hop says which); as_path and origin_code are the path attributes of the active path. Communities are NOT in Forward's model, so which prefixes carry a given community, and the route-map that decides what is sent, are read from the device files (reference/policy.md)",
 		"by_containing_16 groups IPv4 prefixes by their /16 (a prefix shorter than /16 is its own group)")
 	if other > 0 {
 		limits = append(limits, fmt.Sprintf("%d more route(s) go to this peer address in other VRFs or address families and are not counted", other))
@@ -183,7 +221,7 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		return groups[i]["block"].(string) < groups[j]["block"].(string)
 	})
 	d := map[string]any{"device": in.Device, "peer": peer.String(), "vrf": firstNonEmpty(in.VRF, "default"), "distinct_prefixes": len(seen), "after_dropping_covered": len(kept),
-		"listed": len(list), "outside_filter": adv.Outside, "by_containing_16": groups, "offset": in.Offset, "prefixes": win}
+		"listed": len(list), "by_origin_type": byOrigin, "learned_by_next_hop": topDeviceCountRowsNamed(byNextHop, 10, "prefixes"), "by_origin_code": byOriginCode, "outside_filter": adv.Outside, "by_containing_16": groups, "offset": in.Offset, "prefixes": win}
 	return result.Build(inspectBGPNeighborsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
 		NextActions: []string{"edit-internet-exclusions", "inspect-topology"}, Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, d, finding)}})
 }
@@ -200,4 +238,15 @@ func parseAdvertised(raw json.RawMessage) (advertisedInput, bool, error) {
 		return advertisedInput{}, false, nil
 	}
 	return *probe.Advertised, true, nil
+}
+
+// originType says where an advertised route came from, by its next hop: 0.0.0.0 or :: is the device's own (originated or redistributed), anything else was learned from a peer.
+func originType(nextHop string) string {
+	switch strings.TrimSpace(nextHop) {
+	case "":
+		return "unknown"
+	case "0.0.0.0", "::":
+		return "local"
+	}
+	return "learned"
 }
