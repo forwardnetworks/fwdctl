@@ -379,3 +379,25 @@ func TestInventoryCompareFlagsATypeThatLostAndGainedAboutTheSameNumberAsLikelyRe
 		t.Errorf("the finding must say so: %s", r.Finding)
 	}
 }
+
+func TestInventoryCloudRoutesNamesTheValidAccountsWhenTheAccountFilterMatchesNothing(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		snapsPath: ready("s1"),
+		nqePath: func(_ *http.Request, body []byte) (int, any) {
+			q := string(body)
+			if strings.Contains(q, "vpc.routeTables") {
+				return 200, map[string]any{"items": []any{}, "totalNumItems": 0}
+			}
+			return 200, map[string]any{"items": []any{map[string]any{"Account": "Demo Snapshot"}, map[string]any{"Account": "prod-aws"}}, "totalNumItems": 2}
+		},
+	}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"cloud_routes","account":"eng"}`)
+	l := strings.Join(r.Limits, " | ")
+	if r.Status != result.Unknown || !strings.Contains(l, "Demo Snapshot, prod-aws") || !strings.Contains(l, `"eng" is not one of them`) || !strings.Contains(l, "goes in name") {
+		t.Fatalf("%s %v", r.Status, r.Limits)
+	}
+	r, _ = mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"cloud_routes","account":"prod-aws","name":"nope"}`)
+	if !strings.Contains(strings.Join(r.Limits, " | "), `account "prod-aws" exists`) {
+		t.Errorf("a valid account with no match points at the VPC filter: %v", r.Limits)
+	}
+}

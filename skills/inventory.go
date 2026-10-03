@@ -452,6 +452,10 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		switch in.Kind {
 		case "igp_neighbors":
 			limits = append(limits, "OSPF adjacencies only: Forward's model has no IS-IS, EIGRP or RIP adjacencies, so an empty list does not mean none run (inspect-device-files can read the device's own routing-protocol output)")
+		case "cloud_routes", "cloud_security", "cloud_gateways":
+			limits = append(limits, cloudFilterHint(ctx, s, in, cx)...)
+		}
+		switch in.Kind {
 		case "cloud_subnets", "cloud_instances", "cloud", "cloud_accounts":
 			limits = append(limits, "nothing here proves the cloud account is empty: Collected true does not mean every resource type was read. Check cloud_accounts for Collected, investigate-collection-failure view exceptions for collector errors, and inspect-collection view config for the cloud setup's regions")
 		}
@@ -647,4 +651,32 @@ func nameGlobOf(name string) (string, error) {
 		return "", fmt.Errorf("%w: name is a plain substring of the device name (case-insensitive), not a pattern: it may not contain * ? [ ] or a backslash", ErrInvalidInput)
 	}
 	return "*" + strings.ToLower(name) + "*", nil
+}
+
+// cloudFilterHint says which cloud account names exist when a cloud kind found nothing for the account filter, and when the value given is a VPC name instead (the account filter
+// matches an account NAME exactly; a VPC goes in name). It reads the account list once and is silent when that read fails or no account was given.
+func cloudFilterHint(ctx context.Context, s *fwd.Session, in inventoryInput, cx result.Context) []string {
+	if in.Account == "" {
+		return nil
+	}
+	out, err := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: invCloudAccounts, Parameters: map[string]any{"accountName": ""}, SnapshotID: fwd.SnapshotID(cx), Limit: 50})
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, r := range fwd.Records(out.Items) {
+		if n := fmt.Sprint(r["Account"]); n != "" && n != "<nil>" {
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	hint := fmt.Sprintf("account is matched against the cloud account NAME exactly; the accounts in this snapshot are: %s", strings.Join(names, ", "))
+	for _, n := range names {
+		if n == in.Account {
+			return []string{fmt.Sprintf("account %q exists, so the filter that matched nothing is name (a VPC or VNet name, exact) or the account has none of this kind", in.Account)}
+		}
+	}
+	return []string{hint + fmt.Sprintf("; %q is not one of them (a VPC or VNet name goes in name, not account)", in.Account)}
 }

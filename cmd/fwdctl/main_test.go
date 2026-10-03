@@ -74,7 +74,8 @@ func TestUnknownNeverExitsZero(t *testing.T) {
 	}
 }
 
-func TestBadInputAndUnknownSkillAreUsageErrorsWithNoOutput(t *testing.T) {
+// Bad input is exit 64 and a usage line on stderr; when the input parsed as an object and the name is a skill, stdout also carries an error envelope so a JSON consumer never sees an empty or plain-text stdout.
+func TestBadInputAndUnknownSkillAreUsageErrors(t *testing.T) {
 	for name, tc := range map[string]struct {
 		args  []string
 		stdin string
@@ -87,8 +88,14 @@ func TestBadInputAndUnknownSkillAreUsageErrorsWithNoOutput(t *testing.T) {
 		"procedure only":   {[]string{"run", "author-nqe-query"}, `{"network_id":"n1"}`},
 	} {
 		code, out, _ := call(t, tc.args, tc.stdin, map[string]fwdtest.Handler{})
-		if code != 64 || out != "" {
+		if code != 64 {
 			t.Errorf("%s: code %d out %q", name, code, out)
+		}
+		if out != "" {
+			var res result.Result
+			if json.Unmarshal([]byte(out), &res) != nil || res.Status != result.Error {
+				t.Errorf("%s: stdout, when present, is an error envelope: %q", name, out)
+			}
 		}
 	}
 }

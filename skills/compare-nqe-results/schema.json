@@ -1,13 +1,55 @@
 {
   "type": "object",
-  "required": ["network_id", "before_snapshot_id", "after_snapshot_id", "query_id"],
+  "required": [
+    "network_id",
+    "before_snapshot_id",
+    "after_snapshot_id",
+    "query_id"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "before_snapshot_id": { "type": "string", "minLength": 1 },
-    "after_snapshot_id": { "type": "string", "minLength": 1 },
-    "query_id": { "type": "string", "minLength": 1 },
-    "commit_id": { "type": "string", "minLength": 1 },
-    "limit": { "type": "integer", "minimum": 1 }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "before_snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "after_snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "after_network_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "compare two networks: before_snapshot_id is read in network_id, after_snapshot_id in this network; the saved query runs on both and rows are diffed here by key"
+    },
+    "key": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "with after_network_id: the result columns that identify a row (default: the whole row, so only rows on one side are found)"
+    },
+    "ignore": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "with after_network_id: columns dropped from both sides before comparing (names or ids expected to differ between networks)"
+    }
   }
 }

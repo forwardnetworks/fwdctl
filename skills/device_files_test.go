@@ -136,3 +136,24 @@ func TestDeviceFilesOfACloudAccountSaysTheCollectedJSONIsNotReachable(t *testing
 		t.Fatalf("%s %v", r.Status, r.Limits)
 	}
 }
+
+func TestDeviceFilesSearchWithoutAFileSearchesEveryFileAndSaysWhichHadMatches(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		filesPath: fwdtest.Const(200, map[string]any{"files": []any{
+			map[string]any{"name": "config.txt", "bytes": 100}, map[string]any{"name": "vxlan.txt", "bytes": 50}, map[string]any{"name": "other.txt", "bytes": 10}}}),
+		filePath: fwdtest.Const(200, []byte("hostname r1\nvxlan vlan 10 vni 5010\nvxlan vlan 20 vni 5020\n")),
+		"GET /api/networks/n1/devices/r1/files/vxlan.txt": fwdtest.Const(200, []byte("VTEP 10.0.0.2 vxlan vlan 10\n")),
+		"GET /api/networks/n1/devices/r1/files/other.txt": fwdtest.Const(200, []byte("nothing here\n")),
+	}
+	r, _ := devFiles(t, routes, `{"network_id":"n1","device":"r1","mode":"search","pattern":"vxlan vlan"}`)
+	d := fmt.Sprint(r.Evidence[0].Detail)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "3 line(s) in 2 of 3 file(s)") || !strings.Contains(d, "file:vxlan.txt matches:1") || strings.Contains(d, "other.txt") {
+		t.Fatalf("%s %s", r.Finding, d)
+	}
+	if r, _ := devFiles(t, routes, `{"network_id":"n1","device":"r1","mode":"search","pattern":"zzz-none"}`); r.Status != result.Unknown {
+		t.Errorf("no match anywhere is unknown, not 'absent': %s", r.Status)
+	}
+	if _, _, err := runSkill(t, "inspect-device-files", routes, `{"network_id":"n1","device":"r1","mode":"read"}`); err != nil {
+		t.Errorf("read without file is an error result, not a crash: %v", err)
+	}
+}

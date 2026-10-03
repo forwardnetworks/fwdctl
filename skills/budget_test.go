@@ -70,6 +70,7 @@ const (
 var wideReadSkills = map[string]int{
 	"check-network-compliance": 11,
 	"inspect-bgp-neighbors":    12,
+	"compare-nqe-results":      9, // after_network_id, key and ignore compare two networks
 	"inspect-device-files":     11,
 	"investigate-reachability": 10,
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.

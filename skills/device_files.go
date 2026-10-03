@@ -90,7 +90,7 @@ func inspectDeviceFiles(ctx context.Context, s *fwd.Session, raw json.RawMessage
 	if in.Mode == "list" {
 		return listDeviceFiles(ctx, s, in, cx, sid, limits)
 	}
-	if in.File == "" {
+	if in.File == "" && in.Mode != "search" {
 		return result.NewError(deviceFilesName, "mode "+in.Mode+" needs file; use mode list to see the names", cx), nil
 	}
 	var re *regexp.Regexp
@@ -101,6 +101,9 @@ func inspectDeviceFiles(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		if re, err = regexp.Compile(in.Pattern); err != nil {
 			return result.NewError(deviceFilesName, "pattern is not a valid regular expression: "+err.Error(), cx), nil
 		}
+	}
+	if in.File == "" {
+		return searchAllFiles(ctx, s, in, cx, sid, re, limits)
 	}
 	data, truncated, err := s.DeviceFile(ctx, in.NetworkID, in.Device, in.File, sid, maxFileDownload)
 	if fwd.NotFound(err) {
@@ -229,4 +232,92 @@ func searchLines(lines []string, re *regexp.Regexp, in deviceFilesInput, show fu
 		return fmt.Sprintf("No line in %s matches %q", in.File, in.Pattern)
 	}
 	return fmt.Sprintf("%d line(s) in %s match %q", total, in.File, in.Pattern)
+}
+
+const (
+	maxSearchFiles = 100
+	maxSearchBytes = 64 << 20
+)
+
+// searchAllFiles is mode search with no file: the pattern is searched in every collected file of one device (up to maxSearchFiles files and maxSearchBytes in all), answering "which of
+// this device's files mention X". Each file's match count is listed; the first max_matches matching lines overall are shown with their file and line number.
+func searchAllFiles(ctx context.Context, s *fwd.Session, in deviceFilesInput, cx result.Context, sid string, re *regexp.Regexp, limits []string) (result.Result, error) {
+	files, err := s.DeviceFiles(ctx, in.NetworkID, in.Device, sid)
+	if fwd.NotFound(err) {
+		return result.NewUnknown(deviceFilesName, fmt.Sprintf("Forward has no device %q in this snapshot", in.Device), cx,
+			append(limits, "device not found; names are exact (use inspect-inventory kind devices)"), result.Options{NextActions: []string{"inspect-inventory"}})
+	}
+	if err != nil {
+		return result.Result{}, err
+	}
+	if len(files) == 0 {
+		return result.NewUnknown(deviceFilesName, fmt.Sprintf("Forward holds no collected files for %q", in.Device), cx,
+			append(limits, "no files: the device was not collected, or its files were not kept"), result.Options{NextActions: []string{"investigate-collection-failure"}})
+	}
+	if in.MaxMatches <= 0 {
+		in.MaxMatches = defaultMatches
+	}
+	in.MaxMatches = min(in.MaxMatches, maxMatches)
+	redacted := 0
+	show := func(l string) string {
+		if !in.NoRedact {
+			if r, ok := redact(l); ok {
+				redacted++
+				l = r
+			}
+		}
+		return clipLine(l)
+	}
+	var perFile, hits []map[string]any
+	read, total, skipped, unread := 0, 0, 0, 0
+	var bytesRead int64
+	for i, f := range files {
+		if i >= maxSearchFiles || bytesRead >= maxSearchBytes {
+			skipped = len(files) - i
+			break
+		}
+		data, _, ferr := s.DeviceFile(ctx, in.NetworkID, in.Device, f.Name, sid, maxFileDownload)
+		if ferr != nil {
+			unread++
+			continue
+		}
+		read++
+		bytesRead += int64(len(data))
+		lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+		n := 0
+		for j, l := range lines {
+			if !re.MatchString(l) {
+				continue
+			}
+			n++
+			if len(hits) < in.MaxMatches {
+				hits = append(hits, map[string]any{"file": f.Name, "line": j + 1, "text": show(l)})
+			}
+		}
+		if n > 0 {
+			perFile = append(perFile, map[string]any{"file": f.Name, "matches": n})
+			total += n
+		}
+	}
+	if skipped > 0 {
+		limits = append(limits, fmt.Sprintf("%d file(s) were not searched: at most %d files and %d MiB are read per search; give file to search one", skipped, maxSearchFiles, maxSearchBytes>>20))
+	}
+	if unread > 0 {
+		limits = append(limits, fmt.Sprintf("%d file(s) could not be read and are not covered", unread))
+	}
+	if redacted > 0 {
+		limits = append(limits, fmt.Sprintf("%d line(s) had a secret value replaced with <redacted> (best effort; set no_redact to see them)", redacted))
+	}
+	limits = append(limits, "each file is read up to 4 MiB; a longer file is searched only in its first 4 MiB")
+	base := map[string]any{"device": in.Device, "pattern": in.Pattern, "files_in_device": len(files), "files_searched": read, "matches": total, "files_with_matches": perFile, "hits": hits}
+	if total == 0 {
+		return result.NewUnknown(deviceFilesName, fmt.Sprintf("No line in the %d searched file(s) of %s matches %q", read, in.Device, in.Pattern), cx,
+			append(limits, "no line matched; the setting may be absent, spelled differently in this vendor's syntax, or not collected"), result.Options{NextActions: []string{"check-network-compliance"}})
+	}
+	if total > len(hits) {
+		limits = append(limits, fmt.Sprintf("%d lines match; the first %d are shown (raise max_matches, or narrow the pattern or give file)", total, len(hits)))
+	}
+	finding := fmt.Sprintf("%d line(s) in %d of %d file(s) of %s match %q", total, len(perFile), read, in.Device, in.Pattern)
+	return result.Build(deviceFilesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"check-network-compliance"},
+		Evidence: []result.Evidence{result.NewEvidence(result.EvConfig, "downloadDeviceFile", cx.SnapshotID, base, finding)}})
 }

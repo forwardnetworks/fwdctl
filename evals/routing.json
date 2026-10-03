@@ -516,5 +516,10 @@
   "query": "collection takes hours now and it used to take about one; is the collector the bottleneck?",
   "expect": "investigate-collection-failure",
   "rival": "inspect-collection"
+ },
+ {
+  "query": "Compare the devices and cloud routes of two networks, a seed and a lab",
+  "expect": "inspect-inventory",
+  "rival": "compare-nqe-results"
  }
 ]

@@ -53,6 +53,8 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Drive a synthetic node (internet, intranet, L3 VPN, L2 VPN, adjacent network) from a saved NQE query, or take it off | `edit-synthetic-query` (dry run first) |
 | Add a link Forward missed, or ignore a wrong one, in a snapshot's topology | `edit-link-overrides` (dry run first) |
 | What a device connects to, which sites, tags or aliases exist | `inspect-topology` |
+| A cloud account shows fewer routes than expected, a VPC route table, cloud routes or next hops | `inspect-inventory` with kind `cloud_routes` (`account` is the cloud account NAME, `name` the VPC; kind `cloud_accounts` lists the accounts) |
+| Compare two networks (a seed and a lab, production and a copy): devices, interfaces, links, cloud routes; there is no cross-network compare | `compare-nqe-results` with `after_network_id` (a saved query run on both networks, rows diffed by `key`, `ignore` for fields that should differ); with no saved query, read the same `inspect-inventory` kind on each network and diff (compare-device-config diffs two snapshots of one network) |
 | Counting or listing devices, interfaces, VLANs, VRFs, hosts, cloud resources ("how many", "list all", "per vendor") | `inspect-inventory` |
 | The literal config text or a "show" output of one device ("what does the config say", "grep the config") | `inspect-device-files` |
 | "Which devices' config files changed between snapshots", what lines were added or removed | `compare-device-config` |

@@ -22,6 +22,10 @@ type compareNQEInput struct {
 	QueryID          string `json:"query_id"`
 	CommitID         string `json:"commit_id"`
 	Limit            int    `json:"limit"`
+	// AfterNetworkID makes it a comparison of two networks: before_snapshot_id is read in network_id, after_snapshot_id in this network. Key and Ignore apply only then.
+	AfterNetworkID string   `json:"after_network_id"`
+	Key            []string `json:"key"`
+	Ignore         []string `json:"ignore"`
 }
 
 const (
@@ -38,6 +42,12 @@ func compareNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 		in.Limit = defaultDiffRows
 	}
 	in.Limit = min(in.Limit, maxDiffRows)
+	if in.AfterNetworkID != "" && in.AfterNetworkID != in.NetworkID {
+		return compareAcrossNetworks(ctx, s, in)
+	}
+	if len(in.Key) > 0 || len(in.Ignore) > 0 {
+		return result.Result{}, fmt.Errorf("%w: key and ignore apply only to a comparison of two networks (give after_network_id)", ErrInvalidInput)
+	}
 	before, err := s.Snapshot(ctx, in.NetworkID, in.BeforeSnapshotID)
 	if err != nil {
 		return result.Result{}, err

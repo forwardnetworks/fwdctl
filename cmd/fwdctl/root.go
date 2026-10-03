@@ -521,6 +521,10 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 	warnInsecure(a.err, sess)
 	r, err := skills.Run(context.Background(), name, sess, raw)
 	if errors.Is(err, skills.ErrInvalidInput) || errors.Is(err, skills.ErrUnknown) {
+		// a consumer that parses stdout gets the same envelope as for any other failure, with status error; the plain line still goes to stderr and the exit status stays 64
+		if format == "json" {
+			a.emit(result.NewError(name, err.Error(), result.Context{NetworkID: networkOf(obj)}))
+		}
 		return fail("%v", err)
 	}
 	if err != nil {
