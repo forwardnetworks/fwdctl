@@ -13,6 +13,11 @@ var ErrNotInThisBuild = errors.New("NQE authoring tools (lint, format, editor su
 // UseOrgSchema is unavailable in the public source build.
 func UseOrgSchema([]byte) (added, removed int, err error) { return 0, 0, ErrNotInThisBuild }
 
+// UseOrgSchemaDiff is unavailable in the public source build.
+func UseOrgSchemaDiff([]byte) (added, removed int, removedPaths []string, err error) {
+	return 0, 0, nil, ErrNotInThisBuild
+}
+
 // ResetOrgSchema is a no-op in the public source build.
 func ResetOrgSchema() {}
 

@@ -25,6 +25,8 @@ type inventoryInput struct {
 	Name       string `json:"name"`
 	Limit      int    `json:"limit"`
 	Offset     int    `json:"offset"`
+	// Vendor keeps the devices of one vendor (kinds devices and security_rules_experimental): Forward's vendor name, case-insensitive, such as FORTINET or CISCO.
+	Vendor string `json:"vendor"`
 	// CompareToSnapshotID (kind devices) lists the devices added and removed since another snapshot.
 	CompareToSnapshotID string `json:"compare_to_snapshot_id"`
 	// IPs belongs to kind ip_owner: the IPv4 addresses whose owning interface to find.
@@ -36,9 +38,9 @@ const (
 	// the security rules model is experimental (PAN-OS and FortiOS; FortiOS native rules are off unless the org property NQE_SECURITY_RULES_FORTIOS is true): counts only, per device
 	// and scope. invSecurityRules uses the fields of a current build; invSecurityRulesCore only those every build with the model has.
 	invSecurityRules = `@query
-query(deviceName: String) =
+query(deviceName: String, nameGlob: String, vendorName: String) =
 foreach device in network.devices
-where (deviceName == "" || device.name == deviceName) && isPresent(device.securityPolicy)
+where (deviceName == "" || device.name == deviceName) && (nameGlob == "" || matches(toLowerCase(device.name), nameGlob)) && (vendorName == "" || toString(device.platform.vendor) == vendorName) && isPresent(device.securityPolicy)
 foreach scope in device.securityPolicy.scopes
 select {
   Device: device.name,
@@ -53,11 +55,11 @@ select {
   "User objects": length(scope.userObjects),
   "User groups": length(scope.userGroups)
 }
-order by Device asc natural;`
+order by Rules desc, "Address objects" desc, Device asc natural;`
 	invSecurityRulesCore = `@query
-query(deviceName: String) =
+query(deviceName: String, nameGlob: String, vendorName: String) =
 foreach device in network.devices
-where (deviceName == "" || device.name == deviceName) && isPresent(device.securityPolicy)
+where (deviceName == "" || device.name == deviceName) && (nameGlob == "" || matches(toLowerCase(device.name), nameGlob)) && (vendorName == "" || toString(device.platform.vendor) == vendorName) && isPresent(device.securityPolicy)
 foreach scope in device.securityPolicy.scopes
 select {
   Device: device.name,
@@ -69,12 +71,12 @@ select {
   Regions: length(scope.regions),
   "User objects": length(scope.userObjects)
 }
-order by Device asc natural;`
+order by Rules desc, "Address objects" desc, Device asc natural;`
 
 	invDevices = `@query
-query(deviceName: String, nameGlob: String) =
+query(deviceName: String, nameGlob: String, vendorName: String) =
 foreach device in network.devices
-where (deviceName == "" || device.name == deviceName) && (nameGlob == "" || matches(toLowerCase(device.name), nameGlob))
+where (deviceName == "" || device.name == deviceName) && (nameGlob == "" || matches(toLowerCase(device.name), nameGlob)) && (vendorName == "" || toString(device.platform.vendor) == vendorName)
 select {
   Device: device.name,
   Vendor: device.platform.vendor,
@@ -445,7 +447,7 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		if gerr != nil {
 			return result.Result{}, gerr
 		}
-		query, params["deviceName"], params["nameGlob"] = invDevices, in.Device, glob
+		query, params["deviceName"], params["nameGlob"], params["vendorName"] = invDevices, in.Device, glob, vendorParam(in.Vendor)
 	case "security_rules_experimental":
 		return inventorySecurityRules(ctx, s, in, cx, limits)
 	case "interfaces":
@@ -644,7 +646,7 @@ func inventorySummary(ctx context.Context, s *fwd.Session, in inventoryInput, cx
 
 // kindFilters are the filter inputs each kind of rows takes; a filter a kind does not take is refused, never silently ignored (a no-op filter that still says "123 match" misleads).
 var kindFilters = map[string][]string{
-	"summary": {}, "security_rules_experimental": {"device"}, "devices": {"device", "name"}, "interfaces": {"device", "name"}, "vlans": {"device", "name"}, "vrfs": {"device", "name"}, "hosts": {"device", "name"},
+	"summary": {}, "security_rules_experimental": {"device", "name", "vendor"}, "devices": {"device", "name", "vendor"}, "interfaces": {"device", "name"}, "vlans": {"device", "name"}, "vrfs": {"device", "name"}, "hosts": {"device", "name"},
 	"routes": {"device", "name"}, "igp_neighbors": {"device", "name"},
 	"cloud": {"account", "name"}, "cloud_routes": {"account", "name"}, "cloud_security": {"account", "name"}, "cloud_gateways": {"account", "name"},
 	"cloud_subnets": {"account", "name"}, "cloud_instances": {"account", "name"}, "cloud_accounts": {"account"},
@@ -667,7 +669,7 @@ func checkKindFilters(in inventoryInput, raw json.RawMessage) error {
 		ok2[k] = true
 	}
 	var bad []string
-	for _, k := range []string{"device", "account", "name"} {
+	for _, k := range []string{"device", "account", "name", "vendor"} {
 		if _, there := present[k]; there && !ok2[k] {
 			bad = append(bad, k)
 		}
@@ -727,7 +729,12 @@ func cloudFilterHint(ctx context.Context, s *fwd.Session, in inventoryInput, cx 
 // model is PAN-OS and FortiOS only, FortiOS is off unless the org property NQE_SECURITY_RULES_FORTIOS is true, and it changes between builds, so the result is marked experimental,
 // empty is never read as "no rules", and the fields of a current build fall back to a core set when the org's build lacks them.
 func inventorySecurityRules(ctx context.Context, s *fwd.Session, in inventoryInput, cx result.Context, limits []string) (result.Result, error) {
-	params := map[string]any{"deviceName": in.Device}
+	glob, gerr := nameGlobOf(in.Name)
+	if gerr != nil {
+		return result.Result{}, gerr
+	}
+	params := map[string]any{"deviceName": in.Device, "nameGlob": glob, "vendorName": vendorParam(in.Vendor)}
+	limits = append(limits, "rows are ordered by rule count, then address objects, largest first; name is a substring of the device name and vendor is Forward's vendor name (FORTINET, PALO_ALTO_NETWORKS...)")
 	limits = append(limits, "EXPERIMENTAL: Forward's security rules model (device.securityPolicy) is experimental and changes between builds; it covers PAN-OS and FortiOS, FortiOS native rules only when the organization property NQE_SECURITY_RULES_FORTIOS is true (inspect-environment shows it), and PAN-OS native rules sit behind their own flag. Do not treat these counts as a complete policy")
 	full := true
 	out, err := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: invSecurityRules, Parameters: params, SnapshotID: fwd.SnapshotID(cx), Limit: in.Limit, Offset: in.Offset})
@@ -764,4 +771,13 @@ func inventorySecurityRules(ctx context.Context, s *fwd.Session, in inventoryInp
 	detail := map[string]any{"kind": in.Kind, "experimental": true, "total": out.Total, "offset": in.Offset, "returned": len(rows), "current_build_fields": full, "by_vendor": vendors, "rows": rows}
 	return result.Build(inventoryName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-environment", "inspect-device-files"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, detail, finding)}})
+}
+
+// vendorParam is the vendor filter in the form NQE's toString writes an enumeration ("Vendor.FORTINET"); "" is no filter.
+func vendorParam(v string) string {
+	v = strings.ToUpper(strings.TrimSpace(v))
+	if v == "" {
+		return ""
+	}
+	return "Vendor." + strings.TrimPrefix(v, "VENDOR.")
 }

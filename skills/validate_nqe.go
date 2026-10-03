@@ -60,6 +60,7 @@ func validateNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			[]string{err.Error()}, result.Options{})
 	}
 	if diags, msg, ok := fwd.QueryErrors(err); ok {
+		diags = fwd.AnnotateDiagnostics(in.Query, diags)
 		detail := map[string]any{"message": msg, "diagnostics": diags}
 		if offline := nqelint.Lint(in.Query); len(offline) > 0 {
 			detail["offline_lint"] = offline // the same query read by our own parser: syntax errors and deprecations, with 1-based positions

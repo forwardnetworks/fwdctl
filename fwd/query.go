@@ -97,6 +97,30 @@ type QueryDiagnostic struct {
 	Message string `json:"message"`
 	Line    *int32 `json:"line"`
 	Column  *int32 `json:"column"`
+	// SourceLine is the query's own text on the diagnostic's line, and Hint what Forward's short message leaves out; both are added by AnnotateDiagnostics.
+	SourceLine string `json:"source_line,omitempty"`
+	Hint       string `json:"hint,omitempty"`
+}
+
+// AnnotateDiagnostics adds to each diagnostic the line of src it points at, and, for the messages that say too little, what they mean. Forward's "Invalid module path" names
+// neither the path nor the reason; the line shows the import it stopped at. Line and Column are Forward's, which count from 0 (the query's first line is 0).
+func AnnotateDiagnostics(src string, diags []QueryDiagnostic) []QueryDiagnostic {
+	lines := strings.Split(src, "\n")
+	for i := range diags {
+		d := &diags[i]
+		if d.Line != nil {
+			for _, idx := range []int{int(*d.Line), int(*d.Line) - 1} { // Forward counts from 0; tolerate 1-based
+				if idx >= 0 && idx < len(lines) && strings.TrimSpace(lines[idx]) != "" {
+					d.SourceLine = strings.TrimSpace(lines[idx])
+					break
+				}
+			}
+		}
+		if strings.HasPrefix(d.Message, "Invalid module path") {
+			d.Hint = "Forward found no module at the path in source_line (it does not say whether the path is misspelled or the module is out of reach of this query). Check the path against the library (fwdctl nqe export writes the exact paths), and that the running login can read that module; `fwdctl nqe bundle` resolves the same import locally."
+		}
+	}
+	return diags
 }
 
 // QueryErrors extracts Forward's diagnostics when err is a rejected NQE query. ok is false for any other

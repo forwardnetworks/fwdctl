@@ -343,8 +343,14 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 	if err != nil {
 		if diags, msg, ok := fwd.QueryErrors(err); ok {
 			fmt.Fprintf(stderr, "the query does not compile: %s\n", msg)
-			for _, d := range diags {
+			for _, d := range fwd.AnnotateDiagnostics(string(src), diags) {
 				fmt.Fprintf(stderr, "  %s\n", d.Message)
+				if d.SourceLine != "" {
+					fmt.Fprintf(stderr, "    at: %s\n", d.SourceLine)
+				}
+				if d.Hint != "" {
+					fmt.Fprintf(stderr, "    %s\n", d.Hint)
+				}
 			}
 			return 1
 		}

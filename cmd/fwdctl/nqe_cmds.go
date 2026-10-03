@@ -50,11 +50,11 @@ func (a *app) nqeLint() *cobra.Command {
 				if err != nil {
 					return a.fail("could not read the organization's schema: %v", err)
 				}
-				added, removed, err := nqelint.UseOrgSchema(raw)
+				added, removed, removedPaths, err := nqelint.UseOrgSchemaDiff(raw)
 				if err != nil {
 					return a.fail("could not use the organization's schema: %v", err)
 				}
-				lintSchema = map[string]any{"source": "org", "fields_added": added, "fields_removed": removed,
+				lintSchema = map[string]any{"source": "org", "fields_added": added, "fields_removed": removed, "removed_paths": removedPaths,
 					"note": "fields_added are field paths the organization's schema has that this binary's embedded schema lacks; fields_removed are the reverse (a query using one of those fails on this organization)"}
 			}
 			if synthetic != "" {

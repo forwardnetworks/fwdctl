@@ -68,6 +68,11 @@
       "type": "string",
       "minLength": 1,
       "description": "kind devices: another snapshot to compare with; lists the devices added and removed since it, with counts by vendor, type and name prefix"
+    },
+    "vendor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "kinds devices and security_rules_experimental: only this vendor (Forward's vendor name, case-insensitive, such as FORTINET or CISCO)"
     }
   }
 }

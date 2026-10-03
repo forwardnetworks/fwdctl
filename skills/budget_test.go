@@ -75,7 +75,7 @@ var wideReadSkills = map[string]int{
 	"investigate-reachability": 10,
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.
 	"inspect-edge":                   12, // view exits | public_addresses | trace_sources
-	"inspect-inventory":              10, // kind ip_owner adds ips; kind devices adds compare_to_snapshot_id
+	"inspect-inventory":              11, // kind ip_owner adds ips; kind devices adds compare_to_snapshot_id
 	"verify-change":                  9,  // view describe adds device
 	"inspect-access":                 12, // view activity adds since, until, method and status
 	"investigate-collection-failure": 9,  // view slow adds compare_to_snapshot_id

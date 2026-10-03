@@ -426,3 +426,23 @@ func TestInventorySecurityRulesIsMarkedExperimentalFallsBackToCoreFieldsAndEmpty
 		t.Errorf("empty is unknown, not 'no rules': %s %v", r.Status, r.Limits)
 	}
 }
+
+func TestInventoryVendorFilterIsAParameterInForwardsEnumerationForm(t *testing.T) {
+	var got map[string]any
+	routes := map[string]fwdtest.Handler{
+		snapsPath: ready("s1"),
+		nqePath: func(_ *http.Request, body []byte) (int, any) {
+			var req map[string]any
+			_ = json.Unmarshal(body, &req)
+			got, _ = req["parameters"].(map[string]any)
+			return 200, map[string]any{"items": []any{map[string]any{"Device": "fw1", "Vendor": "FORTINET", "Rules": 5, "Address objects": 10}}, "totalNumItems": 1}
+		},
+	}
+	mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"security_rules_experimental","vendor":"fortinet","name":"FW"}`)
+	if got["vendorName"] != "Vendor.FORTINET" || got["nameGlob"] != "*fw*" {
+		t.Errorf("vendor and name are parameters, never spliced into the query: %v", got)
+	}
+	if _, _, err := runSkill(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"interfaces","vendor":"cisco"}`); err == nil {
+		t.Errorf("a filter a kind does not take is refused")
+	}
+}
