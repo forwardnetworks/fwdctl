@@ -8,7 +8,7 @@ func TestRouteFindsTheRightSkillOrPlaybook(t *testing.T) {
 	for q, want := range map[string]string{
 		"Why can't A reach B on tcp/443?":                             "plan-troubleshoot-connectivity",
 		"Which CVEs affect our devices?":                              "inspect-vulnerabilities",
-		"Is the network healthy?":                                     "plan-health-check",
+		"Is the network healthy?":                                     "plan-incident-triage",
 		"What changed since last week?":                               "plan-what-changed",
 		"Are the PCI and corporate zones isolated?":                   "plan-segmentation-check",
 		"Do we comply with the logging policy? I need audit evidence": "plan-compliance-audit",

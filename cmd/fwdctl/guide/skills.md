@@ -31,7 +31,7 @@ An applied result lists each change with the value it replaced and how to undo i
 ## Choosing a skill
 
 `fwdctl describe plan-investigation` maps a symptom to a skill. Two longer procedures, `plan-change-review` and
-`plan-health-check`, order several skills for "is this change safe" and "is the network healthy".
+`plan-incident-triage`, order several skills for "is this change safe" and "is the network healthy".
 
 Retired skill names still work: `analyze-blast-radius` runs `verify-change` with `view: impact`, `inspect-checks` runs
 `check-network-compliance` with `view: read`, and so on. `fwdctl list` shows the current names.

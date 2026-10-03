@@ -94,6 +94,7 @@ var aliases = map[string]alias{
 	"inspect-checks":                {"check-network-compliance", map[string]any{"view": "read"}, nil},
 	"review-change-set":             {"verify-change", map[string]any{"view": "describe"}, nil},
 	"plan-author-query":             {"author-nqe-query", nil, nil}, // a procedure folded into the authoring guide; it has no runner
+	"plan-health-check":             {"plan-incident-triage", nil, nil}, // folded in as its health check section
 	"find-ip-owner":                 {"inspect-inventory", map[string]any{"kind": "ip_owner"}, nil},
 	"find-public-addresses":         {"inspect-edge", map[string]any{"view": "public_addresses"}, nil},
 	"find-trace-source":             {"inspect-edge", map[string]any{"view": "trace_sources"}, nil},

@@ -27,7 +27,7 @@ func metas(t *testing.T) map[string]Meta {
 // Every procedure (a skill that does not run) must be reachable from the router: it is the only way an agent learns the procedure exists.
 func TestEveryProcedureIsNamedByTheRouter(t *testing.T) {
 	ms := metas(t)
-	router := ms["plan-investigation"].Body
+	router := RouterText()
 	for name, m := range ms {
 		if !m.Runnable && name != "plan-investigation" && !strings.Contains(router, "`"+name+"`") {
 			t.Errorf("procedure %s is not named in plan-investigation", name)
@@ -84,7 +84,7 @@ func TestEveryWriteSkillIsInTheWriteProtocol(t *testing.T) {
 		if !found {
 			t.Errorf("write skill %s is not in plan-safe-write's tools", name)
 		}
-		if !strings.Contains(ms["plan-investigation"].Body, "`"+name+"`") {
+		if !strings.Contains(RouterText(), "`"+name+"`") {
 			t.Errorf("write skill %s is not routed by plan-investigation", name)
 		}
 	}

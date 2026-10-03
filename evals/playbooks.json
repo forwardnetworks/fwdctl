@@ -65,7 +65,7 @@
  },
  {
   "query": "Is the network healthy right now?",
-  "playbook": "plan-health-check",
+  "playbook": "plan-incident-triage",
   "steps": [
    "inspect-snapshots",
    "inspect-collection",

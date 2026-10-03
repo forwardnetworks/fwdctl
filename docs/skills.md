@@ -54,7 +54,6 @@ Policy checks, evidence, a device or a site under review.
 
 Is the data current, is collection working, is anything stressed.
 
-- **Playbook** `plan-health-check`: The order of skills that decide whether the network is healthy
 - `inspect-snapshots`: Which snapshots exist, which is the newest one worth reading, which are predictions, and how complete is one?
 - `inspect-collection`: Is collection running or healthy now (view status), and what is Forward configured to collect, with credentials never shown (view config)?
 - `inspect-performance`: Which devices and interfaces are unhealthy right now (CPU, memory, utilization, errors, loss), and what is their history?

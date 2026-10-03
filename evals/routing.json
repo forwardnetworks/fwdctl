@@ -81,13 +81,13 @@
  },
  {
   "query": "Give me a health check of the network",
-  "expect": "plan-health-check",
+  "expect": "plan-incident-triage",
   "rival": "inspect-performance"
  },
  {
   "query": "Is any device over 90% CPU?",
   "expect": "inspect-performance",
-  "rival": "plan-health-check"
+  "rival": "plan-incident-triage"
  },
  {
   "query": "Can host A reach host B on tcp/443?",

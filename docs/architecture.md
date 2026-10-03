@@ -92,7 +92,7 @@ The playbooks, which carry the order of a task:
 - **Security:** `plan-security-posture`, `plan-vulnerability-response`, `plan-segmentation-check`
 - **Audit:** `plan-compliance-audit`, `plan-device-audit`
 - **Change:** `plan-change-review`, `plan-maintenance-window`
-- **Health:** `plan-health-check`
+- **Health:** `plan-incident-triage`
 - **Authoring:** `author-nqe-query`
 
 How each consumer gets all this:

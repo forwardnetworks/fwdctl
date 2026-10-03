@@ -233,7 +233,7 @@ func (a *app) whichCmd() *cobra.Command {
 			if sug == nil {
 				sug = []skills.Suggestion{}
 			}
-			a.emit(map[string]any{"suggestions": sug, "note": "an offline first guess from plan-investigation's table; read it with `fwdctl describe plan-investigation`. A playbook (playbook: true) does not run: read it with `fwdctl describe <name>` and follow its steps."})
+			a.emit(map[string]any{"suggestions": sug, "note": "an offline first guess from plan-investigation's table; read the full table with `fwdctl describe plan-investigation reference/router.md`. A playbook (playbook: true) does not run: read it with `fwdctl describe <name>` and follow its steps."})
 			return nil
 		},
 	}

@@ -1,10 +1,10 @@
 ---
 name: plan-incident-triage
-description: Sequences the skills that triage an outage with unknown cause. Use when asked what is wrong right now or where to start.
+description: Sequences the skills that check network health or triage an outage of unknown cause. Use for a health check or what is wrong now.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "investigate"
-  summary: "outage, cause unknown"
+  summary: "health check, outage triage"
   maturity: "2"
   tools: "inspect-snapshots, inspect-collection, inspect-performance, check-network-compliance, inspect-history, investigate-reachability, plan-what-changed, plan-troubleshoot-connectivity"
 ---
@@ -28,6 +28,15 @@ Before you answer, take at least: the age of the picture (step 1), what changed 
 ## Answering
 
 A short ranked list of leads, each with its evidence and snapshot, and an explicit list of what could not be seen (live state, events between collections, devices not collected). Recommend the next check; do not claim a root cause from correlation, and never change a device.
+
+## Health check (no incident reported)
+
+Healthy is a claim about measured things; absence of an alarm is not health. Use steps 1, 3 and 4 above, plus collection from step 1 (`inspect-collection` view status; for missing devices `investigate-collection-failure` view `triage` first), and:
+
+- Take at least: data freshness, collection, and either performance or policy. Stop earlier only when the evidence already answers the question, and say so.
+- Trust an empty performance list only when the result says samples exist; otherwise it is unknown.
+- For each failing check that matters, `inspect-history` shows when it last changed (`plan-what-changed` for the configuration behind it).
+- Report each area as ok, failed or unknown with its snapshot and time. Never summarise a set of unknowns as healthy: name what was not measured, and offer the next skill for each failed area instead of fixing it.
 
 ## Worked example
 

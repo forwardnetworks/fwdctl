@@ -39,7 +39,7 @@
   {
    "query": "Is the network healthy?",
    "should_trigger": false,
-   "note": "plan-health-check"
+   "note": "plan-incident-triage"
   }
  ],
  "measure": [

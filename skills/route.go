@@ -62,7 +62,7 @@ func Route(question string, limit int) ([]Suggestion, error) {
 	for _, m := range ms {
 		known[m.Name] = m
 		if m.Name == "plan-investigation" {
-			body = m.Body
+			body = RouterText()
 		}
 	}
 	want := routeWords(question)
@@ -147,4 +147,18 @@ func Route(question string, limit int) ([]Suggestion, error) {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// RouterText is everything the router says in tables: the playbook table in plan-investigation's SKILL.md and the symptom table in its reference/router.md.
+func RouterText() string {
+	body := ""
+	if ms, err := All(); err == nil {
+		for _, m := range ms {
+			if m.Name == "plan-investigation" {
+				body = m.Body
+			}
+		}
+	}
+	ref, _ := Reference("plan-investigation", "reference/router.md")
+	return body + "\n" + ref
 }
