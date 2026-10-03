@@ -401,3 +401,28 @@ func TestInventoryCloudRoutesNamesTheValidAccountsWhenTheAccountFilterMatchesNot
 		t.Errorf("a valid account with no match points at the VPC filter: %v", r.Limits)
 	}
 }
+
+func TestInventorySecurityRulesIsMarkedExperimentalFallsBackToCoreFieldsAndEmptyIsNotNoRules(t *testing.T) {
+	row := map[string]any{"Device": "fw1", "Vendor": "FORTINET", "Scope": "root", "Rulebases": 2, "Rules": 40, "Address objects": 900}
+	calls := 0
+	routes := map[string]fwdtest.Handler{
+		snapsPath: ready("s1"),
+		nqePath: func(_ *http.Request, body []byte) (int, any) {
+			calls++
+			if strings.Contains(string(body), "dynamicAddressObjects") { // an older build lacks the newer fields
+				return 400, map[string]any{"message": "Error encountered while executing the NQE query", "errors": []any{map[string]any{"message": "Record does not have field: dynamicAddressObjects"}}}
+			}
+			return 200, map[string]any{"items": []any{row}, "totalNumItems": 1}
+		},
+	}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"security_rules_experimental"}`)
+	l := strings.Join(r.Limits, " | ")
+	if r.Status != result.OK || !strings.Contains(r.Finding, "EXPERIMENTAL") || !strings.Contains(l, "NQE_SECURITY_RULES_FORTIOS") || !strings.Contains(l, "lacks some current security-model fields") || calls != 2 || !strings.Contains(jsonOf(r), `"experimental":true`) {
+		t.Fatalf("%s %s calls=%d", r.Status, r.Finding, calls)
+	}
+	routes[nqePath] = fwdtest.Const(200, map[string]any{"items": []any{}, "totalNumItems": 0})
+	r, _ = mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"security_rules_experimental"}`)
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, "|"), "empty does not mean the devices have no rules") {
+		t.Errorf("empty is unknown, not 'no rules': %s %v", r.Status, r.Limits)
+	}
+}

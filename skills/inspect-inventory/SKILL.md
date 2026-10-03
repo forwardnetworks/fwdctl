@@ -30,6 +30,7 @@ reads and never judges: a row is a fact about the collected network, not a verdi
 | `hosts` | device, host name, type, addresses, MAC, interfaces | `device`, `name` (host) |
 | `routes` | the forwarding table Forward modelled: device, VRF, prefix, origin protocol, next hop, interface, next-hop type (one row per next hop); the evidence also says per VRF whether an IPv4 **default route** exists, and the finding counts the VRFs without one | `device`, `name` (VRF) |
 | `igp_neighbors` | OSPF adjacencies: device, VRF, area, process, role, remote router id and address, local interface, cost, remote device (IS-IS, EIGRP and RIP are not in Forward's model) | `device`, `name` (VRF) |
+| `security_rules_experimental` | per device and scope: rule and object counts of Forward's **experimental** security rules model (see `reference/kinds.md`) | `device` |
 | `cloud_accounts` | one row per cloud account: name, id, cloud, **collected** (true/false), cloud setup, VPC, subnet and instance counts | `account` |
 | `cloud` | account, cloud, whether the account was collected, VPC name and id, regions, CIDR blocks, subnet and instance counts | `account`, `name` (VPC) |
 | `cloud_subnets` | per VPC: subnet name and id, region, zone, addresses, interface count, route table | `account`, `name` (VPC) |

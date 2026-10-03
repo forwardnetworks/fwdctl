@@ -7,6 +7,7 @@ Reference for the `inspect-inventory` kinds that need more than the table in the
 - kind devices with compare_to_snapshot_id
 - Snapshots that are not ready
 - kind ip_owner
+- kind security_rules_experimental
 
 ## cloud_accounts and the cloud kinds
 
@@ -27,3 +28,9 @@ Any kind on a snapshot that is not ready says its state instead of a bare "no pr
 ## kind ip_owner
 
 Answers "who owns this address" from the model, which the other kinds cannot be asked by address. Read every modelled IPv4 interface address (paged, bounded); for each address in `ips`: an exact owner (device, interface, subinterface, VRF, prefix length; more than one when several interfaces carry it), else the longest connected subnet that contains it with its interfaces, else no owner. IPv4 only. An owner is an interface of a collected device in this snapshot; no owner may mean the address is outside the network or on an uncollected device. A snapshot that is not ready is **unknown**. Evidence is one `nqe` item: `addresses` (each with `owner`, or `inside_connected_subnet` and `subnet_interfaces`, and a `note`), `owned` and `interface_addresses_read`; next: `investigate-reachability` to trace to or from the address.
+
+## kind security_rules_experimental
+
+Per device and scope (`device.securityPolicy.scopes`): `Rulebases`, `Rules` (summed over the rulebases), and the counts of address, dynamic address, region, zone, user and group objects. Counts only: not the rules themselves (read those from the device's own config with `inspect-device-files`, searching with no `file`).
+
+The model is **experimental** and changes between Forward builds. It covers PAN-OS and FortiOS; FortiOS native rules exist only when the organization property NQE_SECURITY_RULES_FORTIOS is true (`inspect-environment` lists it), PAN-OS native rules have their own flag, and other vendors are not covered. The result is marked `experimental: true`, and an empty result is **unknown**, never "no rules". If the organization's build lacks the newer fields (dynamic address objects, zone objects, user groups), those counts are left out and the limits say so; `fwdctl nqe lint --org` shows which fields the organization's schema has.

@@ -311,6 +311,9 @@ checked, since that library is per-organization and not sealed into this binary:
 Dead code is warned about, never an error (exit stays 0): an import none of whose names is used (unused-import), a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main
 expression or an export refers to (unused-definition). Lint a `nqe bundle` to find what a whole module tree never uses; an exported definition is never called dead, since
 another module may import it.
+The embedded schema is a release's; an organization on a newer build has fields it lacks (and may have dropped fields it still has). --org reads the organization's live schema
+(GET /api/nqe/schema; needs a login) and checks against that, so a field the organization no longer has is reported as an error, and the result says how many field paths the live schema
+has that the embedded one lacks and the reverse (schema.source, fields_added, fields_removed).
 
 ```
 fwdctl nqe lint [FILE|-] [flags]
@@ -327,6 +330,7 @@ Flags:
 
 ```
       --modules string     where "import" statements are read from (default: the directory of FILE)
+      --org                check against the organization's live schema instead of the embedded one (needs a login)
       --synthetic string   check the file as a synthetic-device query of this kind (adjacent-network|internet|intranet|l2vpn|l3vpn)
 ```
 

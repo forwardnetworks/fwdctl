@@ -31,7 +31,8 @@
         "cloud_subnets",
         "cloud_instances",
         "routes",
-        "igp_neighbors"
+        "igp_neighbors",
+        "security_rules_experimental"
       ]
     },
     "device": {

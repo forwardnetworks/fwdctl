@@ -10,6 +10,23 @@ import (
 // ErrNotInThisBuild is what the authoring features answer in a build from the public source.
 var ErrNotInThisBuild = errors.New("NQE authoring tools (lint, format, editor support) are not in this build: use an official fwdctl release binary")
 
+// UseOrgSchema is unavailable in the public source build.
+func UseOrgSchema([]byte) (added, removed int, err error) { return 0, 0, ErrNotInThisBuild }
+
+// ResetOrgSchema is a no-op in the public source build.
+func ResetOrgSchema() {}
+
+// Program is a parsed query; the public source build cannot parse NQE.
+type Program struct{ Imports []string }
+
+// Parse reports that the parser is not in this build.
+func Parse(string) (*Program, []Diagnostic) {
+	return nil, []Diagnostic{{Severity: "error", Code: "not-in-this-build", Message: ErrNotInThisBuild.Error()}}
+}
+
+// ExtensionRefs finds nothing in this build.
+func ExtensionRefs(string) []string { return nil }
+
 // Diagnostic is one finding. Line and Column are 1-based.
 type Diagnostic struct {
 	Severity string `json:"severity"`

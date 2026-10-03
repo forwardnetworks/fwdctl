@@ -7,6 +7,9 @@ NQE is Forward's query language. `fwdctl` has three tools for writing it, from f
     fwdctl nqe lint query.nqe
     cat query.nqe | fwdctl nqe lint
     fwdctl nqe lint -            # read stdin
+    fwdctl nqe lint --org q.nqe  # check against the organization's live schema (needs a login)
+
+The embedded schema is a release's. An organization on a newer Forward build has fields it lacks, and may have dropped fields it still has, so a correct query can show "Record does not have field" offline. `--org` reads `GET /api/nqe/schema` and checks against that; the result's `schema` block says how many field paths the organization has that the embedded schema lacks (`fields_added`) and the reverse (`fields_removed`: a query using one of those fails on that organization).
 
 No Forward connection, no login, no snapshot. It reads the query with a parser and type checker written for this tool and prints JSON:
 

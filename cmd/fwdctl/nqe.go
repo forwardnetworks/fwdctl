@@ -69,11 +69,13 @@ func nqeTool(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		Valid       bool                 `json:"valid"`
 		Diagnostics []nqelint.Diagnostic `json:"diagnostics"`
 		SchemaHints []nqeschema.Finding  `json:"schema_hints,omitempty"`
+		Schema      map[string]any       `json:"schema,omitempty"`
 		Note        string               `json:"note"`
 	}{Valid: !nqelint.HasErrors(diags), Diagnostics: diags, Note: "offline: syntax, names, types and deprecations; the type check is gradual (silent where a type is unknown), so validate-nqe-query has the last word"}
 	if out.Diagnostics == nil {
 		out.Diagnostics = []nqelint.Diagnostic{}
 	}
+	out.Schema = lintSchema
 	if m, err := nqeschema.Load(); err == nil {
 		out.SchemaHints = m.Check(string(src))
 	}
@@ -241,3 +243,6 @@ func nqeTemplate(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprint(stdout, string(b))
 	return 0
 }
+
+// lintSchema is set by `nqe lint --org` to describe the live schema the check ran against (nil: the embedded one).
+var lintSchema map[string]any

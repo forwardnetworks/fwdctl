@@ -41,6 +41,9 @@ type Model struct {
 // Load always fails in this build.
 func Load() (*Model, error) { return nil, ErrNoModel }
 
+// ParseModel always fails in this build: the data model is not shipped here.
+func ParseModel([]byte) (*Model, error) { return nil, ErrNoModel }
+
 // Available is false.
 func Available() bool { return false }
 

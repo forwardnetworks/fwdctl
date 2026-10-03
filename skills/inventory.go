@@ -33,6 +33,44 @@ type inventoryInput struct {
 
 // Every filter is a query parameter; "" means no filter. Nothing from the caller is spliced into the query text.
 const (
+	// the security rules model is experimental (PAN-OS and FortiOS; FortiOS native rules are off unless the org property NQE_SECURITY_RULES_FORTIOS is true): counts only, per device
+	// and scope. invSecurityRules uses the fields of a current build; invSecurityRulesCore only those every build with the model has.
+	invSecurityRules = `@query
+query(deviceName: String) =
+foreach device in network.devices
+where (deviceName == "" || device.name == deviceName) && isPresent(device.securityPolicy)
+foreach scope in device.securityPolicy.scopes
+select {
+  Device: device.name,
+  Vendor: device.platform.vendor,
+  Scope: scope.id,
+  Rulebases: length(scope.rulebases),
+  Rules: sum(foreach rb in scope.rulebases select length(rb.rules)),
+  "Address objects": length(scope.addressObjects),
+  "Dynamic address objects": length(scope.dynamicAddressObjects),
+  Regions: length(scope.regions),
+  "Zone objects": length(scope.zoneObjects),
+  "User objects": length(scope.userObjects),
+  "User groups": length(scope.userGroups)
+}
+order by Device asc natural;`
+	invSecurityRulesCore = `@query
+query(deviceName: String) =
+foreach device in network.devices
+where (deviceName == "" || device.name == deviceName) && isPresent(device.securityPolicy)
+foreach scope in device.securityPolicy.scopes
+select {
+  Device: device.name,
+  Vendor: device.platform.vendor,
+  Scope: scope.id,
+  Rulebases: length(scope.rulebases),
+  Rules: sum(foreach rb in scope.rulebases select length(rb.rules)),
+  "Address objects": length(scope.addressObjects),
+  Regions: length(scope.regions),
+  "User objects": length(scope.userObjects)
+}
+order by Device asc natural;`
+
 	invDevices = `@query
 query(deviceName: String, nameGlob: String) =
 foreach device in network.devices
@@ -408,6 +446,8 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			return result.Result{}, gerr
 		}
 		query, params["deviceName"], params["nameGlob"] = invDevices, in.Device, glob
+	case "security_rules_experimental":
+		return inventorySecurityRules(ctx, s, in, cx, limits)
 	case "interfaces":
 		query, params["deviceName"], params["ifaceName"] = invInterfaces, in.Device, in.Name
 	case "vlans":
@@ -522,6 +562,8 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 // noun is what a kind's rows are called in a sentence.
 func noun(kind string) string {
 	switch kind {
+	case "security_rules_experimental":
+		return "security rule scopes"
 	case "cloud_accounts":
 		return "cloud accounts"
 	case "cloud_subnets":
@@ -602,7 +644,7 @@ func inventorySummary(ctx context.Context, s *fwd.Session, in inventoryInput, cx
 
 // kindFilters are the filter inputs each kind of rows takes; a filter a kind does not take is refused, never silently ignored (a no-op filter that still says "123 match" misleads).
 var kindFilters = map[string][]string{
-	"summary": {}, "devices": {"device", "name"}, "interfaces": {"device", "name"}, "vlans": {"device", "name"}, "vrfs": {"device", "name"}, "hosts": {"device", "name"},
+	"summary": {}, "security_rules_experimental": {"device"}, "devices": {"device", "name"}, "interfaces": {"device", "name"}, "vlans": {"device", "name"}, "vrfs": {"device", "name"}, "hosts": {"device", "name"},
 	"routes": {"device", "name"}, "igp_neighbors": {"device", "name"},
 	"cloud": {"account", "name"}, "cloud_routes": {"account", "name"}, "cloud_security": {"account", "name"}, "cloud_gateways": {"account", "name"},
 	"cloud_subnets": {"account", "name"}, "cloud_instances": {"account", "name"}, "cloud_accounts": {"account"},
@@ -679,4 +721,47 @@ func cloudFilterHint(ctx context.Context, s *fwd.Session, in inventoryInput, cx 
 		}
 	}
 	return []string{hint + fmt.Sprintf("; %q is not one of them (a VPC or VNet name goes in name, not account)", in.Account)}
+}
+
+// inventorySecurityRules is kind security_rules_experimental: per device and scope, how many rulebases, rules and scope objects Forward's EXPERIMENTAL security rules model holds. The
+// model is PAN-OS and FortiOS only, FortiOS is off unless the org property NQE_SECURITY_RULES_FORTIOS is true, and it changes between builds, so the result is marked experimental,
+// empty is never read as "no rules", and the fields of a current build fall back to a core set when the org's build lacks them.
+func inventorySecurityRules(ctx context.Context, s *fwd.Session, in inventoryInput, cx result.Context, limits []string) (result.Result, error) {
+	params := map[string]any{"deviceName": in.Device}
+	limits = append(limits, "EXPERIMENTAL: Forward's security rules model (device.securityPolicy) is experimental and changes between builds; it covers PAN-OS and FortiOS, FortiOS native rules only when the organization property NQE_SECURITY_RULES_FORTIOS is true (inspect-environment shows it), and PAN-OS native rules sit behind their own flag. Do not treat these counts as a complete policy")
+	full := true
+	out, err := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: invSecurityRules, Parameters: params, SnapshotID: fwd.SnapshotID(cx), Limit: in.Limit, Offset: in.Offset})
+	if _, _, isQuery := fwd.QueryErrors(err); err != nil && isQuery {
+		full = false
+		limits = append(limits, "this organization's Forward build lacks some current security-model fields, so dynamic address objects, zone objects and user groups are not counted; `fwdctl nqe lint --org` shows what its schema has")
+		out, err = s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: invSecurityRulesCore, Parameters: params, SnapshotID: fwd.SnapshotID(cx), Limit: in.Limit, Offset: in.Offset})
+	}
+	if err != nil {
+		return result.Result{}, err
+	}
+	if out.Total == 0 || len(out.Items) == 0 {
+		return result.NewUnknown(inventoryName, "No device carries the experimental security rules model in this snapshot", cx, append(limits,
+			"empty does not mean the devices have no rules: the model is off for FortiOS unless NQE_SECURITY_RULES_FORTIOS is true, PAN-OS native rules have their own flag, and other vendors are not covered; read the device's own config (inspect-device-files) for the rules themselves"),
+			result.Options{NextActions: []string{"inspect-environment", "inspect-device-files"}})
+	}
+	rows := fwd.Records(out.Items)
+	var scopes, rules, addr int64
+	vendors := map[string]int{}
+	for _, r := range rows {
+		scopes++
+		if n, ok := num(r["Rules"]); ok {
+			rules += n
+		}
+		if n, ok := num(r["Address objects"]); ok {
+			addr += n
+		}
+		vendors[str(r["Vendor"])]++
+	}
+	if int64(len(rows)) < out.Total {
+		limits = append(limits, fmt.Sprintf("%d scopes match; rows %d-%d shown. Page with offset=%d; the totals cover the rows shown", out.Total, in.Offset+1, in.Offset+len(rows), in.Offset+len(rows)))
+	}
+	finding := fmt.Sprintf("EXPERIMENTAL model: %d scope row(s) across %d vendor(s) on this page, %d rules and %d address objects", scopes, len(vendors), rules, addr)
+	detail := map[string]any{"kind": in.Kind, "experimental": true, "total": out.Total, "offset": in.Offset, "returned": len(rows), "current_build_fields": full, "by_vendor": vendors, "rows": rows}
+	return result.Build(inventoryName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-environment", "inspect-device-files"},
+		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, detail, finding)}})
 }
