@@ -69,10 +69,6 @@ func addPlaybookHints(name string, r *result.Result) {
 	if r.Status != result.OK {
 		add(playbookFor[name])
 	}
-	// DOGFOOD-TEMP: an error may be a skill bug; point at the issue-reporting playbook.
-	if r.Status == result.Error {
-		add("plan-report-skill-gap")
-	}
 	if r.Mode == result.ModeDryRun && len(r.Changes) > 0 {
 		add("plan-safe-write")
 	}

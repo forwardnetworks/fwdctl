@@ -112,8 +112,12 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 		plan, err = planCloudAccount(ctx, s, in)
 	case "rapid7_source":
 		plan, err = planRapid7(ctx, s, in)
+	case "controller_setup":
+		plan, err = planControllerSetup(ctx, s, in)
+	case "mist_setup":
+		plan, err = planMistSetup(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, schedule, cloud_account or rapid7_source", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, schedule, cloud_account, rapid7_source, controller_setup or mist_setup", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err
@@ -842,4 +846,154 @@ func planRapid7(ctx context.Context, s *fwd.Session, in editSourceInput) (*netwo
 		return nil, nil
 	}
 	return nil, fmt.Errorf("%w: object rapid7_source takes action create or update (name is the source to update)", ErrInvalidInput)
+}
+
+// planControllerSetup manages a controller-managed setup: controllers (devices Forward logs in to) and the managed devices they report. The controllers' logins are existing credential
+// ids, so no secret is read. Deleting one removes the setup and the collection of the devices it manages.
+func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput) (*networkPlan, error) {
+	if err := noSecretInputs(in); err != nil {
+		return nil, err
+	}
+	cur, _, err := s.Client.ControllerManagedSetups.List(ctx, in.NetworkID)
+	if err != nil {
+		return nil, err
+	}
+	find := func(name string) *forward.ControllerManagedSetup {
+		for i := range cur {
+			if strings.EqualFold(cur[i].Name, name) {
+				return &cur[i]
+			}
+		}
+		return nil
+	}
+	present := func(name string, want bool) func(context.Context) (bool, any, error) {
+		return func(ctx context.Context) (bool, any, error) {
+			l, _, e := s.Client.ControllerManagedSetups.List(ctx, in.NetworkID)
+			for _, x := range l {
+				if strings.EqualFold(x.Name, name) {
+					return want, nil, e
+				}
+			}
+			return !want, nil, e
+		}
+	}
+	switch in.Action {
+	case "create":
+		var def forward.NewControllerManagedSetup
+		if err := decodeDefinition(in.Definition, &def, "name, controllers[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId}], managedDevices[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId, collect}]"); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(def.Name) == "" || len(def.Controllers) == 0 {
+			return nil, fmt.Errorf("%w: create needs name and at least one controller", ErrInvalidInput)
+		}
+		if find(def.Name) != nil {
+			return nil, fmt.Errorf("%w: a controller-managed setup named %q already exists", ErrInvalidInput, def.Name)
+		}
+		return &networkPlan{target: fmt.Sprintf("create controller-managed setup %q on network %s", def.Name, in.NetworkID), action: "create_controller_setup", after: def, reversible: true, undo: "delete the setup (action delete)",
+			limits: []string{"this does not test that the controllers accept the credentials: run a collection and read inspect-collection"},
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.ControllerManagedSetups.Create(ctx, in.NetworkID, def)
+				return err
+			},
+			verify: present(def.Name, true)}, nil
+	case "update":
+		c := find(in.Name)
+		if c == nil {
+			return nil, nil
+		}
+		var def struct {
+			ManagedDevices []forward.ManagedDevice `json:"managedDevices"`
+		}
+		if err := decodeDefinition(in.Definition, &def, "managedDevices (REPLACES the managed device list)"); err != nil {
+			return nil, err
+		}
+		if def.ManagedDevices == nil {
+			return nil, fmt.Errorf("%w: update sets managedDevices (the whole list)", ErrInvalidInput)
+		}
+		before, _ := fwd.Generic(c)
+		return &networkPlan{target: "replace the managed devices of controller setup " + c.Name, action: "update_controller_setup", before: before, after: def, reversible: true, undo: "update again with the before managed devices",
+			limits: []string{"the list REPLACES the managed devices: restate every device you keep"},
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.ControllerManagedSetups.Patch(ctx, in.NetworkID, c.Name, forward.ControllerManagedSetupPatch{ManagedDevices: &def.ManagedDevices})
+				return err
+			}}, nil
+	case "delete":
+		c := find(in.Name)
+		if c == nil {
+			return nil, nil
+		}
+		before, _ := fwd.Generic(c)
+		return &networkPlan{target: "delete controller-managed setup " + c.Name, action: "delete_controller_setup", before: before, reversible: false, confirm: c.Name,
+			undo: "none: create it again from the before values", limits: []string{"the devices it manages are no longer collected through it"},
+			do: func(ctx context.Context) error {
+				_, err := s.Client.ControllerManagedSetups.Delete(ctx, in.NetworkID, c.Name)
+				return err
+			},
+			verify: present(c.Name, false)}, nil
+	}
+	return nil, fmt.Errorf("%w: controller_setup takes action create, update or delete", ErrInvalidInput)
+}
+
+// planMistSetup manages a Juniper Mist cloud-managed setup. apiKeyId names an existing credential, so no secret is read here.
+func planMistSetup(ctx context.Context, s *fwd.Session, in editSourceInput) (*networkPlan, error) {
+	if err := noSecretInputs(in); err != nil {
+		return nil, err
+	}
+	cur, _, err := s.Client.CloudManagedSetups.ListMist(ctx, in.NetworkID)
+	if err != nil {
+		return nil, err
+	}
+	find := func(name string) *forward.MistSetup {
+		for i := range cur {
+			if cur[i].Name == name {
+				return &cur[i]
+			}
+		}
+		return nil
+	}
+	present := func(name string, want bool) func(context.Context) (bool, any, error) {
+		return func(ctx context.Context) (bool, any, error) {
+			l, _, e := s.Client.CloudManagedSetups.ListMist(ctx, in.NetworkID)
+			for _, x := range l {
+				if x.Name == name {
+					return want, nil, e
+				}
+			}
+			return !want, nil, e
+		}
+	}
+	switch in.Action {
+	case "create":
+		var def forward.NewMistSetup
+		if err := decodeDefinition(in.Definition, &def, "name, region (GLOBAL_01..05, EMEA_01..04, APAC_01..03), apiKeyId, collect, collectorId, hosts, concurrency"); err != nil {
+			return nil, err
+		}
+		if def.Name == "" || def.Region == "" || def.APIKeyID == "" {
+			return nil, fmt.Errorf("%w: create needs name, region and apiKeyId", ErrInvalidInput)
+		}
+		if find(def.Name) != nil {
+			return nil, fmt.Errorf("%w: a Mist setup named %q already exists", ErrInvalidInput, def.Name)
+		}
+		return &networkPlan{target: fmt.Sprintf("create Mist setup %q on network %s", def.Name, in.NetworkID), action: "create_mist_setup", after: def, reversible: true, undo: "delete the setup (action delete)",
+			limits: []string{"this does not test the API key: run a collection and read inspect-collection"},
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.CloudManagedSetups.CreateMist(ctx, in.NetworkID, def)
+				return err
+			},
+			verify: present(def.Name, true)}, nil
+	case "delete":
+		m := find(in.Name)
+		if m == nil {
+			return nil, nil
+		}
+		before, _ := fwd.Generic(m)
+		return &networkPlan{target: "delete Mist setup " + m.Name, action: "delete_mist_setup", before: before, reversible: false, confirm: m.Name,
+			undo: "none: create it again from the before values",
+			do: func(ctx context.Context) error {
+				_, err := s.Client.CloudManagedSetups.DeleteMist(ctx, in.NetworkID, m.Name)
+				return err
+			},
+			verify: present(m.Name, false)}, nil
+	}
+	return nil, fmt.Errorf("%w: mist_setup takes action create or delete", ErrInvalidInput)
 }

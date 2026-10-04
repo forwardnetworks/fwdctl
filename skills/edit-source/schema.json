@@ -20,7 +20,9 @@
         "classic_device",
         "schedule",
         "cloud_account",
-        "rapid7_source"
+        "rapid7_source",
+        "controller_setup",
+        "mist_setup"
       ]
     },
     "action": {
@@ -36,7 +38,7 @@
     "name": {
       "type": "string",
       "minLength": 1,
-      "description": "credential delete: the credential id; proxy update: the proxy id; classic_device update or delete: the device name; schedule update or delete: the schedule id; cloud_account rotate, test or delete: the account name"
+      "description": "credential delete: the credential id; proxy update: the proxy id; classic_device update or delete: the device name; schedule update or delete: the schedule id; cloud_account rotate, test or delete: the account name; controller_setup or mist_setup update or delete: the setup name"
     },
     "definition": {
       "type": "object",
@@ -54,7 +56,7 @@
     },
     "confirm": {
       "type": "string",
-      "description": "credential delete: the exact credential id; classic_device delete: the device name; schedule delete: the schedule id; cloud_account delete: the account name"
+      "description": "credential delete: the exact credential id; classic_device delete: the device name; schedule delete: the schedule id; cloud_account delete: the account name; controller_setup or mist_setup delete: the setup name"
     },
     "apply": {
       "type": "boolean",

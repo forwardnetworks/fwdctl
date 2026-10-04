@@ -23,6 +23,10 @@ type editSnapshotInput struct {
 	Confirm    string          `json:"confirm"`
 	Definition json.RawMessage `json:"definition"`
 	Apply      bool            `json:"apply"`
+	Note       string          `json:"note"`
+	// SecretFile or SecretEnv is where the obfuscation key of an export is; it is read only when applying and never appears in the input, the result or the log.
+	SecretFile string `json:"secret_file"`
+	SecretEnv  string `json:"secret_env"`
 }
 
 // editSnapshot is the one place to change a snapshot or how a network keeps its snapshots: set its note, reprocess or invalidate it, favorite it, delete it, or set the network's
@@ -33,17 +37,24 @@ func editSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
+	if (in.SecretFile != "" || in.SecretEnv != "") && in.Action != "export" {
+		return result.Result{}, fmt.Errorf("%w: only action export takes a secret (the obfuscation key)", ErrInvalidInput)
+	}
 	switch in.Action {
 	case "note":
 		return annotateSnapshot(ctx, s, raw)
 	case "reprocess":
 		return reprocessSnapshot(ctx, s, raw)
+	case "export":
+		return snapshotExport(ctx, s, in)
+	case "import":
+		return snapshotImport(ctx, s, in)
 	case "invalidate", "favorite", "delete":
 		return snapshotLifecycle(ctx, s, in)
 	case "retention_policy":
 		return snapshotRetentionPolicy(ctx, s, in)
 	}
-	return result.Result{}, fmt.Errorf("%w: action must be note, reprocess, invalidate, favorite, delete or retention_policy", ErrInvalidInput)
+	return result.Result{}, fmt.Errorf("%w: action must be note, reprocess, invalidate, favorite, delete, retention_policy, export or import", ErrInvalidInput)
 }
 
 // snapshotBusy says a snapshot is being worked on now, so it is not changed under Forward.

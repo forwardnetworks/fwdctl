@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -79,5 +80,60 @@ func TestEditSnapshotRetentionPolicyIsADryRunMergesTheGivenFieldsAndNeedsTheNetw
 	}
 	if _, _, err := runSkill(t, "edit-snapshot", routes, `{"network_id":"n1","action":"retention_policy","definition":{"bogus":1}}`); err == nil {
 		t.Errorf("an unknown field is refused")
+	}
+}
+
+func TestEditSnapshotExportStreamsToANewFileNeverOverwritesAndKeepsTheKeyOut(t *testing.T) {
+	var sent string
+	zip := []byte("PK\x03\x04 fake zip body")
+	routes := snapWorld("PROCESSED", map[string]fwdtest.Handler{"POST /api/snapshots/s1": func(_ *http.Request, b []byte) (int, any) { sent = string(b); return 200, zip }})
+	dir := t.TempDir()
+	out := dir + "/s1.zip"
+	key := secretFile(t, 0o600, planted2)
+	body := `{"network_id":"n1","snapshot_id":"s1","action":"export","definition":{"path":"` + out + `","obfuscate_names":true},"secret_file":"` + key + `"`
+	r, srv := mustRun(t, "edit-snapshot", routes, body+`}`)
+	if writes(srv) != 0 || r.Mode != result.ModeDryRun {
+		t.Fatalf("dry run writes nothing: %s", r.Finding)
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Fatalf("the dry run must not create the file")
+	}
+	r, _ = mustRun(t, "edit-snapshot", routes, body+`,"apply":true}`)
+	st, err := os.Stat(out)
+	if r.Status != result.OK || err != nil || st.Mode().Perm() != 0o600 || !strings.Contains(sent, planted2) || strings.Contains(jsonOf(r), planted2) {
+		t.Fatalf("export: %s %v %s", r.Status, err, jsonOf(r))
+	}
+	if _, _, err := runSkill(t, "edit-snapshot", routes, body+`,"apply":true}`); err == nil {
+		t.Errorf("an existing file is never overwritten")
+	}
+	if _, _, err := runSkill(t, "edit-snapshot", routes, `{"network_id":"n1","snapshot_id":"s1","action":"export","definition":{"path":"`+dir+`/x.zip","obfuscate_names":true}}`); err == nil {
+		t.Errorf("obfuscate_names needs a key")
+	}
+	if _, _, err := runSkill(t, "edit-snapshot", routes, `{"network_id":"n1","snapshot_id":"s1","action":"delete","secret_file":"`+key+`"}`); err == nil {
+		t.Errorf("only export takes a secret")
+	}
+}
+
+func TestEditSnapshotImportUploadsFilesAsANewSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	f := dir + "/a.zip"
+	if err := os.WriteFile(f, []byte("PK\x03\x04"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var uploaded bool
+	routes := map[string]fwdtest.Handler{"POST /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) {
+		uploaded = true
+		return 200, map[string]any{"id": "new1", "state": "PROCESSING"}
+	}}
+	body := `{"network_id":"n1","action":"import","note":"from lab","definition":{"files":["` + f + `"]}`
+	if r, _ := mustRun(t, "edit-snapshot", routes, body+`}`); uploaded || r.Mode != result.ModeDryRun {
+		t.Fatalf("dry run uploads nothing")
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, body+`,"apply":true}`)
+	if r.Status != result.OK || !uploaded || !strings.Contains(r.Changes[0].Undo, "new1") {
+		t.Fatalf("import: %s %s %+v", r.Status, r.Finding, r.Changes)
+	}
+	if _, _, err := runSkill(t, "edit-snapshot", routes, `{"network_id":"n1","action":"import","definition":{"files":["/nonexistent.zip"]}}`); err == nil {
+		t.Errorf("a missing file is refused")
 	}
 }

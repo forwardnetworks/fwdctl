@@ -9,6 +9,8 @@
 - schedule
 - cloud_account
 - rapid7_source
+- controller_setup
+- mist_setup
 
 ## The secret file
 
@@ -40,3 +42,9 @@ An AWS, Azure, GCP (and similar) account Forward collects. `create` takes the no
 
 ## rapid7_source
 A Rapid7 vulnerability source of the network. Its login is a credential that already exists: give its id as `credentialId` (`inspect-platform` area `credentials`); no secret is read for this object. `update` replaces the source, so restate `baseUrl` and `credentialId`. There is no delete: set `collectionDisabled` to stop collecting. The read-back checks the URL and the disabled flag; it does not test that Rapid7 accepts the login.
+
+## controller_setup
+A controller-managed setup: controllers Forward logs in to, and the managed devices they report. Logins are existing credential ids (`cliCredentialId`, `snmpCredentialId`, `jumpServerId`; list them with `inspect-platform`), so no secret is read. `update` sets the whole `managedDevices` list: restate every device you keep. `delete` needs `confirm` equal to the name and stops collecting the devices it manages. Forward lists an empty set on some deployments that do not support the feature, so an empty list from `inspect-platform` area `cloud_setups` is "none or unsupported".
+
+## mist_setup
+A Juniper Mist setup. `region` is one of `GLOBAL_01`-`GLOBAL_05`, `EMEA_01`-`EMEA_04`, `APAC_01`-`APAC_03`; `apiKeyId` names an existing credential. Create and delete only (the API has no update): to change one, delete and create. Neither tests the key; run a collection and read `inspect-collection`.

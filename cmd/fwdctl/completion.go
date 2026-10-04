@@ -10,7 +10,7 @@ import (
 )
 
 // completionCommands are the commands a shell offers first; their sub-words follow.
-var completionCommands = []string{"list", "describe", "run", "context", "nqe", "install", "docs", "update", "which", "login", "whoami", "redact-check", "dogfood-note", "completion", "version", "help"}
+var completionCommands = []string{"list", "describe", "run", "context", "nqe", "install", "docs", "update", "which", "login", "whoami", "completion", "version", "help"}
 
 var completionSub = map[string][]string{
 	"nqe":        {"lint", "fmt", "lsp", "complete", "hover"},

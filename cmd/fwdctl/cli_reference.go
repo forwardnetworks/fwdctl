@@ -23,7 +23,7 @@ func cliReference(root *cobra.Command) string {
 		subs := append([]*cobra.Command{}, c.Commands()...)
 		sort.Slice(subs, func(i, j int) bool { return subs[i].Name() < subs[j].Name() })
 		for _, sub := range subs {
-			if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" || strings.Contains(sub.Short, "DOGFOOD-TEMP") {
+			if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" {
 				continue
 			}
 			cmds = append(cmds, sub)

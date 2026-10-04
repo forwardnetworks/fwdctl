@@ -87,7 +87,7 @@ func manPage(c *cobra.Command, when time.Time) string {
 	subs := append([]*cobra.Command{}, c.Commands()...)
 	sort.Slice(subs, func(i, j int) bool { return subs[i].Name() < subs[j].Name() })
 	for _, s := range subs {
-		if !s.Hidden && s.Name() != "help" && s.Name() != "completion" && !strings.Contains(s.Short, "DOGFOOD-TEMP") {
+		if !s.Hidden && s.Name() != "help" && s.Name() != "completion" {
 			see = append(see, manName(s)+"(1)")
 		}
 	}
@@ -110,7 +110,7 @@ func writeManPages(root *cobra.Command, dir string, when time.Time) (int, error)
 		}
 		n++
 		for _, s := range c.Commands() {
-			if s.Hidden || s.Name() == "help" || s.Name() == "completion" || strings.Contains(s.Short, "DOGFOOD-TEMP") {
+			if s.Hidden || s.Name() == "help" || s.Name() == "completion" {
 				continue
 			}
 			if err := walk(s); err != nil {

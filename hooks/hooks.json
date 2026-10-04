@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if command -v fwdctl >/dev/null 2>&1; then m='forward-skills: for a network question run: fwdctl which \"<question>\" (or read plan-investigation); for any change in Forward read plan-safe-write first (plan, show, approval, apply once).'; [ \"$FWDCTL_DOGFOOD\" = off ] || m=\"$m DOGFOOD-TEMP: if a forward-skills result is wrong, misleading or missing something you needed, read plan-report-skill-gap and offer to file an issue.\"; echo \"$m\"; else echo 'forward-skills: the fwdctl binary is not on PATH, so these skills cannot run. Install: curl -fsSL https://raw.githubusercontent.com/forwardnetworks/forward-skills/main/scripts/install.sh | sh'; fi"
+            "command": "if command -v fwdctl >/dev/null 2>&1; then m='forward-skills: for a network question run: fwdctl which \"<question>\" (or read plan-investigation); for any change in Forward read plan-safe-write first (plan, show, approval, apply once).'; echo \"$m\"; else echo 'forward-skills: the fwdctl binary is not on PATH, so these skills cannot run. Install: curl -fsSL https://raw.githubusercontent.com/forwardnetworks/forward-skills/main/scripts/install.sh | sh'; fi"
           }
         ]
       }

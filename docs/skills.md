@@ -63,7 +63,7 @@ Is the data current, is collection working, is anything stressed.
 - `inspect-performance`: Which devices and interfaces are unhealthy right now (CPU, memory, utilization, errors, loss), and what is their history?
 - `inspect-environment`: Which Forward build, organization, login and vulnerability-index age is this, which features has the client seen, and which features (advanced reachability, flow computation, Predict, NQE fields) are on, what is their default and where is each set (`features`)?
 - `edit-collection` *(writes, dry run first)*: Start or stop a collection; refuses while one runs or the collector is down.
-- `edit-snapshot` *(writes, dry run first)*: Set a snapshot's note, reprocess or invalidate it, favorite it, delete it, or set the network's retention policy. Replaces edit-snapshot-note and edit-snapshot-reprocess.
+- `edit-snapshot` *(writes, dry run first)*: Set a snapshot's note, reprocess or invalidate it, favorite it, delete it, set the network's retention policy, export a snapshot to a ZIP (obfuscation key from a file) or import ZIPs as a new snapshot. Replaces edit-snapshot-note and edit-snapshot-reprocess.
 - `edit-advanced-reachability` *(writes, dry run first)*: Start advanced reachability for one processed snapshot that never had it (the analysis internet exposure is read from); asynchronous and compute-heavy.
 
 ### Inventory and topology
@@ -104,8 +104,6 @@ How to choose, and how to write safely.
 
 - **Playbook** `plan-investigation`: Which skill for which symptom, and what is out of scope
 - **Playbook** `plan-safe-write`: The protocol every edit skill follows: plan, show, approval, apply once, verify, undo.
-- **Playbook** `plan-report-skill-gap`: When a skill result was wrong or missing something, offer a redacted GitHub issue (DOGFOOD-TEMP).
-  - `fwdctl redact-check [--file FILE | -] [--deny w]...` (DOGFOOD-TEMP): offline scan of the draft for IPs, hostnames, device-style names, URLs, secrets, emails, ids, home paths and the deny words (saved login, OS user, machine name, `redact_deny`, `FWDCTL_REDACT_DENY`, `--deny`); masked JSON findings (exit 1) and possible customer-name warnings (exit 2); exit 0 only when clean. `fwdctl dogfood-note --ref SLUG` (DOGFOOD-TEMP) saves full private details to a local 0600 file, never uploaded.
 
 **Skills that write** are marked in the table. They change Forward's own data (a note, a check, a draft change set, a collection),
 never a device. Each is a **dry run unless you pass `"apply": true`**: the dry run returns `mode: dry_run` and the exact `changes`

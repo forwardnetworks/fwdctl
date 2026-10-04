@@ -37,7 +37,7 @@ func TestEveryCommandHasADescriptionAndAnExample(t *testing.T) {
 	var check func(c *cobra.Command)
 	check = func(c *cobra.Command) {
 		for _, sub := range c.Commands() {
-			if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" || strings.Contains(sub.Short, "DOGFOOD-TEMP") {
+			if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" {
 				continue
 			}
 			if strings.TrimSpace(sub.Short) == "" {

@@ -363,16 +363,6 @@
   "rival": "compare-device-config"
  },
  {
-  "query": "A skill gave me a wrong answer and I had to write my own NQE",
-  "expect": "plan-report-skill-gap",
-  "rival": "author-nqe-query"
- },
- {
-  "query": "The skill result was misleading and missing a field, I want to report it as an issue",
-  "expect": "plan-report-skill-gap",
-  "rival": "plan-investigation"
- },
- {
   "query": "Stage a change set that adds a static route on r1 and predict what it does",
   "expect": "edit-change-set",
   "rival": "verify-change"

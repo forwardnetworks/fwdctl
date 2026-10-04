@@ -9,7 +9,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 
 | Symptom or question | Reach for |
 |---|---|
-| "Which networks do I have", list the networks, "what is the id of network X" (no network id yet) | `inspect-networks` |
+| "Which networks do I have", "which networks can I see", which networks are workspaces, list the networks, "what is the id of network X" (no network id yet) | `inspect-networks` |
 | "Can A reach B", "why is this dropped", a path question | `investigate-reachability`; when the endpoints are names or you do not have addresses, find them first with `inspect-inventory` (kind hosts or devices) |
 | Internet-bound path | `investigate-reachability` with destination 8.8.8.8; source "internet" for inbound |
 | "Did this change work", "is it safe to push" | `verify-change` |
@@ -58,7 +58,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Add a device login (CLI, SNMP or HTTP credential), a jump server or a proxy | `edit-source` (dry run first; secrets from a file) |
 | Create, rename or delete a network, add a location or device cluster, rename or delete a device tag | `edit-network` (dry run first) |
 | Change a banner, webhook, trusted certificate, device access label, ServiceNow or Infoblox integration, or cancel or delete a backup (organization admin settings) | `edit-platform` (dry run first) |
-| What is set up on Forward: credentials, jump servers, proxies, collectors, cloud accounts, webhooks, licensing, backups, SSO (read, secrets removed) | `inspect-platform` |
+| What is set up on Forward, is SAML or SSO configured, when does the license expire: credentials, jump servers, proxies, collectors, cloud accounts, webhooks, licensing, backups (read, secrets removed) | `inspect-platform` |
 | Counting or listing devices, interfaces, VLANs, VRFs, hosts, cloud resources ("how many", "list all", "per vendor") | `inspect-inventory` |
 | The literal config text or a "show" output of one device ("what does the config say", "grep the config") | `inspect-device-files` |
 | "Which devices' config files changed between snapshots", what lines were added or removed | `compare-device-config` |

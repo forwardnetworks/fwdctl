@@ -82,7 +82,7 @@ func TestInstallAgentsPrintsABlockNamingEverySkill(t *testing.T) {
 			t.Errorf("%s missing from the block", m.Name)
 		}
 	}
-	for _, want := range []string{"unknown is never a pass", "apply: true", "plan-safe-write", "### Skills by area", "DOGFOOD-TEMP", "redact-check"} {
+	for _, want := range []string{"unknown is never a pass", "apply: true", "plan-safe-write", "### Skills by area"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the block lacks %q", want)
 		}

@@ -21,8 +21,6 @@ type connFile struct {
 	// TokenFile is a file of three lines: the Forward URL, the username (or an API token's access key) and the password (or its secret).
 	TokenFile string `json:"token_file"`
 	Insecure  bool   `json:"insecure"`
-	// RedactDeny (DOGFOOD-TEMP) is extra words fwdctl redact-check must never let through; no other command reads it.
-	RedactDeny []string `json:"redact_deny"`
 }
 
 // readTokenFile reads the three-line login file: URL, username, password. A URL without a scheme gets https://. The file must not be readable

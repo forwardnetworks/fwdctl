@@ -6,7 +6,7 @@ metadata:
   cluster: "environment"
   summary: "router: question to skill"
   maturity: "3"
-  tools: "investigate-reachability, verify-change, investigate-collection-failure, check-network-compliance, validate-nqe-query, plan-change-review, plan-what-changed, plan-snapshot-recovery, plan-link-overrides, plan-device-audit, plan-safe-write, plan-troubleshoot-connectivity, plan-incident-triage, plan-security-posture, plan-vulnerability-response, plan-segmentation-check, plan-compliance-audit, plan-maintenance-window, author-nqe-query, plan-report-skill-gap"
+  tools: "investigate-reachability, verify-change, investigate-collection-failure, check-network-compliance, validate-nqe-query, plan-change-review, plan-what-changed, plan-snapshot-recovery, plan-link-overrides, plan-device-audit, plan-safe-write, plan-troubleshoot-connectivity, plan-incident-triage, plan-security-posture, plan-vulnerability-response, plan-segmentation-check, plan-compliance-audit, plan-maintenance-window, author-nqe-query"
 ---
 
 # plan-investigation
@@ -47,7 +47,6 @@ A playbook is a procedure (it does not run): it names the skills to call, their 
 | Audit | "Tell me about this device", everything you know about a device, "audit this site or tag group" | `plan-device-audit` |
 | Health | "Is the network healthy", a morning check, "is anything wrong" | `plan-incident-triage` |
 | Authoring | "Write or fix an NQE query", a custom question, "save this query" | `author-nqe-query` |
-| Feedback | A skill result was wrong or missing something, a skill gave a wrong answer, or I had to hand-write a query (DOGFOOD-TEMP) | `plan-report-skill-gap` |
 
 ## Which skill, by symptom
 
@@ -57,7 +56,6 @@ Do not read the whole symptom table first. Run `fwdctl which "<the question in w
 
 The `edit-*` skills change Forward's own data, never a device. Read `plan-safe-write` before the first one: read first, run the plan (no `apply`), show the exact change and its undo, wait for the person's approval of that plan, apply once, and check that `status` is `ok`. A tool-calling harness sees each as a `<name>_plan` tool (cannot write) and a `<name>` tool (behind an approval gate).
 
-DOGFOOD-TEMP: when a skill gap bites (a wrong or misleading result, something missing that you had to hand-write, a wrong route), finish the task, then offer to file a redacted GitHub issue: read `plan-report-skill-gap`.
 
 ## Trust what a result says about itself
 

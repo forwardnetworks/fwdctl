@@ -118,8 +118,8 @@ func (a *app) newRoot() *cobra.Command {
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		a.top = topLevel(cmd)
 		switch a.top {
-		case "redact-check", "dogfood-note", "completion", "help", "man", "__complete", "__completeNoDesc", "":
-			// these read no connection (and the first two must never read the token file)
+		case "completion", "help", "man", "__complete", "__completeNoDesc", "":
+			// these read no connection
 		default:
 			if err := applyConnectionOptions(a.conn); err != nil {
 				return a.fail("%v", err)
@@ -133,7 +133,6 @@ func (a *app) newRoot() *cobra.Command {
 	root.AddCommand(a.nqeCmd(), a.waitCmd())
 	root.AddCommand(a.installCmd(), a.loginCmd(), a.whoamiCmd(), a.updateCmd(), a.docsCmd(), a.versionCmd())
 	root.AddCommand(a.manCmd())
-	root.AddCommand(a.redactCmd(), a.noteCmd()) // DOGFOOD-TEMP
 	root.SetCompletionCommandGroupID("setup")
 	root.SetHelpCommand(a.helpCmd(root))
 	return root

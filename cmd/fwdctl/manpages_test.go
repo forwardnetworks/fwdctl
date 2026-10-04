@@ -24,7 +24,7 @@ func TestManPagesAreWrittenForEveryCommandAndLookLikeManPages(t *testing.T) {
 			t.Errorf("fwdctl-nqe-run.1 lacks %q", want)
 		}
 	}
-	for _, skip := range []string{"fwdctl-redact-check.1", "fwdctl-dogfood-note.1", "fwdctl-man.1"} {
+	for _, skip := range []string{"fwdctl-man.1"} {
 		if _, err := os.Stat(filepath.Join(dir, skip)); err == nil {
 			t.Errorf("%s is for a temporary or hidden command and must not be written", skip)
 		}

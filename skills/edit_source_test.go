@@ -178,3 +178,33 @@ func TestEditSourceRapid7UpdateReplacesAndTakesNoSecret(t *testing.T) {
 		t.Errorf("this object takes no secret")
 	}
 }
+
+func TestEditSourceControllerAndMistSetups(t *testing.T) {
+	ctrl := []any{}
+	mist := []any{map[string]any{"name": "m1", "region": "GLOBAL_01"}}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/controller-managed-setups": func(*http.Request, []byte) (int, any) { return 200, ctrl },
+		"POST /api/networks/n1/controller-managed-setups": func(_ *http.Request, _ []byte) (int, any) {
+			ctrl = []any{map[string]any{"name": "dnac", "controllers": []any{map[string]any{"name": "c1"}}}}
+			return 201, ctrl[0]
+		},
+		"GET /api/networks/n1/cloud-managed-setups":       func(*http.Request, []byte) (int, any) { return 200, mist },
+		"DELETE /api/networks/n1/cloud-managed-setups/m1": func(*http.Request, []byte) (int, any) { mist = nil; return 204, nil },
+	}
+	create := `{"network_id":"n1","object":"controller_setup","action":"create","definition":{"name":"dnac","controllers":[{"name":"c1","host":"10.0.0.9","cliCredentialId":"c7"}]}`
+	if r, srv := mustRun(t, "edit-source", routes, create+`}`); writes(srv) != 0 || r.Mode != result.ModeDryRun {
+		t.Fatalf("dry run: %s", r.Finding)
+	}
+	if r, _ := mustRun(t, "edit-source", routes, create+`,"apply":true}`); r.Status != result.OK || len(ctrl) != 1 {
+		t.Fatalf("create: %s %s", r.Status, r.Finding)
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"controller_setup","action":"create","definition":{"name":"x"}}`); err == nil {
+		t.Errorf("a setup needs a controller")
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"mist_setup","action":"delete","name":"m1","apply":true}`); err == nil || mist == nil {
+		t.Errorf("delete without confirm is refused")
+	}
+	if r, _ := mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"mist_setup","action":"delete","name":"m1","apply":true,"confirm":"m1"}`); r.Status != result.OK || mist != nil {
+		t.Errorf("delete: %s", r.Finding)
+	}
+}

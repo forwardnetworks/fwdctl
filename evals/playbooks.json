@@ -225,17 +225,5 @@
     "inspect-topology"
    ]
   ]
- },
- {
-  "query": "A skill returned a wrong result and I had to hand-write the query; file an issue about it.",
-  "playbook": "plan-report-skill-gap",
-  "steps": [
-   "plan-investigation"
-  ],
-  "required": [
-   [
-    "plan-investigation"
-   ]
-  ]
  }
 ]
