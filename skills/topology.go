@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	forward "github.com/forwardnetworks/forward-go-sdk"
+
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
 )
@@ -82,6 +84,7 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		limits = append(limits, "read from a predicted snapshot: these rows describe a prediction, not collected state")
 	}
 	var rows []map[string]any
+	extra := map[string]any{}
 	switch in.Kind {
 	case "links":
 		links, err := s.Links(ctx, sid)
@@ -101,10 +104,49 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		if err != nil {
 			return result.Result{}, err
 		}
-		for _, l := range locs {
-			rows = append(rows, map[string]any{"name": l.Name, "city": l.City, "country": l.Country, "device_globs": l.DeviceGlobs})
+		atlas, _, aerr := s.Client.Locations.AtlasByLocation(ctx, in.NetworkID)
+		placed := map[string]forward.AtlasLocation{}
+		located := map[string]bool{}
+		for _, a := range atlas {
+			placed[string(a.LocationID)] = a
+			for _, group := range [][]string{a.Devices, a.AnchoredDevices, a.DynamicMatchDevices} {
+				for _, d := range group {
+					located[d] = true
+				}
+			}
 		}
-		limits = append(limits, "locations are defined per network, not per snapshot")
+		for _, l := range locs {
+			row := map[string]any{"id": string(l.ID), "name": l.Name, "city": l.City, "admin_division": l.AdminDivision, "country": l.Country, "lat": l.Lat, "lng": l.Lng, "device_globs": l.DeviceGlobs}
+			if aerr == nil {
+				a := placed[string(l.ID)]
+				row["devices_assigned"] = capNames(a.Devices)
+				row["devices_anchored"] = capNames(a.AnchoredDevices)
+				row["devices_matched_by_glob"] = capNames(a.DynamicMatchDevices)
+				row["device_count"] = len(a.Devices) + len(a.AnchoredDevices) + len(a.DynamicMatchDevices)
+			}
+			rows = append(rows, row)
+		}
+		if aerr != nil {
+			limits = append(limits, "device placement was not read ("+aerr.Error()+"); the rows have no device lists")
+		} else {
+			extra["devices_with_a_location"] = len(located)
+			if st, serr := s.DeviceCollectionStatuses(ctx, in.NetworkID); serr == nil && len(st) == 0 {
+				limits = append(limits, "devices with no location were not counted: Forward listed no devices for this network's collection, so a count of 0 would prove nothing")
+			} else if serr == nil {
+				none := 0
+				for _, d := range st {
+					if !located[d.DeviceName] {
+						none++
+					}
+				}
+				extra["devices_without_a_location"] = none
+				extra["devices_counted"] = len(st)
+			} else {
+				limits = append(limits, "devices with no location were not counted: the device list could not be read ("+serr.Error()+")")
+			}
+			limits = append(limits, "placement comes from an unpublished Forward view; cloud locations and devices with no fixed location are not in it; a device is counted once, as assigned, anchored (a virtual context or access point) or matched by a location's device glob")
+		}
+		limits = append(limits, "locations are defined per network, not per snapshot; lat and lng are 0 when the location has no coordinates")
 	case "tags":
 		tags, err := s.Tags(ctx, in.NetworkID)
 		if err != nil {
@@ -154,9 +196,21 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		limits = append(limits, fmt.Sprintf("%d %s match; rows %d-%d shown. Page with offset=%d.", total, in.Kind, in.Offset+1, end, end))
 	}
 	detail := map[string]any{"kind": in.Kind, "device": in.Device, "total": total, "offset": in.Offset, "returned": end - in.Offset, "rows": rows[in.Offset:end]}
+	for k, v := range extra {
+		detail[k] = v
+	}
 	return result.Build(topologyName, result.OK, fmt.Sprintf("%d %s returned (%d match)", end-in.Offset, in.Kind, total), result.Deterministic, cx,
 		result.Options{Limits: limits, NextActions: []string{"investigate-reachability", "inspect-inventory"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvTopology, "topology", fwd.SnapshotIDPtr(snap), detail, fmt.Sprintf("%s: %d of %d", in.Kind, end-in.Offset, total))}})
+}
+
+// capNames bounds a device list in one row; the count stays exact in device_count.
+func capNames(names []string) any {
+	const most = 25
+	if len(names) <= most {
+		return names
+	}
+	return append(append([]string{}, names[:most]...), fmt.Sprintf("... and %d more", len(names)-most))
 }
 
 // portOn reports whether a port name ("<device> <interface>", as Forward writes it) is on the device.

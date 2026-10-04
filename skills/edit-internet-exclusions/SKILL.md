@@ -4,7 +4,7 @@ description: Changes the public subnets excluded from the internet node, showing
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "edge-synthetic"
-  summary: "internet node excluded subnets"
+  summary: "internet node exclusions"
   maturity: "1"
   class: write
   effect: "network"
@@ -43,7 +43,7 @@ Without `apply: true` nothing is changed. The skill reads the internet node and 
 ## Backdate (optional): apply it now
 
 By default a change reaches the **next** processed snapshot. With `backdate_snapshot_id` the internet node's configuration is re-dated to that snapshot: that snapshot and **every later one are invalidated**, set to
-UNPROCESSED. Forward does **not** reprocess them by itself: run `edit-snapshot-reprocess` for each one, then `edit-advanced-reachability` if internet exposure is needed (it only runs after a snapshot is PROCESSED). The
+UNPROCESSED. Forward does **not** reprocess them by itself: run `edit-snapshot` (action reprocess) for each one, then `edit-advanced-reachability` if internet exposure is needed (it only runs after a snapshot is PROCESSED). The
 dry run lists them. Ask for it only when the person wants it applied now, and get approval of the backdate separately. It cannot be undone; the list change can.
 
 ## Undo

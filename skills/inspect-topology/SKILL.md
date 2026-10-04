@@ -4,7 +4,7 @@ description: Reads layout: links, sites, tags, aliases, link overrides (compare_
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "inventory-topology"
-  summary: "links, sites, tags, overrides, edge"
+  summary: "links, sites, tags, overrides"
   maturity: "3"
   tools: "snapshots, topology, locations, tags, aliases"
 ---
@@ -23,7 +23,7 @@ and never judges. For devices, interfaces, VLANs and hosts use `inspect-inventor
 | `kind` | Returns | Narrow with |
 |---|---|---|
 | `links` | port pairs, each written `<device> <interface>` | `device` (links with an end on it) |
-| `locations` | site name, city, country, and the device-name globs that place devices in it | nothing |
+| `locations` | id, name, city, admin division, country, lat/lng, device globs, and the devices in each (assigned, anchored, matched by glob) with a count of devices in no location | nothing |
 | `tags` | tag name and the devices that carry it | `device` (tags on it) |
 | `aliases` | alias name, type (hosts, devices, interfaces, headers, logical network) and its definition | nothing |
 | `link_overrides` | a snapshot's manual (present) and suppressed (absent) links: a summary and one page of rows with `ports_exist` and `link_in_topology`; with `compare_to_snapshot_id`, the added, removed and changed overrides between two snapshots | `device` (either end), `limit` (default 50; 25 examples per list when comparing), `offset` (not with `compare_to_snapshot_id`) |

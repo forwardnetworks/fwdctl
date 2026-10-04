@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": ["area", "action"],
+  "additionalProperties": false,
+  "properties": {
+    "area": { "type": "string", "enum": ["banners", "webhooks", "certificates", "access_labels", "backups", "integrations"] },
+    "action": { "type": "string", "enum": ["create", "update", "delete", "add", "apply", "cancel", "set"] },
+    "name": { "type": "string", "minLength": 1, "description": "the banner id, webhook name, certificate name, access label or backup id to change; for integrations servicenow or infoblox" },
+    "secret_file": { "type": "string", "minLength": 1, "description": "path of a file (mode 600) holding the one secret the action needs" },
+    "secret_env": { "type": "string", "minLength": 1, "description": "name of an environment variable holding the secret (instead of secret_file)" },
+    "definition": { "type": "object", "description": "the body for the area and action; see the SKILL.md table" },
+    "confirm": { "type": "string", "description": "webhook delete: the exact name; certificates apply: the word apply; backups cancel: cancel; backups delete: the id; access label delete: the name" },
+    "apply": { "type": "boolean", "default": false }
+  }
+}

@@ -27,7 +27,6 @@ var playbookFor = map[string]string{
 	"edit-endpoint-profile":          "plan-incident-triage",
 	"edit-workspace":                 "plan-incident-triage",
 	"edit-org-property":              "plan-incident-triage",
-	"edit-snapshot-reprocess":        "plan-snapshot-recovery",
 	"edit-advanced-reachability":     "plan-snapshot-recovery",
 	"inspect-performance":            "plan-incident-triage",
 	"inspect-inventory":              "plan-device-audit",
@@ -37,6 +36,9 @@ var playbookFor = map[string]string{
 	"edit-checks":                    "plan-compliance-audit",
 	"edit-alias":                     "plan-compliance-audit",
 	"inspect-platform":               "plan-investigation",
+	"edit-network":                   "plan-investigation",
+	"edit-platform":                  "plan-investigation",
+	"edit-source":                    "plan-investigation",
 	"edit-device-tags":               "plan-device-audit",
 	"edit-link-overrides":            "plan-link-overrides",
 	"edit-synthetic-query":           "plan-synthetic-device",
@@ -50,7 +52,7 @@ var playbookFor = map[string]string{
 	"edit-access":                    "plan-incident-triage",
 	"edit-data-file":                 "plan-investigation",
 	"edit-data-connector":            "plan-investigation",
-	"edit-snapshot-note":             "plan-maintenance-window",
+	"edit-snapshot":                  "plan-snapshot-recovery",
 }
 
 const maxNextActions = 4

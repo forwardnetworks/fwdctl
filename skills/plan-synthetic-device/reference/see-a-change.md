@@ -14,7 +14,7 @@ That is a preview of the **connections**, not of what traffic does.
 1. **Backdate to the LATEST snapshot only** (`backdate_snapshot_id` on `edit-synthetic-query`, `edit-wan-circuit` or `edit-internet-exclusions`). The current configuration is re-dated to that snapshot and that snapshot and every later one are
    invalidated and reprocess. Choosing the newest snapshot invalidates only one, so the cost is that snapshot's answers being unavailable until it finishes (minutes). Get approval of the backdate itself. It does not touch collected data.
 2. **Start a collection** (`edit-collection`, or the Forward UI) and trace on the snapshot it produces: no invalidation, but as slow as a collection. The network's schedule decides when the next one would happen anyway (`inspect-snapshots` shows recent timing).
-3. **`edit-snapshot-reprocess` on the latest snapshot alone is, inferred, not enough**: that snapshot already holds the version that was valid at its creation instant, so a reprocess recomputes the same synthetic configuration. Do not count on it; if you try it, confirm with the check below.
+3. **`edit-snapshot` (action reprocess) on the latest snapshot alone is, inferred, not enough**: that snapshot already holds the version that was valid at its creation instant, so a reprocess recomputes the same synthetic configuration. Do not count on it; if you try it, confirm with the check below.
 
 ## Which snapshot reflects the change
 

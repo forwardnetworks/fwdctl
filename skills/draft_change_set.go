@@ -35,15 +35,27 @@ type draftAdvert struct {
 	Communities  []string `json:"communities"`
 }
 
+// draftFirewallRule stages a firewall security rule change (PAN-OS and similar) in the change set: add a rule after a predecessor, or remove one by its id.
+type draftFirewallRule struct {
+	Op          string                          `json:"op"`
+	Device      string                          `json:"device"`
+	ScopeID     string                          `json:"scope_id"`
+	RulebaseID  string                          `json:"rulebase_id"`
+	Predecessor string                          `json:"predecessor"`
+	RuleID      string                          `json:"rule_id"`
+	Rule        *forward.SecurityRuleDefinition `json:"rule"`
+}
+
 type draftChangeSetInput struct {
-	NetworkID   string        `json:"network_id"`
-	SnapshotID  string        `json:"snapshot_id"`
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Devices     []draftDevice `json:"devices"`
-	BGP         []draftAdvert `json:"bgp_advertisements"`
-	Run         bool          `json:"run"`
-	Apply       bool          `json:"apply"`
+	NetworkID   string              `json:"network_id"`
+	SnapshotID  string              `json:"snapshot_id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	Devices     []draftDevice       `json:"devices"`
+	BGP         []draftAdvert       `json:"bgp_advertisements"`
+	Firewall    []draftFirewallRule `json:"firewall_rules"`
+	Run         bool                `json:"run"`
+	Apply       bool                `json:"apply"`
 }
 
 // draftChangeSet builds a Predict change set from a change the caller wrote, so its effect can be predicted with no device
@@ -58,8 +70,8 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	if strings.TrimSpace(in.Name) == "" {
 		return result.Result{}, fmt.Errorf("%w: name is required", ErrInvalidInput)
 	}
-	if len(in.Devices) == 0 && len(in.BGP) == 0 {
-		return result.Result{}, fmt.Errorf("%w: give devices (with commands) or bgp_advertisements", ErrInvalidInput)
+	if len(in.Devices) == 0 && len(in.BGP) == 0 && len(in.Firewall) == 0 {
+		return result.Result{}, fmt.Errorf("%w: give devices (with commands), bgp_advertisements or firewall_rules", ErrInvalidInput)
 	}
 	touched := map[string]bool{}
 	for i, d := range in.Devices {
@@ -73,6 +85,19 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			return result.Result{}, fmt.Errorf("%w: bgp_advertisements[%d] needs device, external_peer, prefix and next_hop", ErrInvalidInput, i)
 		}
 		touched[a.Device] = true
+	}
+	for i, f := range in.Firewall {
+		switch {
+		case f.Device == "":
+			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] needs device", ErrInvalidInput, i)
+		case f.Op == "add" && (f.Rule == nil || strings.TrimSpace(f.Rule.Name) == "" || f.Rule.Action == ""):
+			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] (add) needs rule with name and action", ErrInvalidInput, i)
+		case f.Op == "remove" && f.RuleID == "":
+			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] (remove) needs rule_id (the rule's id, from inspect-device-files or a security rules diff)", ErrInvalidInput, i)
+		case f.Op != "add" && f.Op != "remove":
+			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d].op must be add or remove", ErrInvalidInput, i)
+		}
+		touched[f.Device] = true
 	}
 	if in.Run && !in.Apply {
 		return result.Result{}, fmt.Errorf("%w: run needs apply", ErrInvalidInput)
@@ -100,7 +125,7 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	for d := range touched {
 		devices = append(devices, d)
 	}
-	plan := map[string]any{"name": in.Name, "base_snapshot_id": base, "devices": devices, "cli_devices": len(in.Devices), "bgp_advertisements": len(in.BGP), "run_prediction": in.Run}
+	plan := map[string]any{"name": in.Name, "base_snapshot_id": base, "devices": devices, "cli_devices": len(in.Devices), "bgp_advertisements": len(in.BGP), "firewall_rules": len(in.Firewall), "run_prediction": in.Run}
 	ch := result.Change{Action: "create_change_set", Target: fmt.Sprintf("network %s, base snapshot %s", in.NetworkID, base), After: plan, Reversible: true,
 		Undo: "delete the draft change set (nothing reaches a device)"}
 	ev := func(mode string, extra map[string]any) []result.Evidence {
@@ -168,8 +193,36 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			return rollback(fmt.Sprintf("staging the BGP advertisements for %s failed: %v", dev, err), map[string]any{"device": dev})
 		}
 	}
+	for _, f := range in.Firewall {
+		scope, rb := firstNonEmpty(f.ScopeID, forward.FirewallScopeLocal), firstNonEmpty(f.RulebaseID, forward.FirewallRulebasePrimary)
+		var ferr error
+		if f.Op == "add" {
+			_, ferr = s.Client.Predict.AddSecurityRule(ctx, in.NetworkID, csID, f.Device, scope, rb, forward.NewSecurityRule{Predecessor: f.Predecessor, Definition: *f.Rule})
+		} else {
+			_, ferr = s.Client.Predict.RemoveSecurityRule(ctx, in.NetworkID, csID, f.Device, scope, rb, f.RuleID)
+		}
+		if ferr != nil {
+			return rollback(fmt.Sprintf("staging the firewall rule change (%s) for %s failed: %v", f.Op, f.Device, ferr), map[string]any{"device": f.Device})
+		}
+	}
 	var limits []string
 	extra := map[string]any{"change_set_id": csID}
+	if len(in.Firewall) > 0 {
+		diffs := map[string]any{}
+		seen := map[string]bool{}
+		for _, f := range in.Firewall {
+			if seen[f.Device] {
+				continue
+			}
+			seen[f.Device] = true
+			if d, derr := s.SecurityRulesDiff(ctx, in.NetworkID, csID, f.Device); derr == nil && d != nil {
+				diffs[f.Device] = d.Entries
+			} else if derr != nil {
+				limits = append(limits, fmt.Sprintf("the staged rule changes of %s could not be read back: %v", f.Device, derr))
+			}
+		}
+		extra["firewall_rules_diff"] = diffs
+	}
 	finding := fmt.Sprintf("Created change set %q (id %s) on snapshot %s editing %d device(s); commands validated and staged, nothing reached a device", in.Name, csID, base, len(devices))
 	if in.Run {
 		p, err := s.PredictedSnapshot(ctx, in.NetworkID, csID, true)

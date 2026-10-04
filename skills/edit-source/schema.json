@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "required": [
+    "network_id",
+    "object",
+    "action"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "object": {
+      "type": "string",
+      "enum": [
+        "credential",
+        "jump_server",
+        "proxy",
+        "classic_device",
+        "schedule",
+        "cloud_account"
+      ]
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "create",
+        "update",
+        "delete",
+        "rotate",
+        "test"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "credential delete: the credential id; proxy update: the proxy id; classic_device update or delete: the device name; schedule update or delete: the schedule id; cloud_account rotate, test or delete: the account name"
+    },
+    "definition": {
+      "type": "object",
+      "description": "the non-secret body; see the SKILL.md table. A secret-looking field is refused"
+    },
+    "secret_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "path of a file (mode 600) holding the secret, or a JSON object of named secrets for SNMP v3"
+    },
+    "secret_env": {
+      "type": "string",
+      "minLength": 1,
+      "description": "name of an environment variable holding the secret (instead of secret_file)"
+    },
+    "confirm": {
+      "type": "string",
+      "description": "credential delete: the exact credential id; classic_device delete: the device name; schedule delete: the schedule id; cloud_account delete: the account name"
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

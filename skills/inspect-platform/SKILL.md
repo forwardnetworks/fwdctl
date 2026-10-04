@@ -4,7 +4,7 @@ description: Reads how Forward is set up, secrets removed: credentials, jump ser
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "access"
-  summary: "platform setup, secrets removed"
+  summary: "platform setup, no secrets"
   maturity: "1"
   tools: "credentials, jump servers, proxies, collectors, schedules, cloud setups, locations, tags, webhooks, integrations, licensing, backups, banners, certificates, saml, organizations"
 ---
@@ -30,6 +30,7 @@ Answer "what is set up on this Forward" for the things an administrator maintain
 | `locations`, `tag_definitions` | network | locations, and the device tags defined on the network |
 | `access_labels`, `api_tokens` | organization | device access labels; this login's own API tokens (names and dates) |
 | `webhooks`, `banners`, `certificates`, `organizations`, `cve_index` | organization | as named; a webhook with its last test result |
+| `dashboards`, `scorecards` | network | custom dashboards (raw layout); scorecard definitions and the latest snapshot's scores. **Unpublished Forward API** |
 | `integrations` | organization (`network_id` adds Rapid7) | ServiceNow, Infoblox and Rapid7, without passwords |
 | `licensing`, `backups`, `saml` | organization | licenses without the key; backup settings and the last backup; SAML status |
 

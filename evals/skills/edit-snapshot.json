@@ -1,0 +1,87 @@
+{
+ "skill": "edit-snapshot",
+ "cases": [
+  {
+   "query": "Label the latest snapshot 'before the BGP change'",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot (dry run first)"
+   ]
+  },
+  {
+   "query": "Put a note on snapshot 1175663 saying it is the pre-upgrade baseline",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot"
+   ]
+  },
+  {
+   "query": "Clear the note on that snapshot",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot"
+   ]
+  },
+  {
+   "query": "What snapshots exist?",
+   "should_trigger": false,
+   "note": "inspect-snapshots"
+  },
+  {
+   "query": "Snapshot 1175663 failed to process; reprocess it",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot (dry run first)"
+   ]
+  },
+  {
+   "query": "The answers on the latest snapshot look stale since the Forward upgrade; recompute them",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot"
+   ]
+  },
+  {
+   "query": "Rebuild the model for this snapshot without collecting again",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot"
+   ]
+  },
+  {
+   "query": "Collect the network again",
+   "should_trigger": false,
+   "note": "edit-collection"
+  },
+  {
+   "query": "Why did the collection fail?",
+   "should_trigger": false,
+   "note": "investigate-collection-failure"
+  },
+  {
+   "query": "Delete the snapshot",
+   "should_trigger": false,
+   "note": "not a skill; refused"
+  },
+  {
+   "query": "Delete snapshot 1175663, it is a bad import",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot action delete, dry run first",
+    "asks for confirm"
+   ]
+  },
+  {
+   "query": "Keep only one snapshot per day for the last month on this network",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-snapshot action retention_policy, dry run"
+   ]
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

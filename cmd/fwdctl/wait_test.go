@@ -79,7 +79,7 @@ func TestWaitSaysWhenNothingIsProducingTheStateItWaitsFor(t *testing.T) {
 	if code != waitTimedOut || strings.Count(errs, "edit-advanced-reachability") != 1 {
 		t.Errorf("one hint, then the timeout: %d %s", code, errs)
 	}
-	if _, _, errs := runWait(t, []any{snap("UNPROCESSED", "")}, "PROCESSED", "", 10*time.Minute); !strings.Contains(errs, "edit-snapshot-reprocess") {
+	if _, _, errs := runWait(t, []any{snap("UNPROCESSED", "")}, "PROCESSED", "", 10*time.Minute); !strings.Contains(errs, "edit-snapshot") {
 		t.Errorf("an UNPROCESSED snapshot is called out: %s", errs)
 	}
 }

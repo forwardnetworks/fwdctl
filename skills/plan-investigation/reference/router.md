@@ -26,12 +26,12 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | "When did this check start failing", "is this new or old" | `inspect-history` |
 | "Which checks exist or fail", "how many checks fail or error", "why is this check in ERROR", "what did this check find", "what checks does Forward offer" | `check-network-compliance` (view read) |
 | "What does this change set do", "is it ready" | `verify-change` with `view: describe` |
-| Label a snapshot | `edit-snapshot-note` (dry run first) |
+| Label a snapshot | `edit-snapshot` (action note) (dry run first) |
 | Add a policy check, turn an authored query into a check, or switch a check off | `edit-checks` (dry run first) |
 | Create, change or remove an alias (a named group a check refers to) | `edit-alias` (dry run first) |
 | "What if we made this change": stage or build a change set from CLI lines or BGP advertisements the caller supplies, and predict it | `edit-change-set` (dry run first), then `verify-change` (`view: describe`, then the default view) |
 | "Collect now", cancel a running collection | `edit-collection` (dry run first) |
-| Reprocess a snapshot: it failed to process, or its answers are stale after an upgrade | `edit-snapshot-reprocess` (dry run first) |
+| Reprocess a snapshot: it failed to process, or its answers are stale after an upgrade | `edit-snapshot` (action reprocess) (dry run first) |
 | Internet exposure (internet_addressable) is unavailable, or a snapshot shows advanced reachability UNPROCESSED: start the analysis for that snapshot | `edit-advanced-reachability` (dry run first) |
 | Save an authored query to the library, or remove a saved one | `edit-nqe-query` (dry run first) |
 | Tag devices or take a tag off them | `edit-device-tags` (dry run first) |
@@ -55,6 +55,9 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | What a device connects to, which sites, tags or aliases exist | `inspect-topology` |
 | A cloud account shows fewer routes than expected, a VPC route table, cloud routes or next hops | `inspect-inventory` with kind `cloud_routes` (`account` is the cloud account NAME, `name` the VPC; kind `cloud_accounts` lists the accounts) |
 | Compare two networks (a seed and a lab, production and a copy): devices, interfaces, links, cloud routes; there is no cross-network compare | `compare-nqe-results` with `after_network_id` (a saved query run on both networks, rows diffed by `key`, `ignore` for fields that should differ); with no saved query, read the same `inspect-inventory` kind on each network and diff (compare-device-config diffs two snapshots of one network) |
+| Add a device login (CLI, SNMP or HTTP credential), a jump server or a proxy | `edit-source` (dry run first; secrets from a file) |
+| Create, rename or delete a network, add a location or device cluster, rename or delete a device tag | `edit-network` (dry run first) |
+| Change a banner, webhook, trusted certificate, device access label, ServiceNow or Infoblox integration, or cancel or delete a backup (organization admin settings) | `edit-platform` (dry run first) |
 | What is set up on Forward: credentials, jump servers, proxies, collectors, cloud accounts, webhooks, licensing, backups, SSO (read, secrets removed) | `inspect-platform` |
 | Counting or listing devices, interfaces, VLANs, VRFs, hosts, cloud resources ("how many", "list all", "per vendor") | `inspect-inventory` |
 | The literal config text or a "show" output of one device ("what does the config say", "grep the config") | `inspect-device-files` |

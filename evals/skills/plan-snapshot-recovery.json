@@ -35,7 +35,7 @@
   {
    "query": "Label this snapshot",
    "should_trigger": false,
-   "note": "edit-snapshot-note"
+   "note": "edit-snapshot"
   },
   {
    "query": "Is collection running?",

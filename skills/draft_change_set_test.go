@@ -95,3 +95,31 @@ func TestDraftChangeSetLeavesAnExistingNameAloneAndRefusesBadInput(t *testing.T)
 		}
 	}
 }
+
+func TestDraftChangeSetStagesFirewallRulesAndReadsTheRuleDiffBack(t *testing.T) {
+	var added string
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                           ready("s1"),
+		"GET /api/networks/n1/change-sets":  fwdtest.Const(200, []any{}),
+		"POST /api/networks/n1/change-sets": fwdtest.Const(200, map[string]any{"id": "cs1", "name": "allow web", "snapshotId": "s1"}),
+		"POST /api/networks/n1/change-sets/cs1/devices/fw1/scopes/LOCAL/rulebases/PRIMARY/security-rules": func(_ *http.Request, b []byte) (int, any) {
+			added = string(b)
+			return 204, nil
+		},
+		"GET /api/networks/n1/change-sets/cs1/devices/fw1/security-rules-diff": fwdtest.Const(200, map[string]any{"rulebases": []any{}, "entries": []any{map[string]any{"diffType": "ADDED"}}}),
+	}
+	in := `{"network_id":"n1","name":"allow web","firewall_rules":[{"op":"add","device":"fw1","predecessor":"r0","rule":{"name":"allow-web","action":"ALLOW","enabled":true}}]`
+	r, srv := mustRun(t, "edit-change-set", routes, in+`}`)
+	if r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(jsonOf(r), `"firewall_rules":1`) {
+		t.Fatalf("dry run: %s", jsonOf(r))
+	}
+	r, _ = mustRun(t, "edit-change-set", routes, in+`,"apply":true}`)
+	if r.Status != result.OK || !strings.Contains(added, "allow-web") || !strings.Contains(jsonOf(r), `"firewall_rules_diff"`) {
+		t.Fatalf("apply: %s added=%s %s", r.Status, added, jsonOf(r))
+	}
+	for _, bad := range []string{`{"op":"add","device":"fw1"}`, `{"op":"remove","device":"fw1"}`, `{"op":"nope","device":"fw1"}`} {
+		if _, _, err := runSkill(t, "edit-change-set", routes, `{"network_id":"n1","name":"x","firewall_rules":[`+bad+`]}`); err == nil {
+			t.Errorf("%s must be refused", bad)
+		}
+	}
+}

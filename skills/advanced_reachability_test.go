@@ -133,7 +133,7 @@ func TestVulnerabilitiesSaysWhyExposureIsUnavailableInsteadOfFailing(t *testing.
 	}
 	routes[vulnList] = fwdtest.Const(400, map[string]any{"message": "Cannot filter by internetAddressable: Internet exposure analysis is unavailable (PENDING_ADVANCED_REACHABILITY)"})
 	routes[snapsPath] = fwdtest.Snapshots(advSnap("FAILED"))
-	if r, _ := vuln(t, routes, netIn+`,"internet_addressable":true}`); !strings.Contains(strings.Join(r.NextActions, ","), "edit-snapshot-reprocess") {
+	if r, _ := vuln(t, routes, netIn+`,"internet_addressable":true}`); !strings.Contains(strings.Join(r.NextActions, ","), "edit-snapshot") {
 		t.Errorf("a FAILED state points at a reprocess: %v", r.NextActions)
 	}
 	// a different 400 is still an error: only Forward's own exposure refusal is mapped

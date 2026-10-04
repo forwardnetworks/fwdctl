@@ -18,7 +18,7 @@
   {
    "query": "Reprocess snapshot 1001 because it failed",
    "should_trigger": false,
-   "note": "edit-snapshot-reprocess"
+   "note": "edit-snapshot"
   },
   {
    "query": "Which devices are internet addressable?",

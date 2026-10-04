@@ -14,6 +14,7 @@ Read the section for the area you are answering from. Every area removes secret 
 - integrations
 - licensing, backups, saml
 - organizations and cve_index
+- dashboards and scorecards
 
 ## credentials
 
@@ -58,3 +59,6 @@ Licenses for the current organization without the signed key; backup settings fo
 ## organizations and cve_index
 
 Organizations the login can see, and the vulnerability index's metadata (created, size). `inspect-environment` reports the index's age; `edit-platform` syncs it.
+
+## dashboards and scorecards
+Both read Forward APIs it has not published, so the shape may change and either can answer 404 on an older build (that is "unknown", not "none"). `dashboards` lists the network's custom dashboards with the widget layout as Forward stores it; the built-in defaults are not listed. `scorecards` returns the scorecard definitions and, when the network has a processed snapshot, each scorecard's score on the latest one (Forward computes them for the organization's license tier). Trends over time and the Excel checks report exist in the SDK but are not read here yet.

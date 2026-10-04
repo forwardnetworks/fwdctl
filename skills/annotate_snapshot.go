@@ -9,9 +9,7 @@ import (
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
-const annotateSnapshotName = "edit-snapshot-note"
-
-func init() { Register(annotateSnapshotName, annotateSnapshot) }
+const annotateSnapshotName = editSnapshotName
 
 const maxNoteLen = 1000
 
@@ -49,7 +47,7 @@ func annotateSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	target := "snapshot " + in.SnapshotID
 	prior, want := sn.Note, *in.Note
 	ch := result.Change{Action: "set_note", Target: target, Before: prior, After: want, Reversible: true,
-		Undo: fmt.Sprintf("run edit-snapshot-note again on snapshot %s with note %q and apply=true", in.SnapshotID, prior)}
+		Undo: fmt.Sprintf("run edit-snapshot again on snapshot %s with note %q and apply=true", in.SnapshotID, prior)}
 	ev := func(mode string, extra map[string]any) []result.Evidence {
 		d := map[string]any{"snapshot_id": in.SnapshotID, "note_before": prior, "note_requested": want, "mode": mode}
 		for k, v := range extra {

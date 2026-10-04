@@ -35,7 +35,7 @@
   {
    "query": "Reprocess snapshot 1001",
    "should_trigger": false,
-   "note": "edit-snapshot-reprocess"
+   "note": "edit-snapshot"
   }
  ],
  "measure": [

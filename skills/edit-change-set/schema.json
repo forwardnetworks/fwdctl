@@ -1,43 +1,123 @@
 {
   "type": "object",
-  "required": ["network_id", "name"],
+  "required": [
+    "network_id",
+    "name"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "snapshot_id": { "type": "string", "minLength": 1 },
-    "name": { "type": "string", "minLength": 1 },
-    "description": { "type": "string" },
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
     "devices": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["device", "commands"],
+        "required": [
+          "device",
+          "commands"
+        ],
         "additionalProperties": false,
-        "properties": { "device": { "type": "string", "minLength": 1 }, "commands": { "type": "string", "minLength": 1 } }
+        "properties": {
+          "device": {
+            "type": "string",
+            "minLength": 1
+          },
+          "commands": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     },
     "bgp_advertisements": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["device", "external_peer", "prefix", "next_hop"],
+        "required": [
+          "device",
+          "external_peer",
+          "prefix",
+          "next_hop"
+        ],
         "additionalProperties": false,
         "properties": {
-          "device": { "type": "string", "minLength": 1 },
-          "vrf": { "type": "string" },
-          "external_peer": { "type": "string", "minLength": 1 },
-          "prefix": { "type": "string", "minLength": 1 },
-          "next_hop": { "type": "string", "minLength": 1 },
-          "type": { "type": "string" },
-          "origin": { "type": "string" },
-          "local_pref": { "type": "integer" },
-          "as_path": { "type": "array", "items": { "type": "integer" } },
-          "med": { "type": "integer" },
-          "communities": { "type": "array", "items": { "type": "string" } }
+          "device": {
+            "type": "string",
+            "minLength": 1
+          },
+          "vrf": {
+            "type": "string"
+          },
+          "external_peer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prefix": {
+            "type": "string",
+            "minLength": 1
+          },
+          "next_hop": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "local_pref": {
+            "type": "integer"
+          },
+          "as_path": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "med": {
+            "type": "integer"
+          },
+          "communities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
-    "run": { "type": "boolean", "default": false },
-    "apply": { "type": "boolean", "default": false }
+    "run": {
+      "type": "boolean",
+      "default": false
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    },
+    "firewall_rules": {
+      "type": "array",
+      "description": "firewall rule changes to stage: {op: add|remove, device, scope_id (default LOCAL), rulebase_id (default PRIMARY), predecessor (add: the rule to go after), rule_id (remove), rule (add: name, action, enabled, sourceZones, destinationZones, sourceAddresses, destinationAddresses, sourceUsers, applications, services)}",
+      "items": {
+        "type": "object",
+        "required": [
+          "op",
+          "device"
+        ]
+      }
+    }
   }
 }

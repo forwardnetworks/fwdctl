@@ -1,0 +1,42 @@
+{
+ "skill": "edit-network",
+ "cases": [
+  {
+   "query": "Create a new network called lab",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-network object network create, dry run first"
+   ]
+  },
+  {
+   "query": "Rename the tag Core to Backbone on this network",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-network object tag update, dry run first"
+   ]
+  },
+  {
+   "query": "Delete the test network, I no longer need it",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-network delete, dry run, asks for confirm",
+    "says it cannot be undone"
+   ]
+  },
+  {
+   "query": "Put the Core tag on router r1",
+   "should_trigger": false,
+   "note": "edit-device-tags"
+  },
+  {
+   "query": "List the locations defined on the network",
+   "should_trigger": false,
+   "note": "inspect-platform area locations"
+  },
+  {
+   "query": "Make a temporary workspace to try a collection change",
+   "should_trigger": false,
+   "note": "edit-workspace"
+  }
+ ]
+}

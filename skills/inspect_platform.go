@@ -267,6 +267,30 @@ var platformAreas = map[string]platformArea{
 		r, err := rowsOf(v, err)
 		return r, nil, err
 	}},
+	"dashboards": {true, "custom dashboards of the network (unpublished Forward API)", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
+		v, _, err := s.Client.Dashboards.List(ctx, n)
+		r, err := rowsOf(v, err)
+		return r, []string{"read through an unpublished Forward API: the shape may change; the layout is the raw widget list"}, err
+	}},
+	"scorecards": {true, "scorecard definitions and the latest processed snapshot's scores (unpublished Forward API)", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
+		lim := []string{"read through an unpublished Forward API; Forward computes scorecards for the organization's license tier"}
+		defs, _, e1 := s.Client.Scorecards.Definitions(ctx, n)
+		out, err := rowsOf(defs, e1)
+		if err != nil {
+			return nil, lim, err
+		}
+		out = tag(out, "row", "definition")
+		snap, err := resolveSnapshot(ctx, s, n, "")
+		if err != nil || snap == nil || !fwd.IsReady(snap) {
+			return out, append(lim, "no processed snapshot, so no scores were read"), nil
+		}
+		scores, _, e2 := s.Client.Scorecards.ForSnapshot(ctx, n, string(snap.ID))
+		r2, err := rowsOf(scores, e2)
+		if lim = soft(lim, "scores on snapshot "+string(snap.ID), err); err == nil {
+			out = append(out, tag(r2, "row", "score")...)
+		}
+		return out, lim, nil
+	}},
 	"cve_index": {false, "the vulnerability (CVE) index", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		m, _, err := s.Client.CVEIndex.Metadata(ctx)
 		if err != nil {

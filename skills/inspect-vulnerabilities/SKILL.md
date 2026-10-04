@@ -66,7 +66,7 @@ Forward refuses the filter with a reason; the skill answers **unknown** with a d
 | advanced reachability `UNPROCESSED`, property `DISABLE_FLOW_COMPUTATION` true | **blocked, not never triggered**: Forward does not run the stages after reachability, so starting it gives nothing | `inspect-environment`; an administrator changes the property |
 | `UNPROCESSED`, `ON_DEMAND` | never asked for, by design | `edit-advanced-reachability` |
 | `UNPROCESSED`, `ASYNC` | Forward should have started it; the cause (a predicted snapshot, a network-level disable, no license) is **UNKNOWN** | `inspect-environment`, then `edit-advanced-reachability` |
-| `PROCESSING`, or `FAILED`, `CANCELED`, `TIMED_OUT` | still computing; or a final state, which a reprocess clears | `inspect-snapshots`; `edit-snapshot-reprocess` |
+| `PROCESSING`, or `FAILED`, `CANCELED`, `TIMED_OUT` | still computing; or a final state, which a reprocess clears | `inspect-snapshots`; `edit-snapshot` (action reprocess) |
 
 `PENDING_ADVANCED_REACHABILITY` is what Forward says whenever the DAG stage has not finished, so by itself it does not rule disabled flow computation out. If the organization properties cannot be read the reason says it is UNKNOWN. See `inspect-environment` reference/features.md.
 

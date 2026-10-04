@@ -75,7 +75,7 @@ without `confirm`; a property whose value format is not modelled. An on-premises
 ## Undo
 
 Set the property back to the value in `before` (when it was an override), or run again with `clear: true` (when it had none). Reverting does not recompute snapshots that were processed under the new value: reprocess
-them (`edit-snapshot-reprocess`).
+them (`edit-snapshot` (action reprocess)).
 
 ## Evidence
 
@@ -83,7 +83,7 @@ One `state` item with the property, the risk, `before`, `needs_confirm` and the 
 
 ## Next actions
 
-`inspect-environment` to see the features table and non-default properties; `inspect-snapshots` and `edit-snapshot-reprocess` when a computation property changed.
+`inspect-environment` to see the features table and non-default properties; `inspect-snapshots` and `edit-snapshot` (action reprocess) when a computation property changed.
 
 ## Running this skill
 

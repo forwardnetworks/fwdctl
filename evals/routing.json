@@ -146,7 +146,7 @@
  },
  {
   "query": "Label the newest snapshot 'before the BGP change'",
-  "expect": "edit-snapshot-note",
+  "expect": "edit-snapshot",
   "rival": "inspect-snapshots"
  },
  {
@@ -261,13 +261,13 @@
  },
  {
   "query": "Reprocess snapshot 1175663 now",
-  "expect": "edit-snapshot-reprocess",
+  "expect": "edit-snapshot",
   "rival": "plan-snapshot-recovery"
  },
  {
   "query": "inspect-vulnerabilities says internet exposure is unavailable (PENDING_ADVANCED_REACHABILITY) on snapshot 1001; compute advanced reachability for it",
   "expect": "edit-advanced-reachability",
-  "rival": "edit-snapshot-reprocess"
+  "rival": "edit-snapshot"
  },
  {
   "query": "Save this query to our library as /Team/NTP",
@@ -531,5 +531,20 @@
   "query": "Is SAML configured and when does the license expire?",
   "expect": "inspect-platform",
   "rival": "inspect-environment"
+ },
+ {
+  "query": "Create a new empty network called staging",
+  "expect": "edit-network",
+  "rival": "edit-workspace"
+ },
+ {
+  "query": "Add an SNMP credential and a jump server so Forward can reach the new devices",
+  "expect": "edit-source",
+  "rival": "edit-endpoint-profile"
+ },
+ {
+  "query": "Add our internal CA as a trusted certificate for the collectors",
+  "expect": "edit-platform",
+  "rival": "edit-source"
  }
 ]

@@ -1,0 +1,38 @@
+{
+ "skill": "edit-source",
+ "cases": [
+  {
+   "query": "Add a CLI credential called ops for user admin; the password is in /secure/pw",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-source object credential, dry run first",
+    "the password is read from the file, never typed"
+   ]
+  },
+  {
+   "query": "Set up a jump server for the data center with an SSH key",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-source object jump_server",
+    "key from a file"
+   ]
+  },
+  {
+   "query": "Create an SNMP v3 credential for the switches",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-source object credential type SNMP, secrets from a file"
+   ]
+  },
+  {
+   "query": "Which credentials does the network use?",
+   "should_trigger": false,
+   "note": "inspect-platform area credentials"
+  },
+  {
+   "query": "Here is the password hunter2, add it as a credential",
+   "should_trigger": false,
+   "note": "refused: a secret is never put in the input; use a file"
+  }
+ ]
+}

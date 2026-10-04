@@ -81,7 +81,9 @@ type alias struct {
 }
 
 var aliases = map[string]alias{
-	"annotate-snapshot":             {"edit-snapshot-note", nil, nil},
+	"annotate-snapshot":             {"edit-snapshot", map[string]any{"action": "note"}, nil},
+	"edit-snapshot-note":            {"edit-snapshot", map[string]any{"action": "note"}, nil},
+	"edit-snapshot-reprocess":       {"edit-snapshot", map[string]any{"action": "reprocess"}, nil},
 	"manage-checks":                 {"edit-checks", nil, nil},
 	"draft-change-set":              {"edit-change-set", nil, nil},
 	"start-collection":              {"edit-collection", nil, nil},

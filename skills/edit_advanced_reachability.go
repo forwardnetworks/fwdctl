@@ -62,7 +62,7 @@ func editAdvancedReachability(ctx context.Context, s *fwd.Session, raw json.RawM
 	}
 	if sn.State != "PROCESSED" {
 		return refuse(fmt.Sprintf("Snapshot %s is %s, not PROCESSED: advanced reachability needs the reachability stage finished", in.SnapshotID, sn.State),
-			"wait for the snapshot to finish processing (inspect-snapshots), or reprocess it if it failed (edit-snapshot-reprocess), then run this again")
+			"wait for the snapshot to finish processing (inspect-snapshots), or reprocess it if it failed (edit-snapshot), then run this again")
 	}
 	switch before {
 	case forward.AdvancedReachabilityUnprocessed:
@@ -74,7 +74,7 @@ func editAdvancedReachability(ctx context.Context, s *fwd.Session, raw json.RawM
 			"if internet_addressable is still unavailable the reason is not this: read inspect-vulnerabilities (it says why) and inspect-topology kind external for the internet node")
 	case forward.AdvancedReachabilityFailed, forward.AdvancedReachabilityCanceled, forward.AdvancedReachabilityTimedOut:
 		return refuse(fmt.Sprintf("Advanced reachability for snapshot %s ended %s, a final state", in.SnapshotID, before),
-			"Forward ignores a request for a snapshot whose advanced reachability is in a final state (the call is accepted and does nothing); reprocessing the snapshot (edit-snapshot-reprocess) clears the state, after which this can run again. Read the cause first: investigate-collection-failure, and the compute limits in inspect-environment")
+			"Forward ignores a request for a snapshot whose advanced reachability is in a final state (the call is accepted and does nothing); reprocessing the snapshot (edit-snapshot) clears the state, after which this can run again. Read the cause first: investigate-collection-failure, and the compute limits in inspect-environment")
 	default:
 		return result.NewUnknown(advancedReachabilityName, fmt.Sprintf("Forward does not report advanced reachability state for snapshot %s", in.SnapshotID), cx,
 			[]string{"the snapshot carries no advancedReachabilityState (an older Forward build, or the field is absent), so this skill cannot tell whether a request would do anything; nothing was changed"},
@@ -111,7 +111,7 @@ func editAdvancedReachability(ctx context.Context, s *fwd.Session, raw json.RawM
 		case errors.Is(err, forward.ErrSnapshotNotProcessed):
 			return refuse(fmt.Sprintf("Forward says snapshot %s has not finished the reachability stage", in.SnapshotID), "retry once processing has finished: "+err.Error())
 		case errors.Is(err, forward.ErrSnapshotProcessingFailed):
-			return refuse(fmt.Sprintf("Forward says processing of snapshot %s failed, so advanced reachability cannot run", in.SnapshotID), "reprocess it first (edit-snapshot-reprocess): "+err.Error())
+			return refuse(fmt.Sprintf("Forward says processing of snapshot %s failed, so advanced reachability cannot run", in.SnapshotID), "reprocess it first (edit-snapshot): "+err.Error())
 		case forward.IsStatus(err, 404):
 			return result.NewUnknown(advancedReachabilityName, fmt.Sprintf("Forward has no snapshot %s", in.SnapshotID), cx, []string{"Forward answered 404; nothing was changed"}, result.Options{NextActions: []string{"inspect-snapshots"}})
 		}

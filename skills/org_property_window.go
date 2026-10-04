@@ -208,7 +208,7 @@ func orgPropertyWindow(ctx context.Context, s *fwd.Session, in editOrgPropertyIn
 		if w.needConfirm {
 			msg += fmt.Sprintf(" and confirm=%q", strings.ToUpper(w.name))
 		}
-		return result.Build(editOrgPropertyName, result.OK, msg, result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: ev, NextActions: []string{"edit-snapshot-reprocess"}})
+		return result.Build(editOrgPropertyName, result.OK, msg, result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: ev, NextActions: []string{"edit-snapshot"}})
 	}
 	if w.needConfirm && !w.confirmed {
 		return result.Build(editOrgPropertyName, result.Failed, fmt.Sprintf("Refused, nothing was changed: %s is classified %s; apply needs confirm=%q", strings.ToUpper(w.name), w.risk, strings.ToUpper(w.name)),

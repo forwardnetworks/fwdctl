@@ -4,7 +4,7 @@ description: Copies an SNMP endpoint profile with extra OIDs, repoints endpoints
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
-  summary: "change what endpoints collect"
+  summary: "what endpoints collect"
   maturity: "1"
   class: write
   effect: "org"

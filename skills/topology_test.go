@@ -92,3 +92,33 @@ func TestTopologyLocationsTagsAndAliasesReturnTheirRows(t *testing.T) {
 		t.Errorf("aliases: %+v", r.Evidence)
 	}
 }
+
+func TestTopologyLocationsCarryCoordinatesIdsPlacementAndTheUnlocatedCount(t *testing.T) {
+	r := topo(t, map[string]fwdtest.Handler{
+		locPath:                                fwdtest.Const(200, []any{map[string]any{"id": "7", "name": "Atlanta", "city": "Atlanta", "adminDivision": "GA", "country": "US", "lat": 33.7, "lng": -84.4, "deviceGlobs": []any{"atl-*"}}}),
+		"GET /api/networks/n1/atlas":           fwdtest.Const(200, map[string]any{"locations": []any{map[string]any{"locationId": "7", "devices": []any{"a1"}, "anchoredDevices": []any{"a1-ctx"}, "dynamicMatchDevices": []any{"atl-sw1"}}}}),
+		"GET /api/networks/n1/device-statuses": fwdtest.Const(200, []any{map[string]any{"deviceName": "a1"}, map[string]any{"deviceName": "atl-sw1"}, map[string]any{"deviceName": "lonely"}}),
+	}, `{"network_id":"n1","kind":"locations"}`)
+	d := r.Evidence[0].Detail
+	row := d["rows"].([]map[string]any)[0]
+	if r.Status != result.OK || row["id"] != "7" || row["admin_division"] != "GA" || row["lat"] != 33.7 || row["device_count"] != 3 {
+		t.Fatalf("row: %v", row)
+	}
+	if d["devices_without_a_location"] != 1 || d["devices_with_a_location"] != 3 {
+		t.Errorf("unlocated: %v", d)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "unpublished") {
+		t.Errorf("the placement view is marked unpublished: %v", r.Limits)
+	}
+}
+
+func TestTopologyLocationsNeverCountZeroUnlocatedFromAnEmptyDeviceList(t *testing.T) {
+	r := topo(t, map[string]fwdtest.Handler{
+		locPath:                                fwdtest.Const(200, []any{map[string]any{"id": "7", "name": "Atlanta"}}),
+		"GET /api/networks/n1/atlas":           fwdtest.Const(200, map[string]any{"locations": []any{}}),
+		"GET /api/networks/n1/device-statuses": fwdtest.Const(200, []any{}),
+	}, `{"network_id":"n1","kind":"locations"}`)
+	if _, has := r.Evidence[0].Detail["devices_without_a_location"]; has {
+		t.Errorf("an empty device list proves nothing about unlocated devices: %v", r.Evidence[0].Detail)
+	}
+}

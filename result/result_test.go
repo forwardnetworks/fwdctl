@@ -74,7 +74,7 @@ func TestBuildRefusesOKWithoutEvidence(t *testing.T) {
 
 func TestWriteResultsMustSayTheirModeAndHowToUndo(t *testing.T) {
 	ok := func(mut func(*Result)) []string {
-		r := MustBuild("edit-snapshot-note", OK, "planned", Deterministic, Context{NetworkID: "n"}, Options{
+		r := MustBuild("edit-snapshot", OK, "planned", Deterministic, Context{NetworkID: "n"}, Options{
 			Evidence: []Evidence{NewEvidence(EvState, "op", nil, nil, "")}, Mode: ModeDryRun,
 			Changes: []Change{{Action: "set_note", Target: "snapshot 1", Reversible: true, Undo: "set the note back"}}})
 		mut(&r)

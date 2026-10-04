@@ -342,7 +342,7 @@ func TestInventoryCompareRefusesWhatItCannotCompareAndSaysWhyASnapshotCannotBeRe
 	// the baseline exists but was never processed: say so and name the fix, instead of a bare "no processed snapshot"
 	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"new","kind":"devices","compare_to_snapshot_id":"raw"}`)
 	joined := strings.Join(r.Limits, " | ")
-	if r.Status != result.Unknown || !strings.Contains(r.Finding, "raw is UNPROCESSED") || !strings.Contains(joined, "edit-snapshot-reprocess") || !strings.Contains(joined, "4500 devices") || r.NextActions[0] != "edit-snapshot-reprocess" {
+	if r.Status != result.Unknown || !strings.Contains(r.Finding, "raw is UNPROCESSED") || !strings.Contains(joined, "edit-snapshot") || !strings.Contains(joined, "4500 devices") || r.NextActions[0] != "edit-snapshot" {
 		t.Errorf("%s %s %v %v", r.Status, r.Finding, r.Limits, r.NextActions)
 	}
 	if r2, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"new","kind":"devices","compare_to_snapshot_id":"nope"}`); r2.Status != result.Unknown {
@@ -354,7 +354,7 @@ func TestInventoryOnAnUnprocessedSnapshotNamesItsStateAndTheFixNotJustNoProcesse
 	routes := map[string]fwdtest.Handler{snapsPath: compareSnaps(), nqePath: devicesBySnapshot(nil)}
 	for _, kind := range []string{"summary", "devices"} {
 		r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"raw","kind":"`+kind+`"}`)
-		if r.Status != result.Unknown || !strings.Contains(r.Finding, "UNPROCESSED") || r.NextActions[0] != "edit-snapshot-reprocess" {
+		if r.Status != result.Unknown || !strings.Contains(r.Finding, "UNPROCESSED") || r.NextActions[0] != "edit-snapshot" {
 			t.Errorf("%s: %s %s %v", kind, r.Status, r.Finding, r.NextActions)
 		}
 	}

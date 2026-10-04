@@ -59,3 +59,17 @@ func TestPlatformEmptyIsUnknownAndAForbiddenReadIsExplained(t *testing.T) {
 }
 
 func fmtAny(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+func TestPlatformDashboardsAndScorecardsSayTheyAreUnpublished(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/dashboards": fwdtest.Const(200, []any{map[string]any{"id": "d1", "name": "Overview"}}),
+		"GET /api/networks/n1/scorecards": fwdtest.Const(200, []any{map[string]any{"name": "Hygiene", "id": "sc1"}}),
+		"GET /api/networks/n1/snapshots":  fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+	}
+	for _, area := range []string{"dashboards", "scorecards"} {
+		r, _ := mustRun(t, "inspect-platform", routes, `{"area":"`+area+`","network_id":"n1"}`)
+		if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "unpublished") {
+			t.Errorf("%s: %s %v", area, r.Status, r.Limits)
+		}
+	}
+}

@@ -29,7 +29,7 @@
   {
    "query": "Reprocess snapshot 1001",
    "should_trigger": false,
-   "note": "edit-snapshot-reprocess"
+   "note": "edit-snapshot"
   },
   {
    "query": "What Forward features are enabled?",

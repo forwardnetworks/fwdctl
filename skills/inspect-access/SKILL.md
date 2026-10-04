@@ -4,7 +4,7 @@ description: Shows this login's Forward roles and what they allow, explains a re
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "access"
-  summary: "roles, refusals, users, groups, audit"
+  summary: "roles, users, groups, audit"
   maturity: "1"
   class: read
   tools: "current user session, users with roles, access control groups"

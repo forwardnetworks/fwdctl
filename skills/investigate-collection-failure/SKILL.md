@@ -4,7 +4,7 @@ description: Finds why Forward could not collect or model devices, grouping fail
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
-  summary: "why devices were not collected"
+  summary: "why not collected"
   maturity: "3"
   tools: "snapshots, collect"
 ---

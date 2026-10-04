@@ -465,7 +465,7 @@ func exposureUnknown(code string, in vulnInput, cx result.Context, limits []stri
 	case in.adv == "UNPROCESSED":
 		next = []string{"edit-advanced-reachability", "inspect-snapshots"}
 	case in.adv == "FAILED" || in.adv == "CANCELED" || in.adv == "TIMED_OUT":
-		next = []string{"edit-snapshot-reprocess", "edit-advanced-reachability"}
+		next = []string{"edit-snapshot", "edit-advanced-reachability"}
 	default:
 		next = []string{"inspect-snapshots"}
 	}

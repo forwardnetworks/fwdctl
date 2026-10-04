@@ -4,7 +4,7 @@ description: Lists a network's snapshots, says which is the newest worth reading
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
-  summary: "list snapshots, pick the newest"
+  summary: "list, pick the newest"
   maturity: "3"
   tools: "snapshots"
 ---

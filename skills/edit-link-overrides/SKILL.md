@@ -47,7 +47,7 @@ the topology. If the snapshot's model could not be read, the limits say the port
 
 The change's `undo` is the exact inverse edit (additions become removals and the other way round). Run this skill with it and `apply: true`.
 Overrides are written per snapshot, and **writing them invalidates the snapshot** (and later snapshots up to the end of its override range), setting them UNPROCESSED; Forward does not reprocess them by itself, so apply
-only with the person's approval and when that is acceptable, then run `edit-snapshot-reprocess` for each one (and `edit-advanced-reachability` after, if internet exposure is needed). Whether a later snapshot carries
+only with the person's approval and when that is acceptable, then run `edit-snapshot` (action reprocess) for each one (and `edit-advanced-reachability` after, if internet exposure is needed). Whether a later snapshot carries
 them is not stated by Forward's API: compare snapshots with `inspect-topology` with `compare_to_snapshot_id`. The playbook `plan-link-overrides` covers missing or drifted overrides end to end.
 
 ## Evidence

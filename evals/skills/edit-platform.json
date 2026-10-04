@@ -1,0 +1,52 @@
+{
+ "skill": "edit-platform",
+ "cases": [
+  {
+   "query": "Disable the ops webhook for now",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-platform area webhooks update enabled false, dry run first"
+   ]
+  },
+  {
+   "query": "Add our internal CA as a trusted certificate for the collectors",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-platform certificates add, dry run",
+    "says the collectors trust it only after apply, which restarts them"
+   ]
+  },
+  {
+   "query": "Show a maintenance banner on the lab network",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-platform banners create, dry run first"
+   ]
+  },
+  {
+   "query": "Set up the ServiceNow integration with the password in /secure/snow",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-platform integrations servicenow set, password from secret_file, dry run first",
+    "never asks for the password in the input"
+   ]
+  },
+  {
+   "query": "Create an access label for the edge routers edge-*",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-platform access_labels create, dry run first"
+   ]
+  },
+  {
+   "query": "List the webhooks and their last test result",
+   "should_trigger": false,
+   "note": "inspect-platform area webhooks"
+  },
+  {
+   "query": "Change the snapshot retention for this network",
+   "should_trigger": false,
+   "note": "edit-snapshot retention_policy"
+  }
+ ]
+}

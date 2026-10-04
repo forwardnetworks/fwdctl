@@ -548,7 +548,7 @@ fwdctl wait
 Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.
 A FAILED, CANCELED or TIMED_OUT state ends the wait with exit 1: Forward does not retry those by itself (a reprocess clears them). The last line on stdout is a JSON object: status,
 snapshot_id, state, advanced_reachability, waited_seconds. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.
-Nothing here starts the work: a reprocess or advanced reachability that was never started (edit-snapshot-reprocess, edit-advanced-reachability) stays UNPROCESSED, and the wait says so after a few polls and ends at --timeout.
+Nothing here starts the work: a reprocess or advanced reachability that was never started (edit-snapshot, edit-advanced-reachability) stays UNPROCESSED, and the wait says so after a few polls and ends at --timeout.
 
 ```
 fwdctl wait snapshot --network ID --snapshot ID [--advanced-reachability] [--timeout 2h] [flags]

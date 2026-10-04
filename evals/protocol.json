@@ -9,11 +9,11 @@
  },
  {
   "query": "Label the newest snapshot 'before the BGP change'",
-  "skill": "edit-snapshot-note"
+  "skill": "edit-snapshot"
  },
  {
   "query": "Reprocess snapshot 1175663",
-  "skill": "edit-snapshot-reprocess"
+  "skill": "edit-snapshot"
  },
  {
   "query": "Compute advanced reachability for snapshot 1001 so internet exposure is available",
@@ -70,5 +70,17 @@
  {
   "query": "Run a connectivity test on data connector weather-feed",
   "skill": "edit-data-connector"
+ },
+ {
+  "query": "Create a new network called staging and rename the tag Core to Backbone on it",
+  "skill": "edit-network"
+ },
+ {
+  "query": "Add a CLI credential ops with the password in /secure/pw to network 1",
+  "skill": "edit-source"
+ },
+ {
+  "query": "Disable the ops webhook for now",
+  "skill": "edit-platform"
  }
 ]

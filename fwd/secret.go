@@ -19,9 +19,13 @@ func (Secret) String() string               { return secretMask }
 func (Secret) GoString() string             { return secretMask }
 func (Secret) MarshalJSON() ([]byte, error) { return json.Marshal(secretMask) }
 func (Secret) MarshalText() ([]byte, error) { return []byte(secretMask), nil }
-func (s Secret) Reveal() string             { return s.v }
-func (s Secret) Empty() bool                { return s.v == "" }
-func (s Secret) Format(f fmtState, _ rune)  { _, _ = f.Write([]byte(secretMask)) }
+
+// SecretFromString wraps a value already in memory (one field of a JSON secret file).
+func SecretFromString(v string) Secret { return Secret{v: v} }
+
+func (s Secret) Reveal() string            { return s.v }
+func (s Secret) Empty() bool               { return s.v == "" }
+func (s Secret) Format(f fmtState, _ rune) { _, _ = f.Write([]byte(secretMask)) }
 
 // fmtState is the part of fmt.State that Format needs.
 type fmtState interface{ Write([]byte) (int, error) }

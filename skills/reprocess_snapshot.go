@@ -9,9 +9,7 @@ import (
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
-const reprocessSnapshotName = "edit-snapshot-reprocess"
-
-func init() { Register(reprocessSnapshotName, reprocessSnapshot) }
+const reprocessSnapshotName = editSnapshotName
 
 type reprocessSnapshotInput struct {
 	NetworkID  string `json:"network_id"`

@@ -39,7 +39,7 @@ func (a *app) waitSnapshotCmd() *cobra.Command {
 		Long: "Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.\n" +
 			"A FAILED, CANCELED or TIMED_OUT state ends the wait with exit 1: Forward does not retry those by itself (a reprocess clears them). The last line on stdout is a JSON object: status,\n" +
 			"snapshot_id, state, advanced_reachability, waited_seconds. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.\n" +
-			"Nothing here starts the work: a reprocess or advanced reachability that was never started (edit-snapshot-reprocess, edit-advanced-reachability) stays UNPROCESSED, and the wait says so after a few polls and ends at --timeout.",
+			"Nothing here starts the work: a reprocess or advanced reachability that was never started (edit-snapshot, edit-advanced-reachability) stays UNPROCESSED, and the wait says so after a few polls and ends at --timeout.",
 		Example: "  fwdctl wait snapshot --network N --snapshot S --advanced-reachability --timeout 3h",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -102,7 +102,7 @@ func waitForSnapshot(ctx context.Context, get func(context.Context) (*forward.Sn
 			if sn.State == "UNPROCESSED" || (sn.State == want && wantAdv != "" && adv == "UNPROCESSED") {
 				if idle++; idle == 3 {
 					if sn.State == "UNPROCESSED" {
-						fmt.Fprintf(stderr, "snapshot %s is UNPROCESSED and nothing is processing it; this wait will not start it (edit-snapshot-reprocess does)\n", id)
+						fmt.Fprintf(stderr, "snapshot %s is UNPROCESSED and nothing is processing it; this wait will not start it (edit-snapshot does)\n", id)
 					} else {
 						fmt.Fprintf(stderr, "advanced reachability of snapshot %s is UNPROCESSED: it was never started, or Forward has not yet begun it; this wait will not start it (edit-advanced-reachability does)\n", id)
 					}

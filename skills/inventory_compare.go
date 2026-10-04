@@ -232,18 +232,18 @@ func notReadySnapshot(skill string, cx result.Context, sn *forward.Snapshot, wha
 	switch {
 	case state == "UNPROCESSED":
 		msg = fmt.Sprintf("%s %s is UNPROCESSED: Forward has not built its model (it was never processed, or it was invalidated), so nothing can be read from it", subject, id)
-		limits = append(limits, "edit-snapshot-reprocess builds it (dry run first; the snapshot's answers are unavailable while it processes). Without processing, investigate-collection-failure view history still shows each collection's duration and device count")
+		limits = append(limits, "edit-snapshot builds it (dry run first; the snapshot's answers are unavailable while it processes). Without processing, investigate-collection-failure view history still shows each collection's duration and device count")
 		if sn.TotalDevices > 0 {
 			limits = append(limits, fmt.Sprintf("Forward's snapshot list records %d devices for it, but not what they are", sn.TotalDevices))
 		}
-		next = []string{"edit-snapshot-reprocess", "investigate-collection-failure", "inspect-snapshots"}
+		next = []string{"edit-snapshot", "investigate-collection-failure", "inspect-snapshots"}
 	case fwd.InProgress(state):
 		msg = fmt.Sprintf("%s %s is still %s", subject, id, strings.ToLower(state))
 		limits = append(limits, "wait for it to finish (inspect-snapshots shows its progress), then ask again")
 	case state == "FAILED":
 		msg = fmt.Sprintf("%s %s FAILED processing, so nothing can be read from it", subject, id)
-		limits = append(limits, "investigate-collection-failure says why; edit-snapshot-reprocess retries it (dry run first)")
-		next = []string{"investigate-collection-failure", "edit-snapshot-reprocess"}
+		limits = append(limits, "investigate-collection-failure says why; edit-snapshot retries it (dry run first)")
+		next = []string{"investigate-collection-failure", "edit-snapshot"}
 	}
 	return result.NewUnknown(skill, msg, cx, limits, result.Options{NextActions: next})
 }

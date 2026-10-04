@@ -14,7 +14,7 @@ var propertyMeanings = map[string]propertyMeaning{
 	"disable_flow_computation": {"false", "Switches off the flow (reachability) computation for a network. Forward's documentation for it is empty; its source skips the automatic advanced reachability and reports internet exposure as REACHABILITY_COMPUTATION_DISABLED when it is set.",
 		"inspect-vulnerabilities returns internet exposure unavailable (REACHABILITY_COMPUTATION_DISABLED); investigate-reachability has no flow analysis to read."},
 	"background_snapshot_reprocess": {"HIGH_PRIORITY", "The priority at which snapshots are reprocessed in the background (Forward: if ALLOW_BACKGROUND_SNAPSHOT_REPROCESS is set to true, setting this has no impact).",
-		"How long a reprocessed or invalidated snapshot stays unavailable: LOW_PRIORITY lets it wait behind other work (inspect-snapshots shows it PROCESSING longer; edit-snapshot-reprocess and a backdate take effect later)."},
+		"How long a reprocessed or invalidated snapshot stays unavailable: LOW_PRIORITY lets it wait behind other work (inspect-snapshots shows it PROCESSING longer; edit-snapshot and a backdate take effect later)."},
 	"allowed_onprem_collectors": {"BUNDLED_ONLY", "Which kinds of on-premises collector may be used.",
 		"inspect-collection (whether a collector is connected, which kind) and edit-collection (a collection can start only when an allowed collector is up)."},
 	"max_processing_ai_chats_per_user": {"1", "The most processing AI chats one user may have at a time; it bounds the load of Forward's own AI chat.",

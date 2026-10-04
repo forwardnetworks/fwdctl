@@ -1,0 +1,74 @@
+---
+name: edit-platform
+description: Changes org admin settings (banners, webhooks, certificates, labels, integrations, backups). Dry run unless apply. Use when setting up the org.
+compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+metadata:
+  cluster: "inventory-topology"
+  summary: "org admin settings"
+  maturity: "1"
+  class: write
+  effect: "org"
+  secrets: "true"
+  reversible: "false"
+  tools: "banners, webhooks, trusted certificates, device access labels, backups, integrations"
+---
+
+# edit-platform
+
+## Intent
+
+Change what an administrator sets up for the whole organization, not for one network. It touches no device and no network. Read the same areas with `inspect-platform`.
+
+## Inputs
+
+`area` and `action` (required), `name`, `definition` (the body, one object, never a secret), `secret_file` or `secret_env`, `confirm`, `apply` (default false). See `schema.json`.
+
+A secret (a ServiceNow or Infoblox password) is never put in the input. Give `secret_file` (a path, mode 600; a group-readable file is refused) or `secret_env` (an environment variable name). It is read only on apply, sent once, and never echoed, logged or returned; the undo says to enter it again. A definition with a secret-looking field is refused. This skill is interactive-only: do not run it unattended.
+
+| `area` | `action` | `name` | `definition` | Undo |
+|---|---|---|---|---|
+| `banners` | `create` | | `message`, `background_color`, `network_ids`, `enabled` | update with `enabled: false` (no delete) |
+| `banners` | `update` | the banner id | any of the create fields | update back |
+| `webhooks` | `create` | | `name`, `url`, `description`, `enabled`, `disable_ssl_validation`, `event_params` | delete it |
+| `webhooks` | `update` | the webhook | `description`, `url`, `enabled` | update back |
+| `webhooks` | `delete` | the webhook | | **none**; `confirm` = the name |
+| `certificates` | `add` | | `name`, `certificate` (PEM text) | delete it |
+| `certificates` | `delete` | the certificate | | add it back |
+| `certificates` | `apply` | | | **none**; restarts every collector; `confirm` = `apply` |
+| `access_labels` | `create` | | `name`, `device_names`, `device_globs` | delete it |
+| `access_labels` | `update` | the label name or id | any of the create fields | update back |
+| `access_labels` | `delete` | the label name or id | | **none**; `confirm` = the name |
+| `integrations` | `set` | `servicenow` | `instance_url`, `username`, `enabled`, `auto_create`, `auto_create_impact`, `auto_create_urgency`, `auto_update`; secret = the password | set back |
+| `integrations` | `delete` | `servicenow` | | **none**; `confirm` = `servicenow` |
+| `integrations` | `create` | `infoblox` | `name`, `ip_address`, `username`; secret = the password | **none** through the API |
+| `backups` | `cancel` | | | **none**; `confirm` = `cancel` |
+| `backups` | `delete` | the numeric backup id | | **none**; `confirm` = the id |
+
+Detail: `reference/areas.md`.
+
+## Dry run
+
+Without `apply: true` nothing changes. The result shows before, after and the undo, and names the exact `confirm` an irreversible action needs.
+
+## Procedure
+
+1. Read the current object. A missing one is **unknown**, nothing changed; a name that exists is refused.
+2. Dry run returns the plan. With `apply: true`: one call, then read back; a read-back that does not show the change is **failed**.
+
+## Limits
+
+Backups: only cancel and delete; backup settings, S3 storage and starting a backup use Forward's backup service, which accepts a service principal only, not a user login, so this skill cannot do them. Restore is not here; Rapid7 sources (per network) and SAML, licensing and organizations are not here yet; a trigger starts the backup and does not wait. Deleting an access label widens the access of every group that used it.
+
+Webhook credentials and templates are not set here (webhook schemas are unpublished by Forward). A certificate is not trusted by collectors until `apply` pushes it, and a push does not wait for the collectors, so completion is not proven.
+
+## Evidence
+
+One `state` item: `object`, `action`, `mode`, `before`, `after`.
+
+## Next actions
+
+`inspect-platform` (areas `banners`, `webhooks`, `certificates`, `access_labels`, `backups`, `integrations`) to see the result.
+
+## Running this skill
+
+`echo '{"area":"webhooks","action":"update","name":"ops","definition":{"enabled":false}}' | fwdctl run edit-platform` is the dry run; add `"apply": true` after it is accepted.

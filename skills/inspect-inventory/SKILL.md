@@ -4,7 +4,7 @@ description: Reads network contents: size, vendors, devices, interfaces, VLANs, 
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "inventory-topology"
-  summary: "devices, interfaces, VLANs, hosts, IP owner"
+  summary: "devices, interfaces, VLANs, IP owner"
   maturity: "3"
   tools: "snapshots, query"
 ---

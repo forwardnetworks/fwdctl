@@ -4,7 +4,7 @@ description: Shows which rows a saved NQE query gains, loses or changes between 
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "nqe"
-  summary: "query rows changed between snapshots"
+  summary: "query rows changed"
   maturity: "3"
   tools: "snapshots, query"
 ---

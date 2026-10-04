@@ -49,6 +49,9 @@ Policy checks, evidence, a device or a site under review.
 - `inspect-inventory`: What is in the network: counts and vendors, and the devices, interfaces (with SVI addresses and VRFs), VLANs, VRFs, hosts, routes (with a per-VRF default-route fact), OSPF neighbors, and cloud accounts, VPCs, subnets and instances, with filters and paging? kind ip_owner: which modelled interface, SVI or FHRP address owns an IPv4 address, or which connected subnet it falls in.
 - `edit-checks` *(writes, dry run first)*: Create a check (local to its snapshot unless persistent) or deactivate one.
 - `inspect-platform`: Read how Forward is set up (credentials, jump servers, proxies, collectors, cloud setups, webhooks, licensing, backups, SAML, organizations), with every secret removed.
+- `edit-source` *(writes, dry run first, secrets from a file)*: Add CLI, SNMP and HTTP credentials, jump servers and proxies.
+- `edit-platform` *(writes, dry run first)*: Change organization-wide admin settings: banners, webhooks, trusted certificates, device access labels, backups and integrations (secrets from a file).
+- `edit-network` *(writes, dry run first)*: Create, rename or delete a network; add locations and device clusters; rename or delete device tag definitions.
 - `edit-alias` *(writes, dry run first)*: Create, replace or end an alias (a named group of hosts, devices, interfaces or headers that checks refer to by name); it applies from the snapshot it is put on.
 
 ### Health and collection
@@ -60,9 +63,8 @@ Is the data current, is collection working, is anything stressed.
 - `inspect-performance`: Which devices and interfaces are unhealthy right now (CPU, memory, utilization, errors, loss), and what is their history?
 - `inspect-environment`: Which Forward build, organization, login and vulnerability-index age is this, which features has the client seen, and which features (advanced reachability, flow computation, Predict, NQE fields) are on, what is their default and where is each set (`features`)?
 - `edit-collection` *(writes, dry run first)*: Start or stop a collection; refuses while one runs or the collector is down.
-- `edit-snapshot-reprocess` *(writes, dry run first)*: Recompute a snapshot's derived data from what it collected (failed or stale after an upgrade).
+- `edit-snapshot` *(writes, dry run first)*: Set a snapshot's note, reprocess or invalidate it, favorite it, delete it, or set the network's retention policy. Replaces edit-snapshot-note and edit-snapshot-reprocess.
 - `edit-advanced-reachability` *(writes, dry run first)*: Start advanced reachability for one processed snapshot that never had it (the analysis internet exposure is read from); asynchronous and compute-heavy.
-- `edit-snapshot-note` *(writes, dry run first)*: Put a note on a snapshot, for example "before change X".
 
 ### Inventory and topology
 

@@ -4,7 +4,7 @@ description: Judges a change: view verify (worked? broke nothing?), describe (wh
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "change"
-  summary: "verify, describe or size a change"
+  summary: "verify, describe, size a change"
   maturity: "3"
   tools: "snapshots, changes, paths"
 ---
