@@ -36,6 +36,7 @@ var playbookFor = map[string]string{
 	"edit-nqe-query":                 "author-nqe-query",
 	"edit-checks":                    "plan-compliance-audit",
 	"edit-alias":                     "plan-compliance-audit",
+	"inspect-platform":               "plan-investigation",
 	"edit-device-tags":               "plan-device-audit",
 	"edit-link-overrides":            "plan-link-overrides",
 	"edit-synthetic-query":           "plan-synthetic-device",

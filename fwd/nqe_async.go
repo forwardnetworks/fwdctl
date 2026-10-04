@@ -22,13 +22,13 @@ type NQEMeta struct {
 	MillisExecuting *int64 `json:"millis_executing,omitempty"`
 	RowsProduced    *int64 `json:"rows_produced,omitempty"`
 	// LikelyCached says the wall time was far below the execution time Forward recorded: the result was served from its cache, so the timing is not a cold measurement.
-	LikelyCached bool              `json:"likely_cached,omitempty"`
+	LikelyCached bool `json:"likely_cached,omitempty"`
 	// Attempts is how many times the run was tried when --retry-transient allowed more than one; TransportClean is false when a retry was needed (a Forward restart or a gateway failure).
-	Attempts       int  `json:"attempts,omitempty"`
-	TransportClean *bool `json:"transport_clean,omitempty"`
-	HTTPStatus   int               `json:"http_status,omitempty"`
-	Diagnostics  []QueryDiagnostic `json:"diagnostics"`
-	Error        string            `json:"error,omitempty"`
+	Attempts       int               `json:"attempts,omitempty"`
+	TransportClean *bool             `json:"transport_clean,omitempty"`
+	HTTPStatus     int               `json:"http_status,omitempty"`
+	Diagnostics    []QueryDiagnostic `json:"diagnostics"`
+	Error          string            `json:"error,omitempty"`
 }
 
 // MetaFromError fills the failure part of a meta from an error: the HTTP status, Forward's completion type and its diagnostics (never nil, so a consumer can test the list's length).

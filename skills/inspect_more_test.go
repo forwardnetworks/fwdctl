@@ -313,3 +313,21 @@ func TestChecksDetailReadsALoopViolationWhoseQueryIsAnObject(t *testing.T) {
 		t.Fatalf("%s %v %s", r.Status, r.Limits, jsonOf(r))
 	}
 }
+
+func TestChecksDetailShowsTheDefinitionAndTheViolatingRowsOfAFailingNQECheck(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: ready1(),
+		"GET /api/snapshots/s1/checks/9": fwdtest.Const(200, map[string]any{"id": "9", "name": "no telnet", "status": "FAIL", "numViolations": 2,
+			"definition": map[string]any{"checkType": "NQE", "queryId": "Q_x"}}),
+		nqePath: fwdtest.Const(200, map[string]any{"items": []any{map[string]any{"device": "r1", "line": "transport input telnet"}, map[string]any{"device": "r2", "line": "transport input telnet"}}, "totalNumItems": 2}),
+	}
+	r, _ := mustRun(t, "inspect-checks", routes, `{"network_id":"n1","check_id":"9"}`)
+	b := jsonOf(r)
+	if r.Status != result.Failed || !strings.Contains(b, `"violation_rows"`) || !strings.Contains(b, `"device":"r2"`) || !strings.Contains(b, `"queryId":"Q_x"`) || !strings.Contains(strings.Join(r.Limits, "|"), "rows the check's saved query returns") {
+		t.Fatalf("%s %s", r.Status, b)
+	}
+	// a passing check runs no query
+	routes["GET /api/snapshots/s1/checks/9"] = fwdtest.Const(200, map[string]any{"id": "9", "name": "no telnet", "status": "PASS", "definition": map[string]any{"checkType": "NQE", "queryId": "Q_x"}})
+	if r, _ := mustRun(t, "inspect-checks", routes, `{"network_id":"n1","check_id":"9"}`); strings.Contains(jsonOf(r), "violation_rows") {
+		t.Errorf("only a failing check lists violations")
+	}
+}

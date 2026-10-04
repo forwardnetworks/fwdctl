@@ -150,6 +150,9 @@ func checkRow(c forward.Check) map[string]any {
 	return row
 }
 
+// violationRowLimit is how many violating rows of a failing NQE check are returned.
+const violationRowLimit = 25
+
 func checkDetail(ctx context.Context, s *fwd.Session, in inspectChecksInput, sid string, cx result.Context) (result.Result, error) {
 	d, err := s.CheckDetail(ctx, sid, in.CheckID)
 	if fwd.NotFound(err) {
@@ -167,6 +170,30 @@ func checkDetail(ctx context.Context, s *fwd.Session, in inspectChecksInput, sid
 		row["diagnosis"] = d.Diagnosis
 	}
 	var limits []string
+	// the definition says what the check tests; for a failing NQE check the rows its query returns on this snapshot are the violations
+	if len(d.Definition) > 0 {
+		var def struct {
+			CheckType string `json:"checkType"`
+			QueryID   string `json:"queryId"`
+		}
+		if json.Unmarshal(d.Definition, &def) == nil {
+			row["definition"] = json.RawMessage(d.Definition)
+			if d.Status == "FAIL" && strings.EqualFold(def.CheckType, "NQE") && def.QueryID != "" {
+				out, qerr := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{QueryID: def.QueryID, SnapshotID: sid, Limit: violationRowLimit})
+				switch {
+				case qerr != nil:
+					limits = append(limits, "the check's query could not be run to list the violating rows: "+qerr.Error())
+				default:
+					row["violation_rows"] = fwd.Records(out.Items)
+					row["violation_rows_total"] = out.Total
+					if out.Total > int64(len(out.Items)) {
+						limits = append(limits, fmt.Sprintf("%d rows match; the first %d are shown", out.Total, len(out.Items)))
+					}
+					limits = append(limits, "violation_rows are the rows the check's saved query returns on this snapshot, run now; for an NQE check they are what violates it, but a check that has a result key or a changed query since it was evaluated may differ from its stored status")
+				}
+			}
+		}
+	}
 	if d.Outdated != nil && *d.Outdated {
 		limits = append(limits, "the result was computed against an older definition of this check")
 	}

@@ -54,16 +54,23 @@ func TestTopologyDeviceFilterMatchesWholeNames(t *testing.T) {
 	}
 }
 
-func TestTopologyEmptyKindsAreUnknownNotNone(t *testing.T) {
-	for _, tc := range []struct{ kind, path string }{{"links", topoPath}, {"locations", locPath}, {"tags", tagsPath}, {"aliases", aliasesPath}} {
-		body := any([]any{})
-		if tc.kind == "links" {
-			body = map[string]any{"links": []any{}}
+// Links are collected: an empty answer may be a wrong name or an uncollected feature, so it stays unknown. Locations, tags and aliases are DEFINED by an administrator: a successful empty
+// read is "none defined", said as such, so it cannot be confused with a failed read (which is an error).
+func TestTopologyEmptyCollectedIsUnknownAndEmptyDefinedIsNoneDefined(t *testing.T) {
+	r := topo(t, map[string]fwdtest.Handler{topoPath: fwdtest.Const(200, map[string]any{"links": []any{}})}, `{"network_id":"n1","kind":"links"}`)
+	if r.Status != result.Unknown {
+		t.Errorf("links: empty must be unknown, got %s", r.Status)
+	}
+	for _, tc := range []struct{ kind, path string }{{"locations", locPath}, {"tags", tagsPath}, {"aliases", aliasesPath}} {
+		r := topo(t, map[string]fwdtest.Handler{tc.path: fwdtest.Const(200, []any{})}, fmt.Sprintf(`{"network_id":"n1","kind":%q}`, tc.kind))
+		if r.Status != result.OK || !strings.Contains(r.Finding, "are defined (the read succeeded") {
+			t.Errorf("%s: an empty defined list is 'none defined': %s %s", tc.kind, r.Status, r.Finding)
 		}
-		r := topo(t, map[string]fwdtest.Handler{tc.path: fwdtest.Const(200, body)}, fmt.Sprintf(`{"network_id":"n1","kind":%q}`, tc.kind))
-		if r.Status != result.Unknown {
-			t.Errorf("%s: empty must be unknown, got %s", tc.kind, r.Status)
-		}
+	}
+	// a failed read is an error, never an empty list
+	routes := map[string]fwdtest.Handler{tagsPath: fwdtest.Const(500, map[string]any{"message": "boom"}), snapsPath: ready("s1")}
+	if _, _, err := runSkill(t, "inspect-topology", routes, `{"network_id":"n1","kind":"tags"}`); err == nil {
+		t.Errorf("a failed read must be an error, not none defined")
 	}
 }
 

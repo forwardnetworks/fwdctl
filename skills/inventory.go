@@ -304,8 +304,8 @@ query(accountName: String, vpcName: String) =
 foreach account in network.cloudAccounts
 where accountName == "" || account.name == accountName
 foreach vpc in account.vpcs
-where vpcName == "" || vpc.name == vpcName
 foreach table in vpc.routeTables
+where vpcName == "" || vpc.name == vpcName || table.name == vpcName
 foreach route in table.routes
 select {
   Account: account.name,
@@ -320,6 +320,18 @@ select {
 }
 order by Account asc natural, VPC asc natural, "Route table" asc natural;
 `
+	// one row per gateway kind and state, over the whole snapshot (or the account and VPC asked for), so "how many VPN connections are down" does not need every row
+	invCloudGatewaysSummary = `@query
+query(accountName: String, vpcName: String) =
+foreach account in network.cloudAccounts
+where accountName == "" || account.name == accountName
+foreach vpc in account.vpcs
+where vpcName == "" || vpc.name == vpcName
+let vpns = (foreach g in vpc.vpnGateways foreach c in g.vpnConnections select {Kind: "vpn connection", State: if c.isUp then "up" else "down"})
+let others = (foreach p in vpc.vpcPeerings select {Kind: "vpc peering", State: "n/a"}) + (foreach g in vpc.inetGateways select {Kind: "internet gateway", State: "n/a"}) + (foreach g in vpc.natGateways select {Kind: "nat gateway", State: "n/a"})
+foreach item in vpns + others
+group item as items by {Kind: item.Kind, State: item.State} as g
+select {Kind: g.Kind, State: g.State, Count: length(items)};`
 	invCloudSecurity = `@query
 query(accountName: String, vpcName: String) =
 foreach account in network.cloudAccounts
@@ -514,6 +526,26 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	detail := map[string]any{"kind": in.Kind, "filters": filters, "total": out.Total, "offset": in.Offset, "returned": len(out.Items), "rows": fwd.Records(out.Items)}
 	finding := fmt.Sprintf("%d %s returned (%d match)", len(out.Items), noun(in.Kind), out.Total)
 	next := inventoryNext(in.Kind)
+	if in.Kind == "cloud_gateways" {
+		// the counts by kind and state cover every gateway that matches the filters, not just this page
+		if sum, serr := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: invCloudGatewaysSummary, Parameters: params, SnapshotID: fwd.SnapshotID(cx), Limit: maxInventoryLimit}); serr == nil {
+			recs := fwd.Records(sum.Items)
+			detail["by_kind_and_state"] = recs
+			down := int64(0)
+			for _, r := range recs {
+				if r["Kind"] == "vpn connection" && r["State"] == "down" {
+					if n, ok := num(r["Count"]); ok {
+						down += n
+					}
+				}
+			}
+			if down > 0 {
+				finding += fmt.Sprintf("; %d VPN connection(s) are DOWN (by_kind_and_state counts every gateway that matches, not just this page)", down)
+			}
+		} else {
+			limits = append(limits, "the counts by gateway kind and state could not be read: "+serr.Error())
+		}
+	}
 	if in.Kind == "cloud_accounts" {
 		notCollected := 0
 		for _, r := range detail["rows"].([]map[string]any) {

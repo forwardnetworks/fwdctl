@@ -521,5 +521,15 @@
   "query": "Compare the devices and cloud routes of two networks, a seed and a lab",
   "expect": "inspect-inventory",
   "rival": "compare-nqe-results"
+ },
+ {
+  "query": "Which jump servers and credentials are configured on this network?",
+  "expect": "inspect-platform",
+  "rival": "inspect-collection"
+ },
+ {
+  "query": "Is SAML configured and when does the license expire?",
+  "expect": "inspect-platform",
+  "rival": "inspect-environment"
  }
 ]

@@ -31,6 +31,10 @@ the extra OIDs, point one endpoint at it, and later point it back and delete the
 
 Optional `apply` (default false). See `schema.json`.
 
+## Reading the profiles first
+
+`inspect-platform` with `area: endpoint_profiles` lists every profile (SNMP, CLI, HTTP); `inspect-collection` view `config` shows the ones endpoints use. No dry run is needed to read.
+
 ## Dry run
 
 Without `apply: true` nothing is changed. The skill reads the network's endpoints and the organization's profiles, refuses what cannot work (an unknown profile or endpoint, a type mismatch, a

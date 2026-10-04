@@ -288,3 +288,17 @@ func TestReachabilityOrdinaryHopNamesAreNotMissingPeers(t *testing.T) {
 		}
 	}
 }
+
+func TestReachabilityListsEachHopWithItsInterfacesAndReportsIdenticalPathsOnce(t *testing.T) {
+	same := path("DROPPED", "PERMITTED", hop("r1", "e0", "e1"), hop("fw1", "e2", ""))
+	other := path("DROPPED", "PERMITTED", hop("r1", "e0", "e9"), hop("fw2", "e2", ""))
+	r, _ := reach(t, pathsBody(false, "EXACT", same, same, same, other), nil, reachIn)
+	if len(r.Evidence) != 2 {
+		t.Fatalf("three copies of one path and one different path are two evidence items, not four: %d", len(r.Evidence))
+	}
+	d := r.Evidence[0].Detail
+	hops := d["hops"].([]map[string]any)
+	if d["identical_paths"] != 3 || len(hops) != 2 || hops[0]["device"] != "r1" || hops[0]["ingress_interface"] != "e0" || hops[0]["egress_interface"] != "e1" || hops[1]["egress_interface"] != nil {
+		t.Errorf("per-hop interfaces and the repeat count: %v", d)
+	}
+}

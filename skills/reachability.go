@@ -85,14 +85,61 @@ func pathEvidence(p fwd.Path, class string, snapshot *string) result.Evidence {
 	if len(shown) > 8 {
 		shown = shown[:8]
 	}
+	// every hop with the interfaces the packet entered and left by, so two paths (two snapshots or two networks) can be compared without the raw path search
+	hops := make([]map[string]any, 0, len(p.Hops))
+	for i, h := range p.Hops {
+		if i == maxPathHops {
+			break
+		}
+		hops = append(hops, map[string]any{"device": hopName(h), "ingress_interface": nilIfEmpty(h.IngressInterface), "egress_interface": nilIfEmpty(h.EgressInterface)})
+	}
 	detail := map[string]any{
 		"classification": class, "forwarding_outcome": p.ForwardingOutcome, "security_outcome": nilIfEmpty(p.SecurityOutcome),
-		"hop_count": len(p.Hops), "devices": devices, "last_hop": last,
+		"hop_count": len(p.Hops), "devices": devices, "hops": hops, "last_hop": last,
 	}
 	if mp := missingPeerOf(p); mp != nil {
 		detail["missing_peer"] = mp
 	}
 	return result.NewEvidence(result.EvPath, "getPaths", snapshot, detail, class+": "+strings.Join(shown, " > "))
+}
+
+// maxPathHops bounds the per-hop list of one path.
+const maxPathHops = 40
+
+// pathSignature identifies a path by its classification and the devices and interfaces it crosses, so identical paths can be reported once.
+func pathSignature(p fwd.Path, class string) string {
+	var b strings.Builder
+	b.WriteString(class)
+	for _, h := range p.Hops {
+		b.WriteString("|" + hopName(h) + ">" + h.IngressInterface + ">" + h.EgressInterface)
+	}
+	return b.String()
+}
+
+// uniquePathEvidence returns the evidence of at most limit DIFFERENT paths; a path that repeats one already listed (Forward returns the same path for several equal-cost or
+// duplicate matches) is counted on the first one as identical_paths instead of being listed again.
+func uniquePathEvidence[T any](items []T, path func(T) fwd.Path, class func(T) string, snapshot *string, limit int) []result.Evidence {
+	var ev []result.Evidence
+	index := map[string]int{}
+	count := map[string]int{}
+	for _, it := range items {
+		sig := pathSignature(path(it), class(it))
+		count[sig]++
+		if _, seen := index[sig]; seen {
+			continue
+		}
+		if len(ev) == limit {
+			continue
+		}
+		index[sig] = len(ev)
+		ev = append(ev, pathEvidence(path(it), class(it), snapshot))
+	}
+	for sig, i := range index {
+		if n := count[sig]; n > 1 {
+			ev[i].Detail["identical_paths"] = n
+		}
+	}
+	return ev
 }
 
 const missingPeerSuffix = "-missing-peer"
@@ -226,13 +273,7 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		if len(real) == 0 {
 			limits = append(limits, "only incomplete or unclassified outcomes were returned")
 		}
-		var ev []result.Evidence
-		for i, c := range all {
-			if i == 3 {
-				break
-			}
-			ev = append(ev, pathEvidence(c.path, c.class, sid))
-		}
+		ev := uniquePathEvidence(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, 3)
 		finding, next := "The returned paths do not establish whether the flow is delivered", []string{"investigate-collection-failure"}
 		for _, c := range all {
 			if mp := missingPeerOf(c.path); mp != nil && len(real) == 0 {
@@ -244,13 +285,7 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		}
 		return result.NewUnknown(reachabilityName, finding, cx, limits, result.Options{Evidence: ev, NextActions: next})
 	}
-	var ev []result.Evidence
-	for i, c := range real {
-		if i == 3 {
-			break
-		}
-		ev = append(ev, pathEvidence(c.path, c.class, sid))
-	}
+	ev := uniquePathEvidence(real, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, 3)
 	return result.Build(reachabilityName, result.Failed, reachabilityExplain[real[0].class], result.Deterministic, cx,
 		result.Options{Limits: limits, Evidence: ev, NextActions: []string{"inspect-topology", "inspect-device-files", "plan-troubleshoot-connectivity"}})
 }

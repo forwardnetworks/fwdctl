@@ -446,3 +446,25 @@ func TestInventoryVendorFilterIsAParameterInForwardsEnumerationForm(t *testing.T
 		t.Errorf("a filter a kind does not take is refused")
 	}
 }
+
+func TestInventoryCloudGatewaysCountsDownVPNsOverEveryMatchAndRoutesFilterByTableName(t *testing.T) {
+	var body string
+	routes := map[string]fwdtest.Handler{
+		snapsPath: ready("s1"),
+		nqePath: func(_ *http.Request, b []byte) (int, any) {
+			body = string(b)
+			if strings.Contains(body, "group item as items") {
+				return 200, map[string]any{"items": []any{map[string]any{"Kind": "vpn connection", "State": "down", "Count": 3}, map[string]any{"Kind": "vpn connection", "State": "up", "Count": 9}}, "totalNumItems": 2}
+			}
+			return 200, map[string]any{"items": []any{map[string]any{"Kind": "vpn connection", "Name": "g / c1", "Detail": "down"}}, "totalNumItems": 102}
+		},
+	}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"cloud_gateways","limit":1}`)
+	if !strings.Contains(r.Finding, "3 VPN connection(s) are DOWN") || !strings.Contains(jsonOf(r), `"by_kind_and_state"`) {
+		t.Errorf("down VPNs are counted over all matches, not the page: %s", r.Finding)
+	}
+	mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"cloud_routes","name":"rt_transit-external"}`)
+	if !strings.Contains(body, `table.name == vpcName`) {
+		t.Errorf("the name filter also matches a route table: %s", body)
+	}
+}

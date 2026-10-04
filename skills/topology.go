@@ -129,6 +129,13 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		return result.NewError(topologyName, "unknown kind "+in.Kind, cx), nil
 	}
 	total := len(rows)
+	// a list of things an administrator DEFINES (tags, aliases, link overrides, locations) that Forward returned empty is an answer, not a doubt: the read succeeded and none exist
+	if total == 0 && in.Device == "" && (in.Kind == "tags" || in.Kind == "aliases" || in.Kind == "link_overrides" || in.Kind == "locations") {
+		finding := fmt.Sprintf("No %s are defined (the read succeeded and Forward returned an empty list)", in.Kind)
+		d := map[string]any{"kind": in.Kind, "total": 0, "read": "succeeded", "rows": []map[string]any{}}
+		return result.Build(topologyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: append(limits, "an empty list from a successful read is 'none defined'; a failed read is an error, never an empty list"),
+			NextActions: []string{"inspect-inventory"}, Evidence: []result.Evidence{result.NewEvidence(result.EvTopology, "topology_"+in.Kind, cx.SnapshotID, d, finding)}})
+	}
 	if total == 0 {
 		reason := "none are defined or collected"
 		if in.Device != "" {

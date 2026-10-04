@@ -35,9 +35,9 @@ reads and never judges: a row is a fact about the collected network, not a verdi
 | `cloud` | account, cloud, whether the account was collected, VPC name and id, regions, CIDR blocks, subnet and instance counts | `account`, `name` (VPC) |
 | `cloud_subnets` | per VPC: subnet name and id, region, zone, addresses, interface count, route table | `account`, `name` (VPC) |
 | `cloud_instances` | per VPC: instance name and id, type, image, up, interface count, private addresses, tags | `account`, `name` (VPC) |
-| `cloud_routes` | per VPC: route table, region, prefixes, route type, next hop, priority, whether inactive | `account`, `name` (VPC) |
+| `cloud_routes` | per VPC: route table, region, prefixes, route type, next hop, priority, whether inactive | `account`, `name` (a VPC name or a route table name, exact) |
 | `cloud_security` | per VPC: security group, direction, action, source and destination prefixes, protocol, ports | `account`, `name` (VPC) |
-| `cloud_gateways` | per VPC: VPC peerings, VPN connections (up or down), internet and NAT gateways | `account`, `name` (VPC) |
+| `cloud_gateways` | per VPC: VPC peerings, VPN connections (up or down), internet and NAT gateways; the finding counts VPN connections that are down and `by_kind_and_state` counts every gateway that matches | `account`, `name` (VPC) |
 | `ip_owner` | for each address in `ips` (1 to 100 IPv4, required): the interface, routed-VLAN (SVI) interface or FHRP virtual address that carries it (with its VRF), else the connected subnet it sits in, else no owner | `ips` only; it takes none of `device`, `account`, `name`, `limit`, `offset` |
 
 Optional: `snapshot_id` (default: newest processed, collected), `compare_to_snapshot_id` (kind `devices` only: see below), `limit` (default 25, at most 200) and `offset` for paging. `ips` belongs to kind `ip_owner` alone, and an input of another kind is rejected by name. A filter a kind does not take (`device` on a cloud kind, `account` on `devices`, any filter on `summary`) is refused, never silently ignored. See `schema.json`.

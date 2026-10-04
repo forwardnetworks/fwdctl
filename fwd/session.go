@@ -195,6 +195,15 @@ func forwardNotFound(err error) bool {
 
 // NotAcceptable reports Forward's 406. A text endpoint (the collection log) asked for text/plain answers its own error page in JSON,
 // which Forward then refuses as not acceptable: the 406 stands in for the real error (for a log, no collection data), not a bad request.
+// Status reports the HTTP status of a Forward error response, or 0 when err is not one.
+func Status(err error) int {
+	var er *forward.ErrorResponse
+	if errors.As(err, &er) && er.Response != nil {
+		return er.Response.StatusCode
+	}
+	return 0
+}
+
 func NotAcceptable(err error) bool {
 	var er *forward.ErrorResponse
 	return errors.As(err, &er) && er.Response != nil && er.Response.StatusCode == 406

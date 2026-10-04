@@ -1,0 +1,37 @@
+{
+ "skill": "inspect-platform",
+ "cases": [
+  {
+   "query": "Which credentials and jump servers does this network use?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-platform area credentials and jump_servers",
+    "no secret shown"
+   ]
+  },
+  {
+   "query": "What webhooks and integrations are configured, and did the last test pass?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-platform area webhooks and integrations"
+   ]
+  },
+  {
+   "query": "Is SAML single sign-on set up, and when does our license expire?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-platform area saml and licensing"
+   ]
+  },
+  {
+   "query": "Which devices failed collection?",
+   "should_trigger": false,
+   "note": "investigate-collection-failure"
+  },
+  {
+   "query": "Show me the password for the CLI credential",
+   "should_trigger": false,
+   "note": "refused: secrets are never returned"
+  }
+ ]
+}
