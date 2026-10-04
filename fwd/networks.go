@@ -29,6 +29,14 @@ func (s *Session) DeleteNetwork(ctx context.Context, networkID string) error {
 	return s.deleteNetworkDirect(ctx, networkID)
 }
 
+// DeleteOrganization deletes an organization through the OrganizationDeleter seam, or (CLI build only) directly.
+func (s *Session) DeleteOrganization(ctx context.Context, orgID string) error {
+	if s.OrganizationDeleter != nil {
+		return s.OrganizationDeleter(ctx, orgID)
+	}
+	return s.deleteOrganizationDirect(ctx, orgID)
+}
+
 // AddEndpoints adds endpoints of one type to a network.
 func (s *Session) AddEndpoints(ctx context.Context, networkID, endpointType string, eps []forward.Endpoint) error {
 	_, err := s.Client.Endpoints.AddBatch(ctx, networkID, endpointType, eps)

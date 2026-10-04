@@ -5,7 +5,7 @@
   "properties": {
     "area": {
       "type": "string",
-      "enum": ["credentials", "jump_servers", "proxies", "collectors", "collection_settings", "endpoint_profiles", "schedules", "cloud_setups", "locations", "tag_definitions", "access_labels", "api_tokens", "webhooks", "integrations", "licensing", "backups", "banners", "certificates", "saml", "organizations", "cve_index", "dashboards", "scorecards"],
+      "enum": ["credentials", "jump_servers", "proxies", "collectors", "collection_settings", "endpoint_profiles", "schedules", "cloud_setups", "locations", "tag_definitions", "access_labels", "api_tokens", "webhooks", "integrations", "licensing", "backups", "banners", "certificates", "saml", "organizations", "cve_index", "dashboards", "scorecards", "scorecard_trends"],
       "description": "what to read; the network areas (credentials, jump_servers, proxies, schedules, cloud_setups, locations, tag_definitions) need network_id, the others take none"
     },
     "network_id": { "type": "string", "minLength": 1 },

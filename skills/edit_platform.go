@@ -929,7 +929,7 @@ func planOrganization(ctx context.Context, s *fwd.Session, in editPlatformInput)
 		return &networkPlan{target: "delete organization " + cur.Name, action: "delete_organization", before: before, reversible: false, confirm: cur.Name,
 			undo:   "none: the organization, its networks, snapshots and users are removed",
 			limits: []string{"read the organization's networks first; this cannot be recovered through these skills"},
-			do:     func(ctx context.Context) error { _, _, err := s.Client.Organizations.Delete(ctx, id); return err },
+			do:     func(ctx context.Context) error { return s.DeleteOrganization(ctx, id) },
 			verify: func(ctx context.Context) (bool, any, error) {
 				os, _, err := s.Client.Organizations.List(ctx)
 				for _, o := range os {

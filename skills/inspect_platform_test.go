@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -71,5 +72,23 @@ func TestPlatformDashboardsAndScorecardsSayTheyAreUnpublished(t *testing.T) {
 		if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "unpublished") {
 			t.Errorf("%s: %s %v", area, r.Status, r.Limits)
 		}
+	}
+}
+
+func TestPlatformScorecardTrendsSummariseTheWindowAndSkipUnscoredPoints(t *testing.T) {
+	routes := map[string]fwdtest.Handler{"GET /api/networks/n1/scorecards": func(r *http.Request, _ []byte) (int, any) {
+		if r.URL.Query().Get("view") == "trends" {
+			return 200, map[string]any{"-1": []any{
+				map[string]any{"snapshotId": "s1", "instant": 1788000000000, "score": 0.5},
+				map[string]any{"snapshotId": "s2", "instant": 1788100000000},
+				map[string]any{"snapshotId": "s3", "instant": 1788200000000, "score": 0.7},
+			}}
+		}
+		return 200, []any{map[string]any{"id": "-1", "name": "Forward Scorecard"}}
+	}}
+	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"scorecard_trends","network_id":"n1"}`)
+	row := r.Evidence[0].Detail["rows"].([]map[string]any)[0]
+	if r.Status != result.OK || row["points"] != 3 || row["scored_points"] != 2 || row["name"] != "Forward Scorecard" || row["min"] != 0.5 || row["max"] != 0.7 {
+		t.Fatalf("%s %v", r.Status, row)
 	}
 }

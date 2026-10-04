@@ -81,6 +81,10 @@ type Session struct {
 	// path sets it (and may return ErrDeletionRefused to forbid deletion); fwdctl leaves it nil and the SDK deletes directly.
 	NetworkDeleter NetworkDeleter
 
+	// OrganizationDeleter is the same seam for organizations: when set it performs every organization deletion edit-platform is asked for instead of the direct SDK call, and may return
+	// ErrOrganizationDeletionRefused to forbid it. fwdctl leaves it nil and (built with -tags fwdctl_cli) deletes directly; a plain build has no direct delete and refuses.
+	OrganizationDeleter OrganizationDeleter
+
 	// NQEMode is how a query runs: "" or "auto" (synchronously; if the HTTP timeout cuts the request off, as an asynchronous execution), "sync" (never falls back) or
 	// "async" (always through the execution API, for networks whose queries are known to be long). NQEWait bounds the wait for an asynchronous execution (default 10 minutes).
 	NQEMode string
@@ -93,6 +97,12 @@ type Session struct {
 
 // NetworkDeleter deletes a network by id. It is the one seam through which this module deletes a network.
 type NetworkDeleter func(ctx context.Context, networkID string) error
+
+// OrganizationDeleter deletes an organization by id. It is the one seam through which this module deletes an organization.
+type OrganizationDeleter func(ctx context.Context, orgID string) error
+
+// ErrOrganizationDeletionRefused is what an OrganizationDeleter returns to say the host does not allow deleting organizations.
+var ErrOrganizationDeletionRefused = errors.New("organization deletion is not allowed by the host running this skill")
 
 // ErrDeletionRefused is what a NetworkDeleter returns to say the host does not allow deleting networks; skills report it as a refusal, not an error.
 var ErrDeletionRefused = errors.New("network deletion is not allowed by the host running this skill")

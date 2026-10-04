@@ -30,7 +30,7 @@ Answer "what is set up on this Forward" for the things an administrator maintain
 | `locations`, `tag_definitions` | network | locations, and the device tags defined on the network |
 | `access_labels`, `api_tokens` | organization | device access labels; this login's own API tokens (names and dates) |
 | `webhooks`, `banners`, `certificates`, `organizations`, `cve_index` | organization | as named; a webhook with its last test result |
-| `dashboards`, `scorecards` | network | custom dashboards (raw layout); scorecard definitions and the latest snapshot's scores. **Unpublished Forward API** |
+| `dashboards`, `scorecards`, `scorecard_trends` | network | custom dashboards (raw layout); scorecard definitions and the latest snapshot's scores; each scorecard's score over the last 90 days (first, latest, min, max, change). **Unpublished Forward API** |
 | `integrations` | organization (`network_id` adds Rapid7) | ServiceNow, Infoblox and Rapid7, without passwords |
 | `licensing`, `backups`, `saml` | organization | licenses without the key; backup settings and the last backup; SAML status |
 

@@ -1,12 +1,15 @@
 package skills_test
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 func TestEditPlatformWebhookUpdateIsADryRunThenReadsBack(t *testing.T) {
@@ -202,8 +205,15 @@ func TestEditPlatformOrganizationDeleteNeedsItsNameAndLicenseKeyIsNeverReturned(
 	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"organizations","action":"delete","name":"acme","apply":true}`); err == nil || orgs == nil {
 		t.Errorf("delete without confirm is refused")
 	}
-	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"organizations","action":"delete","name":"acme","apply":true,"confirm":"acme"}`); r.Status != result.OK || orgs != nil {
-		t.Errorf("delete: %s", r.Finding)
+	// no deleter set: a plain build has no direct delete, so the apply is refused and nothing is removed
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"organizations","action":"delete","name":"acme","apply":true,"confirm":"acme"}`); err == nil || !strings.Contains(err.Error(), "not allowed by the host") || orgs == nil {
+		t.Errorf("without a deleter the apply is refused: %v", err)
+	}
+	// a host-supplied deleter is the only way an organization is removed
+	sess, _ := fwdtest.New(t, routes)
+	sess.OrganizationDeleter = func(context.Context, string) error { orgs = nil; return nil }
+	if r, err := skills.Run(context.Background(), "edit-platform", sess, json.RawMessage(`{"area":"organizations","action":"delete","name":"acme","apply":true,"confirm":"acme"}`)); err != nil || r.Status != result.OK || orgs != nil {
+		t.Errorf("delete through the injected deleter: %v %+v", err, r)
 	}
 	f := secretFile(t, 0o600, plantedPlatform)
 	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"licensing","action":"apply","secret_file":"`+f+`","apply":true}`); err == nil || licensed {

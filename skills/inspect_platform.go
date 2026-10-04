@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
@@ -290,6 +291,48 @@ var platformAreas = map[string]platformArea{
 			out = append(out, tag(r2, "row", "score")...)
 		}
 		return out, lim, nil
+	}},
+	"scorecard_trends": {true, "each scorecard's score over the last 90 days (unpublished Forward API)", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
+		end := time.Now().UTC()
+		trends, _, err := s.Client.Scorecards.Trends(ctx, n, end.AddDate(0, 0, -90), end, 60)
+		if err != nil {
+			return nil, nil, err
+		}
+		names := map[string]string{}
+		if defs, _, derr := s.Client.Scorecards.Definitions(ctx, n); derr == nil {
+			for _, d := range defs {
+				names[string(d.ID)] = d.Name
+			}
+		}
+		ids := make([]string, 0, len(trends))
+		for id := range trends {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		var out []any
+		for _, id := range ids {
+			pts := trends[id]
+			row := map[string]any{"scorecard_id": id, "name": names[id], "points": len(pts)}
+			var scored []forward.ScorecardPoint
+			for _, p := range pts {
+				if p.Score != nil {
+					scored = append(scored, p)
+				}
+			}
+			row["scored_points"] = len(scored)
+			if len(scored) > 0 {
+				lo, hi := *scored[0].Score, *scored[0].Score
+				for _, p := range scored {
+					lo, hi = min(lo, *p.Score), max(hi, *p.Score)
+				}
+				first, last := scored[0], scored[len(scored)-1]
+				row["first"] = map[string]any{"time": first.Time.Format(time.RFC3339), "snapshot_id": string(first.SnapshotID), "score": *first.Score}
+				row["latest"] = map[string]any{"time": last.Time.Format(time.RFC3339), "snapshot_id": string(last.SnapshotID), "score": *last.Score}
+				row["min"], row["max"], row["change"] = lo, hi, *last.Score-*first.Score
+			}
+			out = append(out, row)
+		}
+		return out, []string{"read through an unpublished Forward API; a window of the last 90 days, at most 60 points per scorecard; points with no score (no data for that snapshot) are counted but not averaged", "a score is Forward's own calculation for the organization's license tier"}, nil
 	}},
 	"cve_index": {false, "the vulnerability (CVE) index", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		m, _, err := s.Client.CVEIndex.Metadata(ctx)
