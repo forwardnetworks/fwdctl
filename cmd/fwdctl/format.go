@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 	"io"
 	"os"
 	"sort"
@@ -227,6 +229,7 @@ type nqeRunOpts struct {
 	network, file, snapshot, format, countBy, queryID, commitID, paramsFile, metaOut string
 	max, pageOffset, pageLimit                                                       int
 	asyncRun                                                                         bool
+	retryTransient                                                                   int
 	allowLarge                                                                       bool
 	waitMax                                                                          time.Duration
 	params                                                                           []string
@@ -297,16 +300,30 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 	var truncated bool
 	meta := fwd.NQEMeta{Mode: "sync", Diagnostics: []fwd.QueryDiagnostic{}}
 	paged := *pageLimit > 0
-	if paged {
-		var pm fwd.NQEMeta
-		rows, total, pm, err = sess.RunNQEPage(context.Background(), *network, run, *pageLimit, *pageOffset, *asyncRun, *waitMax)
-		meta = pm
-		truncated = false
-	} else if *asyncRun {
-		rows, total, meta, err = sess.RunNQEAsync(context.Background(), *network, run, *max, *waitMax)
-		truncated = int64(len(rows)) < total
-	} else {
-		rows, total, truncated, err = sess.RunNQEAllWith(context.Background(), *network, run, *max)
+	attempts := 0
+	for {
+		attempts++
+		if paged {
+			var pm fwd.NQEMeta
+			rows, total, pm, err = sess.RunNQEPage(context.Background(), *network, run, *pageLimit, *pageOffset, *asyncRun, *waitMax)
+			meta = pm
+			truncated = false
+		} else if *asyncRun {
+			rows, total, meta, err = sess.RunNQEAsync(context.Background(), *network, run, *max, *waitMax)
+			truncated = int64(len(rows)) < total
+		} else {
+			rows, total, truncated, err = sess.RunNQEAllWith(context.Background(), *network, run, *max)
+		}
+		if err == nil || attempts > o.retryTransient || !transientGatewayError(err) {
+			break
+		}
+		wait := min(time.Duration(attempts)*5*time.Second, 30*time.Second)
+		fmt.Fprintf(stderr, "Forward answered with a gateway error (%v); retrying in %s (attempt %d of %d)\n", err, wait, attempts+1, o.retryTransient+1)
+		transientSleep(wait)
+	}
+	if o.retryTransient > 0 {
+		clean := attempts == 1
+		meta.Attempts, meta.TransportClean = attempts, &clean
 	}
 	writeMeta := func() {
 		if *metaOut == "" {
@@ -448,4 +465,20 @@ func estimateRowsBytes(rows []map[string]any) int64 {
 		total += int64(len(b)) + 1
 	}
 	return total / int64(n) * int64(len(rows))
+}
+
+// transientSleep waits between retries of a transient gateway failure (a variable so tests do not wait).
+var transientSleep = time.Sleep
+
+// transientGatewayError is a 502, 503 or 504 from Forward or its gateway: a restart or an overloaded upstream, not an answer about the query. A read-only query can be repeated safely.
+func transientGatewayError(err error) bool {
+	var er *forward.ErrorResponse
+	if !errors.As(err, &er) || er.Response == nil {
+		return false
+	}
+	switch er.Response.StatusCode {
+	case 502, 503, 504:
+		return true
+	}
+	return false
 }

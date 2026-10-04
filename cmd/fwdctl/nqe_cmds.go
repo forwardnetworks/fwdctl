@@ -166,6 +166,7 @@ Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 erro
 	f.StringVar(&o.commitID, "commit-id", "", "with --query-id: the library commit to run it at (default: the head)")
 	f.StringVar(&o.paramsFile, "params", "", "JSON file with the query's parameters, an object of name to typed value")
 	f.StringArrayVar(&o.params, "param", nil, "one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params")
+	f.IntVar(&o.retryTransient, "retry-transient", 0, "retry up to N more times (waiting 5s, 10s, ... up to 30s) when Forward or its gateway answers 502, 503 or 504, for a long run that a Forward restart would kill; --meta records attempts and transport_clean")
 	f.BoolVar(&o.allowLarge, "allow-large", false, "write a result of more than 100 MB (by default it is refused before anything is written, so a redirect cannot fill the disk)")
 	f.BoolVar(&o.asyncRun, "async", false, "run through Forward's asynchronous execution API (the execution key and outcome are in --meta)")
 	f.StringVar(&o.metaOut, "meta", "", "write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr")

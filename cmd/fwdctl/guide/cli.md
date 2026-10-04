@@ -400,22 +400,23 @@ Examples:
 Flags:
 
 ```
-      --allow-large         write a result of more than 100 MB (by default it is refused before anything is written, so a redirect cannot fill the disk)
-      --async               run through Forward's asynchronous execution API (the execution key and outcome are in --meta)
-      --commit-id string    with --query-id: the library commit to run it at (default: the head)
-      --count-by string     print how many rows have each value of this field instead of the rows
-      --file string         file with the NQE query (default: stdin)
-      --format string       json, jsonl, table or csv (default "json")
-      --limit int           read one page of at most this many rows instead of every row (0: every row, up to --max)
-      --max int             stop after this many rows (stated on stderr when more exist) (default 50000)
-      --meta string         write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr
-      --network string      network id (required)
-      --offset int          read one page: skip this many rows (with --limit; the page, the total and the offset are in --meta)
-      --param stringArray   one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params
-      --params string       JSON file with the query's parameters, an object of name to typed value
-      --query-id string     run a saved query by id instead of a file (a library query: see fwdctl run find-nqe-query)
-      --snapshot string     snapshot id (default: the latest processed)
-      --timeout duration    how long to wait: the whole synchronous request (response included; the default HTTP limit is 120s), or with --async the execution (default 10m0s)
+      --allow-large           write a result of more than 100 MB (by default it is refused before anything is written, so a redirect cannot fill the disk)
+      --async                 run through Forward's asynchronous execution API (the execution key and outcome are in --meta)
+      --commit-id string      with --query-id: the library commit to run it at (default: the head)
+      --count-by string       print how many rows have each value of this field instead of the rows
+      --file string           file with the NQE query (default: stdin)
+      --format string         json, jsonl, table or csv (default "json")
+      --limit int             read one page of at most this many rows instead of every row (0: every row, up to --max)
+      --max int               stop after this many rows (stated on stderr when more exist) (default 50000)
+      --meta string           write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr
+      --network string        network id (required)
+      --offset int            read one page: skip this many rows (with --limit; the page, the total and the offset are in --meta)
+      --param stringArray     one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params
+      --params string         JSON file with the query's parameters, an object of name to typed value
+      --query-id string       run a saved query by id instead of a file (a library query: see fwdctl run find-nqe-query)
+      --retry-transient int   retry up to N more times (waiting 5s, 10s, ... up to 30s) when Forward or its gateway answers 502, 503 or 504, for a long run that a Forward restart would kill; --meta records attempts and transport_clean
+      --snapshot string       snapshot id (default: the latest processed)
+      --timeout duration      how long to wait: the whole synchronous request (response included; the default HTTP limit is 120s), or with --async the execution (default 10m0s)
 ```
 
 ## fwdctl nqe synthesize

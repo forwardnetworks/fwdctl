@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/forwardnetworks/fwdctl/fwdtest"
+	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +135,35 @@ func TestRunWithNoNameListsWhatCanFollowAndATypoSuggestsNames(t *testing.T) {
 	}
 	if got := nearNames("inspect-netwrks", 3); len(got) == 0 || got[0] != "inspect-networks" {
 		t.Errorf("a typo finds its name: %v", got)
+	}
+}
+
+func TestNqeRunRetriesAGatewayErrorOnlyWhenAskedAndRecordsTheAttempts(t *testing.T) {
+	transientSleep = func(time.Duration) {}
+	t.Cleanup(func() { transientSleep = time.Sleep })
+	calls := 0
+	r := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/snapshots": fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+		"POST /api/nqe": func(*http.Request, []byte) (int, any) {
+			calls++
+			if calls == 1 {
+				return 502, map[string]any{"message": "bad gateway"}
+			}
+			return 200, map[string]any{"items": []any{map[string]any{"x": 1}}, "totalNumItems": 1}
+		},
+	}
+	meta := t.TempDir() + "/m.json"
+	// not asked: the 502 is the answer
+	if code, _, _ := call(t, []string{"nqe", "run", "--network", "n1", "--format", "json"}, "select {x: 1}", r); code == 0 || calls != 1 {
+		t.Fatalf("without --retry-transient a 502 fails: code %d calls %d", code, calls)
+	}
+	calls = 0
+	code, out, errb := call(t, []string{"nqe", "run", "--network", "n1", "--format", "json", "--retry-transient", "2", "--meta", meta}, "select {x: 1}", r)
+	if code != 0 || calls != 2 || !strings.Contains(out, `"x": 1`) || !strings.Contains(errb, "retrying in 5s") {
+		t.Fatalf("code %d calls %d out %s err %s", code, calls, out, errb)
+	}
+	b, _ := os.ReadFile(meta)
+	if !strings.Contains(string(b), `"attempts": 2`) || !strings.Contains(string(b), `"transport_clean": false`) {
+		t.Errorf("the meta records the attempts and that the run was not transport-clean: %s", b)
 	}
 }

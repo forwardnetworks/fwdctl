@@ -23,6 +23,9 @@ type NQEMeta struct {
 	RowsProduced    *int64 `json:"rows_produced,omitempty"`
 	// LikelyCached says the wall time was far below the execution time Forward recorded: the result was served from its cache, so the timing is not a cold measurement.
 	LikelyCached bool              `json:"likely_cached,omitempty"`
+	// Attempts is how many times the run was tried when --retry-transient allowed more than one; TransportClean is false when a retry was needed (a Forward restart or a gateway failure).
+	Attempts       int  `json:"attempts,omitempty"`
+	TransportClean *bool `json:"transport_clean,omitempty"`
 	HTTPStatus   int               `json:"http_status,omitempty"`
 	Diagnostics  []QueryDiagnostic `json:"diagnostics"`
 	Error        string            `json:"error,omitempty"`
