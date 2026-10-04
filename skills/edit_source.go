@@ -110,8 +110,10 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 		plan, err = planSchedule(ctx, s, in)
 	case "cloud_account":
 		plan, err = planCloudAccount(ctx, s, in)
+	case "rapid7_source":
+		plan, err = planRapid7(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, schedule or cloud_account", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, schedule, cloud_account or rapid7_source", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err
@@ -762,4 +764,82 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 		return plan, nil
 	}
 	return nil, fmt.Errorf("%w: object cloud_account takes action create, rotate, test or delete", ErrInvalidInput)
+}
+
+// planRapid7 creates or updates a Rapid7 vulnerability source of the network. Its login is a credential that already exists (credential_id), so no secret is read here.
+func planRapid7(ctx context.Context, s *fwd.Session, in editSourceInput) (*networkPlan, error) {
+	if err := noSecretInputs(in); err != nil {
+		return nil, err
+	}
+	var def struct {
+		Name                 string   `json:"name"`
+		BaseURL              string   `json:"baseUrl"`
+		CredentialID         string   `json:"credentialId"`
+		DisableSSLValidation bool     `json:"disableSslValidation"`
+		CollectionDisabled   bool     `json:"collectionDisabled"`
+		ReportNames          []string `json:"reportNames"`
+	}
+	if err := decodeDefinition(in.Definition, &def, "name, baseUrl, credentialId, disableSslValidation, collectionDisabled, reportNames"); err != nil {
+		return nil, err
+	}
+	cur, _, err := s.Client.Integrations.ListRapid7(ctx, in.NetworkID)
+	if err != nil {
+		return nil, err
+	}
+	req := forward.Rapid7SourceRequest{Name: def.Name, BaseURL: def.BaseURL, DisableSSLValidation: def.DisableSSLValidation, CredentialID: forward.Identifier(def.CredentialID),
+		CollectionDisabled: def.CollectionDisabled, ReportNames: def.ReportNames}
+	shown := func(name string) func(context.Context) (bool, any, error) {
+		return func(ctx context.Context) (bool, any, error) {
+			l, _, e := s.Client.Integrations.ListRapid7(ctx, in.NetworkID)
+			for _, x := range l {
+				if x.Name == name {
+					g, _ := fwd.Generic(x)
+					return x.BaseURL == def.BaseURL && x.CollectionDisabled == def.CollectionDisabled, g, e
+				}
+			}
+			return false, nil, e
+		}
+	}
+	switch in.Action {
+	case "create":
+		if def.Name == "" || def.BaseURL == "" || def.CredentialID == "" {
+			return nil, fmt.Errorf("%w: create needs name, baseUrl and credentialId (a credential from inspect-platform area credentials)", ErrInvalidInput)
+		}
+		for _, x := range cur {
+			if x.Name == def.Name {
+				return nil, fmt.Errorf("%w: a Rapid7 source named %q already exists", ErrInvalidInput, def.Name)
+			}
+		}
+		return &networkPlan{target: fmt.Sprintf("create Rapid7 source %q on network %s", def.Name, in.NetworkID), action: "create_rapid7_source", after: req, reversible: false,
+			undo:   "none through the API: there is no Rapid7 source delete (disable it with update and collectionDisabled)",
+			limits: []string{"this does not test that Rapid7 accepts the credential"},
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.Integrations.CreateRapid7(ctx, in.NetworkID, req)
+				return err
+			},
+			verify: shown(def.Name)}, nil
+	case "update":
+		for _, x := range cur {
+			if x.Name != in.Name {
+				continue
+			}
+			if def.Name == "" {
+				req.Name = x.Name
+				def.Name = x.Name
+			}
+			if def.BaseURL == "" || def.CredentialID == "" {
+				return nil, fmt.Errorf("%w: update REPLACES the source: restate baseUrl and credentialId", ErrInvalidInput)
+			}
+			before, _ := fwd.Generic(x)
+			return &networkPlan{target: fmt.Sprintf("update Rapid7 source %q on network %s", x.Name, in.NetworkID), action: "update_rapid7_source", before: before, after: req, reversible: true,
+				undo: "update again with the before values",
+				do: func(ctx context.Context) error {
+					_, _, err := s.Client.Integrations.UpdateRapid7(ctx, in.NetworkID, in.Name, req)
+					return err
+				},
+				verify: shown(req.Name)}, nil
+		}
+		return nil, nil
+	}
+	return nil, fmt.Errorf("%w: object rapid7_source takes action create or update (name is the source to update)", ErrInvalidInput)
 }

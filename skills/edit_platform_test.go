@@ -145,3 +145,89 @@ func TestEditPlatformServiceNowSendsThePasswordOnceAndNeverReturnsIt(t *testing.
 		}
 	}
 }
+
+func TestEditPlatformCollectionSettingsSamlAndTokens(t *testing.T) {
+	org := map[string]any{"commandDelayMs": 0, "deviceCollectionTimeoutMinutes": 60}
+	saml := any(nil)
+	toks := []any{map[string]any{"name": "ci", "accessKey": "AK1"}}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/collection-settings":   func(*http.Request, []byte) (int, any) { return 200, org },
+		"PATCH /api/collection-settings": func(*http.Request, []byte) (int, any) { org["commandDelayMs"] = 50; return 200, nil },
+		"GET /api/auth/saml-settings":    func(*http.Request, []byte) (int, any) { return 200, saml },
+		"PUT /api/auth/saml-settings": func(_ *http.Request, _ []byte) (int, any) {
+			saml = map[string]any{"customName": "idp", "samlAuthSettings": map[string]any{"enabled": true, "entityId": "e1", "ssoRedirectUrl": "https://idp/sso", "verificationCert": "x"}}
+			return 200, nil
+		},
+		"GET /api/users/current/tokens":       func(*http.Request, []byte) (int, any) { return 200, map[string]any{"tokens": toks} },
+		"DELETE /api/users/current/tokens/ci": func(*http.Request, []byte) (int, any) { toks = nil; return 204, nil },
+	}
+	r, _ := mustRun(t, "edit-platform", routes, `{"area":"collection_settings","action":"set","name":"organization","definition":{"command_delay_ms":50},"apply":true}`)
+	if r.Status != result.OK || org["commandDelayMs"] != 50 {
+		t.Fatalf("org settings: %s %s", r.Status, r.Finding)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"collection_settings","action":"set","name":"organization","definition":{}}`); err == nil {
+		t.Errorf("a set that changes nothing is refused")
+	}
+	cert := `-----BEGIN CERTIFICATE-----\nAA\n-----END CERTIFICATE-----`
+	body := `{"area":"saml","action":"set","definition":{"custom_name":"idp","enabled":true,"entity_id":"e1","sso_redirect_url":"https://idp/sso","verification_cert":"` + cert + `"}`
+	if _, _, err := runSkill(t, "edit-platform", routes, body+`,"apply":true}`); err == nil || saml != nil {
+		t.Errorf("saml without confirm is refused before anything is sent")
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, body+`,"apply":true,"confirm":"saml"}`); r.Status != result.OK || saml == nil {
+		t.Errorf("saml: %s", r.Finding)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"saml","action":"set","definition":{"custom_name":"idp","enabled":true}}`); err == nil {
+		t.Errorf("enabled saml needs its entity, URL and certificate")
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"api_tokens","action":"create","name":"new"}`); err == nil {
+		t.Errorf("creating a token is not offered")
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"api_tokens","action":"delete","name":"ci","apply":true,"confirm":"ci"}`); r.Status != result.OK || toks != nil {
+		t.Errorf("token delete: %s", r.Finding)
+	}
+}
+
+func TestEditPlatformOrganizationDeleteNeedsItsNameAndLicenseKeyIsNeverReturned(t *testing.T) {
+	orgs := []any{map[string]any{"id": "o1", "name": "acme"}}
+	licensed := false
+	routes := map[string]fwdtest.Handler{
+		"GET /api/admin/orgs":       func(*http.Request, []byte) (int, any) { return 200, orgs },
+		"DELETE /api/admin/orgs/o1": func(*http.Request, []byte) (int, any) { orgs = nil; return 200, map[string]any{"id": "o1"} },
+		"POST /api/licenses": func(r *http.Request, _ []byte) (int, any) {
+			licensed = licensed || r.URL.Query().Get("action") != "decode"
+			return 200, map[string]any{"id": "L1", "status": "VALID"}
+		},
+		"GET /api/licenses": func(*http.Request, []byte) (int, any) { return 200, []any{} },
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"organizations","action":"delete","name":"acme","apply":true}`); err == nil || orgs == nil {
+		t.Errorf("delete without confirm is refused")
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"organizations","action":"delete","name":"acme","apply":true,"confirm":"acme"}`); r.Status != result.OK || orgs != nil {
+		t.Errorf("delete: %s", r.Finding)
+	}
+	f := secretFile(t, 0o600, plantedPlatform)
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"licensing","action":"apply","secret_file":"`+f+`","apply":true}`); err == nil || licensed {
+		t.Errorf("a license apply without confirm is refused")
+	}
+}
+
+func TestEditPlatformCVEIndexDeleteIsRefusedWhenBundledAndNeedsConfirm(t *testing.T) {
+	meta := map[string]any{"digest": "d1", "indexUploadedAt": "2026-10-01T00:00:00Z"}
+	deleted := false
+	routes := map[string]fwdtest.Handler{
+		"GET /api/cve-index":    func(*http.Request, []byte) (int, any) { return 200, meta },
+		"DELETE /api/cve-index": func(*http.Request, []byte) (int, any) { deleted = true; meta["indexUploadedAt"] = ""; return 202, nil },
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"cve_index","action":"delete","apply":true}`); err == nil || deleted {
+		t.Errorf("delete without confirm is refused")
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"cve_index","action":"delete","apply":true,"confirm":"cve_index"}`); r.Status != result.OK || !deleted {
+		t.Errorf("delete: %s", r.Finding)
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"cve_index","action":"delete"}`); r.Status != result.Unknown {
+		t.Errorf("nothing uploaded means nothing to delete: %s", r.Status)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"cve_index","action":"upload","definition":{"path":"/nonexistent/x.gz"}}`); err == nil {
+		t.Errorf("a missing file is refused")
+	}
+}

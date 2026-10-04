@@ -39,6 +39,14 @@
    ]
   },
   {
+   "query": "Turn on SAML single sign-on with our identity provider",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-platform saml set, dry run first",
+    "warns about lockout and asks for confirm"
+   ]
+  },
+  {
    "query": "List the webhooks and their last test result",
    "should_trigger": false,
    "note": "inspect-platform area webhooks"

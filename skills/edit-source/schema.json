@@ -19,7 +19,8 @@
         "proxy",
         "classic_device",
         "schedule",
-        "cloud_account"
+        "cloud_account",
+        "rapid7_source"
       ]
     },
     "action": {

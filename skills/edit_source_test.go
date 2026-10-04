@@ -152,3 +152,29 @@ func TestEditSourceCloudAccountSecretGoesToForwardOnlyAndRotateReplacesCredentia
 		t.Errorf("delete needs confirm")
 	}
 }
+
+func TestEditSourceRapid7UpdateReplacesAndTakesNoSecret(t *testing.T) {
+	srcs := []any{map[string]any{"name": "r7", "baseUrl": "https://r7.example", "credentialId": "c1"}}
+	var patched string
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/end-host-scanners": func(*http.Request, []byte) (int, any) { return 200, srcs },
+		"PATCH /api/networks/n1/rapid7-sources/r7": func(_ *http.Request, b []byte) (int, any) {
+			patched = string(b)
+			srcs = []any{map[string]any{"name": "r7", "baseUrl": "https://r7.example", "credentialId": "c1", "collectionDisabled": true}}
+			return 200, srcs[0]
+		},
+	}
+	body := `{"network_id":"n1","object":"rapid7_source","action":"update","name":"r7","definition":{"baseUrl":"https://r7.example","credentialId":"c1","collectionDisabled":true}`
+	if r, srv := mustRun(t, "edit-source", routes, body+`}`); writes(srv) != 0 || r.Mode != result.ModeDryRun {
+		t.Fatalf("dry run: %s", r.Finding)
+	}
+	if r, _ := mustRun(t, "edit-source", routes, body+`,"apply":true}`); r.Status != result.OK || !strings.Contains(patched, "collectionDisabled") {
+		t.Fatalf("apply: %s %s", r.Status, patched)
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"rapid7_source","action":"update","name":"r7","definition":{"baseUrl":"https://r7.example"}}`); err == nil {
+		t.Errorf("update REPLACES: a missing credentialId is refused")
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, body+`,"secret_env":"X"}`); err == nil {
+		t.Errorf("this object takes no secret")
+	}
+}

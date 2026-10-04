@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -58,8 +59,20 @@ func editPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		plan, err = planBackup(ctx, s, in)
 	case "integrations":
 		plan, err = planIntegration(ctx, s, in)
+	case "collection_settings":
+		plan, err = planCollectionSettings(ctx, s, in)
+	case "saml":
+		plan, err = planSAML(ctx, s, in)
+	case "api_tokens":
+		plan, err = planAPIToken(ctx, s, in)
+	case "licensing":
+		plan, err = planLicense(ctx, s, in)
+	case "organizations":
+		plan, err = planOrganization(ctx, s, in)
+	case "cve_index":
+		plan, err = planCVEIndex(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: area must be banners, webhooks, certificates, access_labels, backups or integrations", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: area must be banners, webhooks, certificates, access_labels, backups, integrations, collection_settings, saml, api_tokens, licensing, organizations or cve_index", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err
@@ -471,6 +484,8 @@ func planBackup(ctx context.Context, s *fwd.Session, in editPlatformInput) (*net
 // platformTakesSecret says whether the action reads a secret, so a secret given to another action is refused instead of ignored.
 func platformTakesSecret(in editPlatformInput) bool {
 	switch in.Area {
+	case "licensing":
+		return in.Action == "apply"
 	case "integrations":
 		return (in.Name == "servicenow" && in.Action == "set") || (in.Name == "infoblox" && in.Action == "create")
 	}
@@ -606,4 +621,370 @@ func planIntegration(ctx context.Context, s *fwd.Session, in editPlatformInput) 
 			}}, nil
 	}
 	return nil, fmt.Errorf("%w: integrations name must be servicenow or infoblox", ErrInvalidInput)
+}
+
+// patchShows reports whether every field a patch set reads back the same in the settings Forward now holds (both compared as JSON objects, so no field list has to be kept here).
+func patchShows(patch, got any) bool {
+	pm, _ := fwd.Generic(patch)
+	gm, _ := fwd.Generic(got)
+	p, ok1 := pm.(map[string]any)
+	g, ok2 := gm.(map[string]any)
+	if !ok1 || !ok2 {
+		return false
+	}
+	for k, v := range p {
+		if fmt.Sprint(g[k]) != fmt.Sprint(v) {
+			return false
+		}
+	}
+	return true
+}
+
+// planCollectionSettings changes the organization-wide collection limits (name "organization") or one collector's concurrency (name = the collector id).
+func planCollectionSettings(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
+	if in.Action != "set" {
+		return nil, fmt.Errorf("%w: collection_settings takes action set", ErrInvalidInput)
+	}
+	if in.Name == "organization" {
+		var def struct {
+			MaxDeviceAuthNPerSecond     *int `json:"max_device_authn_per_second"`
+			MaxScanConnectionsPerSecond *int `json:"max_scan_connections_per_second"`
+			DeviceCollectionTimeoutMins *int `json:"device_collection_timeout_minutes"`
+			CommandDelayMS              *int `json:"command_delay_ms"`
+			PerDeviceConcurrencyBoost   *int `json:"per_device_concurrency_boost"`
+		}
+		if err := decodeDefinition(in.Definition, &def, "max_device_authn_per_second, max_scan_connections_per_second, device_collection_timeout_minutes, command_delay_ms, per_device_concurrency_boost"); err != nil {
+			return nil, err
+		}
+		patch := forward.OrgCollectionSettingsPatch{MaxDeviceAuthNPerSecond: def.MaxDeviceAuthNPerSecond, MaxScanConnectionsPerSecond: def.MaxScanConnectionsPerSecond,
+			DeviceCollectionTimeoutMins: def.DeviceCollectionTimeoutMins, CommandDelayMS: def.CommandDelayMS, PerDeviceConcurrencyBoost: def.PerDeviceConcurrencyBoost}
+		if m, _ := fwd.Generic(patch); len(m.(map[string]any)) == 0 {
+			return nil, fmt.Errorf("%w: set must change at least one field", ErrInvalidInput)
+		}
+		cur, _, err := s.Client.Collectors.GetOrganizationSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		before, _ := fwd.Generic(cur)
+		return &networkPlan{target: "change the organization's collection settings", action: "update_org_collection_settings", before: before, after: patch, reversible: true,
+			undo:   "set again with the before values",
+			limits: []string{"applies to the next collection of every network in the organization; a limit set too low slows or fails collections"},
+			do: func(ctx context.Context) error {
+				_, err := s.Client.Collectors.PatchOrganizationSettings(ctx, patch)
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				got, _, err := s.Client.Collectors.GetOrganizationSettings(ctx)
+				return err == nil && patchShows(patch, got), got, err
+			}}, nil
+	}
+	var def struct {
+		Concurrency               *int `json:"concurrency"`
+		SNMPCollectionConcurrency *int `json:"snmp_collection_concurrency"`
+	}
+	if err := decodeDefinition(in.Definition, &def, "concurrency, snmp_collection_concurrency"); err != nil {
+		return nil, err
+	}
+	if def.Concurrency == nil && def.SNMPCollectionConcurrency == nil {
+		return nil, fmt.Errorf("%w: set must change concurrency or snmp_collection_concurrency", ErrInvalidInput)
+	}
+	cols, _, err := s.Client.Collectors.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var id string
+	for _, c := range cols {
+		if string(c.ID) == in.Name || c.Name == in.Name {
+			id = string(c.ID)
+		}
+	}
+	if id == "" {
+		return nil, nil
+	}
+	cur, _, err := s.Client.Collectors.GetSettings(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	before, _ := fwd.Generic(cur)
+	patch := forward.CollectorCollectionSettingsPatch{Concurrency: def.Concurrency, SNMPCollectionConcurrency: def.SNMPCollectionConcurrency}
+	return &networkPlan{target: "change collector " + in.Name + " concurrency", action: "update_collector_settings", before: before, after: patch, reversible: true, undo: "set again with the before values",
+		do: func(ctx context.Context) error {
+			_, err := s.Client.Collectors.PatchSettings(ctx, id, patch)
+			return err
+		},
+		verify: func(ctx context.Context) (bool, any, error) {
+			got, _, err := s.Client.Collectors.GetSettings(ctx, id)
+			return err == nil && patchShows(patch, got), got, err
+		}}, nil
+}
+
+// planSAML sets the single sign-on configuration. A wrong value can lock people out of the UI, so applying needs confirm and the limits say how to recover.
+func planSAML(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
+	if in.Action != "set" {
+		return nil, fmt.Errorf("%w: saml takes action set", ErrInvalidInput)
+	}
+	var def struct {
+		CustomName                 string `json:"custom_name"`
+		Enabled                    bool   `json:"enabled"`
+		Name                       string `json:"name"`
+		EntityID                   string `json:"entity_id"`
+		SSORedirectURL             string `json:"sso_redirect_url"`
+		VerificationCert           string `json:"verification_cert"`
+		DisableAuthNRequestSigning bool   `json:"disable_authn_request_signing"`
+	}
+	if err := decodeDefinition(in.Definition, &def, "custom_name, enabled, name, entity_id, sso_redirect_url, verification_cert (PEM text), disable_authn_request_signing"); err != nil {
+		return nil, err
+	}
+	if def.CustomName == "" {
+		return nil, fmt.Errorf("%w: set needs custom_name (the registration id)", ErrInvalidInput)
+	}
+	if def.Enabled && (def.EntityID == "" || def.SSORedirectURL == "" || !strings.Contains(def.VerificationCert, "BEGIN CERTIFICATE")) {
+		return nil, fmt.Errorf("%w: enabled SAML needs entity_id, sso_redirect_url and verification_cert (PEM text)", ErrInvalidInput)
+	}
+	cur, _, err := s.Client.SAML.GetSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var before any
+	if cur != nil {
+		before, _ = fwd.Generic(cur)
+	}
+	want := forward.SAMLSettings{CustomName: def.CustomName, SAMLAuthSettings: &forward.SAMLAuthSettings{Enabled: def.Enabled, Name: def.Name, EntityID: def.EntityID,
+		SSORedirectURL: def.SSORedirectURL, VerificationCert: def.VerificationCert, DisableAuthNRequestSigning: def.DisableAuthNRequestSigning}}
+	shown := map[string]any{"custom_name": def.CustomName, "enabled": def.Enabled, "entity_id": def.EntityID, "sso_redirect_url": def.SSORedirectURL}
+	return &networkPlan{target: "set the SAML single sign-on configuration", action: "set_saml", before: before, after: shown, reversible: true, confirm: "saml",
+		undo:   "set it again with the before values; if sign-in is broken, an administrator who can still sign in with a password must do it",
+		limits: []string{"a wrong entity id, redirect URL or certificate can lock users out of single sign-on; keep an administrator session with a local password open while testing"},
+		do:     func(ctx context.Context) error { _, err := s.Client.SAML.PutSettings(ctx, want); return err },
+		verify: func(ctx context.Context) (bool, any, error) {
+			got, _, err := s.Client.SAML.GetSettings(ctx)
+			if err != nil || got == nil || got.SAMLAuthSettings == nil {
+				return false, nil, err
+			}
+			g, _ := fwd.Generic(got)
+			return got.CustomName == def.CustomName && got.SAMLAuthSettings.Enabled == def.Enabled && got.SAMLAuthSettings.EntityID == def.EntityID, g, nil
+		}}, nil
+}
+
+// planAPIToken deletes one of this login's own API tokens. Creating one is not offered: Forward shows the new secret once, and a secret is never returned by these skills.
+func planAPIToken(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
+	if in.Action != "delete" {
+		return nil, fmt.Errorf("%w: api_tokens takes action delete (creating a token would return its secret, which these skills never do; create it in the Forward UI)", ErrInvalidInput)
+	}
+	toks, _, err := s.Client.Users.ListTokens(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range toks {
+		if t.Name != in.Name {
+			continue
+		}
+		limits := []string{"only this login's own tokens; nothing that used the token can sign in after this"}
+		if u := os.Getenv("FORWARD_USERNAME"); u != "" && u == t.AccessKey {
+			limits = append(limits, "THIS session signs in with this token: deleting it ends this session's access")
+		}
+		before, _ := fwd.Generic(t)
+		return &networkPlan{target: "delete API token " + t.Name, action: "delete_api_token", before: before, reversible: false, confirm: t.Name,
+			undo: "none: a new token has a new secret; create one in the Forward UI and give it to whatever used this one", limits: limits,
+			do: func(ctx context.Context) error { _, err := s.Client.Users.DeleteToken(ctx, in.Name); return err },
+			verify: func(ctx context.Context) (bool, any, error) {
+				ts, _, err := s.Client.Users.ListTokens(ctx)
+				for _, x := range ts {
+					if x.Name == in.Name {
+						return false, x, err
+					}
+				}
+				return true, nil, err
+			}}, nil
+	}
+	return nil, nil
+}
+
+// planLicense applies a signed license key. The key is read from the secret, decoded first (a read) so the dry run says what it is, and never returned.
+func planLicense(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
+	if in.Action != "apply" {
+		return nil, fmt.Errorf("%w: licensing takes action apply", ErrInvalidInput)
+	}
+	if in.SecretFile == "" && in.SecretEnv == "" {
+		return nil, fmt.Errorf("%w: apply needs the license key: secret_file or secret_env", ErrInvalidInput)
+	}
+	sec, err := fwd.ReadSecret(in.SecretFile, in.SecretEnv)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	key := strings.TrimSpace(sec.Reveal())
+	dec, _, err := s.Client.Licensing.Decode(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("Forward could not decode the license key, so nothing was planned: %w", err)
+	}
+	after, _ := fwd.Generic(dec)
+	cur, _, _ := s.Client.Licensing.List(ctx)
+	before, _ := fwd.Generic(cur)
+	return &networkPlan{target: "apply a license key", action: "apply_license", before: before, after: after, reversible: false, confirm: "license",
+		undo:   "none through these skills: an applied license cannot be withdrawn here; apply the earlier key again if it is still valid",
+		limits: []string{"the key is read from the secret and decoded (a read) even in the dry run; it is never returned", "the licenses listed before are not removed by this"},
+		do:     func(ctx context.Context) error { _, _, err := s.Client.Licensing.Apply(ctx, key); return err },
+		verify: func(ctx context.Context) (bool, any, error) {
+			got, _, err := s.Client.Licensing.List(ctx)
+			g, _ := fwd.Generic(got)
+			return err == nil && len(got) >= len(cur), g, err
+		}}, nil
+}
+
+// planOrganization creates, renames, enables or disables, and deletes organizations of a multi-organization deployment (the role needed is Forward's platform administrator).
+func planOrganization(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
+	orgs, _, err := s.Client.Organizations.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	find := func(key string) *forward.Organization {
+		for i := range orgs {
+			if string(orgs[i].ID) == key || orgs[i].Name == key {
+				return &orgs[i]
+			}
+		}
+		return nil
+	}
+	state := func(id string, check func(forward.Organization) bool) func(context.Context) (bool, any, error) {
+		return func(ctx context.Context) (bool, any, error) {
+			os, _, err := s.Client.Organizations.List(ctx)
+			for _, o := range os {
+				if string(o.ID) == id {
+					g, _ := fwd.Generic(o)
+					return check(o), g, err
+				}
+			}
+			return check(forward.Organization{}), nil, err
+		}
+	}
+	switch in.Action {
+	case "create":
+		var def struct {
+			Name   string `json:"name"`
+			Type   string `json:"type"`
+			OnPrem *bool  `json:"on_prem"`
+		}
+		if err := decodeDefinition(in.Definition, &def, "name, type, on_prem"); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(def.Name) == "" {
+			return nil, fmt.Errorf("%w: create needs name", ErrInvalidInput)
+		}
+		if find(def.Name) != nil {
+			return nil, fmt.Errorf("%w: an organization named %q already exists", ErrInvalidInput, def.Name)
+		}
+		return &networkPlan{target: "create organization " + def.Name, action: "create_organization", after: def, reversible: true, undo: "disable it (action disable); deleting needs confirm",
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.Organizations.Create(ctx, forward.OrganizationCreateRequest{Name: def.Name, Type: def.Type, OnPrem: def.OnPrem})
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				os, _, err := s.Client.Organizations.List(ctx)
+				for _, o := range os {
+					if o.Name == def.Name {
+						return true, nil, err
+					}
+				}
+				return false, len(os), err
+			}}, nil
+	}
+	cur := find(in.Name)
+	if cur == nil {
+		return nil, nil
+	}
+	id := string(cur.ID)
+	before, _ := fwd.Generic(cur)
+	switch in.Action {
+	case "rename":
+		var def struct {
+			Name string `json:"name"`
+		}
+		if err := decodeDefinition(in.Definition, &def, "name"); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(def.Name) == "" {
+			return nil, fmt.Errorf("%w: rename needs the new name", ErrInvalidInput)
+		}
+		return &networkPlan{target: "rename organization " + cur.Name, action: "rename_organization", before: before, after: def, reversible: true, undo: "rename it back",
+			do: func(ctx context.Context) error {
+				_, err := s.Client.Organizations.Update(ctx, id, def.Name)
+				return err
+			},
+			verify: state(id, func(o forward.Organization) bool { return o.Name == def.Name })}, nil
+	case "enable", "disable":
+		off := in.Action == "disable"
+		p := &networkPlan{target: in.Action + " organization " + cur.Name, action: in.Action + "_organization", before: before, reversible: true,
+			undo:   "run the opposite action",
+			limits: []string{"a disabled organization's users cannot sign in; nothing is deleted"},
+			do: func(ctx context.Context) error {
+				_, err := s.Client.Organizations.SetEnabled(ctx, id, !off)
+				return err
+			},
+			verify: state(id, func(o forward.Organization) bool { return o.Disabled == off })}
+		if off {
+			p.confirm = cur.Name
+		}
+		return p, nil
+	case "delete":
+		return &networkPlan{target: "delete organization " + cur.Name, action: "delete_organization", before: before, reversible: false, confirm: cur.Name,
+			undo:   "none: the organization, its networks, snapshots and users are removed",
+			limits: []string{"read the organization's networks first; this cannot be recovered through these skills"},
+			do:     func(ctx context.Context) error { _, _, err := s.Client.Organizations.Delete(ctx, id); return err },
+			verify: func(ctx context.Context) (bool, any, error) {
+				os, _, err := s.Client.Organizations.List(ctx)
+				for _, o := range os {
+					if string(o.ID) == id {
+						return false, nil, err
+					}
+				}
+				return true, nil, err
+			}}, nil
+	}
+	return nil, fmt.Errorf("%w: organizations take action create, rename, enable, disable or delete", ErrInvalidInput)
+}
+
+// planCVEIndex replaces the vulnerability (CVE) index with a gzip file the caller has (for an installation that cannot reach the vendor feed), or goes back to the index bundled with
+// Forward. Forward accepts the change and applies it in the background, so the read-back is not waited for.
+func planCVEIndex(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
+	cur, _, err := s.Client.CVEIndex.Metadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+	before, _ := fwd.Generic(cur)
+	switch in.Action {
+	case "upload":
+		var def struct {
+			Path   string `json:"path"`
+			SHA256 string `json:"sha256"`
+		}
+		if err := decodeDefinition(in.Definition, &def, "path (a .gz file), sha256 (optional, checked against the file)"); err != nil {
+			return nil, err
+		}
+		if def.Path == "" {
+			return nil, fmt.Errorf("%w: upload needs definition.path, a gzip file of the index", ErrInvalidInput)
+		}
+		st, serr := os.Stat(def.Path)
+		if serr != nil || st.IsDir() {
+			return nil, fmt.Errorf("%w: definition.path %s is not a readable file", ErrInvalidInput, def.Path)
+		}
+		return &networkPlan{target: "replace the CVE index with " + def.Path, action: "upload_cve_index", before: before, after: map[string]any{"path": def.Path, "bytes": st.Size()}, reversible: true,
+			undo:   "delete the uploaded index (action delete) to use the bundled one again",
+			limits: []string{"Forward accepts the upload and processes it in the background: read inspect-platform area cve_index for the new digest; this skill does not wait", "the file is read on apply, not in the dry run"},
+			do: func(ctx context.Context) error {
+				b, err := os.ReadFile(def.Path)
+				if err != nil {
+					return fmt.Errorf("%w: %v", ErrInvalidInput, err)
+				}
+				_, err = s.Client.CVEIndex.Put(ctx, &forward.CVEIndexDownload{Gzip: b, SHA256: def.SHA256})
+				return err
+			}}, nil
+	case "delete":
+		if cur.Bundled() {
+			return nil, nil
+		}
+		return &networkPlan{target: "delete the uploaded CVE index and use the bundled one", action: "delete_cve_index", before: before, reversible: false, confirm: "cve_index",
+			undo:   "none: upload the file again",
+			limits: []string{"applied in the background; read inspect-platform area cve_index to see the bundled digest"}, do: func(ctx context.Context) error { _, err := s.Client.CVEIndex.Delete(ctx); return err }}, nil
+	}
+	return nil, fmt.Errorf("%w: cve_index takes action upload or delete", ErrInvalidInput)
 }

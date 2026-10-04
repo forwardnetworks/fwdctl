@@ -23,7 +23,7 @@ Change what an administrator sets up for the whole organization, not for one net
 
 `area` and `action` (required), `name`, `definition` (the body, one object, never a secret), `secret_file` or `secret_env`, `confirm`, `apply` (default false). See `schema.json`.
 
-A secret (a ServiceNow or Infoblox password) is never put in the input. Give `secret_file` (a path, mode 600; a group-readable file is refused) or `secret_env` (an environment variable name). It is read only on apply, sent once, and never echoed, logged or returned; the undo says to enter it again. A definition with a secret-looking field is refused. This skill is interactive-only: do not run it unattended.
+A secret (a ServiceNow or Infoblox password, a license key) is never put in the input. Give `secret_file` (a path, mode 600; a group-readable file is refused) or `secret_env` (an environment variable name). It is read only on apply, sent once, and never echoed, logged or returned; the undo says to enter it again. A definition with a secret-looking field is refused. This skill is interactive-only: do not run it unattended.
 
 | `area` | `action` | `name` | `definition` | Undo |
 |---|---|---|---|---|
@@ -38,6 +38,17 @@ A secret (a ServiceNow or Infoblox password) is never put in the input. Give `se
 | `access_labels` | `create` | | `name`, `device_names`, `device_globs` | delete it |
 | `access_labels` | `update` | the label name or id | any of the create fields | update back |
 | `access_labels` | `delete` | the label name or id | | **none**; `confirm` = the name |
+| `collection_settings` | `set` | `organization` | `max_device_authn_per_second`, `max_scan_connections_per_second`, `device_collection_timeout_minutes`, `command_delay_ms`, `per_device_concurrency_boost` | set back |
+| `collection_settings` | `set` | a collector id or name | `concurrency`, `snmp_collection_concurrency` | set back |
+| `saml` | `set` | | `custom_name`, `enabled`, `name`, `entity_id`, `sso_redirect_url`, `verification_cert` (PEM), `disable_authn_request_signing` | set back; `confirm` = `saml`; can lock users out |
+| `licensing` | `apply` | | | secret = the signed license key; **none**; `confirm` = `license` |
+| `organizations` | `create` | | `name`, `type`, `on_prem` | disable it |
+| `organizations` | `rename` | the organization | `name` | rename back |
+| `organizations` | `enable`, `disable` | the organization | | the opposite; `disable` needs `confirm` = the name |
+| `organizations` | `delete` | the organization | | **none**; `confirm` = the name |
+| `cve_index` | `upload` | | `path` (a .gz file), `sha256` (optional) | delete it |
+| `cve_index` | `delete` | | | **none**; `confirm` = `cve_index` |
+| `api_tokens` | `delete` | the token name (this login's own) | | **none**; `confirm` = the name |
 | `integrations` | `set` | `servicenow` | `instance_url`, `username`, `enabled`, `auto_create`, `auto_create_impact`, `auto_create_urgency`, `auto_update`; secret = the password | set back |
 | `integrations` | `delete` | `servicenow` | | **none**; `confirm` = `servicenow` |
 | `integrations` | `create` | `infoblox` | `name`, `ip_address`, `username`; secret = the password | **none** through the API |
@@ -57,7 +68,7 @@ Without `apply: true` nothing changes. The result shows before, after and the un
 
 ## Limits
 
-Backups: only cancel and delete; backup settings, S3 storage and starting a backup use Forward's backup service, which accepts a service principal only, not a user login, so this skill cannot do them. Restore is not here; Rapid7 sources (per network) and SAML, licensing and organizations are not here yet; a trigger starts the backup and does not wait. Deleting an access label widens the access of every group that used it.
+Backups: only cancel and delete; backup settings, S3 storage and starting a backup use Forward's backup service, which accepts a service principal only, not a user login, so this skill cannot do them. Restore is not here; Rapid7 sources are in `edit-source` (they belong to a network); an uploaded CVE index is applied in the background and not waited for; licensing, SAML and organizations are for a system or platform administrator; a token cannot be created here because its secret would be returned; a trigger starts the backup and does not wait. Deleting an access label widens the access of every group that used it.
 
 Webhook credentials and templates are not set here (webhook schemas are unpublished by Forward). A certificate is not trusted by collectors until `apply` pushes it, and a push does not wait for the collectors, so completion is not proven.
 
@@ -67,7 +78,7 @@ One `state` item: `object`, `action`, `mode`, `before`, `after`.
 
 ## Next actions
 
-`inspect-platform` (areas `banners`, `webhooks`, `certificates`, `access_labels`, `backups`, `integrations`) to see the result.
+`inspect-platform` (areas `banners`, `webhooks`, `certificates`, `access_labels`, `backups`, `integrations`, `collection_settings`, `saml`, `api_tokens`, `licensing`, `organizations`, `cve_index`) to see the result.
 
 ## Running this skill
 

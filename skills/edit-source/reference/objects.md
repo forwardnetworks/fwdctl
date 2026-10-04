@@ -8,6 +8,7 @@
 - classic_device
 - schedule
 - cloud_account
+- rapid7_source
 
 ## The secret file
 
@@ -36,3 +37,6 @@ A collection schedule is days of the week (0 Sunday to 6 Saturday) plus either `
 ## cloud_account
 
 An AWS, Azure, GCP (and similar) account Forward collects. `create` takes the non-secret settings in `definition` and the secret from the secret file: plain text is the AWS secret access key or Azure client secret; a JSON object may carry `password`, `privateKey` (a GCP service-account key) or `apiKey`. `rotate` replaces the stored credentials of an existing account (the earlier secret cannot be read back); `test` asks the collector to try the connection and records a result per region (`inspect-collection` view `config` shows it); `delete` needs `confirm` equal to the name. Changing other settings of an existing account is done in the Forward UI: this skill does not restate a whole account, because a partial restatement can clear its credentials. Controller-managed (ACI, SD-WAN) and Mist setups are not covered here yet.
+
+## rapid7_source
+A Rapid7 vulnerability source of the network. Its login is a credential that already exists: give its id as `credentialId` (`inspect-platform` area `credentials`); no secret is read for this object. `update` replaces the source, so restate `baseUrl` and `credentialId`. There is no delete: set `collectionDisabled` to stop collecting. The read-back checks the URL and the disabled flag; it does not test that Rapid7 accepts the login.

@@ -50,7 +50,7 @@ Policy checks, evidence, a device or a site under review.
 - `edit-checks` *(writes, dry run first)*: Create a check (local to its snapshot unless persistent) or deactivate one.
 - `inspect-platform`: Read how Forward is set up (credentials, jump servers, proxies, collectors, cloud setups, webhooks, licensing, backups, SAML, organizations), with every secret removed.
 - `edit-source` *(writes, dry run first, secrets from a file)*: Add CLI, SNMP and HTTP credentials, jump servers and proxies.
-- `edit-platform` *(writes, dry run first)*: Change organization-wide admin settings: banners, webhooks, trusted certificates, device access labels, backups and integrations (secrets from a file).
+- `edit-platform` *(writes, dry run first)*: Change organization-wide admin settings: banners, webhooks, trusted certificates, device access labels, backups (cancel, delete), integrations (secrets from a file), collection settings, SAML, API token deletion, licensing, organizations and the CVE index.
 - `edit-network` *(writes, dry run first)*: Create, rename or delete a network; add locations and device clusters; rename or delete device tag definitions.
 - `edit-alias` *(writes, dry run first)*: Create, replace or end an alias (a named group of hosts, devices, interfaces or headers that checks refer to by name); it applies from the snapshot it is put on.
 
