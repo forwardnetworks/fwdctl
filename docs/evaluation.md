@@ -27,6 +27,8 @@ same cases on each (`skill-eval --models haiku,sonnet,opus`), and record the run
 | Grounding | every fact in the answer appears in a tool result | `skill-eval` | no more than 5 points below baseline; a fabricated fact is a finding on its own |
 | Cost | tool calls and dollars per case | `skill-eval` | reported; a rise of more than 25% on a model needs a reason |
 
+Three arms show what the skills add: `with` (skills installed), `without` (the model with `fwdctl` but no skills) and `api` (no skills and no `fwdctl`; only Forward's API spec, `--api-spec FILE`, and the credentials, so the model calls the API itself). `with` against `api` is the skills' total value; `with` against `without` is the skills' context alone.
+
 How to read it: a regression on the smallest model usually means the skill leans on judgment that playbook steps should
 fix; add detail or move the step from Open to Guided or Fixed. A regression only on the largest model usually means the
 instructions over-constrain it. A new model starts with a recorded baseline; its bars are relative to that.

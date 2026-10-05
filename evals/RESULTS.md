@@ -1,5 +1,31 @@
 # Latest results
 
+## Baseline per model, 2026-10-05 (indicative, not a gate)
+
+Models haiku, sonnet, opus; judge sonnet; 2 cases per skill. Two runs on Forward networks with the same style of data: 34 skills on the original Test Drive network (708 runs, stopped at the $50 cap), 25 skills on DemoFoundry (300 runs, $19.68). About 10% of the cases name a device or snapshot id that DemoFoundry lacks, so the second set is noisier. Samples per cell are small (25 to 35 judged runs); read the direction, not the decimals.
+
+| Model | Arm | Answered | Grounded | Avg tool calls | Avg cost |
+|---|---|---|---|---|---|
+| haiku | with skills | 60% / 64% | 50% / 60% | 4.7 / 4.6 | $0.058 / $0.035 |
+| haiku | without | 35% / 8% | 54% / 50% | 18.6 / 11.1 | $0.101 / $0.046 |
+| sonnet | with skills | 97% / 100% | 44% / 70% | 2.8 / 3.6 | $0.108 / $0.058 |
+| sonnet | without | 100% / 100% | 76% / 80% | 4.8 / 4.1 | $0.083 / $0.036 |
+| opus | with skills | 100% / 100% | 42% / 60% | 3.4 / 4.8 | $0.215 / $0.128 |
+| opus | without | 100% / 100% | 78% / 90% | 5.4 / 5.3 | $0.176 / $0.090 |
+
+(First figure: the 34 skills; second: the 25.) "Without" still has `fwdctl` on PATH, just no skills.
+
+What it says:
+- **Haiku:** the skills clearly help: far more answered, about a third of the tool calls, lower cost.
+- **Sonnet and opus:** they answer as well without the skills. With them, answers are cheaper in tool calls but cost more per run, and were marked less grounded.
+- **Triggering:** the right skill loads 69% to 98% of the time (haiku lowest, 69% on the first set, 86% on the second).
+
+Known measurement bias, fixed but not re-measured: the grounding judge saw tool results only, not the skill text the model had loaded. For the write skills (`edit-*`) the only tool result is "skill launched", so a correct statement such as "this is a dry run" was marked ungrounded: `edit-*` 12 of 42 grounded with skills against 34 of 42 without; read skills 30 of 45 against 35 of 45. The judge now receives the loaded skills' text (`OutcomePromptWithSkills`; `skill-eval --rejudge results.json` re-grades stored runs with no new agent sessions). The figures above predate that fix; expect the with-skills grounding to rise, and treat the gap as not yet established.
+
+Not run: the raw-API arm (`--arms api --api-spec FILE`: no skills, no `fwdctl`, only Forward's API spec) was built and started, but the one usable attempt was stopped to limit spend; the first attempt kept only unjudged cases. The protocol and playbook suites were not run. Nothing here has been run against the write skills on a real org.
+
+---
+
 Run 2026-09-30 12:35. Network 231060. Models: sonnet. Judge: sonnet. 152 runs, $6.70 spent.
 
 ## With and without the skills

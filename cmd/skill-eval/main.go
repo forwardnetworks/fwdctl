@@ -26,7 +26,10 @@ func main() {
 		evals     = flag.String("evals", "evals/skills", "directory of per-skill evaluation files")
 		bin       = flag.String("bin", "", "directory containing the fwdctl binary (required)")
 		models    = flag.String("models", "sonnet", "comma-separated models to run")
-		arms      = flag.String("arms", "with,without", "with the skills, without, or both")
+		arms      = flag.String("arms", "with,without", "with the skills, without, api (raw API spec, no skills, no fwdctl; needs --api-spec), or a list")
+		skillsDir = flag.String("skills-dir", "skills", "directory of skills/<name>/SKILL.md, shown to the grounding judge for the skills a run loaded")
+		rejudge   = flag.String("rejudge", "", "re-judge the outcome (answered, grounded) of the with-skills runs in this results.json, with the skill text shown to the judge; runs no agent sessions")
+		apiSpec   = flag.String("api-spec", "", "path to Forward's OpenAPI spec, for the api arm")
 		only      = flag.String("skills", "", "comma-separated skills to evaluate (default all)")
 		max       = flag.Int("max-cases", 0, "cases per skill (0 = all)")
 		network   = flag.String("network", "", "Forward network id the queries run against (required)")
@@ -121,6 +124,25 @@ func main() {
 		fmt.Println(skilleval.RoutingReport(res))
 		return
 	}
+	if *rejudge != "" {
+		b, err := os.ReadFile(*rejudge)
+		var rs []skilleval.CaseResult
+		if err == nil {
+			err = json.Unmarshal(b, &rs)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(64)
+		}
+		abs, _ := filepath.Abs(*bin)
+		cfg := skilleval.Config{Models: split(*models), Arms: split(*arms), Network: *network, JudgeModel: *judge, SkillsDir: *skillsDir}
+		n, ch := skilleval.Rejudge(context.Background(), skilleval.ExecAgent{Bin: abs}, rs, cfg)
+		fmt.Fprintf(os.Stderr, "re-graded %d outcomes, %d changed\n", n, ch)
+		out2, _ := json.MarshalIndent(rs, "", " ")
+		_ = os.WriteFile(*rejudge+".rejudged.json", out2, 0o644)
+		fmt.Println(skilleval.Report(rs, cfg, time.Now()))
+		return
+	}
 	suites, err := skilleval.LoadSuites(*evals, split(*only))
 	if err != nil || len(suites) == 0 {
 		fmt.Fprintf(os.Stderr, "error: no evaluations loaded from %s: %v\n", *evals, err)
@@ -133,7 +155,7 @@ func main() {
 	_ = os.MkdirAll(dir, 0o755)
 	abs, _ := filepath.Abs(*bin)
 	cfg := skilleval.Config{Models: split(*models), Arms: split(*arms), Network: *network, MaxCases: *max, Parallel: *par,
-		JudgeModel: *judge, RunBudget: *runB, TotalBudget: *totalB}
+		JudgeModel: *judge, RunBudget: *runB, TotalBudget: *totalB, APISpec: *apiSpec, SkillsDir: *skillsDir}
 	started := time.Now()
 	results := skilleval.Evaluate(context.Background(), skilleval.ExecAgent{Bin: abs}, suites, cfg, filepath.Join(dir, "work"))
 	b, _ := json.MarshalIndent(results, "", " ")

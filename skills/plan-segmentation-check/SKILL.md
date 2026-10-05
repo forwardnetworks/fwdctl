@@ -16,7 +16,7 @@ A procedure, not a skill that runs. Segmentation is intent: write down the flows
 ## Steps
 
 1. **Data.** `inspect-snapshots`: the snapshot and its age.
-2. **State the intent.** The zones as address ranges or names (`inspect-inventory` resolves hosts and devices to addresses), the flows that must be **blocked**, and the flows that must **work** (a rule that blocks too much is also a failure).
+2. **State the intent.** The zones as address ranges or names (`inspect-inventory` resolves hosts and devices to addresses; `inspect-topology` kind `zones` lists the security zones Forward derived for each device), the flows that must be **blocked**, and the flows that must **work** (a rule that blocks too much is also a failure).
 3. **Test each flow.** `investigate-reachability` per flow with the protocol and port. A must-block flow that is delivered is a violation: the path shows the rule that failed to stop it. A must-work flow that is dropped shows the rule that did.
 4. **Test in bulk.** For many pairs, express the policy as an NQE check or a predefined isolation check and read it with `check-network-compliance`; that scales better than one path query per pair.
 5. **Keep it.** `edit-checks` to make the rule a standing check (follow `plan-safe-write`).

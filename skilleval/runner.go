@@ -69,10 +69,13 @@ type Agent interface {
 
 // SessionOpts describes one agent session.
 type SessionOpts struct {
-	Dir       string
-	Model     string
-	Prompt    string
-	Skills    bool // install the forward skills for this session
+	Dir    string
+	Model  string
+	Prompt string
+	Skills bool // install the forward skills for this session
+	// APISpec, when set, makes this the raw-API arm: no skills and no fwdctl on PATH, only Forward's API spec (copied into the
+	// session directory) and the credentials in the environment, so the model must call the API itself.
+	APISpec   string
 	BudgetUSD float64
 	Timeout   time.Duration
 }
@@ -80,7 +83,9 @@ type SessionOpts struct {
 // Config controls an evaluation run.
 type Config struct {
 	Models      []string
-	Arms        []string // "with", "without"
+	Arms        []string // "with", "without", "api" (needs APISpec)
+	APISpec     string   // path to Forward's OpenAPI spec, for the "api" arm
+	SkillsDir   string   // directory of skills/<name>/SKILL.md, shown to the outcome judge for the skills a run loaded
 	Network     string
 	MaxCases    int // per skill; 0 means all
 	Parallel    int
@@ -109,6 +114,12 @@ type CaseResult struct {
 // Prompt is what the agent is asked: the eval query plus the context a real user of that network would have.
 func Prompt(network, query string) string {
 	return fmt.Sprintf("Our Forward network id is %s. Forward credentials are already configured in the environment. %s", network, query)
+}
+
+// APIPrompt is the prompt of the raw-API arm: the same question, with the spec and the way to call the API instead of fwdctl.
+func APIPrompt(network, query string) string {
+	return fmt.Sprintf("Our Forward network id is %s. Forward's API specification is the file api-spec.yaml in the current directory (search it, do not read it whole). "+
+		"Call the API with curl using HTTP basic auth: the base URL is $FORWARD_URL and the credentials are $FORWARD_USERNAME and $FORWARD_PASSWORD. %s", network, query)
 }
 
 type job struct {
@@ -179,7 +190,11 @@ func Evaluate(ctx context.Context, ag Agent, suites []Suite, cfg Config, workRoo
 }
 
 func runOne(ctx context.Context, ag Agent, res CaseResult, c Case, j job, cfg Config, dir string) CaseResult {
-	raw, err := ag.Session(ctx, SessionOpts{Dir: dir, Model: j.model, Prompt: Prompt(cfg.Network, c.Query),
+	prompt, spec := Prompt(cfg.Network, c.Query), ""
+	if j.arm == "api" {
+		prompt, spec = APIPrompt(cfg.Network, c.Query), cfg.APISpec
+	}
+	raw, err := ag.Session(ctx, SessionOpts{Dir: dir, Model: j.model, Prompt: prompt, APISpec: spec,
 		Skills: j.arm == "with", BudgetUSD: cfg.RunBudget, Timeout: 6 * time.Minute})
 	if err != nil && len(raw) == 0 {
 		res.Run.Error = err.Error()
@@ -208,7 +223,7 @@ func runOne(ctx context.Context, ag Agent, res CaseResult, c Case, j job, cfg Co
 			res.JudgeError = err.Error()
 		}
 	}
-	if reply, err := ag.Ask(ctx, cfg.JudgeModel, OutcomePrompt(Prompt(cfg.Network, c.Query), run)); err == nil {
+	if reply, err := ag.Ask(ctx, cfg.JudgeModel, OutcomePromptWithSkills(Prompt(cfg.Network, c.Query), run, LoadedSkillText(cfg.SkillsDir, run))); err == nil {
 		if o, err := ParseOutcome(reply); err == nil {
 			o.GroundedNA = j.suite.ProcedureOnly
 			res.Outcome = &o
@@ -239,15 +254,27 @@ func (a ExecAgent) base() string {
 	return "claude"
 }
 
-func (a ExecAgent) env() []string {
+func (a ExecAgent) env() []string { return a.envFor(true) }
+
+// envFor builds the environment; the raw-API arm leaves fwdctl off PATH.
+func (a ExecAgent) envFor(withBin bool) []string {
 	env := append(os.Environ(), a.Env...)
-	if a.Bin != "" {
+	if a.Bin != "" && withBin {
 		env = append(env, "PATH="+a.Bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
 	return env
 }
 
 func (a ExecAgent) Session(ctx context.Context, o SessionOpts) ([]byte, error) {
+	if o.APISpec != "" {
+		b, err := os.ReadFile(o.APISpec)
+		if err != nil {
+			return nil, fmt.Errorf("api spec: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(o.Dir, "api-spec.yaml"), b, 0o644); err != nil {
+			return nil, err
+		}
+	}
 	if o.Skills {
 		install := exec.CommandContext(ctx, filepath.Join(a.Bin, "fwdctl"), "install", "claude", "--dir", filepath.Join(o.Dir, ".claude", "skills"))
 		install.Env = a.env()
@@ -269,7 +296,7 @@ func (a ExecAgent) Session(ctx context.Context, o SessionOpts) ([]byte, error) {
 		"--no-session-persistence", "--max-budget-usd", fmt.Sprintf("%.2f", o.BudgetUSD)}
 	cmd := exec.CommandContext(ctx, a.base(), args...)
 	cmd.Dir = o.Dir
-	cmd.Env = a.env()
+	cmd.Env = a.envFor(o.APISpec == "")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -341,4 +368,44 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// LoadedSkillText reads the SKILL.md of each skill the run loaded, from dir (empty dir: none).
+func LoadedSkillText(dir string, run Run) map[string]string {
+	if dir == "" {
+		return nil
+	}
+	out := map[string]string{}
+	for _, n := range run.Skills {
+		if b, err := os.ReadFile(filepath.Join(dir, n, "SKILL.md")); err == nil {
+			out[n] = string(b)
+		}
+	}
+	return out
+}
+
+// Rejudge re-grades the outcome of the with-skills results that have one, showing the judge the skills each run loaded. It runs
+// no agent sessions; only the judge model is called. It returns how many outcomes were re-graded and how many changed.
+func Rejudge(ctx context.Context, ag Agent, results []CaseResult, cfg Config) (regraded, changed int) {
+	for i := range results {
+		r := &results[i]
+		if r.Arm != "with" || r.Outcome == nil || r.Run.Final == "" {
+			continue
+		}
+		reply, err := ag.Ask(ctx, cfg.JudgeModel, OutcomePromptWithSkills(Prompt(cfg.Network, r.Query), r.Run, LoadedSkillText(cfg.SkillsDir, r.Run)))
+		if err != nil {
+			continue
+		}
+		o, err := ParseOutcome(reply)
+		if err != nil {
+			continue
+		}
+		o.GroundedNA = r.Outcome.GroundedNA
+		regraded++
+		if o.Grounded != r.Outcome.Grounded || o.Answered != r.Outcome.Answered {
+			changed++
+		}
+		r.Outcome = &o
+	}
+	return regraded, changed
 }

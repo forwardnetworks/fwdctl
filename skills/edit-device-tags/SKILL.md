@@ -57,3 +57,9 @@ The envelope in `schema/skill-result.schema.json`, with `mode` and `changes`.
 Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>", "action": "add", "devices": ["r1", "r2"], "tags": ["edge"]}' | fwdctl run edit-device-tags`.
 It needs the `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
 (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass. Add `"apply": true` only after the dry run was accepted.
+
+## Reference
+
+Read the file you need, when you need it (where you cannot read files: `fwdctl describe edit-device-tags reference/<file>`).
+
+- [reference/behaviours.md](reference/behaviours.md): when tags take effect, case-insensitive names, all-or-nothing batches (unverified, labelled). Read before applying tags.

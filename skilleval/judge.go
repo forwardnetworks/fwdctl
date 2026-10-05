@@ -3,6 +3,7 @@ package skilleval
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -73,12 +74,28 @@ type Outcome struct {
 
 // OutcomePrompt asks whether the final answer answers the query and whether each claim in it is backed by what the
 // tools returned.
-func OutcomePrompt(query string, run Run) string {
+func OutcomePrompt(query string, run Run) string { return OutcomePromptWithSkills(query, run, nil) }
+
+// OutcomePromptWithSkills is OutcomePrompt with the instructions of the skills the agent loaded (name to SKILL.md text). A statement
+// about how a skill or the write protocol works that those instructions make is grounded in them; the agent read them, so the
+// judge must too, or a run with skills is marked down for repeating what its skill said.
+func OutcomePromptWithSkills(query string, run Run, skillText map[string]string) string {
 	var b strings.Builder
 	b.WriteString("You are grading one run of an AI agent that answers questions about a network by calling tools. Be strict.\n\n")
 	fmt.Fprintf(&b, "USER QUERY (exactly what the agent was sent, including the network id and credentials note):\n%s\n\nTRANSCRIPT (tool calls, then what each returned):\n", query)
 	for i, s := range run.Steps {
 		fmt.Fprintf(&b, "[%d] %s: %s\n    -> %s\n", i+1, s.Tool, s.Input, s.Result)
+	}
+	if len(skillText) > 0 {
+		b.WriteString("\nSKILL INSTRUCTIONS THE AGENT LOADED (the agent was given these; a statement about how the skill, its dry-run or approval protocol, or Forward works that they make counts as grounded. Facts about THIS network still must come from the tool results):\n")
+		names := make([]string, 0, len(skillText))
+		for n := range skillText {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			fmt.Fprintf(&b, "--- %s ---\n%s\n", n, skillText[n])
+		}
 	}
 	fmt.Fprintf(&b, "\nFINAL ANSWER:\n%s\n\n", run.Final)
 	b.WriteString("answered: the final answer gives the user something usable for the query, or correctly says why it cannot (an out-of-scope request declined with the reason counts).\n")

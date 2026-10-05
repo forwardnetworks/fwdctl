@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -167,6 +168,23 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		for _, a := range as {
 			rows = append(rows, map[string]any{"name": a.Name, "type": a.Type, "definition": json.RawMessage(a.Definition)})
 		}
+	case "zones":
+		zm, _, err := s.Client.Networks.SecurityZones(ctx, in.NetworkID, sid)
+		if err != nil {
+			return result.Result{}, err
+		}
+		names := make([]string, 0, len(zm))
+		for d := range zm {
+			names = append(names, d)
+		}
+		sort.Strings(names)
+		for _, d := range names {
+			if in.Device != "" && d != in.Device {
+				continue
+			}
+			rows = append(rows, map[string]any{"device": d, "zones": zm[d], "zone_count": len(zm[d])})
+		}
+		limits = append(limits, "zones are the security zones Forward derived for each device (firewall zones and similar); a device with no zones has an empty list, which is not the same as not analysed; it needs the security analysis permission and a snapshot that has reached the creation stage (unverified against a live Forward: read from Forward's source)")
 	default:
 		return result.NewError(topologyName, "unknown kind "+in.Kind, cx), nil
 	}

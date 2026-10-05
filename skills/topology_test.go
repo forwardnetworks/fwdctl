@@ -122,3 +122,20 @@ func TestTopologyLocationsNeverCountZeroUnlocatedFromAnEmptyDeviceList(t *testin
 		t.Errorf("an empty device list proves nothing about unlocated devices: %v", r.Evidence[0].Detail)
 	}
 }
+
+func TestTopologyZonesListDevicesWithTheirZonesAndFilterByDevice(t *testing.T) {
+	zones := map[string]fwdtest.Handler{"GET /api/networks/n1/security-zones": fwdtest.Const(200, map[string]any{"fw1": []any{"inside", "dmz"}, "sw1": []any{}})}
+	r := topo(t, zones, `{"network_id":"n1","kind":"zones"}`)
+	d := fmt.Sprint(r.Evidence[0].Detail)
+	if r.Status != result.OK || !strings.Contains(d, "dmz") || !strings.Contains(d, "sw1") {
+		t.Fatalf("%s %s", r.Status, d)
+	}
+	r = topo(t, zones, `{"network_id":"n1","kind":"zones","device":"fw1"}`)
+	if d = fmt.Sprint(r.Evidence[0].Detail); strings.Contains(d, "sw1") || !strings.Contains(d, "inside") {
+		t.Errorf("device filter: %s", d)
+	}
+	r = topo(t, map[string]fwdtest.Handler{"GET /api/networks/n1/security-zones": fwdtest.Const(200, map[string]any{})}, `{"network_id":"n1","kind":"zones"}`)
+	if r.Status != result.Unknown {
+		t.Errorf("no zones returned must be unknown, not none defined: %s", r.Status)
+	}
+}

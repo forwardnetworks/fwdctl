@@ -62,3 +62,9 @@ The envelope in `schema/skill-result.schema.json`, with `mode` and `changes`.
 Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run edit-collection`. It needs the `fwdctl` binary
 and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode`
 and the `limits`; `unknown` is never a pass. Add `"apply": true` only after the dry run was accepted.
+
+## Reference
+
+Read the file you need, when you need it (where you cannot read files: `fwdctl describe edit-collection reference/<file>`).
+
+- [reference/behaviours.md](reference/behaviours.md): one collection at a time, task id versus snapshot id, old collectors and custom command groups (unverified, labelled). Read before starting a collection.
