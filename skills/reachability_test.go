@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -168,7 +169,7 @@ func TestReachabilityTruncationAndPredictedAreLimits(t *testing.T) {
 	snaps := fwdtest.Snapshots(fwdtest.Snap("p1", "PROCESSED", "PREDICT", "2026-09-05T00:00:00.000Z"))
 	r, _ := reach(t, pathsBody(false, "LOWER_BOUND", path("DELIVERED", "PERMITTED")), snaps,
 		`{"network_id":"n1","dst_ip":"10.0.1.1","src_ip":"10.0.0.1","snapshot_id":"p1"}`)
-	if r.Context.State != "predicted" || len(r.Limits) != 2 {
+	if r.Context.State != "predicted" || len(r.Limits) != 3 {
 		t.Errorf("state %s limits %v", r.Context.State, r.Limits)
 	}
 }
@@ -300,5 +301,25 @@ func TestReachabilityListsEachHopWithItsInterfacesAndReportsIdenticalPathsOnce(t
 	hops := d["hops"].([]map[string]any)
 	if d["identical_paths"] != 3 || len(hops) != 2 || hops[0]["device"] != "r1" || hops[0]["ingress_interface"] != "e0" || hops[0]["egress_interface"] != "e1" || hops[1]["egress_interface"] != nil {
 		t.Errorf("per-hop interfaces and the repeat count: %v", d)
+	}
+}
+
+func TestReachabilityShowsEveryOutcomeAndCountsWhatItDidNotShow(t *testing.T) {
+	denied := path("DELIVERED", "DENIED")
+	blackhole := path("BLACKHOLE", "PERMITTED", hop("r1", "e0", "e1"), hop("r2", "e3", ""))
+	r, _ := reach(t, pathsBody(false, "EXACT", denied, denied, blackhole), nil, `{"network_id":"n1","dst_ip":"10.0.0.1","src_ip":"10.0.0.2"}`)
+	got := map[string]bool{}
+	for _, e := range r.Evidence {
+		got[fmt.Sprint(e.Detail["classification"])] = true
+	}
+	if len(got) < 2 {
+		t.Fatalf("every distinct outcome is listed, not one per answer: %v", got)
+	}
+	l := strings.Join(r.Limits, " ")
+	if !strings.Contains(l, "3 paths returned") || !strings.Contains(l, "PREFER_VIOLATIONS") {
+		t.Errorf("the limits say how many paths of each class and how to see others: %v", r.Limits)
+	}
+	if _, _, err := runSkill(t, "investigate-reachability", nil, `{"network_id":"n1","dst_ip":"10.0.0.1","intent":"bogus"}`); err == nil {
+		t.Errorf("an unknown intent is refused")
 	}
 }

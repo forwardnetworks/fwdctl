@@ -21,7 +21,8 @@ guessed from device output.
 
 `network_id` and `dst_ip` are required. Give `src_ip` or `from` (a device) to anchor the
 source. Optional: `protocol` (`tcp|udp|icmp` or a number), `src_port`, `dst_port`,
-`snapshot_id` (default: the newest processed snapshot), `max_results`, `max_seconds`.
+`snapshot_id` (default: the newest processed snapshot), `max_results`, `max_seconds`, `intent` (`PREFER_DELIVERED` default, `PREFER_VIOLATIONS`, `VIOLATIONS_ONLY`: how Forward selects the paths it returns; to see paths a default answer lacks, compare intents).
+`from` names a device only: Forward may start the flow on any of its interfaces (a loopback among them). Every path's evidence carries `source_hop` (the first hop's device and the interface the packet entered by) and the full `hops` list, so keep the paths whose `source_hop.ingress_interface` is the one you mean.
 See `schema.json`.
 
 ## Procedure
@@ -42,7 +43,8 @@ See `schema.json`.
    | UNREACHABLE | any | `unreachable` |
    | DELIVERED_TO_INCORRECT_LOCATION | any | `incomplete_model` (a device on the path was probably not collected) |
 
-4. Decide:
+4. Report every distinct outcome: the evidence holds one path per classification first (delivered, failures, then `incomplete_model`), then more distinct paths up to 6; identical paths are counted (`identical_paths`), and the limits say how many paths of each classification Forward returned and how many distinct ones were not shown. Compare two networks by those counts, not by the first path.
+5. Decide:
    - Any `delivered` path: **ok**, deterministic.
    - No `delivered` path and the search completed: **failed**, with the classification of
      the first path and its last hop (device, ingress and egress interface) as the first

@@ -69,7 +69,7 @@ var wideReadSkills = map[string]int{
 	"inspect-bgp-neighbors":    12,
 	"compare-nqe-results":      9, // after_network_id, key and ignore compare two networks
 	"inspect-device-files":     11,
-	"investigate-reachability": 10,
+	"investigate-reachability": 11,
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.
 	"inspect-edge":                   12, // view exits | public_addresses | trace_sources
 	"inspect-inventory":              11, // kind ip_owner adds ips; kind devices adds compare_to_snapshot_id

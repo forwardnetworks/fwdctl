@@ -25,7 +25,11 @@ type reachabilityInput struct {
 	SnapshotID string          `json:"snapshot_id"`
 	MaxResults int             `json:"max_results"`
 	MaxSeconds int             `json:"max_seconds"`
+	// Intent is how Forward orders the paths it returns: PREFER_DELIVERED (default), PREFER_VIOLATIONS or VIOLATIONS_ONLY. With a result cap, the intent decides which paths exist in the answer at all.
+	Intent string `json:"intent"`
 }
+
+const maxReachabilityEvidence = 6
 
 var reachabilityExplain = map[string]string{
 	"security_denied": "Traffic reaches the destination but is denied by security policy",
@@ -93,8 +97,13 @@ func pathEvidence(p fwd.Path, class string, snapshot *string) result.Evidence {
 		}
 		hops = append(hops, map[string]any{"device": hopName(h), "ingress_interface": nilIfEmpty(h.IngressInterface), "egress_interface": nilIfEmpty(h.EgressInterface)})
 	}
+	// the interface the packet entered the first hop by, so a caller can keep only the paths from the ingress it means without a second query
+	var src any
+	if len(p.Hops) > 0 {
+		src = map[string]any{"device": hopName(p.Hops[0]), "ingress_interface": nilIfEmpty(p.Hops[0].IngressInterface)}
+	}
 	detail := map[string]any{
-		"classification": class, "forwarding_outcome": p.ForwardingOutcome, "security_outcome": nilIfEmpty(p.SecurityOutcome),
+		"source_hop": src, "classification": class, "forwarding_outcome": p.ForwardingOutcome, "security_outcome": nilIfEmpty(p.SecurityOutcome),
 		"hop_count": len(p.Hops), "devices": devices, "hops": hops, "last_hop": last,
 	}
 	if mp := missingPeerOf(p); mp != nil {
@@ -207,6 +216,13 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
+	switch in.Intent {
+	case "":
+		in.Intent = "PREFER_DELIVERED"
+	case "PREFER_DELIVERED", "PREFER_VIOLATIONS", "VIOLATIONS_ONLY":
+	default:
+		return result.Result{}, fmt.Errorf("%w: intent must be PREFER_DELIVERED, PREFER_VIOLATIONS or VIOLATIONS_ONLY", ErrInvalidInput)
+	}
 	snap, err := resolveSnapshot(ctx, s, in.NetworkID, in.SnapshotID)
 	if err != nil {
 		return result.Result{}, err
@@ -220,7 +236,7 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	sid := fwd.SnapshotIDPtr(snap)
 	doc, err := s.SearchPaths(ctx, in.NetworkID, fwd.PathQuery{
 		DstIP: in.DstIP, SrcIP: in.SrcIP, From: in.From, Protocol: protocolText(in.Protocol),
-		SrcPort: in.SrcPort, DstPort: in.DstPort, Intent: "PREFER_DELIVERED", SnapshotID: fwd.SnapshotID(cx),
+		SrcPort: in.SrcPort, DstPort: in.DstPort, Intent: in.Intent, SnapshotID: fwd.SnapshotID(cx),
 		MaxResults: in.MaxResults, MaxSeconds: in.MaxSeconds,
 	})
 	if err != nil {
@@ -259,15 +275,22 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 			real = append(real, c)
 		}
 	}
-	if delivered > 0 {
-		for _, c := range all {
-			if c.class == "delivered" {
-				return result.Build(reachabilityName, result.OK,
-					fmt.Sprintf("Traffic is delivered (%d of %d returned paths)", delivered, len(doc.Paths)),
-					result.Deterministic, cx, result.Options{Limits: limits,
-						Evidence: []result.Evidence{pathEvidence(c.path, c.class, sid)}, NextActions: []string{"verify-change"}})
-			}
+	// Every distinct outcome is reported: one path per classification first (delivered, then the failures, then incomplete models), then more distinct paths up to the evidence cap.
+	// What was left out is counted in the limits, so two networks can be compared without a path silently missing.
+	ordered := orderByClass(all, func(c classified) string { return c.class })
+	outcomes, _ := outcomeSummary(all, func(c classified) string { return c.class })
+	limits = append(limits, outcomes+" (intent "+in.Intent+"). Forward chooses which paths it returns, so another intent (PREFER_VIOLATIONS, VIOLATIONS_ONLY) or a larger max_results can show paths this answer does not")
+	pathEv := func() []result.Evidence {
+		ev := uniquePathEvidence(ordered, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, maxReachabilityEvidence)
+		if distinct := countDistinct(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }); distinct > len(ev) {
+			limits = append(limits, fmt.Sprintf("%d distinct paths exist in this answer; %d are shown (one per outcome first); narrow the flow (src_port, dst_port, from) to see the rest", distinct, len(ev)))
 		}
+		return ev
+	}
+	if delivered > 0 {
+		return result.Build(reachabilityName, result.OK,
+			fmt.Sprintf("Traffic is delivered (%d of %d returned paths)", delivered, len(doc.Paths)),
+			result.Deterministic, cx, result.Options{Limits: limits, Evidence: pathEv(), NextActions: []string{"verify-change"}})
 	}
 	if len(real) == 0 || doc.TimedOut {
 		if len(real) == 0 {
@@ -285,7 +308,49 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		}
 		return result.NewUnknown(reachabilityName, finding, cx, limits, result.Options{Evidence: ev, NextActions: next})
 	}
-	ev := uniquePathEvidence(real, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, 3)
+	ev := pathEv()
 	return result.Build(reachabilityName, result.Failed, reachabilityExplain[real[0].class], result.Deterministic, cx,
 		result.Options{Limits: limits, Evidence: ev, NextActions: []string{"inspect-topology", "inspect-device-files", "plan-troubleshoot-connectivity"}})
+}
+
+// orderByClass puts the first item of each classification first (in order of first appearance), then the rest in their original order.
+func orderByClass[T any](items []T, class func(T) string) []T {
+	seen := map[string]bool{}
+	var firsts, rest []T
+	for _, it := range items {
+		if c := class(it); !seen[c] {
+			seen[c] = true
+			firsts = append(firsts, it)
+		} else {
+			rest = append(rest, it)
+		}
+	}
+	return append(firsts, rest...)
+}
+
+// outcomeSummary says how many returned paths fall in each classification ("5 paths returned: 3 security_denied, 2 incomplete_model").
+func outcomeSummary[T any](items []T, class func(T) string) (string, []string) {
+	counts := map[string]int{}
+	var order []string
+	for _, it := range items {
+		c := class(it)
+		if counts[c] == 0 {
+			order = append(order, c)
+		}
+		counts[c]++
+	}
+	parts := make([]string, 0, len(order))
+	for _, c := range order {
+		parts = append(parts, fmt.Sprintf("%d %s", counts[c], c))
+	}
+	return fmt.Sprintf("%d paths returned: %s", len(items), strings.Join(parts, ", ")), order
+}
+
+// countDistinct counts the paths that differ in classification, devices or interfaces.
+func countDistinct[T any](items []T, path func(T) fwd.Path, class func(T) string) int {
+	seen := map[string]bool{}
+	for _, it := range items {
+		seen[pathSignature(path(it), class(it))] = true
+	}
+	return len(seen)
 }

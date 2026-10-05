@@ -12,6 +12,7 @@
     "dst_port": { "type": "string" },
     "snapshot_id": { "type": "string", "minLength": 1 },
     "max_results": { "type": "integer", "minimum": 1 },
-    "max_seconds": { "type": "integer", "minimum": 1 }
+    "max_seconds": { "type": "integer", "minimum": 1 },
+    "intent": { "enum": ["PREFER_DELIVERED", "PREFER_VIOLATIONS", "VIOLATIONS_ONLY"], "default": "PREFER_DELIVERED", "description": "how Forward orders and selects the paths it returns" }
   }
 }

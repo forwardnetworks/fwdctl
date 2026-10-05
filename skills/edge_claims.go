@@ -99,14 +99,33 @@ func newClaimant(kind, node, source string, c forward.SyntheticNodeConn) Claiman
 // claims says whether the connection claims the (sub)interface: its uplink or gateway is that port, or the port is a subinterface "<uplink>.<vlan>" of the connection's uplink
 // and the connection's VLAN is that number.
 func (c Claimant) claims(device, port string) bool {
-	if (c.up.Device == device && c.up.Port == port) || (c.gw.Device == device && c.gw.Port != "" && c.gw.Port == port) {
+	if (c.up.Device == device && samePort(c.up.Port, port)) || (c.gw.Device == device && c.gw.Port != "" && samePort(c.gw.Port, port)) {
 		return true
 	}
-	if v, ok := subVLAN(port); ok && c.VLAN != nil && *c.VLAN == v && c.up.Device == device && c.up.Port == port[:strings.LastIndex(port, ".")] {
+	if v, ok := subVLAN(port); ok && c.VLAN != nil && *c.VLAN == v && c.up.Device == device && samePort(c.up.Port, port[:strings.LastIndex(port, ".")]) {
 		return true
 	}
 	return false
 }
+
+// portAbbrev maps the long interface-name prefixes a lab or a vendor writes to the short ones Forward may use.
+var portAbbrev = []struct{ long, short string }{
+	{"tengigabitethernet", "te"}, {"twentyfivegige", "twe"}, {"hundredgige", "hu"}, {"fortygigabitethernet", "fo"}, {"gigabitethernet", "gi"}, {"fastethernet", "fa"},
+	{"ethernet", "eth"}, {"port-channel", "po"}, {"portchannel", "po"}, {"loopback", "lo"}, {"vlan", "vl"},
+}
+
+// portKey lowercases an interface name and shortens its type prefix ("Ethernet0/2" and "eth0/2" give the same key), so a lab name and Forward's name for one port compare equal.
+func portKey(p string) string {
+	p = strings.ToLower(strings.TrimSpace(p))
+	for _, a := range portAbbrev {
+		if rest, ok := strings.CutPrefix(p, a.long); ok {
+			return a.short + rest
+		}
+	}
+	return p
+}
+
+func samePort(a, b string) bool { return a == b || portKey(a) == portKey(b) }
 
 // claimsOf lists the nodes that claim the (sub)interface, one entry per node (the first matching connection), in the order the nodes were read.
 func (ci *ClaimIndex) claimsOf(device, port string) []Claimant {
