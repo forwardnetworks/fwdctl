@@ -106,9 +106,9 @@ func taskEndStates(ctx context.Context, s *fwd.Session, taskID string) (map[stri
 		return a > b
 	})
 	out := map[string]any{"subtasks_read": len(t.SubTasks), "by_status": counts, "task_progress": t.Progress, "timed_out": counts[forward.CollectorTaskTimedOut]}
-	if len(bad) > maxEndStateShown {
-		out["more_not_shown"] = len(bad) - maxEndStateShown
-		bad = bad[:maxEndStateShown]
+	bad, badTotal := result.CapRow(bad, maxEndStateShown)
+	if badTotal > len(bad) {
+		out["more_not_shown"] = badTotal - len(bad)
 	}
 	out["failed_timed_out_or_cancelled"] = bad
 	if len(t.SubTasks) >= problemSubTasks {

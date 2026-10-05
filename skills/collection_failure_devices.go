@@ -121,6 +121,7 @@ func failureDevices(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		limits = append(limits, "the device model lists no failed device, and the metrics do not confirm none failed; this is not proof every device collected (see the summary view)")
 		return result.NewUnknown(collectionFailureName, "No device in the model is recorded as failed", cx, limits, result.Options{NextActions: []string{"inspect-collection"}})
 	}
+	var omitted []result.Omission
 	finding := fmt.Sprintf("%d device(s) failed (%s)", len(rows), typesText(byType))
 	if in.Failure != "" || in.Device != "" {
 		finding = fmt.Sprintf("%d of %d failed device(s) match the filter", len(kept), len(rows))
@@ -129,7 +130,7 @@ func failureDevices(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	win, wl, ok := window(kept, in.Limit, in.Offset, defaultFailureRows, maxFailureRows, "failed devices")
 	if ok {
 		detail["devices"] = win
-		limits = append(limits, wl...)
+		omitted = append(omitted, wl...)
 	} else if len(kept) > 0 {
 		return result.NewUnknown(collectionFailureName, fmt.Sprintf("Offset %d is beyond the %d matching devices", in.Offset, len(kept)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
@@ -147,17 +148,13 @@ func failureDevices(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 				if f := in.Failure; f != "" && !strings.EqualFold(f, "processing") && !strings.Contains(strings.ToUpper(e.Type), strings.ToUpper(f)) {
 					continue
 				}
-				devs := e.Devices
-				if len(devs) > 25 {
-					devs = devs[:25]
-				}
-				cited = append(cited, map[string]any{"type": e.Type, "occurrences": e.Occurrences, "devices": devs, "message": firstLine(e.StackTrace)})
+				devs, devsTotal := result.CapRow(e.Devices, 25)
+				cited = append(cited, map[string]any{"type": e.Type, "occurrences": e.Occurrences, "devices": devs, "devices_total": devsTotal, "message": firstLine(e.StackTrace)})
 			}
 			sort.SliceStable(cited, func(i, j int) bool { return cited[i]["occurrences"].(int) > cited[j]["occurrences"].(int) })
-			if len(cited) > 10 {
-				limits = append(limits, fmt.Sprintf("%d kinds of exception; the 10 most frequent are cited", len(cited)))
-				cited = cited[:10]
-			}
+			var capped []result.Omission
+			cited, capped = result.Cap(cited, 10, "kinds of exception", "the 10 most frequent are cited")
+			omitted = append(omitted, capped...)
 			if len(cited) == 0 {
 				msg := "Forward's exception list holds no record for these processing failures, so no exception message, class or line exists to read"
 				if byType["PARSER_EXCEPTION"] > 0 {
@@ -174,7 +171,7 @@ func failureDevices(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		}
 	}
 	limits = append(limits, "category groups the error type: credentials, network_path, device_session, unclassified (collection), processing (parse or model). Failed devices are read from the snapshot's device model")
-	return result.Build(collectionFailureName, result.Failed, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(collectionFailureName, result.Failed, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"inspect-device-files", "inspect-collection"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "runNqeQuery", sid, detail, finding)}})
 }
@@ -236,14 +233,13 @@ func unmodelledNeighbors(ctx context.Context, s *fwd.Session, in collectionInput
 	if !ok {
 		return result.NewUnknown(collectionFailureName, fmt.Sprintf("Offset %d is beyond the %d neighbours", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
-	limits = append(limits, wl...)
 	limits = append(limits, "BGP peers come first; bgp_peer matches a neighbour's name or addresses to a modelled device's BGP neighbor address, so a peer reached by an address Forward did not list is not matched. A peer that is unmodelled is usually the upstream or edge")
 	finding := fmt.Sprintf("%d neighbour device(s) are seen but not modelled; %d of them are BGP peers of a modelled device", len(missing), peers)
 	if !bgpKnown {
 		finding = fmt.Sprintf("%d neighbour device(s) are seen but not modelled; whether they are BGP peers could not be derived", len(missing))
 	}
 	d := map[string]any{"total": len(missing), "bgp_peers": peers, "offset": in.Offset, "neighbors": win}
-	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: wl,
 		NextActions: []string{"inspect-bgp-neighbors", "plan-synthetic-device"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "getMissingDevices", cx.SnapshotID, d, finding)}})
 }
@@ -287,7 +283,7 @@ func deviceLog(ctx context.Context, s *fwd.Session, in collectionInput, cx resul
 	if !ok {
 		return result.NewUnknown(collectionFailureName, fmt.Sprintf("Offset %d is beyond the %d log lines read", in.Offset, len(lines)), cx, []string{"offset is past the end of the log read"}, result.Options{})
 	}
-	limits := wl
+	var limits []string
 	if trunc {
 		limits = append(limits, fmt.Sprintf("the log was cut at %d KiB; later lines were not read", maxLogBytes>>10))
 	}
@@ -300,7 +296,7 @@ func deviceLog(ctx context.Context, s *fwd.Session, in collectionInput, cx resul
 		limits = append(limits, fmt.Sprintf("the log is longer than %d MiB, so last_line is where the scan stopped, not the end of the log", maxLogScanBytes>>20))
 	}
 	limits = append(limits, "log.last_line and its time (the line's first token) say where the device's log ends; a log that ends mid-work with no line about cancelling or timing out is not proof the device hung. At level WARN the last line is the last WARN, so give failure INFO to see the real end. cancel_or_timeout_lines are the first lines that mention it (Forward's own wording is not documented)")
-	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: wl,
 		NextActions: []string{"inspect-device-files", "inspect-collection"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "getSnapshotLogs", cx.SnapshotID, d, finding)}})
 }
@@ -350,10 +346,8 @@ func collectorExceptions(ctx context.Context, s *fwd.Session, in collectionInput
 			names = append(names, d)
 		}
 		sort.Strings(names)
-		if len(names) > 25 {
-			names = names[:25]
-		}
-		row := map[string]any{"message": firstLine(e.StackTrace), "occurrences": e.TotalOccurrences, "devices": names}
+		names, namesTotal := result.CapRow(names, 25)
+		row := map[string]any{"message": firstLine(e.StackTrace), "occurrences": e.TotalOccurrences, "devices": names, "devices_total": namesTotal}
 		if e.CollectorVersion != "" {
 			row["collector_version"] = e.CollectorVersion
 		}
@@ -378,6 +372,6 @@ func collectorExceptions(ctx context.Context, s *fwd.Session, in collectionInput
 		return result.NewUnknown(collectionFailureName, fmt.Sprintf("Offset %d is beyond the %d exceptions", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
 	finding := fmt.Sprintf("%d distinct collector exception(s); most frequent: %v (%v time(s))", len(rows), win[0]["message"], win[0]["occurrences"])
-	return result.Build(collectionFailureName, result.Failed, finding, result.Deterministic, cx, result.Options{Limits: append(limits, wl...), NextActions: []string{"inspect-collection", "inspect-device-files"},
+	return result.Build(collectionFailureName, result.Failed, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: wl, NextActions: []string{"inspect-collection", "inspect-device-files"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "collectionExceptions", cx.SnapshotID, map[string]any{"total": ex.Total, "offset": in.Offset, "exceptions": win}, finding)}})
 }

@@ -92,10 +92,8 @@ func vulnDevices(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 		return a.name < b.name
 	})
 	sort.Strings(names)
-	shown := rows
-	if len(shown) > in.Limit {
-		shown = shown[:in.Limit]
-		limits = append(limits, fmt.Sprintf("%d devices match; the first %d are shown (addressable devices first, then worst severity, then most exposed CVEs); addressable_device_names lists every addressable one", len(rows), in.Limit))
+	shown, rowsCut := result.Cap(rows, in.Limit, "devices with matching CVEs", "addressable devices first, then worst severity, then most exposed CVEs; addressable_device_names lists every addressable one")
+	if len(rowsCut) > 0 {
 		s.Annotate(nil, true)
 	}
 	out := make([]map[string]any, 0, len(shown))
@@ -111,10 +109,8 @@ func vulnDevices(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 	}
 	detail := map[string]any{"devices": out, "devices_with_matching_cves": addressable + notAddressable + unknown, "internet_addressable_devices": addressable,
 		"not_internet_addressable_devices": notAddressable, "exposure_unknown_devices": unknown, "total_devices_analysed": all.TotalDevices}
-	if len(names) > maxAddressableNames {
-		limits = append(limits, fmt.Sprintf("%d addressable devices; addressable_device_names holds the first %d", len(names), maxAddressableNames))
-		names = names[:maxAddressableNames]
-	}
+	names, namesCut := result.Cap(names, maxAddressableNames, "addressable devices", "addressable_device_names holds the first ones")
+	omitted := append(rowsCut, namesCut...)
 	if len(names) > 0 {
 		detail["addressable_device_names"] = names
 	}
@@ -133,7 +129,7 @@ func vulnDevices(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 	ev := []result.Evidence{result.NewEvidence(result.EvState, "getDeviceVulnerabilities", sid, detail, "")}
 	finding := fmt.Sprintf("%d of %d devices with matching CVEs are internet addressable (%d not, %d unknown)", addressable, addressable+notAddressable+unknown, notAddressable, unknown)
 	if len(rows) == 0 {
-		return result.NewUnknown(vulnerabilitiesName, "No device with a CVE matching the filters was returned, so nothing was assessed", cx, limits, result.Options{Evidence: ev})
+		return result.NewUnknown(vulnerabilitiesName, "No device with a CVE matching the filters was returned, so nothing was assessed", cx, limits, result.Options{Omitted: omitted, Evidence: ev})
 	}
 	exposedAddr := 0
 	for _, r := range rows {
@@ -144,11 +140,11 @@ func vulnDevices(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 	switch {
 	case exposedAddr > 0:
 		return result.Build(vulnerabilitiesName, result.Failed, fmt.Sprintf("%s; %d of them carry an exposed CVE", finding, exposedAddr), result.Deterministic, cx,
-			result.Options{Limits: limits, Evidence: ev, NextActions: []string{"inspect-vulnerabilities", "investigate-reachability", "plan-vulnerability-response"}})
+			result.Options{Limits: limits, Omitted: omitted, Evidence: ev, NextActions: []string{"inspect-vulnerabilities", "investigate-reachability", "plan-vulnerability-response"}})
 	case unknown > 0 && addressable == 0:
-		return result.NewUnknown(vulnerabilitiesName, finding, cx, limits, result.Options{Evidence: ev})
+		return result.NewUnknown(vulnerabilitiesName, finding, cx, limits, result.Options{Omitted: omitted, Evidence: ev})
 	}
-	return result.Build(vulnerabilitiesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Evidence: ev})
+	return result.Build(vulnerabilitiesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, Evidence: ev})
 }
 
 // noDevicesViewInputs rejects the inputs that belong to another view.

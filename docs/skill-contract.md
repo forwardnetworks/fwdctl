@@ -46,6 +46,7 @@ Every skill returns the envelope in `schema/skill-result.schema.json`, built wit
 | `confidence` | `deterministic` (read from the twin), `inferred`, `unknown` |
 | `evidence[]` | typed items, each with the operation and snapshot it came from |
 | `limits[]` | what was not measured, truncated or unavailable |
+| `omitted[]` | every list that was cut or paged: `what`, `total`, `shown`, `from`, `next` (how to see the rest); absent when nothing was cut. Each is also written into `limits` |
 | `next_actions[]` | skills that may follow; a recommendation, never a command |
 | `context` | network, snapshot id/time, current/historical/predicted |
 

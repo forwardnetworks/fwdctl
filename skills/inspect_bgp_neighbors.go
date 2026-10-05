@@ -191,8 +191,9 @@ func inspectBGPNeighbors(ctx context.Context, s *fwd.Session, raw json.RawMessag
 	}
 	end := min(in.Offset+in.Limit, total)
 	limits := []string{"the route-map, prefix-list or route-policy applied to a neighbor is not in Forward's model, so it is not shown here: author-nqe-query reference/config-patterns.md reads it from the device config", "state and prefix counts are null on platforms that do not report them; peer_device empty means the peer is not a collected device (the unmodelled side), not that the session is down; adj_rib_out_* is only reported by Junos, IOS, IOS-XE, NX-OS and IOS-XR devices, counts routes after output policy, and is read for the neighbor's own VRF and IPv4 unicast (adj_rib_out_other_vrfs_routes is what the same peer address carries in other VRFs and families); advertised_prefixes is the device's own session counter, adj_rib_out_distinct_prefixes the distinct prefixes in the Adj-RIB-Out and the one to use for exclude-set work, and they can differ by a few"}
-	if end < total {
-		limits = append(limits, fmt.Sprintf("%d neighbors match; rows %d-%d shown (unmodelled peers first). Page with offset=%d.", total, in.Offset+1, end, end))
+	var omitted []result.Omission
+	if in.Offset > 0 || end < total {
+		omitted = append(omitted, result.Omission{What: "neighbors", Total: total, Shown: end - in.Offset, From: in.Offset, Paged: true, Next: joinNext(pageNext(end, total), "unmodelled peers come first")})
 	}
 	if trunc {
 		limits = append(limits, fmt.Sprintf("the neighbor read hit its %d-row bound", maxModelRows))
@@ -203,7 +204,7 @@ func inspectBGPNeighbors(ctx context.Context, s *fwd.Session, raw json.RawMessag
 	d := map[string]any{"total": total, "unmodelled_peers": unmodelled, "by_state": countsTop(stateCount, 12), "by_peer_as": countsTop(asCount, 12), "offset": in.Offset, "neighbors": sel[in.Offset:end]}
 	d["snapshot_id"] = string(snap.ID)
 	finding := fmt.Sprintf("%d BGP neighbor(s), %d with a peer that is not a modelled device (snapshot %s)", total, unmodelled, snap.ID)
-	return result.Build(inspectBGPNeighborsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(inspectBGPNeighborsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"inspect-edge", "plan-synthetic-device", "investigate-reachability"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvNQE, "runNqeQuery", fwd.SnapshotIDPtr(snap), d, finding)}})
 }

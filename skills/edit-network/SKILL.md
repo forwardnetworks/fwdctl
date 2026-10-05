@@ -32,8 +32,9 @@ Manage the objects around a network: the network itself, its locations and devic
 | `location` | `update` | the location name or id | any create field, `deviceGlobs` | update back |
 | `location` | `delete` | the location name or id | | **none**; `confirm` = the location id |
 | `location` | `assign` | | `{"<device name>": "<location id>"}` | assign back |
-| `cluster` | `create` | | `location_id`, `name`, `devices` | none through the API |
+| `cluster` | `create` | | `location_id`, `name`, `devices` | delete it |
 | `cluster` | `update` | the cluster | `location_id`, new `name`, `devices` | update back |
+| `cluster` | `delete` | the cluster | `location_id` | **none**; `confirm` = the cluster name |
 | `tag` | `update` | the tag | `name` (rename), `color` | update back |
 | `tag` | `delete` | the tag | | **none**; `confirm` = the tag name |
 
@@ -50,7 +51,7 @@ Without `apply: true` nothing changes. The result shows before, after and the un
 
 ## Limits
 
-Deleting a network removes its snapshots, checks and settings. Deleting a tag definition removes it from every device across the whole timeline. There is no cluster delete and no read of current device locations in the API.
+Deleting a network removes its snapshots, checks and settings. Deleting a tag definition removes it from every device across the whole timeline. There is no read of current device locations in the API.
 
 ## Evidence
 

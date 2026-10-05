@@ -153,10 +153,9 @@ func failureRollup(ctx context.Context, s *fwd.Session, in collectionInput, cx r
 	}
 	top := rows[0]
 	finding := fmt.Sprintf("%d of %d devices failed; most in %s (%d of %d, %s)", failedTotal, len(devs), top["group"], top["failed"], top["devices"], top["failure_rate"])
-	limits = append(limits, wl...)
 	limits = append(limits, "failure_rate is failed devices over all devices of that platform in the snapshot: a rate near 100% on one OS version with few failures elsewhere points at that version's parser or support, not at credentials or the network",
 		"a failure is the device's recorded result (collection or processing); a PARSER_EXCEPTION carries no line or message in Forward's API, so read the device's files with inspect-device-files")
-	return result.Build(collectionFailureName, result.Failed, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-device-files", "inspect-collection"},
+	return result.Build(collectionFailureName, result.Failed, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: wl, NextActions: []string{"inspect-device-files", "inspect-collection"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "runNqeQuery", cx.SnapshotID, map[string]any{"devices": len(devs), "failed": failedTotal, "group_by": in.GroupBy, "offset": in.Offset, "groups": win}, finding)}})
 }
 
@@ -264,12 +263,11 @@ func failureCompare(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	if t1 || t2 {
 		limits = append(limits, fmt.Sprintf("a device read hit its %d-row bound; the comparison covers the devices read", maxModelRows))
 	}
+	var omitted []result.Omission
 	cap25 := func(r []map[string]any, what string) []map[string]any {
-		if len(r) > 25 {
-			limits = append(limits, fmt.Sprintf("%d %s; the first 25 are listed", len(r), what))
-			return r[:25]
-		}
-		return r
+		out, om := result.Cap(r, 25, what, "the first 25 are listed")
+		omitted = append(omitted, om...)
+		return out
 	}
 	detail := map[string]any{"compared_with": before, "new_failures": cap25(newF, "new failures"), "new_failure_count": len(newF), "changed_failure": cap25(changed, "failures with a changed type"),
 		"recovered": cap25(fixed, "recovered devices"), "recovered_count": len(fixed), "still_failing_count": len(still), "new_after_os_version_change": versionChanged}
@@ -282,7 +280,7 @@ func failureCompare(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	if len(newF)+len(changed)+len(still) > 0 {
 		st = result.Failed
 	}
-	return result.Build(collectionFailureName, st, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-device-files", "inspect-history"},
+	return result.Build(collectionFailureName, st, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"inspect-device-files", "inspect-history"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "runNqeQuery", cx.SnapshotID, detail, finding)}})
 }
 

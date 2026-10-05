@@ -22,7 +22,7 @@ One file or one environment variable per call. For CLI and HTTP credentials and 
 
 ## jump_server
 
-A jump server authenticates by key (the secret is the private key; `sshCert` is an optional public certificate, not secret) or by password. `port` defaults to 22. The SDK can create one; it cannot update or delete one.
+A jump server authenticates by key (the secret is the private key; `sshCert` is an optional public certificate, not secret) or by password. `port` defaults to 22. `update` (by id) changes the fields given, and optionally rotates the password or key from the secret; `delete` needs `confirm` = the id and stops collecting the devices that go through it. A change makes Forward re-handle those devices.
 
 ## proxy
 

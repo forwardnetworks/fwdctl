@@ -2,6 +2,78 @@
 
 The skills are grouped by what Forward does. A **playbook** (procedure) says which skills to call for a task and in what order; a **read skill** answers one question; an **edit skill** changes Forward's own data.
 
+## Index (A to Z)
+
+Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl which "<question>"` to be routed.
+
+<!-- skill-index:begin (generated: UPDATE_SKILL_INDEX=1 go test ./skills -run TestSkillIndex) -->
+
+| Skill | Kind | What it does |
+|---|---|---|
+| `author-nqe-query` | read | Guides an NQE question from words to a saved query: find, write, lint, run, keep. |
+| `check-network-compliance` | read | Decides whether the network satisfies a policy using Forward's checks and NQE violation queries; view read lists existing checks. |
+| `compare-device-config` | read | Shows which devices' config files changed between two snapshots and the lines added or removed on one device. |
+| `compare-nqe-results` | read | Shows which rows a saved NQE query gains, loses or changes between two snapshots. |
+| `edit-access` | edit | Manages Forward users and access groups: create or disable users, grant org admin, set a network role for a user or group. Dry run unless apply is true. |
+| `edit-advanced-reachability` | edit | Starts advanced reachability for a processed snapshot that never had it, showing cost first. Dry run unless apply is true. |
+| `edit-alias` | edit | Manages a named alias of hosts, devices, interfaces or headers that checks use: put, replace or end. Dry run unless apply is true. |
+| `edit-change-set` | edit | Builds a Predict change set from CLI commands or BGP advertisements and optionally predicts it, touching no device. Dry run unless apply is true. |
+| `edit-checks` | edit | Creates one check on a snapshot from a definition, or deactivates one. Dry run unless apply is true. |
+| `edit-collection` | edit | Starts a collection, or stops a running one, after checking none runs and the collector is up. Dry run unless apply is true. |
+| `edit-data-connector` | edit | Manages a network's HTTP data connector (add, update, delete, test), polled each collection. Dry run unless apply is true. |
+| `edit-data-file` | edit | Uploads a CSV/JSON/XML/YAML/TEXT dataset for NQE to join, attaches or detaches it on a network, or deletes it. Dry run unless apply is true. |
+| `edit-device-tags` | edit | Puts existing tags on devices or takes them off, after showing the pairs that change. Dry run unless apply is true. |
+| `edit-endpoint-profile` | edit | Copies an SNMP endpoint profile with extra OIDs, repoints endpoints or deletes one, with before and after. Dry run unless apply is true. |
+| `edit-internet-exclusions` | edit | Changes the public subnets excluded from the internet node, showing before and after. Dry run unless apply is true. |
+| `edit-link-overrides` | edit | Adds or removes a snapshot's manual and suppressed links, showing the change. Dry run unless apply is true. |
+| `edit-network` | edit | Manages networks, locations, device clusters and tag definitions: create, rename, delete. Dry run unless apply is true. |
+| `edit-nqe-query` | edit | Saves an authored NQE query to the organization's library, or removes one, showing the effect. Dry run unless apply is true. |
+| `edit-org-property` | edit | Lists Forward's org properties with value, who may change them and risk, and sets or clears one. Dry run unless apply is true. |
+| `edit-platform` | edit | Changes org admin settings (banners, webhooks, certificates, labels, integrations, backups). Dry run unless apply. |
+| `edit-snapshot` | edit | Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import. Dry run unless apply. |
+| `edit-source` | edit | Adds device logins and paths: CLI, SNMP, HTTP credentials, jump servers, proxies; secrets come from a file. Dry run unless apply is true. |
+| `edit-synthetic-query` | edit | Attaches a saved NQE query to a synthetic node so Forward generates its connections from the rows, or detaches it. Dry run unless apply is true. |
+| `edit-wan-circuit` | edit | Manages one WAN circuit (a synthetic device for a provider's point-to-point L2 link), showing before and after. Dry run unless apply is true. |
+| `edit-workspace` | edit | Makes a temporary workspace network, adds endpoints to a workspace, or deletes one. Dry run unless apply is true. |
+| `find-nqe-query` | read | Searches the saved NQE query library for queries relevant to a question and returns ids, paths and intent. |
+| `inspect-access` | read | Shows this login's Forward roles and what they allow, explains a refused operation, lists users and groups, reads the audit log. Read-only. |
+| `inspect-bgp-neighbors` | read | Lists BGP neighbors per device and VRF with peer, remote AS, session state, prefix counts and whether the peer is modelled. |
+| `inspect-collection` | read | Reports on collection without diagnosis: view status (running, task outcomes, collector, failed devices) or view config (what is collected). |
+| `inspect-device-files` | read | Reads the raw configuration and command output collected from one device by listing files, reading a window or regex search. |
+| `inspect-edge` | read | Finds where traffic leaves the network (view exits), its public interface IPs (public_addresses) and good trace sources (trace_sources). |
+| `inspect-environment` | read | Reports the Forward build, organization, login, which features are on (value, default, where set) and non-default properties. |
+| `inspect-history` | read | Shows how one check's status moved across recent snapshots and where it last changed, or when a device's config last changed. |
+| `inspect-inventory` | read | Reads network contents: size, vendors, devices, interfaces, VLANs, VRFs, hosts, cloud VPCs; kind ip_owner finds an IP's interface. |
+| `inspect-networks` | read | Lists the Forward networks the login can see, with ids, names and which are workspaces. |
+| `inspect-performance` | read | Reads device and interface health from performance data: unhealthy devices, highest CPU, memory, utilization, loss or errors, and trends. |
+| `inspect-platform` | read | Reads how Forward is set up, secrets removed: credentials, jump servers, collectors, cloud setups, webhooks, licensing, SAML. |
+| `inspect-snapshots` | read | Lists a network's snapshots, says which is the newest worth reading, which are predictions or drafts, and how complete one is. |
+| `inspect-topology` | read | Reads layout: links, sites, tags, aliases, link overrides (compare_to_snapshot_id diffs two snapshots); kind external shows the internet node, L3 VPNs. |
+| `inspect-vulnerabilities` | read | Finds which CVEs expose the network, which devices a CVE affects, or which CVEs affect a device, from Forward's detection. |
+| `investigate-collection-failure` | read | Finds why Forward could not collect or model devices, grouping failures by credentials, network path, device session and processing. |
+| `investigate-reachability` | read | Explains whether traffic from a source to a destination is delivered and where it first fails, from Forward's path search. |
+| `plan-change-review` | playbook | Sequences read, predict, check and reach for a change. |
+| `plan-compliance-audit` | playbook | Sequences the skills that audit policy: checks, findings, new rules, history. |
+| `plan-device-audit` | playbook | Sequences the skills that profile a device or group: identity, links, config, CVEs, performance. |
+| `plan-incident-triage` | playbook | Sequences the skills that check network health or triage an outage of unknown cause. |
+| `plan-investigation` | playbook | Maps a network question to the right skill and states what Forward cannot answer. |
+| `plan-link-overrides` | playbook | Sequences the skills that diagnose and fix missing or drifted link overrides. |
+| `plan-maintenance-window` | playbook | Sequences before snapshot, change, after data and comparison around a window. |
+| `plan-safe-write` | playbook | States the protocol every edit skill follows: plan, show, approve, apply once, verify, keep the undo. |
+| `plan-security-posture` | playbook | Sequences the skills that assess security posture: failing checks, CVEs, internet exposure. |
+| `plan-segmentation-check` | playbook | Sequences the skills that verify zone segmentation and change impact. |
+| `plan-snapshot-recovery` | playbook | Sequences the skills that decide why a snapshot is bad and how to recover. |
+| `plan-synthetic-device` | playbook | Sequences the skills that model an uncollected segment as a synthetic device. |
+| `plan-troubleshoot-connectivity` | playbook | Sequences the skills that find why traffic does not reach a destination. |
+| `plan-vulnerability-response` | playbook | Sequences the skills that respond to a CVE: who is affected, exposure, fix scope. |
+| `plan-what-changed` | playbook | Sequences the skills that answer what changed and when. |
+| `validate-nqe-query` | read | Checks that an NQE query compiles and runs against a snapshot and reports diagnostics or rows. |
+| `verify-change` | read | Judges a change: view verify (worked? broke nothing?), describe (what a change set edits), impact (how far it reaches). |
+
+<!-- skill-index:end -->
+
+## By area
+
 ### Path analysis and troubleshooting
 
 Why can't A reach B, what is down, what changed.

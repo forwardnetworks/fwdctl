@@ -301,14 +301,15 @@ func listOrgProperties(cfg fwd.OrgConfig, in editOrgPropertyInput, cx result.Con
 	if len(rows) == 0 {
 		return result.NewUnknown(editOrgPropertyName, "No organization property matches", cx, []string{"the list is Forward's own; match is a substring of the name or its description"}, result.Options{})
 	}
-	win, limits, ok := window(rows, in.Limit, in.Offset, 50, 200, "properties")
+	win, omitted, ok := window(rows, in.Limit, in.Offset, 50, 200, "properties")
 	if !ok {
 		return result.NewUnknown(editOrgPropertyName, fmt.Sprintf("Offset %d is beyond the %d properties", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
+	var limits []string
 	limits = append(limits, "risk is a reviewed classification of what changing a property can break (dangerous, caution, safe) or unclassified (treat as caution): dangerous and unclassified properties need confirm to apply; who_can_change comes from Forward's source and an on-premises-only property is refused on SaaS")
 	finding := fmt.Sprintf("%d organization properties (%d dangerous, %d caution, %d safe, %d unclassified)", len(rows), counts["dangerous"], counts["caution"], counts["safe"], counts["unclassified"])
 	d := map[string]any{"total": len(rows), "by_risk": counts, "offset": in.Offset, "properties": win}
-	return result.Build(editOrgPropertyName, result.OK, finding, result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Limits: limits,
+	return result.Build(editOrgPropertyName, result.OK, finding, result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Limits: limits, Omitted: omitted,
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "orgConfig", nil, d, finding)}, NextActions: []string{"inspect-environment"}})
 }
 

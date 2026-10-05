@@ -23,14 +23,15 @@ Change what an administrator sets up for the whole organization, not for one net
 
 `area` and `action` (required), `name`, `definition` (the body, one object, never a secret), `secret_file` or `secret_env`, `confirm`, `apply` (default false). See `schema.json`.
 
-A secret (a ServiceNow or Infoblox password, a license key) is never put in the input. Give `secret_file` (a path, mode 600; a group-readable file is refused) or `secret_env` (an environment variable name). It is read only on apply, sent once, and never echoed, logged or returned; the undo says to enter it again. A definition with a secret-looking field is refused. This skill is interactive-only: do not run it unattended.
+A secret (an S3 secret key, a ServiceNow or Infoblox password, a license key) is never put in the input. Give `secret_file` (a path, mode 600; a group-readable file is refused) or `secret_env` (an environment variable name). It is read only on apply, sent once, and never echoed, logged or returned; the undo says to enter it again. A definition with a secret-looking field is refused. This skill is interactive-only: do not run it unattended.
 
 | `area` | `action` | `name` | `definition` | Undo |
 |---|---|---|---|---|
 | `banners` | `create` | | `message`, `background_color`, `network_ids`, `enabled` | update with `enabled: false` (no delete) |
 | `banners` | `update` | the banner id | any of the create fields | update back |
+| `banners` | `delete` | the banner id | | **none**; `confirm` = the id |
 | `webhooks` | `create` | | `name`, `url`, `description`, `enabled`, `disable_ssl_validation`, `event_params` | delete it |
-| `webhooks` | `update` | the webhook | `description`, `url`, `enabled` | update back |
+| `webhooks` | `update` | the webhook | `name`, `description`, `url`, `enabled`, `disable_ssl_validation`, `event_params`, `template`; a new credential: `credential_type`, `credential_username` and the password as the secret | update back (a replaced credential cannot be read back) |
 | `webhooks` | `delete` | the webhook | | **none**; `confirm` = the name |
 | `certificates` | `add` | | `name`, `certificate` (PEM text) | delete it |
 | `certificates` | `delete` | the certificate | | add it back |
@@ -51,7 +52,12 @@ A secret (a ServiceNow or Infoblox password, a license key) is never put in the 
 | `api_tokens` | `delete` | the token name (this login's own) | | **none**; `confirm` = the name |
 | `integrations` | `set` | `servicenow` | `instance_url`, `username`, `enabled`, `auto_create`, `auto_create_impact`, `auto_create_urgency`, `auto_update`; secret = the password | set back |
 | `integrations` | `delete` | `servicenow` | | **none**; `confirm` = `servicenow` |
-| `integrations` | `create` | `infoblox` | `name`, `ip_address`, `username`; secret = the password | **none** through the API |
+| `integrations` | `create` | `infoblox` | `name`, `ip_address`, `username`; secret = the password | delete it |
+| `integrations` | `update` | `infoblox` | `id` (the instance), `name`, `username`; optional secret = a new password (the address cannot change) | update back |
+| `integrations` | `delete` | `infoblox` | `id` | **none**; `confirm` = the id |
+| `backups` | `settings` | | `enabled`, `backup_time`, `num_days_to_retain`, `include_snapshots` (internal storage) | update back |
+| `backups` | `s3_storage` | | `access_key`, `bucket_name`, `service_endpoint`, `disable_ssl_validation`, `certificate`, `write_only`, `disable_checksum_validation`; secret = the S3 secret key | update back (re-enter the key) |
+| `backups` | `trigger` | | `name`, `include_snapshots` | **none**; `confirm` = `backup` |
 | `backups` | `cancel` | | | **none**; `confirm` = `cancel` |
 | `backups` | `delete` | the numeric backup id | | **none**; `confirm` = the id |
 
@@ -68,7 +74,7 @@ Without `apply: true` nothing changes. The result shows before, after and the un
 
 ## Limits
 
-Backups: only cancel and delete; backup settings, S3 storage and starting a backup use Forward's backup service, which accepts a service principal only, not a user login, so this skill cannot do them. Restore is not here; Rapid7 sources are in `edit-source` (they belong to a network); an uploaded CVE index is applied in the background and not waited for; licensing, SAML and organizations are for a system or platform administrator; a token cannot be created here because its secret would be returned; a trigger starts the backup and does not wait. Deleting an access label widens the access of every group that used it.
+Backups need the system administrator role (Forward answers 403 otherwise) and exist only on Kubernetes deployments (elsewhere the result says the deployment does not serve the route). A trigger does not wait. Restore is not here; Rapid7 sources are in `edit-source` (they belong to a network); an uploaded CVE index is applied in the background and not waited for; licensing, SAML and organizations are for a system or platform administrator; a token cannot be created here because its secret would be returned; a trigger starts the backup and does not wait. Deleting an access label widens the access of every group that used it.
 
 Webhook credentials and templates are not set here (webhook schemas are unpublished by Forward). A certificate is not trusted by collectors until `apply` pushes it, and a push does not wait for the collectors, so completion is not proven.
 

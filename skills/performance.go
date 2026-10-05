@@ -157,14 +157,14 @@ func deviceNow(ctx context.Context, s *fwd.Session, in performanceInput, q forwa
 		return noPerformanceData(ctx, s, in.NetworkID, "device "+in.Metric, cx, in.Days)
 	}
 	sort.SliceStable(ms, func(i, j int) bool { return ms[i].Value > ms[j].Value })
-	win, limits, _ := window(ms, in.Limit, 0, defaultPerfRows, maxPerfRows, "devices")
+	win, omitted, _ := window(ms, in.Limit, 0, defaultPerfRows, maxPerfRows, "devices")
 	rows := make([]map[string]any, 0, len(win))
 	for _, m := range win {
 		rows = append(rows, map[string]any{"device": m.DeviceName, "value": round2(m.Value)})
 	}
 	finding := fmt.Sprintf("%s on %d device(s); highest %s at %.1f", in.Metric, len(ms), ms[0].DeviceName, ms[0].Value)
 	detail := map[string]any{"metric": in.Metric, "days": in.Days, "devices": len(ms), "highest_first": rows}
-	return perfOK(finding, detail, limits, cx), nil
+	return perfOK(finding, detail, nil, omitted, cx), nil
 }
 
 func interfaceNow(ctx context.Context, s *fwd.Session, in performanceInput, q forward.MetricQuery, cx result.Context) (result.Result, error) {
@@ -191,14 +191,14 @@ func interfaceNow(ctx context.Context, s *fwd.Session, in performanceInput, q fo
 		return noPerformanceData(ctx, s, in.NetworkID, "interface "+in.Metric, cx, in.Days)
 	}
 	sort.SliceStable(ms, func(i, j int) bool { return ms[i].Value > ms[j].Value })
-	win, limits, _ := window(ms, in.Limit, 0, defaultPerfRows, maxPerfRows, "interfaces")
+	win, omitted, _ := window(ms, in.Limit, 0, defaultPerfRows, maxPerfRows, "interfaces")
 	rows := make([]map[string]any, 0, len(win))
 	for _, m := range win {
 		rows = append(rows, map[string]any{"device": m.DeviceName, "interface": m.InterfaceName, "direction": m.Direction, "value": round2(m.Value)})
 	}
 	finding := fmt.Sprintf("%s on %d interface(s); highest %s %s at %.1f", in.Metric, len(ms), ms[0].DeviceName, ms[0].InterfaceName, ms[0].Value)
 	detail := map[string]any{"metric": in.Metric, "direction": q.Direction, "days": in.Days, "interfaces": len(ms), "highest_first": rows}
-	return perfOK(finding, detail, limits, cx), nil
+	return perfOK(finding, detail, nil, omitted, cx), nil
 }
 
 // unhealthyDevices reports Forward's own unhealthy-device verdict, but only trusts an EMPTY one when raw samples exist.
@@ -217,10 +217,10 @@ func unhealthyDevices(ctx context.Context, s *fwd.Session, in performanceInput, 
 			return noPerformanceData(ctx, s, in.NetworkID, "devices", cx, in.Days)
 		}
 		return perfOK("No device is unhealthy (checked against "+fmt.Sprint(len(samples))+" device(s) with samples)",
-			map[string]any{"unhealthy": 0, "devices_with_samples": len(samples), "days": in.Days}, nil, cx), nil
+			map[string]any{"unhealthy": 0, "devices_with_samples": len(samples), "days": in.Days}, nil, nil, cx), nil
 	}
-	win, limits, _ := window(items, in.Limit, 0, defaultPerfRows, maxPerfRows, "unhealthy devices")
-	return resultOf(fmt.Sprintf("%d unhealthy device(s)", len(items)), map[string]any{"unhealthy": len(items), "days": in.Days, "devices": win}, limits, cx, result.Failed), nil
+	win, omitted, _ := window(items, in.Limit, 0, defaultPerfRows, maxPerfRows, "unhealthy devices")
+	return resultOf(fmt.Sprintf("%d unhealthy device(s)", len(items)), map[string]any{"unhealthy": len(items), "days": in.Days, "devices": win}, nil, omitted, cx, result.Failed), nil
 }
 
 func unhealthyInterfaces(ctx context.Context, s *fwd.Session, in performanceInput, q forward.MetricQuery, cx result.Context) (result.Result, error) {
@@ -235,8 +235,8 @@ func unhealthyInterfaces(ctx context.Context, s *fwd.Session, in performanceInpu
 	if len(items) == 0 {
 		return noPerformanceData(ctx, s, in.NetworkID, "interfaces of "+in.Device+" (Forward reported none unhealthy, which is also what it says when nothing was collected)", cx, in.Days)
 	}
-	win, limits, _ := window(items, in.Limit, 0, defaultPerfRows, maxPerfRows, "unhealthy interfaces")
-	return resultOf(fmt.Sprintf("%d unhealthy interface(s) on %s", len(items), in.Device), map[string]any{"device": in.Device, "unhealthy": len(items), "interfaces": win}, limits, cx, result.Failed), nil
+	win, omitted, _ := window(items, in.Limit, 0, defaultPerfRows, maxPerfRows, "unhealthy interfaces")
+	return resultOf(fmt.Sprintf("%d unhealthy interface(s) on %s", len(items), in.Device), map[string]any{"device": in.Device, "unhealthy": len(items), "interfaces": win}, nil, omitted, cx, result.Failed), nil
 }
 
 func deviceHistory(ctx context.Context, s *fwd.Session, in performanceInput, q forward.MetricQuery, cx result.Context) (result.Result, error) {
@@ -295,21 +295,21 @@ func historyResult(ctx context.Context, s *fwd.Session, pts []forward.MetricData
 	for i := 0; i < len(pts); i += step {
 		series = append(series, map[string]any{"at": strings.Trim(string(pts[i].Instant), `"`), "value": round2(pts[i].Value)})
 	}
-	var limits []string
+	var omitted []result.Omission
 	if step > 1 {
-		limits = append(limits, fmt.Sprintf("%d samples; every %dth is shown", len(pts), step))
+		omitted = append(omitted, result.Omission{What: "samples", Total: len(pts), Shown: len(series), Next: fmt.Sprintf("every %dth is shown", step)})
 	}
 	finding := fmt.Sprintf("%s %s over %d day(s): min %.1f, max %.1f, mean %.1f, latest %.1f", what, in.Metric, in.Days, lo, hi, sum/float64(len(pts)), pts[len(pts)-1].Value)
 	detail := map[string]any{"metric": in.Metric, "days": in.Days, "samples": len(pts), "min": round2(lo), "max": round2(hi), "mean": round2(sum / float64(len(pts))), "series": series}
-	return perfOK(finding, detail, limits, cx), nil
+	return perfOK(finding, detail, nil, omitted, cx), nil
 }
 
-func perfOK(finding string, detail map[string]any, limits []string, cx result.Context) result.Result {
-	return resultOf(finding, detail, limits, cx, result.OK)
+func perfOK(finding string, detail map[string]any, limits []string, omitted []result.Omission, cx result.Context) result.Result {
+	return resultOf(finding, detail, limits, omitted, cx, result.OK)
 }
 
-func resultOf(finding string, detail map[string]any, limits []string, cx result.Context, status result.Status) result.Result {
-	return result.MustBuild(performanceName, status, finding, result.Deterministic, cx, result.Options{Limits: limits,
+func resultOf(finding string, detail map[string]any, limits []string, omitted []result.Omission, cx result.Context, status result.Status) result.Result {
+	return result.MustBuild(performanceName, status, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"inspect-inventory", "investigate-reachability"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvState, "performance", nil, detail, finding)}})
 }
@@ -407,5 +407,5 @@ func deviceBoth(ctx context.Context, s *fwd.Session, in performanceInput, cx res
 		return result.NewUnknown(performanceName, "No performance samples were returned for CPU or memory", cx, limits,
 			result.Options{NextActions: []string{"inspect-environment", "inspect-collection"}})
 	}
-	return perfOK(strings.Join(parts, "; "), detail, limits, cx), nil
+	return perfOK(strings.Join(parts, "; "), detail, limits, nil, cx), nil
 }

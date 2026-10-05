@@ -160,13 +160,15 @@ func compareAcrossNetworks(ctx context.Context, s *fwd.Session, in compareNQEInp
 		limit = defaultKeyShown
 	}
 	limit = min(limit, maxCrossShown)
-	cut := func(rows []map[string]any) []map[string]any { return rows[:min(len(rows), limit)] }
+	var omitted []result.Omission
+	cut := func(rows []map[string]any, what string) []map[string]any {
+		out, om := result.Cap(rows, limit, what, fmt.Sprintf("raise limit (at most %d) for more", maxCrossShown))
+		omitted = append(omitted, om...)
+		return out
+	}
 	detail := map[string]any{"query_id": in.QueryID, "network_a": in.NetworkID, "snapshot_a": in.BeforeSnapshotID, "network_b": in.AfterNetworkID, "snapshot_b": in.AfterSnapshotID,
 		"rows_a": len(rowsA), "rows_b": len(rowsB), "key": key, "ignored_fields": in.Ignore, "only_in_a": len(onlyA), "only_in_b": len(onlyB), "changed": len(changed),
-		"only_in_a_rows": cut(onlyA), "only_in_b_rows": cut(onlyB), "changed_rows": cut(changed)}
-	if len(onlyA)+len(onlyB)+len(changed) > 3*limit {
-		limits = append(limits, fmt.Sprintf("the first %d of each list are shown (raise limit, at most %d)", limit, maxCrossShown))
-	}
+		"only_in_a_rows": cut(onlyA, "rows only in A"), "only_in_b_rows": cut(onlyB, "rows only in B"), "changed_rows": cut(changed, "changed rows")}
 	limits = append(limits,
 		"this compares the query's rows between two networks by key; it is not Forward's own snapshot diff (which works inside one network). Without key the whole row is the key, so only rows present on one side are found; give key to see rows whose other fields differ",
 		"fields that are expected to differ between networks (names, ids, addresses) go in ignore, which drops them from both sides before comparing")
@@ -176,7 +178,7 @@ func compareAcrossNetworks(ctx context.Context, s *fwd.Session, in compareNQEInp
 	}
 	finding += fmt.Sprintf("; %d rows in A, %d in B", len(rowsA), len(rowsB))
 	st := result.OK
-	return result.Build(compareNQEName, st, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-inventory", "validate-nqe-query"},
+	return result.Build(compareNQEName, st, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"inspect-inventory", "validate-nqe-query"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "nqeCrossNetworkDiff", fwd.SnapshotIDPtr(b), detail, finding)}})
 }
 

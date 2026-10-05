@@ -101,6 +101,9 @@ type Result struct {
 	// Changes is the plan) or "applied" (Changes is what was done, each with how to undo it).
 	Mode    string   `json:"mode,omitempty"`
 	Changes []Change `json:"changes,omitempty"`
+	// Omitted lists every list in this result that was cut (a cap or a page), with the total, what is shown and how to see the rest. Empty means nothing was cut. Build also writes
+	// each omission into Limits, so a reader of the text alone is told too.
+	Omitted []Omission `json:"omitted,omitempty"`
 }
 
 // Modes of a skill that writes.
@@ -189,6 +192,11 @@ func (r Result) Validate() []string {
 			add("evidence[%d].detail: required", i)
 		}
 	}
+	for i, o := range r.Omitted {
+		if p := o.validate(); p != "" {
+			add("omitted[%d]: %s", i, p)
+		}
+	}
 	for i, a := range r.NextActions {
 		if !skillName.MatchString(a) {
 			add("next_actions[%d]: %q is not a skill name", i, a)
@@ -230,14 +238,19 @@ type Options struct {
 	Limits      []string
 	Mode        string
 	Changes     []Change
+	Omitted     []Omission
 }
 
 // Build makes a validated result. It is the only sanctioned constructor.
 func Build(skill string, status Status, finding string, confidence Confidence, ctx Context, o Options) (Result, error) {
+	limits := nonNilStr(o.Limits)
+	for _, om := range o.Omitted {
+		limits = append(limits, om.Text())
+	}
 	r := Result{
 		Schema: SchemaID, Skill: skill, Status: status, Finding: finding, Confidence: confidence, Context: ctx,
-		Evidence: nonNil(o.Evidence), NextActions: nonNilStr(o.NextActions), Limits: nonNilStr(o.Limits),
-		Mode: o.Mode, Changes: o.Changes,
+		Evidence: nonNil(o.Evidence), NextActions: nonNilStr(o.NextActions), Limits: limits,
+		Mode: o.Mode, Changes: o.Changes, Omitted: o.Omitted,
 	}
 	if p := r.Validate(); len(p) > 0 {
 		return Result{}, &InvalidError{Problems: p}

@@ -200,17 +200,17 @@ func inspectEdge(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resu
 		}
 		return m
 	}
-	show := func(gs []*edgeGroup) ([]map[string]any, bool) {
-		out := make([]map[string]any, 0, min(len(gs), in.Limit))
-		for i, g := range gs {
-			if i >= in.Limit {
-				return out, true
-			}
+	var omitted []result.Omission
+	show := func(gs []*edgeGroup, what, next string) []map[string]any {
+		kept, om := result.Cap(gs, in.Limit, what, next)
+		omitted = append(omitted, om...)
+		out := make([]map[string]any, 0, len(kept))
+		for _, g := range kept {
 			out = append(out, render(g))
 		}
-		return out, false
+		return out
 	}
-	exitRows, exitCut := show(exits)
+	exitRows := show(exits, "exit candidates", fmt.Sprintf("likely internet edges first, then by VRF and the most devices; narrow with vrf or device, or raise limit (at most %d)", maxEdgeLimit))
 	byVRF := map[string]int{}
 	likelyN := 0
 	for _, g := range exits {
@@ -242,10 +242,8 @@ func inspectEdge(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resu
 		"exit_candidates_by_vrf": countsTop(byVRF, 40), "exits": exitRows}
 	if likelyN > 0 {
 		d["likely_internet_edges_by_confidence"] = byConf
-		shown := lgRows
-		if len(shown) > 40 {
-			shown = shown[:40]
-		}
+		shown, capped := result.Cap(lgRows, 40, "likely edge groups", "the first 40 are listed")
+		omitted = append(omitted, capped...)
 		d["likely_edge_groups"] = shown
 	}
 	if claimsCurrent {
@@ -266,9 +264,6 @@ func inspectEdge(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resu
 		if nullRecv > 0 {
 			limits = append(limits, fmt.Sprintf("received_prefixes is null on %d of %d likely edge(s): Forward's model carries no received-prefix statistic for those sessions (the platform does not report it or the neighbor is not Established), so the signal that the peer sends only a default is missing and cannot raise their confidence; a private peer AS with a null received count is always LOW", nullRecv, likelyN))
 		}
-		if len(lgRows) > 40 {
-			limits = append(limits, fmt.Sprintf("%d likely-edge groups; the first 40 are shown", len(lgRows)))
-		}
 	}
 	limits = append(limits, fmt.Sprintf("claimed_by is read from the %d synthetic node(s) of the network (internet node, intranet nodes, L3 VPNs, L2 VPNs, adjacent networks; stored connections and the connections their NQE queries generated): a connection claims an uplink when its uplink or gateway port is the exit's egress, or the egress is a subinterface of its uplink port with the connection's VLAN; claimed_by names the first claimant and says nothing about whether the node forwards the traffic correctly", an.Claims.Nodes))
 	limits = append(limits, "claimed_by_basis is \"nodes as configured now\": a snapshot used the synthetic node configuration valid when it was CREATED, and Forward's API does not expose which version a snapshot used (a node has no version or valid-from field), so a node changed after the snapshot was created makes the claim state differ from what that snapshot used")
@@ -288,18 +283,11 @@ func inspectEdge(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resu
 	if nonForwarding > 0 {
 		limits = append(limits, fmt.Sprintf("%d default-route next hop(s) were not forwarding handoffs (drop, receive, VRF-forwarded or recursive) and are left out", nonForwarding))
 	}
-	if exitCut {
-		limits = append(limits, fmt.Sprintf("%d exit candidates; the first %d (likely internet edges first, then by VRF and the most devices) are shown; narrow with vrf or device, or raise limit (at most %d)", len(exits), in.Limit, maxEdgeLimit))
-	}
 	if rtrunc || atrunc || ntrunc {
 		limits = append(limits, fmt.Sprintf("a model read hit its %d-row bound, so the result may be incomplete", maxModelRows))
 	}
 	if in.Owned {
-		rows, cut := show(internal)
-		d["owned_handoffs"] = rows
-		if cut {
-			limits = append(limits, fmt.Sprintf("%d owned handoffs; the first %d shown", len(internal), in.Limit))
-		}
+		d["owned_handoffs"] = show(internal, "owned handoffs", "raise limit or narrow with vrf or device")
 	} else {
 		d["owned_handoffs_count"] = len(internal)
 	}
@@ -328,7 +316,7 @@ func inspectEdge(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resu
 	if len(exits) == 0 {
 		finding = fmt.Sprintf("Every default-route next hop (%d) is owned by a modelled device: no exit candidate (snapshot %s)", groups, snapID)
 	}
-	return result.Build(inspectEdgeName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(inspectEdgeName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"plan-synthetic-device", "inspect-bgp-neighbors", "investigate-reachability"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvNQE, "runNqeQuery", fwd.SnapshotIDPtr(snap), d, finding)}})
 }

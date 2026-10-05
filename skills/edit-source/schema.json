@@ -56,7 +56,7 @@
     },
     "confirm": {
       "type": "string",
-      "description": "credential delete: the exact credential id; classic_device delete: the device name; schedule delete: the schedule id; cloud_account delete: the account name; controller_setup or mist_setup delete: the setup name"
+      "description": "credential delete: the exact credential id; classic_device delete: the device name; jump_server delete: the jump server id; rapid7_source delete: the source name; schedule delete: the schedule id; cloud_account delete: the account name; controller_setup or mist_setup delete: the setup name"
     },
     "apply": {
       "type": "boolean",

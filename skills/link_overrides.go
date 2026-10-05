@@ -238,11 +238,11 @@ func flagOverrideRows(ctx context.Context, s *fwd.Session, networkID, snapshotID
 }
 
 // overridePage is the shared read of a snapshot's overrides for the link_overrides view and the external view: a summary of all of them, and one page of rows with flags.
-func overridePage(ctx context.Context, s *fwd.Session, networkID string, snap *forward.Snapshot, device string, limit, offset int) (detail map[string]any, limits []string, err error) {
+func overridePage(ctx context.Context, s *fwd.Session, networkID string, snap *forward.Snapshot, device string, limit, offset int) (detail map[string]any, limits []string, omitted []result.Omission, err error) {
 	sid := string(snap.ID)
 	o, err := s.LinkOverrides(ctx, sid)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	all := filterOverrides(listOverrides(o), device)
 	sum := overrideSummary(all)
@@ -265,11 +265,15 @@ func overridePage(ctx context.Context, s *fwd.Session, networkID string, snap *f
 		limits = append(limits, flagOverrideRows(ctx, s, networkID, sid, page, rows)...)
 	}
 	sum["offset"], sum["returned"], sum["rows"] = offset, len(page), rows
-	if end < len(all) {
-		limits = append(limits, fmt.Sprintf("%d overrides match; rows %d-%d shown in a stable order (device pair, state, ports). Page with offset=%d (limit up to %d) or narrow with device", len(all), offset+1, end, end, maxOverrideLimit))
+	if offset > 0 || end < len(all) {
+		next := ""
+		if end < len(all) {
+			next = fmt.Sprintf("Page with offset=%d (limit up to %d) or narrow with device; rows are in a stable order (device pair, state, ports)", end, maxOverrideLimit)
+		}
+		omitted = append(omitted, result.Omission{What: "overrides", Total: len(all), Shown: len(page), From: offset, Paged: true, Next: next})
 	}
 	limits = append(limits, overrideLimitsProvenance, overrideLimitsScope)
-	return sum, limits, nil
+	return sum, limits, omitted, nil
 }
 
 // linkOverridesView is inspect-topology kind link_overrides: the summary and a page of one snapshot's link overrides.
@@ -278,7 +282,7 @@ func linkOverridesView(ctx context.Context, s *fwd.Session, in topologyInput, sn
 	if limit <= 0 {
 		limit = defaultOverrideLimit
 	}
-	d, more, err := overridePage(ctx, s, in.NetworkID, snap, in.Device, limit, in.Offset)
+	d, more, omitted, err := overridePage(ctx, s, in.NetworkID, snap, in.Device, limit, in.Offset)
 	if err != nil {
 		return result.Result{}, err
 	}
@@ -291,13 +295,13 @@ func linkOverridesView(ctx context.Context, s *fwd.Session, in topologyInput, sn
 			reason = "none involve device " + in.Device + " (names are matched exactly)"
 		}
 		return result.NewUnknown(topologyName, "No link overrides were returned (snapshot "+sid+")", cx, append(limits, reason+"; this skill cannot tell an empty set from a snapshot that was reprocessed without them"),
-			result.Options{NextActions: []string{"plan-link-overrides", "inspect-snapshots"}})
+			result.Options{Omitted: omitted, NextActions: []string{"plan-link-overrides", "inspect-snapshots"}})
 	}
 	finding := fmt.Sprintf("%d link override(s) in snapshot %s: %v present (added), %v absent (suppressed)", total, sid, d["present"], d["absent"])
 	if in.Device != "" {
 		finding += " involving " + in.Device
 	}
 	d["kind"] = "link_overrides"
-	return result.Build(topologyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"plan-link-overrides", "edit-link-overrides"},
+	return result.Build(topologyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"plan-link-overrides", "edit-link-overrides"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvTopology, "topologyOverrides", fwd.SnapshotIDPtr(snap), d, finding)}})
 }

@@ -104,7 +104,7 @@ func TestVulnerabilitiesLimitBoundsWhatIsShownAndSaysSo(t *testing.T) {
 		list = append(list, cve("CVE-2024-000"+string(rune('1'+i)), "HIGH", map[string]int{"VULNERABLE": 1}, false))
 	}
 	r, _ := vuln(t, vulnRoutes(list), netIn+`,"limit":3}`)
-	if len(r.Evidence) != 3 || !strings.Contains(strings.Join(r.Limits, " "), "6 CVEs match; the 3 worst are shown") {
+	if len(r.Evidence) != 3 || len(r.Omitted) != 1 || r.Omitted[0].Total != 6 || r.Omitted[0].Shown != 3 || !strings.Contains(strings.Join(r.Limits, " "), "6 CVEs in all; 3 shown") {
 		t.Fatalf("evidence %d limits %v", len(r.Evidence), r.Limits)
 	}
 }

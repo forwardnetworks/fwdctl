@@ -75,7 +75,7 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		}
 		rows = append(rows, snapshotRow(sn, latestReadable))
 	}
-	win, limits, ok := window(rows, in.Limit, in.Offset, 10, 100, "snapshots")
+	win, omitted, ok := window(rows, in.Limit, in.Offset, 10, 100, "snapshots")
 	if !ok {
 		return result.NewUnknown(inspectSnapshotsName, fmt.Sprintf("Offset %d is beyond the %d snapshots", in.Offset, len(rows)), cx,
 			[]string{fmt.Sprintf("offset %d is past the end of the %d snapshots", in.Offset, len(rows))}, result.Options{})
@@ -84,6 +84,7 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	for _, r := range win {
 		byID[str(r["id"])] = r
 	}
+	var limits []string
 	shownProcessing := 0
 	for _, sn := range all {
 		row := byID[string(sn.ID)]
@@ -107,7 +108,7 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		limits = append(limits, "no snapshot is processed and collected, so the other skills have nothing to read by default")
 	}
 	detail := map[string]any{"total": len(all), "predicted": predicted, "latest_readable": latestReadable, "offset": in.Offset, "snapshots": win}
-	return result.Build(inspectSnapshotsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(inspectSnapshotsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"verify-change", "verify-change", "compare-device-config", "investigate-collection-failure"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "listSnapshots", nil, detail, finding)}})
 }
@@ -161,11 +162,8 @@ func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInpu
 				limits = append(limits, fmt.Sprintf("%d kinds of exception; the 10 most frequent are listed", len(ex)))
 				break
 			}
-			devs := e.Devices
-			if len(devs) > 10 {
-				devs = devs[:10]
-			}
-			rows = append(rows, map[string]any{"type": e.Type, "occurrences": e.Occurrences, "devices": devs, "devices_total": len(e.Devices), "message": firstLine(e.StackTrace)})
+			devs, devsTotal := result.CapRow(e.Devices, 10)
+			rows = append(rows, map[string]any{"type": e.Type, "occurrences": e.Occurrences, "devices": devs, "devices_total": devsTotal, "message": firstLine(e.StackTrace)})
 		}
 		if len(rows) > 0 {
 			detail["exceptions"] = rows

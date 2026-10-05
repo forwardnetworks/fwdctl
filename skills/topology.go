@@ -192,25 +192,26 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 			append(limits, fmt.Sprintf("offset %d is past the end of the %d %s", in.Offset, total, in.Kind)), result.Options{})
 	}
 	end := min(in.Offset+in.Limit, total)
-	if end < total {
-		limits = append(limits, fmt.Sprintf("%d %s match; rows %d-%d shown. Page with offset=%d.", total, in.Kind, in.Offset+1, end, end))
+	var omitted []result.Omission
+	if in.Offset > 0 || end < total {
+		omitted = append(omitted, result.Omission{What: in.Kind, Total: total, Shown: end - in.Offset, From: in.Offset, Paged: true, Next: pageNext(end, total)})
 	}
 	detail := map[string]any{"kind": in.Kind, "device": in.Device, "total": total, "offset": in.Offset, "returned": end - in.Offset, "rows": rows[in.Offset:end]}
 	for k, v := range extra {
 		detail[k] = v
 	}
 	return result.Build(topologyName, result.OK, fmt.Sprintf("%d %s returned (%d match)", end-in.Offset, in.Kind, total), result.Deterministic, cx,
-		result.Options{Limits: limits, NextActions: []string{"investigate-reachability", "inspect-inventory"},
+		result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"investigate-reachability", "inspect-inventory"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvTopology, "topology", fwd.SnapshotIDPtr(snap), detail, fmt.Sprintf("%s: %d of %d", in.Kind, end-in.Offset, total))}})
 }
 
 // capNames bounds a device list in one row; the count stays exact in device_count.
 func capNames(names []string) any {
-	const most = 25
-	if len(names) <= most {
-		return names
+	shown, total := result.CapRow(names, 25)
+	if total == len(shown) {
+		return shown
 	}
-	return append(append([]string{}, names[:most]...), fmt.Sprintf("... and %d more", len(names)-most))
+	return append(append([]string{}, shown...), fmt.Sprintf("... and %d more", total-len(shown)))
 }
 
 // portOn reports whether a port name ("<device> <interface>", as Forward writes it) is on the device.

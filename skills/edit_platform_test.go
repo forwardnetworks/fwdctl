@@ -241,3 +241,71 @@ func TestEditPlatformCVEIndexDeleteIsRefusedWhenBundledAndNeedsConfirm(t *testin
 		t.Errorf("a missing file is refused")
 	}
 }
+
+func TestEditPlatformBackupsSettingsS3AndTrigger(t *testing.T) {
+	var sent string
+	set := map[string]any{"enabled": false, "backupTime": "02:00", "numDaysToRetain": 7}
+	s3 := map[string]any{"accessKey": "AK", "bucketName": "b1", "serviceEndpoint": "https://s3.example"}
+	triggered := false
+	routes := map[string]fwdtest.Handler{
+		"GET /api/backup-settings":           func(*http.Request, []byte) (int, any) { return 200, set },
+		"PATCH /api/backup-settings":         func(*http.Request, []byte) (int, any) { set["enabled"] = true; return 200, set },
+		"GET /api/backup-settings/storage":   func(*http.Request, []byte) (int, any) { return 200, s3 },
+		"PATCH /api/backup-settings/storage": func(_ *http.Request, b []byte) (int, any) { sent = string(b); s3["bucketName"] = "b2"; return 200, s3 },
+		"POST /api/backups":                  func(*http.Request, []byte) (int, any) { triggered = true; return 202, nil },
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"backups","action":"settings","definition":{"enabled":true},"apply":true}`); r.Status != result.OK || set["enabled"] != true {
+		t.Fatalf("settings: %s", r.Finding)
+	}
+	f := secretFile(t, 0o600, plantedPlatform)
+	r, _ := mustRun(t, "edit-platform", routes, `{"area":"backups","action":"s3_storage","definition":{"bucket_name":"b2"},"secret_file":"`+f+`","apply":true}`)
+	if r.Status != result.OK || !strings.Contains(sent, plantedPlatform) || strings.Contains(jsonOf(r), plantedPlatform) {
+		t.Fatalf("s3: %s %s", r.Status, jsonOf(r))
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"backups","action":"trigger","apply":true}`); err == nil || triggered {
+		t.Errorf("trigger without confirm is refused")
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"backups","action":"trigger","apply":true,"confirm":"backup"}`); r.Status != result.OK || !triggered {
+		t.Errorf("trigger: %s", r.Finding)
+	}
+}
+
+func TestEditPlatformBannerDeleteInfobloxChangeAndWebhookCredential(t *testing.T) {
+	banners := []any{map[string]any{"id": "b1", "enabled": true, "message": "hi", "backgroundColor": "#fff", "networkIds": []any{"1"}}}
+	infoblox := []any{map[string]any{"id": "5", "name": "ipam", "ipAddress": "10.0.0.5", "username": "u"}}
+	var infoSent, hookSent string
+	hook := map[string]any{"name": "ops", "url": "https://h.example", "enabled": true}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/custom-banners":                  func(*http.Request, []byte) (int, any) { return 200, map[string]any{"banners": banners} },
+		"DELETE /api/custom-banners/b1":            func(*http.Request, []byte) (int, any) { banners = nil; return 204, nil },
+		"GET /api/integrations/infoblox/instances": func(*http.Request, []byte) (int, any) { return 200, infoblox },
+		"PATCH /api/integrations/infoblox/instances/5": func(_ *http.Request, b []byte) (int, any) {
+			infoSent = string(b)
+			infoblox = []any{map[string]any{"id": "5", "name": "ipam", "ipAddress": "10.0.0.5", "username": "v"}}
+			return 200, nil
+		},
+		"DELETE /api/integrations/infoblox/instances/5": func(*http.Request, []byte) (int, any) { infoblox = nil; return 204, nil },
+		"GET /api/webhooks":                             func(*http.Request, []byte) (int, any) { return 200, map[string]any{"webhooks": []any{hook}} },
+		"PATCH /api/webhooks/ops":                       func(_ *http.Request, b []byte) (int, any) { hookSent = string(b); return 200, nil },
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"banners","action":"delete","name":"b1","apply":true}`); err == nil || banners == nil {
+		t.Errorf("banner delete without confirm is refused")
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"banners","action":"delete","name":"b1","apply":true,"confirm":"b1"}`); r.Status != result.OK || banners != nil {
+		t.Errorf("banner delete: %s", r.Finding)
+	}
+	f := secretFile(t, 0o600, plantedPlatform)
+	r, _ := mustRun(t, "edit-platform", routes, `{"area":"integrations","name":"infoblox","action":"update","definition":{"id":"5","username":"v"},"secret_file":"`+f+`","apply":true}`)
+	if r.Status != result.OK || !strings.Contains(infoSent, plantedPlatform) || strings.Contains(jsonOf(r), plantedPlatform) {
+		t.Fatalf("infoblox update: %s %s", r.Status, infoSent)
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"integrations","name":"infoblox","action":"delete","definition":{"id":"5"},"apply":true,"confirm":"5"}`); r.Status != result.OK || infoblox != nil {
+		t.Errorf("infoblox delete: %s", r.Finding)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"webhooks","action":"update","name":"ops","definition":{"credential_username":"u"},"secret_file":"`+f+`"}`); err == nil {
+		t.Errorf("a credential needs its type, which is not guessed")
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"webhooks","action":"update","name":"ops","definition":{"credential_type":"BASIC","credential_username":"u","disable_ssl_validation":true},"secret_file":"`+f+`","apply":true}`); r.Status != result.OK || !strings.Contains(hookSent, plantedPlatform) || strings.Contains(jsonOf(r), plantedPlatform) {
+		t.Errorf("webhook credential: %s %s", r.Status, hookSent)
+	}
+}

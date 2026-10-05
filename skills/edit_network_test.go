@@ -85,3 +85,18 @@ func TestEditNetworkLocationDeleteNeedsTheIDAndIsReadBack(t *testing.T) {
 		t.Errorf("apply: %s", r.Finding)
 	}
 }
+
+func TestEditNetworkClusterDeleteNeedsItsNameAndSnapshotUnfavoriteIsReversible(t *testing.T) {
+	clusters := []any{map[string]any{"name": "core", "devices": []any{"r1"}}}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/locations/7/clusters":         func(*http.Request, []byte) (int, any) { return 200, clusters },
+		"DELETE /api/networks/n1/locations/7/clusters/core": func(*http.Request, []byte) (int, any) { clusters = nil; return 204, nil },
+	}
+	body := `{"network_id":"n1","object":"cluster","action":"delete","name":"core","definition":{"location_id":"7"}`
+	if _, _, err := runSkill(t, "edit-network", routes, body+`,"apply":true}`); err == nil || clusters == nil {
+		t.Errorf("cluster delete without confirm is refused")
+	}
+	if r, _ := mustRun(t, "edit-network", routes, body+`,"apply":true,"confirm":"core"}`); r.Status != result.OK || clusters != nil {
+		t.Errorf("cluster delete: %s", r.Finding)
+	}
+}

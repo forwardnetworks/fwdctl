@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -38,6 +39,7 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	detail := map[string]any{}
 	var limits []string
+	var omitted []result.Omission
 	read, total := 0, 0
 
 	if devs, err := s.ClassicDevices(ctx, in.NetworkID); err != nil {
@@ -57,7 +59,7 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 		win, wl, ok := window(rows, in.Limit, in.Offset, 50, 500, "devices")
 		if ok {
 			detail["devices"] = win
-			limits = append(limits, wl...)
+			omitted = append(omitted, wl...)
 		} else {
 			detail["devices"] = []map[string]any{}
 			if len(rows) > 0 {
@@ -115,7 +117,7 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 		win, wl, ok := window(rows, in.Limit, in.Offset, 50, 500, "endpoints")
 		if ok {
 			detail["endpoints"] = win
-			limits = append(limits, wl...)
+			omitted = append(omitted, wl...)
 		} else {
 			detail["endpoints"] = []map[string]any{}
 		}
@@ -348,7 +350,7 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 	if cs := lenAny(detail["cloud_setups"]); cs > 0 {
 		finding += fmt.Sprintf(", %d cloud setups", cs)
 	}
-	return result.Build(collectionConfigName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(collectionConfigName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"inspect-collection", "investigate-collection-failure"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "inspectCollectionConfig", nil, detail, finding)}})
 }
@@ -378,6 +380,7 @@ func endpointProfiles(ctx context.Context, s *fwd.Session, eps []forward.Endpoin
 		return []string{"the endpoint profiles could not be read, so what the endpoints collect is not shown: " + err.Error()}
 	}
 	var rows []map[string]any
+	var assessErrs []string
 	cli := false
 	for _, p := range profiles {
 		if !used[string(p.ID)] {
@@ -394,6 +397,20 @@ func endpointProfiles(ctx context.Context, s *fwd.Session, eps []forward.Endpoin
 		case "CLI":
 			cli = true
 			row["command_sets"], row["custom_commands"], row["detector_command"] = p.CommandSets, p.CustomCommands, nilIfEmpty(p.DetectorCommand)
+			row["name_detector_command"] = nilIfEmpty(p.NameDetectorCommand)
+			var cmds []string
+			cmds = append(cmds, p.CustomCommands...)
+			for _, c := range []string{p.DetectorCommand, p.NameDetectorCommand} {
+				if c != "" {
+					cmds = append(cmds, c)
+				}
+			}
+			if a, _, aerr := s.Client.Endpoints.AssessCLICommands(ctx, cmds); aerr != nil {
+				row["collects"] = "unknown"
+				assessErrs = append(assessErrs, p.Name+": "+aerr.Error())
+			} else {
+				row["collects"], row["unapproved_commands"] = len(a.Unapproved) == 0, a.Unapproved
+			}
 		case "HTTP":
 			reqs := make([]map[string]string, 0, len(p.Endpoints))
 			for _, h := range p.Endpoints {
@@ -416,8 +433,11 @@ func endpointProfiles(ctx context.Context, s *fwd.Session, eps []forward.Endpoin
 			limits = append(limits, "CLI profile commands run only if the organization approved them; the approved list could not be read: "+aerr.Error())
 		} else if ap != nil {
 			detail["approved_cli_commands"] = map[string]any{"count": len(ap.Commands), "custom_list_uploaded": ap.SignedAt != "" || ap.UploadedAt != ""}
-			limits = append(limits, "CLI profile commands run only if the organization approved them (Forward's approved-command list, patterns not matched here): an unapproved command is skipped at collection")
+			limits = append(limits, "CLI profile commands run only if the organization approved them (Forward's approved-command list, patterns not matched here): a profile is collected only if ALL its commands (custom, detector, name detector) match the approved patterns; if any one fails, the whole endpoint is excluded from collection. The signed-upload route needs a Forward-signed file, so a custom list cannot be self-authored")
 		}
+	}
+	if len(assessErrs) > 0 {
+		limits = append(limits, "whether a CLI profile collects is unknown where Forward's approved-command check was refused or failed (it needs the manage-endpoint-profiles permission even though it changes nothing): "+strings.Join(assessErrs, "; "))
 	}
 	return limits
 }

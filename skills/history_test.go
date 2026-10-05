@@ -55,7 +55,7 @@ func TestHistoryAbsentIsNotAPassAndAMissingCheckIsUnknown(t *testing.T) {
 
 func TestHistoryBoundsItsReadsAndSaysSoWhenNothingChanged(t *testing.T) {
 	r, srv := mustRun(t, "inspect-history", histRoutes(map[string][]any{"s3": {hc("PASS", 0)}, "s2": {hc("PASS", 0)}, "s1": {hc("PASS", 0)}}), `{"network_id":"n1","check_id":"c1","snapshots":2}`)
-	if len(srv.Calls()) != 3 || !strings.Contains(strings.Join(r.Limits, "|"), "newest 2") {
+	if len(srv.Calls()) != 3 || len(r.Omitted) != 1 || r.Omitted[0].Total != 3 || r.Omitted[0].Shown != 2 || !strings.Contains(strings.Join(r.Limits, "|"), "3 processed snapshots in all; 2 shown") {
 		t.Fatalf("calls %d limits %v", len(srv.Calls()), r.Limits)
 	}
 }

@@ -49,6 +49,7 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	var limits []string
+	var omitted []result.Omission
 	detail := map[string]any{}
 	if in.WaitSeconds > 0 {
 		wait := min(in.WaitSeconds, maxWaitSeconds)
@@ -170,11 +171,8 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 		}
 		detail["devices"] = map[string]any{"total": len(st), "by_status": byStatus}
 		if len(bad) > 0 {
-			shown := bad
-			if len(shown) > 10 {
-				shown = shown[:10]
-				limits = append(limits, fmt.Sprintf("%d devices failed collection; the first 10 are listed", len(bad)))
-			}
+			shown, capped := result.Cap(bad, 10, "devices that failed collection", "the first 10 are listed")
+			omitted = append(omitted, capped...)
 			detail["failed_devices"] = shown
 			failed = append(failed, fmt.Sprintf("%d device(s) failed collection", len(bad)))
 		}
@@ -234,7 +232,7 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 			lim = append(lim, "a reprocess recomputes from data an earlier collection or import already gathered; how that collection went is on the original snapshot it was reprocessed from (inspect-snapshots lists the older snapshots), or check the original source")
 			next = append(next, "investigate-collection-failure")
 		}
-		return result.NewUnknown(collectionStatusName, finding, cx, lim, result.Options{NextActions: next,
+		return result.NewUnknown(collectionStatusName, finding, cx, lim, result.Options{Omitted: omitted, NextActions: next,
 			Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "collectionStatus", nil, detail, finding)}})
 	}
 
@@ -255,7 +253,7 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 		return result.NewUnknown(collectionStatusName, "No collection is running and nothing shows how the last one went", cx,
 			append(limits, "no finished task and no device statuses were readable, so this skill cannot say collection is healthy"), result.Options{NextActions: []string{"inspect-snapshots", "investigate-collection-failure"}})
 	}
-	return result.Build(collectionStatusName, status, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(collectionStatusName, status, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"investigate-collection-failure", "inspect-snapshots"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "collectionStatus", nil, detail, finding)}})
 }

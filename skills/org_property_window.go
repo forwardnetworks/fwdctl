@@ -194,17 +194,15 @@ func orgPropertyWindow(ctx context.Context, s *fwd.Session, in editOrgPropertyIn
 		"schedules show no next run: a time-of-day schedule is computed from its times, days and zone (the organization's zone when none is named); a periodic schedule is due at the network's last collection plus its period, and with no known last collection it blocks")
 	ev := []result.Evidence{result.NewEvidence(result.EvState, "orgPropertyWindow", nil, d, "")}
 	if len(plan.blockers) > 0 {
-		shown := plan.blockers
-		if len(shown) > 5 {
-			shown = shown[:5]
-		}
+		shown, _ := result.CapRow(plan.blockers, 5) // the finding states the full count
 		return result.Build(editOrgPropertyName, result.Failed, fmt.Sprintf("Window blocked, nothing was changed: %d blocker(s), for example: %s", len(plan.blockers), strings.Join(shown, "; ")), result.Deterministic, cx,
 			result.Options{Mode: mode, Limits: limits, Evidence: ev, NextActions: []string{"inspect-snapshots"}})
 	}
 	ch := result.Change{Action: "org_property_window", Target: fmt.Sprintf("%s for the reprocess of snapshot %s", strings.ToUpper(w.name), in.ReprocessSnapshotID), Before: w.before,
 		After: map[string]any{"during": in.Value, "afterwards": w.before}, Reversible: true, Undo: "the original value is put back as the last step of the window itself"}
 	if !in.Apply {
-		msg := fmt.Sprintf("Dry run: the window is clear (no snapshot in progress in any network, no collection due within %d minutes). Would %s. Nothing was changed; run again with apply=true", minutes, strings.Join(steps[:2], ", then "))
+		firstSteps, _ := result.CapRow(steps, 2)
+		msg := fmt.Sprintf("Dry run: the window is clear (no snapshot in progress in any network, no collection due within %d minutes). Would %s. Nothing was changed; run again with apply=true", minutes, strings.Join(firstSteps, ", then "))
 		if w.needConfirm {
 			msg += fmt.Sprintf(" and confirm=%q", strings.ToUpper(w.name))
 		}

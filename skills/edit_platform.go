@@ -155,8 +155,32 @@ func planBanner(ctx context.Context, s *fwd.Session, in editPlatformInput) (*net
 				}}, nil
 		}
 		return nil, nil
+	case "delete":
+		bs, err := list(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, cur := range bs {
+			if string(cur.ID) != in.Name {
+				continue
+			}
+			before, _ := fwd.Generic(cur)
+			return &networkPlan{target: "delete banner " + in.Name, action: "delete_banner", before: before, reversible: false, confirm: in.Name,
+				undo: "none: create it again from the before values (it gets a new id)",
+				do:   func(ctx context.Context) error { _, err := s.Client.Banners.Delete(ctx, in.Name); return err },
+				verify: func(ctx context.Context) (bool, any, error) {
+					l, err := list(ctx)
+					for _, b := range l {
+						if b.ID == cur.ID {
+							return false, b, err
+						}
+					}
+					return true, nil, err
+				}}, nil
+		}
+		return nil, nil
 	}
-	return nil, fmt.Errorf("%w: banners take action create or update (name is the banner id for update)", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: banners take action create, update or delete (name is the banner id for update and delete)", ErrInvalidInput)
 }
 
 func planWebhook(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
@@ -218,25 +242,66 @@ func planWebhook(ctx context.Context, s *fwd.Session, in editPlatformInput) (*ne
 		if cur == nil {
 			return nil, nil
 		}
-		var def forward.WebhookPatch
 		var raw struct {
-			Description *string `json:"description"`
-			URL         *string `json:"url"`
-			Enabled     *bool   `json:"enabled"`
+			Name                 *string         `json:"name"`
+			Description          *string         `json:"description"`
+			URL                  *string         `json:"url"`
+			Enabled              *bool           `json:"enabled"`
+			DisableSSLValidation *bool           `json:"disable_ssl_validation"`
+			EventParams          map[string]any  `json:"event_params"`
+			Template             json.RawMessage `json:"template"`
+			CredentialType       string          `json:"credential_type"`
+			CredentialUsername   string          `json:"credential_username"`
 		}
-		if err := decodeDefinition(in.Definition, &raw, "description, url, enabled"); err != nil {
+		if err := decodeDefinition(in.Definition, &raw, "name, description, url, enabled, disable_ssl_validation, event_params, template, credential_type, credential_username (the credential's password comes from secret_file or secret_env)"); err != nil {
 			return nil, err
 		}
-		if raw.Description == nil && raw.URL == nil && raw.Enabled == nil {
-			return nil, fmt.Errorf("%w: update must change description, url or enabled", ErrInvalidInput)
+		withSecret := in.SecretFile != "" || in.SecretEnv != ""
+		if withSecret && (raw.CredentialUsername == "" || raw.CredentialType == "") {
+			return nil, fmt.Errorf("%w: a new credential needs definition.credential_type and credential_username beside the password secret (Forward replaces the stored credential; read the type from an existing webhook's credential, it is not guessed)", ErrInvalidInput)
 		}
-		def = forward.WebhookPatch{Description: raw.Description, URL: raw.URL, Enabled: raw.Enabled}
+		if !withSecret && raw.CredentialUsername != "" {
+			return nil, fmt.Errorf("%w: credential_username needs the password: secret_file or secret_env", ErrInvalidInput)
+		}
+		if raw.Name == nil && raw.Description == nil && raw.URL == nil && raw.Enabled == nil && raw.DisableSSLValidation == nil && raw.EventParams == nil && len(raw.Template) == 0 && !withSecret {
+			return nil, fmt.Errorf("%w: update must change a field or the credential", ErrInvalidInput)
+		}
+		def := forward.WebhookPatch{Name: raw.Name, Description: raw.Description, URL: raw.URL, Enabled: raw.Enabled, DisableSSLValidation: raw.DisableSSLValidation, EventParams: raw.EventParams, Template: raw.Template}
 		before, _ := fwd.Generic(cur)
-		return &networkPlan{target: "update webhook " + in.Name, action: "update_webhook", before: before, after: raw, reversible: true, undo: "update again with the before values",
-			do: func(ctx context.Context) error { _, err := s.Client.Webhooks.Update(ctx, in.Name, def); return err },
-			verify: verifyIs(true, func(h forward.Webhook) bool {
-				return (raw.URL == nil || h.URL == *raw.URL) && (raw.Enabled == nil || h.Enabled == *raw.Enabled) && (raw.Description == nil || h.Description == *raw.Description)
-			})}, nil
+		limits := []string{}
+		if raw.URL != nil || raw.DisableSSLValidation != nil || withSecret {
+			limits = append(limits, "Forward re-tests the connection when the url, SSL validation or credential changes")
+		}
+		after := map[string]any{"fields": raw}
+		if withSecret {
+			after["credential_password"] = fwd.SecretFromString("x")
+		}
+		newName := in.Name
+		if raw.Name != nil {
+			newName = *raw.Name
+		}
+		return &networkPlan{target: "update webhook " + in.Name, action: "update_webhook", before: before, after: after, reversible: true, undo: "update again with the before values (a replaced credential cannot be read back)", limits: limits,
+			do: func(ctx context.Context) error {
+				if withSecret {
+					pw, err := needSecretFor(in)
+					if err != nil {
+						return err
+					}
+					def.Credential = &forward.WebhookCredentialRequest{Type: raw.CredentialType, Username: raw.CredentialUsername, Password: pw}
+				}
+				_, err := s.Client.Webhooks.Update(ctx, in.Name, def)
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				hs, _, _, err := s.Client.Webhooks.List(ctx)
+				for _, h := range hs {
+					if h.Name == newName {
+						g, _ := fwd.Generic(h)
+						return (raw.URL == nil || h.URL == *raw.URL) && (raw.Enabled == nil || h.Enabled == *raw.Enabled) && (raw.Description == nil || h.Description == *raw.Description), g, err
+					}
+				}
+				return false, nil, err
+			}}, nil
 	case "delete":
 		if cur == nil {
 			return nil, nil
@@ -440,6 +505,110 @@ func planAccessLabel(ctx context.Context, s *fwd.Session, in editPlatformInput) 
 }
 
 func planBackup(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
+	storage := forward.StorageTypeInternal
+	switch in.Action {
+	case "settings":
+		var def struct {
+			Enabled          *bool   `json:"enabled"`
+			BackupTime       *string `json:"backup_time"`
+			NumDaysToRetain  *int    `json:"num_days_to_retain"`
+			IncludeSnapshots *bool   `json:"include_snapshots"`
+		}
+		if err := decodeDefinition(in.Definition, &def, "enabled, backup_time, num_days_to_retain, include_snapshots"); err != nil {
+			return nil, err
+		}
+		if def.Enabled == nil && def.BackupTime == nil && def.NumDaysToRetain == nil && def.IncludeSnapshots == nil {
+			return nil, fmt.Errorf("%w: settings must change at least one field", ErrInvalidInput)
+		}
+		cur, _, err := s.Client.Backups.GetSettings(ctx, storage)
+		if err != nil {
+			return nil, err
+		}
+		before, _ := fwd.Generic(cur)
+		patch := forward.BackupSettingsPatch{Enabled: def.Enabled, BackupTime: def.BackupTime, NumDaysToRetain: def.NumDaysToRetain, IncludeSnapshots: def.IncludeSnapshots}
+		return &networkPlan{target: "change the scheduled backup settings", action: "update_backup_settings", before: before, after: def, reversible: true, undo: "update again with the before values",
+			limits: []string{"internal storage settings only; S3 storage is a separate action", "needs the system administrator role; Forward answers 403 otherwise"},
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.Backups.UpdateSettings(ctx, storage, patch)
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				got, _, err := s.Client.Backups.GetSettings(ctx, storage)
+				return err == nil && got != nil && patchShows(patch, got), got, err
+			}}, nil
+	case "s3_storage":
+		var def struct {
+			AccessKey                 *string `json:"access_key"`
+			BucketName                *string `json:"bucket_name"`
+			ServiceEndpoint           *string `json:"service_endpoint"`
+			DisableSSLValidation      *bool   `json:"disable_ssl_validation"`
+			Certificate               *string `json:"certificate"`
+			WriteOnly                 *bool   `json:"write_only"`
+			DisableChecksumValidation *bool   `json:"disable_checksum_validation"`
+		}
+		if err := decodeDefinition(in.Definition, &def, "access_key, bucket_name, service_endpoint, disable_ssl_validation, certificate, write_only, disable_checksum_validation (the secret key comes from secret_file or secret_env)"); err != nil {
+			return nil, err
+		}
+		withSecret := in.SecretFile != "" || in.SecretEnv != ""
+		patch := forward.S3StorageSettingsPatch{AccessKey: def.AccessKey, BucketName: def.BucketName, ServiceEndpoint: def.ServiceEndpoint, DisableSSLValidation: def.DisableSSLValidation,
+			Certificate: def.Certificate, WriteOnly: def.WriteOnly, DisableChecksumValidation: def.DisableChecksumValidation}
+		if m, _ := fwd.Generic(patch); len(m.(map[string]any)) == 0 && !withSecret {
+			return nil, fmt.Errorf("%w: s3_storage must change a field or rotate the secret key (secret_file or secret_env)", ErrInvalidInput)
+		}
+		cur, _, err := s.Client.Backups.GetS3Storage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		before, _ := fwd.Generic(cur)
+		fwd.RedactSecrets(before)
+		after := map[string]any{"fields": def}
+		if withSecret {
+			after["secret_key"] = fwd.SecretFromString("x")
+		}
+		return &networkPlan{target: "change the S3 backup storage settings", action: "update_s3_backup_storage", before: before, after: after, reversible: true,
+			undo:   "update again with the before values; the secret key is never read back, so re-enter the earlier one from its source",
+			limits: []string{"the secret key is write-only: the read-back checks the other fields only, and does not prove the key works"},
+			do: func(ctx context.Context) error {
+				if withSecret {
+					sec, err := fwd.ReadSecret(in.SecretFile, in.SecretEnv)
+					if err != nil {
+						return fmt.Errorf("%w: %v", ErrInvalidInput, err)
+					}
+					v := strings.TrimSpace(sec.Reveal())
+					patch.SecretKey = &v
+				}
+				_, _, err := s.Client.Backups.UpdateS3Storage(ctx, patch)
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				got, _, err := s.Client.Backups.GetS3Storage(ctx)
+				if err != nil || got == nil {
+					return false, nil, err
+				}
+				g, _ := fwd.Generic(got)
+				fwd.RedactSecrets(g)
+				ok := (def.AccessKey == nil || got.AccessKey == *def.AccessKey) && (def.BucketName == nil || got.BucketName == *def.BucketName) &&
+					(def.ServiceEndpoint == nil || got.ServiceEndpoint == *def.ServiceEndpoint) && (def.WriteOnly == nil || got.WriteOnly == *def.WriteOnly)
+				return ok, g, nil
+			}}, nil
+	case "trigger":
+		var def struct {
+			Name             string `json:"name"`
+			IncludeSnapshots bool   `json:"include_snapshots"`
+		}
+		if len(in.Definition) > 0 {
+			if err := decodeDefinition(in.Definition, &def, "name, include_snapshots"); err != nil {
+				return nil, err
+			}
+		}
+		return &networkPlan{target: "start a backup now", action: "trigger_backup", after: def, reversible: false, confirm: "backup",
+			undo:   "none through this skill: the backup can be deleted later (action delete)",
+			limits: []string{"starts the backup and returns; it does not wait, so completion is not proven. With include_snapshots it can be large"},
+			do: func(ctx context.Context) error {
+				_, err := s.Client.Backups.Trigger(ctx, forward.BackupTriggerRequest{StorageType: storage, IncludeSnapshots: def.IncludeSnapshots, Name: def.Name})
+				return err
+			}}, nil
+	}
 	switch in.Action {
 	case "cancel":
 		return &networkPlan{target: "cancel the running backup or restore operation", action: "cancel_backup_operation", reversible: false, confirm: "cancel",
@@ -478,7 +647,7 @@ func planBackup(ctx context.Context, s *fwd.Session, in editPlatformInput) (*net
 		}
 		return nil, nil
 	}
-	return nil, fmt.Errorf("%w: backups take action cancel or delete (settings, S3 storage and starting a backup need a service principal, which a user login is not)", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: backups take action settings, s3_storage, trigger, cancel or delete", ErrInvalidInput)
 }
 
 // platformTakesSecret says whether the action reads a secret, so a secret given to another action is refused instead of ignored.
@@ -486,8 +655,12 @@ func platformTakesSecret(in editPlatformInput) bool {
 	switch in.Area {
 	case "licensing":
 		return in.Action == "apply"
+	case "backups":
+		return in.Action == "s3_storage"
+	case "webhooks":
+		return in.Action == "update"
 	case "integrations":
-		return (in.Name == "servicenow" && in.Action == "set") || (in.Name == "infoblox" && in.Action == "create")
+		return (in.Name == "servicenow" && in.Action == "set") || (in.Name == "infoblox" && (in.Action == "create" || in.Action == "update"))
 	}
 	return false
 }
@@ -574,7 +747,7 @@ func planIntegration(ctx context.Context, s *fwd.Session, in editPlatformInput) 
 		return nil, fmt.Errorf("%w: servicenow takes action set or delete", ErrInvalidInput)
 	case "infoblox":
 		if in.Action != "create" {
-			return nil, fmt.Errorf("%w: infoblox takes action create (the API has no update or delete)", ErrInvalidInput)
+			return planInfobloxChange(ctx, s, in, needSecret)
 		}
 		var def struct {
 			Name      string `json:"name"`
@@ -599,9 +772,9 @@ func planIntegration(ctx context.Context, s *fwd.Session, in editPlatformInput) 
 				return nil, fmt.Errorf("%w: an Infoblox instance named %q already exists", ErrInvalidInput, def.Name)
 			}
 		}
-		return &networkPlan{target: "add Infoblox instance " + def.Name, action: "create_infoblox", after: map[string]any{"fields": def, "password": fwd.SecretFromString("x")}, reversible: false,
-			undo:   "none through the API: remove it in the Forward UI",
-			limits: []string{"the API cannot update or delete an Infoblox instance"},
+		return &networkPlan{target: "add Infoblox instance " + def.Name, action: "create_infoblox", after: map[string]any{"fields": def, "password": fwd.SecretFromString("x")}, reversible: true,
+			undo:   "delete it (integrations name infoblox, action delete, name = its instance id)",
+			limits: []string{"an instance's address cannot be edited after it is created: delete and create to change it"},
 			do: func(ctx context.Context) error {
 				pw, err := needSecret()
 				if err != nil {
@@ -987,4 +1160,96 @@ func planCVEIndex(ctx context.Context, s *fwd.Session, in editPlatformInput) (*n
 			limits: []string{"applied in the background; read inspect-platform area cve_index to see the bundled digest"}, do: func(ctx context.Context) error { _, err := s.Client.CVEIndex.Delete(ctx); return err }}, nil
 	}
 	return nil, fmt.Errorf("%w: cve_index takes action upload or delete", ErrInvalidInput)
+}
+
+// planInfobloxChange updates or deletes an Infoblox instance by its numeric id (definition.id for the instance; name stays "infoblox"). Its address cannot be edited; a new password is
+// optional and comes from the secret.
+func planInfobloxChange(ctx context.Context, s *fwd.Session, in editPlatformInput, needSecret func() (string, error)) (*networkPlan, error) {
+	var def struct {
+		ID       string  `json:"id"`
+		Name     *string `json:"name"`
+		Username *string `json:"username"`
+	}
+	if err := decodeDefinition(in.Definition, &def, "id (the instance id, from inspect-platform area integrations), name, username (the password comes from secret_file or secret_env)"); err != nil {
+		return nil, err
+	}
+	if def.ID == "" || (in.Action != "update" && in.Action != "delete") {
+		return nil, fmt.Errorf("%w: infoblox takes action create, update or delete; update and delete need definition.id", ErrInvalidInput)
+	}
+	list, _, err := s.Client.Integrations.ListInfoblox(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var cur *forward.InfobloxInstance
+	for i := range list {
+		if string(list[i].ID) == def.ID {
+			cur = &list[i]
+		}
+	}
+	if cur == nil {
+		return nil, nil
+	}
+	before, _ := fwd.Generic(cur)
+	gone := func(ctx context.Context) (bool, any, error) {
+		l, _, e := s.Client.Integrations.ListInfoblox(ctx)
+		for _, x := range l {
+			if string(x.ID) == def.ID {
+				return false, x, e
+			}
+		}
+		return true, nil, e
+	}
+	if in.Action == "delete" {
+		if in.SecretFile != "" || in.SecretEnv != "" || def.Name != nil || def.Username != nil {
+			return nil, fmt.Errorf("%w: delete takes definition.id only", ErrInvalidInput)
+		}
+		return &networkPlan{target: "delete Infoblox instance " + cur.Name, action: "delete_infoblox", before: before, reversible: false, confirm: def.ID,
+			undo: "none: create it again (the password must be re-entered)",
+			do: func(ctx context.Context) error {
+				_, err := s.Client.Integrations.DeleteInfoblox(ctx, def.ID)
+				return err
+			}, verify: gone}, nil
+	}
+	withSecret := in.SecretFile != "" || in.SecretEnv != ""
+	if def.Name == nil && def.Username == nil && !withSecret {
+		return nil, fmt.Errorf("%w: update must change name, username or the password (secret_file or secret_env)", ErrInvalidInput)
+	}
+	after := map[string]any{"fields": def}
+	if withSecret {
+		after["password"] = fwd.SecretFromString("x")
+	}
+	return &networkPlan{target: "update Infoblox instance " + cur.Name, action: "update_infoblox", before: before, after: after, reversible: true,
+		undo:   "update again with the before values; the password is never read back",
+		limits: []string{"the instance's address cannot be edited"},
+		do: func(ctx context.Context) error {
+			patch := forward.InfobloxInstanceUpdate{Name: def.Name, Username: def.Username}
+			if withSecret {
+				pw, err := needSecret()
+				if err != nil {
+					return err
+				}
+				patch.Password = &pw
+			}
+			_, err := s.Client.Integrations.UpdateInfoblox(ctx, def.ID, patch)
+			return err
+		},
+		verify: func(ctx context.Context) (bool, any, error) {
+			l, _, e := s.Client.Integrations.ListInfoblox(ctx)
+			for _, x := range l {
+				if string(x.ID) == def.ID {
+					g, _ := fwd.Generic(x)
+					return (def.Name == nil || x.Name == *def.Name) && (def.Username == nil || x.Username == *def.Username), g, e
+				}
+			}
+			return false, nil, e
+		}}, nil
+}
+
+// needSecretFor reads the one secret of an edit-platform action (a password), trimmed.
+func needSecretFor(in editPlatformInput) (string, error) {
+	sec, err := fwd.ReadSecret(in.SecretFile, in.SecretEnv)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	return strings.TrimSpace(sec.Reveal()), nil
 }

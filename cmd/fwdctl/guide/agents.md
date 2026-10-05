@@ -9,7 +9,7 @@ Run one with `echo '<json inputs>' | fwdctl run <skill>` (needs `FORWARD_URL`, `
 
 0. **Not sure which skill?** `fwdctl which "<question>"` ranks the router table offline and names the skill or playbook.
 1. **Start with a playbook when the question is a task.** `fwdctl describe plan-investigation` maps the question to a playbook (troubleshooting, security, change, audit, health) or to one skill. Follow the playbook's order and stop when the evidence answers the question.
-2. **Read the result, not just the answer.** `status` is ok, failed, unknown or error: **unknown is never a pass**. Read `limits` (what was not measured) and `context` (which snapshot and when) before you rely on it, and say them. `next_actions` names the skill that usually follows.
+2. **Read the result, not just the answer.** `status` is ok, failed, unknown or error: **unknown is never a pass**. Read `limits` (what was not measured), `omitted` (lists that were cut: say when you compare answers) and `context` (which snapshot and when) before you rely on it, and say them. `next_actions` names the skill that usually follows.
 3. **Never improvise a write.** An `edit-*` skill is a dry run until its input has `apply: true`. Show the exact change and its undo, and apply only after approval. `fwdctl describe plan-safe-write` has the protocol.
 4. **Recommend, never reconfigure.** No skill pushes config to a device. Say what to change; never claim you changed it.
 5. **Exit codes:** 0 ok, 1 failed, 2 unknown, 3 error, 64 bad usage.

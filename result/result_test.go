@@ -96,3 +96,24 @@ func TestWriteResultsMustSayTheirModeAndHowToUndo(t *testing.T) {
 		}
 	}
 }
+
+func TestOmissionsAreRenderedIntoLimitsAndValidated(t *testing.T) {
+	rows, om := Cap([]int{1, 2, 3, 4, 5}, 2, "rows", "narrow with device")
+	if len(rows) != 2 || len(om) != 1 || om[0].Total != 5 {
+		t.Fatalf("cap: %v %v", rows, om)
+	}
+	if rows, om := Cap([]int{1, 2}, 2, "rows", ""); len(rows) != 2 || om != nil {
+		t.Fatalf("a list that fits is not an omission: %v %v", rows, om)
+	}
+	page, om2, ok := Page([]int{1, 2, 3, 4, 5}, 2, 2, "rows")
+	if !ok || len(page) != 2 || page[0] != 3 || om2[0].From != 2 || !strings.Contains(om2[0].Text(), "offset=4") {
+		t.Fatalf("page: %v %v %v", page, om2, ok)
+	}
+	r, err := Build("x-skill", OK, "found", Deterministic, Context{NetworkID: "n"}, Options{Evidence: []Evidence{NewEvidence(EvState, "op", nil, map[string]any{}, "")}, Omitted: om})
+	if err != nil || len(r.Omitted) != 1 || !strings.Contains(strings.Join(r.Limits, " "), "5 rows in all; 2 shown") {
+		t.Fatalf("build: %v %v", err, r.Limits)
+	}
+	if _, err := Build("x-skill", OK, "found", Deterministic, Context{NetworkID: "n"}, Options{Evidence: []Evidence{NewEvidence(EvState, "op", nil, map[string]any{}, "")}, Omitted: []Omission{{What: "rows", Total: 2, Shown: 2}}}); err == nil {
+		t.Errorf("an omission that omits nothing is invalid")
+	}
+}

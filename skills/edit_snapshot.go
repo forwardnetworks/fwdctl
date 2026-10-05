@@ -49,12 +49,12 @@ func editSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return snapshotExport(ctx, s, in)
 	case "import":
 		return snapshotImport(ctx, s, in)
-	case "invalidate", "favorite", "delete":
+	case "invalidate", "favorite", "unfavorite", "delete":
 		return snapshotLifecycle(ctx, s, in)
 	case "retention_policy":
 		return snapshotRetentionPolicy(ctx, s, in)
 	}
-	return result.Result{}, fmt.Errorf("%w: action must be note, reprocess, invalidate, favorite, delete, retention_policy, export or import", ErrInvalidInput)
+	return result.Result{}, fmt.Errorf("%w: action must be note, reprocess, invalidate, favorite, unfavorite, delete, retention_policy, export or import", ErrInvalidInput)
 }
 
 // snapshotBusy says a snapshot is being worked on now, so it is not changed under Forward.
@@ -73,12 +73,12 @@ func snapshotLifecycle(ctx context.Context, s *fwd.Session, in editSnapshotInput
 	if len(in.Definition) > 0 {
 		return result.Result{}, fmt.Errorf("%w: definition belongs to action retention_policy", ErrInvalidInput)
 	}
-	needsConfirm := in.Action == "delete" || in.Action == "favorite"
+	needsConfirm := in.Action == "delete"
 	if needsConfirm && in.Apply && in.Confirm != in.SnapshotID {
 		return result.Result{}, fmt.Errorf("%w: %s cannot be undone through the API; set confirm to the exact snapshot_id %q to apply", ErrInvalidInput, in.Action, in.SnapshotID)
 	}
 	if !needsConfirm && in.Confirm != "" {
-		return result.Result{}, fmt.Errorf("%w: confirm belongs to delete and favorite", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: confirm belongs to delete", ErrInvalidInput)
 	}
 	mode := result.ModeDryRun
 	if in.Apply {
@@ -113,8 +113,11 @@ func snapshotLifecycle(ctx context.Context, s *fwd.Session, in editSnapshotInput
 		ch = result.Change{Action: "invalidate_snapshot", Target: "snapshot " + in.SnapshotID, Before: sn.State, After: "UNPROCESSED", Reversible: true, Undo: "reprocess it (action reprocess): it recomputes the same derived data from the collected data"}
 		limits = append(limits, "invalidating empties the snapshot's derived model (paths, checks, NQE answers) until it is reprocessed; nothing collected is lost, and Forward does not reprocess an invalidated snapshot by itself")
 	case "favorite":
-		ch = result.Change{Action: "favorite_snapshot", Target: "snapshot " + in.SnapshotID, Before: false, After: true, Reversible: false, Undo: "none: the Forward API has no call to remove a favorite (the UI does)"}
-		limits = append(limits, "a favorite snapshot is never thinned by the retention policy and is kept; the SDK can set it but not clear it")
+		ch = result.Change{Action: "favorite_snapshot", Target: "snapshot " + in.SnapshotID, Before: false, After: true, Reversible: true, Undo: "unfavorite it (action unfavorite)"}
+		limits = append(limits, "a favorite snapshot is never thinned by the retention policy and is kept")
+	case "unfavorite":
+		ch = result.Change{Action: "unfavorite_snapshot", Target: "snapshot " + in.SnapshotID, Before: true, After: false, Reversible: true, Undo: "favorite it again (action favorite)"}
+		limits = append(limits, "once not a favorite, the retention policy may thin this snapshot; the result does not read the flag back (Forward's snapshot list does not carry it)")
 	case "delete":
 		ch = result.Change{Action: "delete_snapshot", Target: "snapshot " + in.SnapshotID, Before: before, After: nil, Reversible: false, Undo: "none: a deleted snapshot and its model are gone (a backup restore may bring one back if it was backed up)"}
 		limits = append(limits, "deleting a snapshot removes it and its derived data for good; other snapshots are untouched. Forward's own answer decides whether a snapshot that others were predicted from can be deleted; this skill does not check")
@@ -133,6 +136,8 @@ func snapshotLifecycle(ctx context.Context, s *fwd.Session, in editSnapshotInput
 		_, _, aerr = s.Client.Snapshots.Invalidate(ctx, in.SnapshotID)
 	case "favorite":
 		_, aerr = s.Client.Snapshots.Favorite(ctx, in.SnapshotID)
+	case "unfavorite":
+		_, aerr = s.Client.Snapshots.Unfavorite(ctx, in.SnapshotID)
 	case "delete":
 		_, aerr = s.Client.Snapshots.Delete(ctx, in.SnapshotID)
 	}
@@ -152,7 +157,7 @@ func snapshotLifecycle(ctx context.Context, s *fwd.Session, in editSnapshotInput
 		return result.Build(editSnapshotName, result.Failed, fmt.Sprintf("Forward accepted the invalidation but snapshot %s is still %s", in.SnapshotID, sn.State), result.Deterministic, cx,
 			result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: limits})
 	}
-	finding := fmt.Sprintf("%s snapshot %s", map[string]string{"invalidate": "Invalidated", "favorite": "Favorited", "delete": "Deleted"}[in.Action], in.SnapshotID)
+	finding := fmt.Sprintf("%s snapshot %s", map[string]string{"invalidate": "Invalidated", "favorite": "Favorited", "unfavorite": "Removed the favorite flag from", "delete": "Deleted"}[in.Action], in.SnapshotID)
 	after := map[string]any{}
 	if now != nil {
 		after["state"] = now.State

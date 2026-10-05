@@ -65,7 +65,7 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 		n = defaultCollectionHistory
 	}
 	n = min(n, maxCollectionHistory)
-	shown := collected[:min(n, len(collected))]
+	shown, omitted := result.Cap(collected, n, "collected snapshots", fmt.Sprintf("the newest are shown; raise limit (at most %d) to read more", maxCollectionHistory))
 
 	pts := make([]*historyPoint, len(shown))
 	var wg sync.WaitGroup
@@ -296,9 +296,6 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 		"collection_end_to_processed_seconds is the collector task's end to the snapshot being processed; a snapshot reprocessed since has lost its original processing time and shows none",
 		fmt.Sprintf("longest_idle_seconds (and where the gap is) is measured from the per-device start times of the newest %d collections only, since that record is large; an idle stretch is at least 15 minutes with fewer than one device being collected (view slow on a snapshot shows the run's shape and what started after it); a null means that measurement failed (the row's notes say why), and the counts in stats are null when no row was measured; subtasks_timed_out is Forward's count of the collector task's subtasks with status TIMED_OUT for the same rows (a subtask can time out although its device's collection finished)", idleGapRows),
 		"only Forward-collected snapshots are read; reprocesses, imports and predictions are not collections. To see which devices are slow in one of these collections, run view slow on that snapshot")
-	if len(collected) > len(rows) {
-		limits = append(limits, fmt.Sprintf("%d older collected snapshot(s) were not read; raise limit (at most %d) to read more", len(collected)-len(rows), maxCollectionHistory))
-	}
 	if len(rows) == 0 {
 		return result.NewUnknown(collectionFailureName, "No collected snapshot could be read", cx, limits, result.Options{})
 	}
@@ -313,7 +310,7 @@ func collectionHistory(ctx context.Context, s *fwd.Session, in collectionInput, 
 	} else {
 		limits = append(limits, "Forward lists the organization's newest collector tasks first and filters by network afterwards, so a collection older than that window can be missing from collections_without_a_shown_snapshot")
 	}
-	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"investigate-collection-failure", "inspect-collection", "inspect-snapshots"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "getSnapshotMetrics", fwd.SnapshotIDPtr(&shown[0]), d, finding)}})
 }

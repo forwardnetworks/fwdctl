@@ -105,16 +105,13 @@ func findNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.R
 		return result.NewUnknown(findNQEName, "No saved query matches the question", cx,
 			append(limits, "no match does not mean no saved query exists: the wording may differ"), result.Options{NextActions: []string{"author-nqe-query"}})
 	}
-	if len(hits) > in.Limit {
-		limits = append(limits, fmt.Sprintf("%d queries matched; the best %d are shown", len(hits), in.Limit))
-		hits = hits[:in.Limit]
-	}
+	hits, omitted := result.Cap(hits, in.Limit, "matching queries", "the best are shown")
 	rows := make([]map[string]any, len(hits))
 	for i, h := range hits {
 		rows[i] = h.row
 	}
 	return result.Build(findNQEName, result.OK, fmt.Sprintf("%d saved query(ies) look relevant; best: %v", len(rows), rows[0]["path"]), result.Inferred, cx,
-		result.Options{Limits: limits, NextActions: []string{"validate-nqe-query", "check-network-compliance", "compare-nqe-results"},
+		result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"validate-nqe-query", "check-network-compliance", "compare-nqe-results"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "listNqeQueries", nil, map[string]any{"question": in.Question, "queries": rows}, fmt.Sprintf("%d matches", len(rows)))}})
 }
 
@@ -219,16 +216,13 @@ func listNQEDirectory(ctx context.Context, s *fwd.Session, in findNQEInput, cx r
 	sort.Slice(direct, func(i, j int) bool { return fmt.Sprint(direct[i]["path"]) < fmt.Sprint(direct[j]["path"]) })
 	limits := []string{fmt.Sprintf("the library holds %d queries; only one level of %s is shown", len(lib), dir),
 		"a directory exists only while a query is under it, so this list is the set of directories a new query can be saved into (a new directory needs create_directory in edit-nqe-query)"}
-	if len(direct) > maxFindLimit*4 {
-		limits = append(limits, fmt.Sprintf("%d queries are directly in %s; the first %d are shown", len(direct), dir, maxFindLimit*4))
-		direct = direct[:maxFindLimit*4]
-	}
+	direct, omitted := result.Cap(direct, maxFindLimit*4, "queries directly in "+dir, "the first are shown")
 	if len(list) == 0 && len(direct) == 0 {
 		return result.NewUnknown(findNQEName, fmt.Sprintf("The library has no directory or query under %s", dir), cx, append(limits, "no such directory (a directory exists only while a query is in it)"),
 			result.Options{NextActions: []string{"edit-nqe-query"}})
 	}
 	return result.Build(findNQEName, result.OK, fmt.Sprintf("%s holds %d director%s and %d quer%s directly", dir, len(list), map[bool]string{true: "y", false: "ies"}[len(list) == 1], len(direct), map[bool]string{true: "y", false: "ies"}[len(direct) == 1]),
-		result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"validate-nqe-query", "edit-nqe-query"},
+		result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"validate-nqe-query", "edit-nqe-query"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "listNqeQueries", nil, map[string]any{"directory": dir, "directories": list, "queries": direct}, fmt.Sprintf("%d directories", len(list)))}})
 }
 
@@ -244,10 +238,7 @@ func describeNQECommit(ctx context.Context, s *fwd.Session, in findNQEInput, cx 
 			append(limits, "the commit may be older than the latest change of every query it touched, may have deleted queries, or may not exist: that is not proof it changed nothing"), result.Options{})
 	}
 	paths := c.Paths
-	if len(paths) > in.Limit {
-		limits = append(limits, fmt.Sprintf("%d queries; the first %d are shown", len(paths), in.Limit))
-		paths = paths[:in.Limit]
-	}
+	paths, omitted := result.Cap(paths, in.Limit, "queries", "the first are shown")
 	d := map[string]any{"commit_id": c.CommitID, "queries_last_changed_here": len(c.Paths), "paths": paths}
 	finding := fmt.Sprintf("Commit %s is the last change of %d query(ies)", c.CommitID, len(c.Paths))
 	if c.HistoryRead {
@@ -257,6 +248,6 @@ func describeNQECommit(ctx context.Context, s *fwd.Session, in findNQEInput, cx 
 		limits = append(limits, "the history of the queries did not list this commit, so its author, time and title are not known")
 	}
 	limits = append(limits, "an author and a title are personal and internal: keep them out of issues and public places")
-	return result.Build(findNQEName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(findNQEName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "orgCommit", nil, d, finding)}})
 }

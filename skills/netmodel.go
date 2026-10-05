@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/result"
 )
 
 // Queries over Forward's network model that several skills share. Their field names are Forward's (checked against its schema and run on a real network).
@@ -189,19 +190,27 @@ func countsTop(m map[string]int, max int) []map[string]any {
 		}
 		return all[i].k < all[j].k
 	})
-	out := make([]map[string]any, 0, min(len(all), max))
+	out := make([]map[string]any, 0, min(len(all), max+1))
+	restGroups, restCount := 0, 0
 	for i, x := range all {
 		if i >= max {
-			break
+			restGroups++
+			restCount += x.n
+			continue
 		}
 		out = append(out, map[string]any{"name": x.k, "count": x.n})
+	}
+	// the groups past the top max are summed in one last row, so the counts still add up to the whole and a reader sees that groups were folded
+	if restGroups > 0 {
+		out = append(out, map[string]any{"name": "(other groups)", "groups": restGroups, "count": restCount})
 	}
 	return out
 }
 
 func joinTop(names []string, n int) string {
-	if len(names) <= n {
-		return strings.Join(names, ", ")
+	shown, total := result.CapRow(names, n)
+	if total == len(shown) {
+		return strings.Join(shown, ", ")
 	}
-	return strings.Join(names[:n], ", ") + fmt.Sprintf(" (+%d more)", len(names)-n)
+	return strings.Join(shown, ", ") + fmt.Sprintf(" (+%d more)", total-len(shown))
 }

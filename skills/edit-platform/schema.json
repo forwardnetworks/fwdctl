@@ -4,12 +4,12 @@
   "additionalProperties": false,
   "properties": {
     "area": { "type": "string", "enum": ["banners", "webhooks", "certificates", "access_labels", "backups", "integrations", "collection_settings", "saml", "api_tokens", "licensing", "organizations", "cve_index"] },
-    "action": { "type": "string", "enum": ["create", "update", "delete", "add", "apply", "cancel", "set", "apply", "rename", "enable", "disable", "upload"] },
+    "action": { "type": "string", "enum": ["create", "update", "delete", "add", "apply", "cancel", "set", "apply", "rename", "enable", "disable", "upload", "settings", "s3_storage", "trigger"] },
     "name": { "type": "string", "minLength": 1, "description": "the banner id, webhook name, certificate name, access label or backup id to change; for integrations servicenow or infoblox; for collection_settings organization or a collector id or name; for api_tokens the token name; for organizations the organization name or id" },
     "secret_file": { "type": "string", "minLength": 1, "description": "path of a file (mode 600) holding the one secret the action needs" },
     "secret_env": { "type": "string", "minLength": 1, "description": "name of an environment variable holding the secret (instead of secret_file)" },
     "definition": { "type": "object", "description": "the body for the area and action; see the SKILL.md table" },
-    "confirm": { "type": "string", "description": "webhook delete: the exact name; certificates apply: the word apply; saml set: saml; licensing apply: license; cve_index delete: cve_index; organizations disable or delete: the organization name; backups cancel: cancel; backups delete: the id; access label delete: the name" },
+    "confirm": { "type": "string", "description": "webhook delete: the exact name; banners delete: the banner id; infoblox delete: the instance id; certificates apply: the word apply; saml set: saml; licensing apply: license; cve_index delete: cve_index; organizations disable or delete: the organization name; backups trigger: backup; backups cancel: cancel; backups delete: the id; access label delete: the name" },
     "apply": { "type": "boolean", "default": false }
   }
 }

@@ -125,23 +125,25 @@ func validateNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			"wrong thing -- this skill cannot tell which")
 		return result.NewUnknown(validateNQEName, "The query runs but returned no rows", cx, limits, result.Options{})
 	}
-	rows := out.Items
-	if len(rows) > sample {
-		rows = rows[:sample]
-	}
+	rows, _ := result.CapRow(out.Items, sample) // the paging omission below reports what this leaves out
 	if len(rows) == 0 {
 		limits = append(limits, fmt.Sprintf("offset %d is past the end of the %d rows", in.Offset, out.Total))
 		return result.NewUnknown(validateNQEName, fmt.Sprintf("Offset %d is beyond the query's %d rows", in.Offset, out.Total), cx, limits, result.Options{})
 	}
-	if end := int64(in.Offset + len(rows)); end < out.Total {
-		limits = append(limits, fmt.Sprintf("%d rows in total; rows %d-%d shown. Page with offset=%d (sample_rows up to %d).", out.Total, in.Offset+1, end, end, maxNQERows))
+	var omitted []result.Omission
+	if end := int64(in.Offset + len(rows)); in.Offset > 0 || end < out.Total {
+		next := ""
+		if end < out.Total {
+			next = fmt.Sprintf("Page with offset=%d (sample_rows up to %d)", end, maxNQERows)
+		}
+		omitted = append(omitted, result.Omission{What: "rows", Total: int(out.Total), Shown: len(rows), From: in.Offset, Paged: true, Next: next})
 	}
 	status, finding := result.OK, fmt.Sprintf("The query runs and returned %d row(s)", out.Total)
 	if len(synth) > 0 {
 		status, finding = result.Failed, fmt.Sprintf("The query runs and returned %d row(s), but they are not valid %s connections: %s", out.Total, in.SyntheticKind, synth[0].Message)
 	}
 	return result.Build(validateNQEName, status, finding,
-		result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"check-network-compliance"},
+		result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"check-network-compliance"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "runNqeQuery", sid,
 				map[string]any{"rows": out.Total, "offset": in.Offset, "sample": fwd.Records(rows)}, fmt.Sprintf("%d row(s)", out.Total))}})
 }

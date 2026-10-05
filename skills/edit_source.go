@@ -239,8 +239,180 @@ func planCredential(ctx context.Context, s *fwd.Session, in editSourceInput) (*n
 			return nil, fmt.Errorf("%w: type must be CLI, HTTP or SNMP", ErrInvalidInput)
 		}
 		return plan, nil
+	case "update":
+		return planCredentialUpdate(ctx, s, in, kind, def.Name, def.Username, def.LoginType, def.PrivilegeLevel, def.AutoAssociate, def.PrivilegedID)
 	}
-	return nil, fmt.Errorf("%w: object credential takes action create or delete", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: object credential takes action create, update or delete", ErrInvalidInput)
+}
+
+// planCredentialUpdate changes a stored credential in place: the fields given change, the rest stay. A secret (a new password, community string or key) is optional and comes from
+// secret_file or secret_env; with none, only the non-secret fields change. name (the input) is the credential id.
+func planCredentialUpdate(ctx context.Context, s *fwd.Session, in editSourceInput, kind, newName, username, loginType string, privLevel *int32, autoAssoc *bool, privID string) (*networkPlan, error) {
+	if in.Name == "" || (kind != "CLI" && kind != "HTTP" && kind != "SNMP") {
+		return nil, fmt.Errorf("%w: update needs name (the credential id, from inspect-platform area credentials) and definition.type CLI, HTTP or SNMP", ErrInvalidInput)
+	}
+	withSecret := in.SecretFile != "" || in.SecretEnv != ""
+	changes := map[string]any{}
+	set := func(k string, v any) { changes[k] = v }
+	if newName != "" {
+		set("name", newName)
+	}
+	if username != "" {
+		set("username", username)
+	}
+	if loginType != "" {
+		set("loginType", loginType)
+	}
+	if privLevel != nil {
+		set("privilegeLevel", *privLevel)
+	}
+	if autoAssoc != nil {
+		set("autoAssociate", *autoAssoc)
+	}
+	if privID != "" {
+		set("privilegedModePasswordId", privID)
+	}
+	if len(changes) == 0 && !withSecret {
+		return nil, fmt.Errorf("%w: update must change a field or rotate the secret (secret_file or secret_env)", ErrInvalidInput)
+	}
+	// the current credential, by id, so the plan shows what changes
+	var before any
+	var curName string
+	switch kind {
+	case "CLI":
+		c, _, err := s.Client.Credentials.GetCLI(ctx, in.NetworkID, in.Name)
+		if err != nil {
+			return nil, err
+		}
+		if c == nil {
+			return nil, nil
+		}
+		before, _ = fwd.Generic(c)
+		curName = c.Name
+	case "HTTP":
+		c, _, err := s.Client.Credentials.GetHTTP(ctx, in.NetworkID, in.Name)
+		if err != nil {
+			return nil, err
+		}
+		if c == nil {
+			return nil, nil
+		}
+		before, _ = fwd.Generic(c)
+		curName = c.Name
+	case "SNMP":
+		l, _, err := s.Client.Credentials.ListSNMP(ctx, in.NetworkID)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range l {
+			if string(c.ID) == in.Name {
+				before, _ = fwd.Generic(c)
+				curName = c.Name
+			}
+		}
+		if before == nil {
+			return nil, nil
+		}
+	}
+	after := map[string]any{"fields": changes}
+	if withSecret {
+		after["secret"] = fwd.SecretFromString("x")
+	}
+	plan := &networkPlan{target: fmt.Sprintf("update %s credential %s (%s) on network %s", kind, in.Name, curName, in.NetworkID), action: "update_credential", before: before, after: after, reversible: true,
+		undo:   "update again with the before fields; a rotated secret cannot be read back, so re-enter the earlier one from its source",
+		limits: []string{"the secret, if given, is read from " + secretSource(in) + " only on apply and is never shown, logged or returned; this does not test that the device accepts it"}}
+	if in.Apply {
+		var secs map[string]fwd.Secret
+		if withSecret {
+			var err error
+			switch kind {
+			case "SNMP":
+				secs, err = sourceSecrets(in, "communityString", "password", "privacyPassword")
+			default:
+				secs, err = sourceSecrets(in, "password")
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+		plan.do = func(ctx context.Context) error {
+			str := func(k string) *string {
+				if v, ok := changes[k].(string); ok {
+					return &v
+				}
+				return nil
+			}
+			reveal := func(k string) *string {
+				if sec, ok := secs[k]; ok && !sec.Empty() {
+					v := sec.Reveal()
+					return &v
+				}
+				return nil
+			}
+			var err error
+			switch kind {
+			case "CLI":
+				patch := forward.CLICredentialPatch{Name: str("name"), Username: str("username"), Password: reveal("password"), PrivilegedModePasswordID: str("privilegedModePasswordId")}
+				if v, ok := changes["privilegeLevel"].(int32); ok {
+					patch.PrivilegeLevel = &v
+				}
+				if v, ok := changes["autoAssociate"].(bool); ok {
+					patch.AutoAssociate = &v
+				}
+				_, _, err = s.Client.Credentials.UpdateCLI(ctx, in.NetworkID, in.Name, patch)
+			case "HTTP":
+				patch := forward.HTTPCredentialPatch{Name: str("name"), Username: str("username"), Password: reveal("password"), LoginType: str("loginType")}
+				if v, ok := changes["autoAssociate"].(bool); ok {
+					patch.AutoAssociate = &v
+				}
+				_, err = s.Client.Credentials.UpdateHTTP(ctx, in.NetworkID, in.Name, patch)
+			case "SNMP":
+				patch := map[string]any{}
+				if v := str("name"); v != nil {
+					patch["name"] = *v
+				}
+				if v := reveal("communityString"); v != nil {
+					patch["community"] = *v
+				}
+				if v := reveal("password"); v != nil {
+					patch["authenticationKey"] = *v
+				}
+				if v := reveal("privacyPassword"); v != nil {
+					patch["privacyKey"] = *v
+				}
+				if v, ok := changes["autoAssociate"].(bool); ok {
+					patch["autoAssociate"] = v
+				}
+				_, err = s.Client.Credentials.UpdateSNMP(ctx, in.NetworkID, in.Name, patch)
+			}
+			return err
+		}
+		plan.verify = func(ctx context.Context) (bool, any, error) {
+			want := curName
+			if n, ok := changes["name"].(string); ok {
+				want = n
+			}
+			user, _ := changes["username"].(string)
+			switch kind {
+			case "CLI":
+				c, _, err := s.Client.Credentials.GetCLI(ctx, in.NetworkID, in.Name)
+				if err != nil || c == nil {
+					return false, nil, err
+				}
+				g, _ := fwd.Generic(c)
+				return c.Name == want && (user == "" || c.Username == user), g, nil
+			case "HTTP":
+				c, _, err := s.Client.Credentials.GetHTTP(ctx, in.NetworkID, in.Name)
+				if err != nil || c == nil {
+					return false, nil, err
+				}
+				g, _ := fwd.Generic(c)
+				return c.Name == want && (user == "" || c.Username == user), g, nil
+			}
+			return credentialExists(ctx, s, in.NetworkID, kind, want)
+		}
+	}
+	return plan, nil
 }
 
 func secretSource(in editSourceInput) string {
@@ -290,8 +462,12 @@ func credentialExists(ctx context.Context, s *fwd.Session, network, kind, name s
 }
 
 func planJumpServer(ctx context.Context, s *fwd.Session, in editSourceInput) (*networkPlan, error) {
-	if in.Action != "create" {
-		return nil, fmt.Errorf("%w: object jump_server takes action create (the API has no update or delete)", ErrInvalidInput)
+	switch in.Action {
+	case "update", "delete":
+		return planJumpServerChange(ctx, s, in)
+	case "create":
+	default:
+		return nil, fmt.Errorf("%w: object jump_server takes action create, update or delete", ErrInvalidInput)
 	}
 	var def struct {
 		Host     string `json:"host"`
@@ -317,8 +493,8 @@ func planJumpServer(ctx context.Context, s *fwd.Session, in editSourceInput) (*n
 		}
 	}
 	plan := &networkPlan{target: fmt.Sprintf("create a %s-authenticated jump server %s@%s on network %s", auth, def.Username, def.Host, in.NetworkID), action: "create_jump_server", before: nil,
-		after: map[string]any{"host": def.Host, "port": max(def.Port, 22), "username": def.Username, "auth": auth, "secret": "<secret>"}, reversible: false,
-		undo:   "none through the API: the SDK has no jump server delete (remove it in the Forward UI)",
+		after: map[string]any{"host": def.Host, "port": max(def.Port, 22), "username": def.Username, "auth": auth, "secret": "<secret>"}, reversible: true,
+		undo:   "delete the new jump server (action delete, name its id, confirm its id)",
 		limits: []string{"the " + map[string]string{"key": "private key", "password": "password"}[auth] + " is read from " + secretSource(in) + " and is never shown, logged or returned"}}
 	if in.Apply {
 		secs, err := sourceSecrets(in, map[string]string{"key": "sshKey", "password": "password"}[auth])
@@ -783,8 +959,10 @@ func planRapid7(ctx context.Context, s *fwd.Session, in editSourceInput) (*netwo
 		CollectionDisabled   bool     `json:"collectionDisabled"`
 		ReportNames          []string `json:"reportNames"`
 	}
-	if err := decodeDefinition(in.Definition, &def, "name, baseUrl, credentialId, disableSslValidation, collectionDisabled, reportNames"); err != nil {
-		return nil, err
+	if in.Action != "delete" {
+		if err := decodeDefinition(in.Definition, &def, "name, baseUrl, credentialId, disableSslValidation, collectionDisabled, reportNames"); err != nil {
+			return nil, err
+		}
 	}
 	cur, _, err := s.Client.Integrations.ListRapid7(ctx, in.NetworkID)
 	if err != nil {
@@ -844,8 +1022,31 @@ func planRapid7(ctx context.Context, s *fwd.Session, in editSourceInput) (*netwo
 				verify: shown(req.Name)}, nil
 		}
 		return nil, nil
+	case "delete":
+		for _, x := range cur {
+			if x.Name != in.Name {
+				continue
+			}
+			before, _ := fwd.Generic(x)
+			return &networkPlan{target: fmt.Sprintf("delete Rapid7 source %q from network %s", x.Name, in.NetworkID), action: "delete_rapid7_source", before: before, reversible: false, confirm: x.Name,
+				undo: "none: create it again from the before values (the credential it used is not deleted)",
+				do: func(ctx context.Context) error {
+					_, err := s.Client.Integrations.DeleteRapid7(ctx, in.NetworkID, x.Name)
+					return err
+				},
+				verify: func(ctx context.Context) (bool, any, error) {
+					l, _, e := s.Client.Integrations.ListRapid7(ctx, in.NetworkID)
+					for _, y := range l {
+						if y.Name == x.Name {
+							return false, y, e
+						}
+					}
+					return true, nil, e
+				}}, nil
+		}
+		return nil, nil
 	}
-	return nil, fmt.Errorf("%w: object rapid7_source takes action create or update (name is the source to update)", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: object rapid7_source takes action create, update or delete (name is the source to update or delete)", ErrInvalidInput)
 }
 
 // planControllerSetup manages a controller-managed setup: controllers (devices Forward logs in to) and the managed devices they report. The controllers' logins are existing credential
@@ -996,4 +1197,114 @@ func planMistSetup(ctx context.Context, s *fwd.Session, in editSourceInput) (*ne
 			verify: present(m.Name, false)}, nil
 	}
 	return nil, fmt.Errorf("%w: mist_setup takes action create or delete", ErrInvalidInput)
+}
+
+// planJumpServerChange updates or deletes a jump server by id (name). A change makes Forward re-handle the devices that go through it. A new password, key or certificate is optional and
+// comes from the secret: password for a password server, sshKey for a key server (a JSON secret file may carry both sshKey and sshCert).
+func planJumpServerChange(ctx context.Context, s *fwd.Session, in editSourceInput) (*networkPlan, error) {
+	if in.Name == "" {
+		return nil, fmt.Errorf("%w: %s needs name (the jump server id, from inspect-platform area jump_servers)", ErrInvalidInput, in.Action)
+	}
+	cur, _, err := s.Client.JumpServers.List(ctx, in.NetworkID)
+	if err != nil {
+		return nil, err
+	}
+	var js *forward.JumpServer
+	for i := range cur {
+		if string(cur[i].ID) == in.Name {
+			js = &cur[i]
+		}
+	}
+	if js == nil {
+		return nil, nil
+	}
+	before, _ := fwd.Generic(js)
+	gone := func(ctx context.Context) (bool, any, error) {
+		l, _, e := s.Client.JumpServers.List(ctx, in.NetworkID)
+		for _, x := range l {
+			if string(x.ID) == in.Name {
+				return false, x, e
+			}
+		}
+		return true, nil, e
+	}
+	if in.Action == "delete" {
+		if err := noSecretInputs(in); err != nil {
+			return nil, err
+		}
+		return &networkPlan{target: fmt.Sprintf("delete jump server %s (%s@%s) from network %s", in.Name, js.Username, js.Host, in.NetworkID), action: "delete_jump_server", before: before, reversible: false, confirm: in.Name,
+			undo:   "none: create it again with its secret",
+			limits: []string{"devices that go through this jump server can no longer be collected until they use another"},
+			do: func(ctx context.Context) error {
+				_, err := s.Client.JumpServers.Delete(ctx, in.NetworkID, in.Name)
+				return err
+			},
+			verify: gone}, nil
+	}
+	var def struct {
+		Host                   *string `json:"host"`
+		Port                   *int    `json:"port"`
+		Username               *string `json:"username"`
+		SupportsPortForwarding *bool   `json:"supportsPortForwarding"`
+		VRF                    *string `json:"vrf"`
+		AuthTimeoutSeconds     *int    `json:"authenticationTimeoutSeconds"`
+		MaxSessions            *int    `json:"maxSessions"`
+		MaxStartups            *int    `json:"maxStartups"`
+		SecretKind             string  `json:"secret_is"`
+	}
+	if err := decodeDefinition(in.Definition, &def, "host, port, username, supportsPortForwarding, vrf, authenticationTimeoutSeconds, maxSessions, maxStartups, secret_is (password|sshKey: what the secret is; default password)"); err != nil {
+		return nil, err
+	}
+	withSecret := in.SecretFile != "" || in.SecretEnv != ""
+	patch := forward.JumpServerUpdate{Host: def.Host, Port: def.Port, Username: def.Username, SupportsPortForwarding: def.SupportsPortForwarding, VRF: def.VRF,
+		AuthenticationTimeoutSeconds: def.AuthTimeoutSeconds, MaxSessions: def.MaxSessions, MaxStartups: def.MaxStartups}
+	if m, _ := fwd.Generic(patch); len(m.(map[string]any)) == 0 && !withSecret {
+		return nil, fmt.Errorf("%w: update must change a field or rotate the secret (secret_file or secret_env)", ErrInvalidInput)
+	}
+	kind := firstNonEmpty(def.SecretKind, "password")
+	if kind != "password" && kind != "sshKey" {
+		return nil, fmt.Errorf("%w: secret_is must be password or sshKey", ErrInvalidInput)
+	}
+	after := map[string]any{"fields": def}
+	if withSecret {
+		after["secret"] = fwd.SecretFromString("x")
+	}
+	plan := &networkPlan{target: fmt.Sprintf("update jump server %s (%s@%s) on network %s", in.Name, js.Username, js.Host, in.NetworkID), action: "update_jump_server", before: before, after: after, reversible: true,
+		undo:   "update again with the before fields; a rotated secret cannot be read back, so re-enter the earlier one",
+		limits: []string{"a change makes Forward re-handle the devices that go through this jump server", "the secret, if given, is read from " + secretSource(in) + " only on apply and is never shown, logged or returned"}}
+	if in.Apply {
+		if withSecret {
+			secs, err := sourceSecrets(in, kind, "sshCert")
+			if err != nil {
+				return nil, err
+			}
+			if v := secs[kind]; !v.Empty() {
+				r := v.Reveal()
+				if kind == "password" {
+					patch.Password = &r
+				} else {
+					patch.SSHKey = &r
+				}
+			}
+			if v := secs["sshCert"]; !v.Empty() {
+				r := v.Reveal()
+				patch.SSHCert = &r
+			}
+		}
+		plan.do = func(ctx context.Context) error {
+			_, err := s.Client.JumpServers.Update(ctx, in.NetworkID, in.Name, patch)
+			return err
+		}
+		plan.verify = func(ctx context.Context) (bool, any, error) {
+			l, _, e := s.Client.JumpServers.List(ctx, in.NetworkID)
+			for _, x := range l {
+				if string(x.ID) == in.Name {
+					g, _ := fwd.Generic(x)
+					return (def.Host == nil || x.Host == *def.Host) && (def.Port == nil || x.Port == *def.Port) && (def.Username == nil || x.Username == *def.Username), g, e
+				}
+			}
+			return false, nil, e
+		}
+	}
+	return plan, nil
 }

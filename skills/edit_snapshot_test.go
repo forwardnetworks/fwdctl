@@ -137,3 +137,20 @@ func TestEditSnapshotImportUploadsFilesAsANewSnapshot(t *testing.T) {
 		t.Errorf("a missing file is refused")
 	}
 }
+
+func TestEditSnapshotFavoriteAndUnfavoriteAreReversibleAndNeedNoConfirm(t *testing.T) {
+	var calls []string
+	routes := snapWorld("PROCESSED", map[string]fwdtest.Handler{"PATCH /api/snapshots/s1": func(r *http.Request, _ []byte) (int, any) {
+		calls = append(calls, r.URL.Query().Get("action"))
+		return 204, nil
+	}})
+	for _, a := range []string{"favorite", "unfavorite"} {
+		r, _ := mustRun(t, "edit-snapshot", routes, `{"network_id":"n1","snapshot_id":"s1","action":"`+a+`","apply":true}`)
+		if r.Status != result.OK || !r.Changes[0].Reversible {
+			t.Fatalf("%s: %s %+v", a, r.Status, r.Changes)
+		}
+	}
+	if len(calls) != 2 || calls[0] != "favorite" || calls[1] != "unfavorite" {
+		t.Errorf("calls %v", calls)
+	}
+}

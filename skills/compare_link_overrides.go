@@ -110,14 +110,11 @@ func compareLinkOverridesView(ctx context.Context, s *fwd.Session, in compareLin
 			return l[i]["port2"].(string) < l[j]["port2"].(string)
 		})
 	}
-	cut := func(l []map[string]any) []map[string]any {
-		if len(l) > in.Limit {
-			return l[:in.Limit]
-		}
-		return l
-	}
-	if len(added) > in.Limit || len(removed) > in.Limit || len(changed) > in.Limit {
-		limits = append(limits, fmt.Sprintf("examples are bounded to %d per list (limit, at most %d); the counts are complete", in.Limit, maxOverrideLimit))
+	var omitted []result.Omission
+	cut := func(l []map[string]any, what string) []map[string]any {
+		out, om := result.Cap(l, in.Limit, what, fmt.Sprintf("the counts are complete; raise limit (at most %d) for more examples", maxOverrideLimit))
+		omitted = append(omitted, om...)
+		return out
 	}
 	devs := make([]string, 0, len(devCount))
 	for d := range devCount {
@@ -129,16 +126,15 @@ func compareLinkOverridesView(ctx context.Context, s *fwd.Session, in compareLin
 		}
 		return devs[i] < devs[j]
 	})
-	devRows := make([]map[string]any, 0, min(len(devs), topOverrideGroups))
-	for i, d := range devs {
-		if i >= topOverrideGroups {
-			break
-		}
+	devsTop, devsCut := result.Cap(devs, topOverrideGroups, "devices with differing overrides", "the devices with the most are listed")
+	omitted = append(omitted, devsCut...)
+	devRows := make([]map[string]any, 0, len(devsTop))
+	for _, d := range devsTop {
 		devRows = append(devRows, map[string]any{"device": d, "differing_overrides": devCount[d]})
 	}
 	counts := map[string]any{"before_total": btotal, "after_total": atotal, "added": len(added), "removed": len(removed), "changed": len(changed), "unchanged": unchanged}
 	detail := map[string]any{"before_snapshot_id": in.BeforeSnapshotID, "after_snapshot_id": in.AfterSnapshotID, "counts": counts,
-		"added": cut(added), "removed": cut(removed), "changed": cut(changed), "devices_involved": devRows}
+		"added": cut(added, "added overrides"), "removed": cut(removed, "removed overrides"), "changed": cut(changed, "changed overrides"), "devices_involved": devRows}
 	if in.Device != "" {
 		detail["device"] = in.Device
 		limits = append(limits, "counts other than before_total and after_total cover only overrides with "+in.Device+" at either end")
@@ -153,6 +149,6 @@ func compareLinkOverridesView(ctx context.Context, s *fwd.Session, in compareLin
 			finding += " for device " + in.Device
 		}
 	}
-	return result.Build(compareLinkOverridesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"edit-link-overrides", "inspect-snapshots"},
+	return result.Build(compareLinkOverridesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"edit-link-overrides", "inspect-snapshots"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvTopology, "topologyOverrides", fwd.SnapshotIDPtr(after), detail, finding)}})
 }

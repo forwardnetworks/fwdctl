@@ -8,7 +8,7 @@
     "network_id": { "type": "string", "minLength": 1 },
     "name": { "type": "string", "minLength": 1, "description": "network create: the new name; cluster update and tag update or delete: the existing cluster or tag" },
     "definition": { "type": "object", "description": "the body for the object and action; see the SKILL.md table" },
-    "confirm": { "type": "string", "description": "network delete: the exact network_id; location delete: the location id; tag delete: the exact tag name" },
+    "confirm": { "type": "string", "description": "network delete: the exact network_id; location delete: the location id; tag delete: the exact tag name; cluster delete: the exact cluster name" },
     "apply": { "type": "boolean", "default": false }
   }
 }

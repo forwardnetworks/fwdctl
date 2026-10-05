@@ -208,3 +208,62 @@ func TestEditSourceControllerAndMistSetups(t *testing.T) {
 		t.Errorf("delete: %s", r.Finding)
 	}
 }
+
+func TestEditSourceCredentialUpdateChangesFieldsAndRotatesTheSecretFromAFile(t *testing.T) {
+	cred := map[string]any{"id": "c1", "name": "ops", "username": "admin"}
+	var sent string
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/cli-credentials/c1": func(*http.Request, []byte) (int, any) { return 200, cred },
+		"GET /api/networks/n1/cli-credentials":    func(*http.Request, []byte) (int, any) { return 200, []any{cred} },
+		"PATCH /api/networks/n1/cli-credentials/c1": func(_ *http.Request, b []byte) (int, any) {
+			sent = string(b)
+			cred["username"] = "root"
+			return 200, cred
+		},
+	}
+	f := secretFile(t, 0o600, planted2)
+	body := `{"network_id":"n1","object":"credential","action":"update","name":"c1","definition":{"type":"CLI","username":"root"},"secret_file":"` + f + `"`
+	r, srv := mustRun(t, "edit-source", routes, body+`}`)
+	if writes(srv) != 0 || r.Mode != result.ModeDryRun || strings.Contains(jsonOf(r), planted2) {
+		t.Fatalf("dry run: %s", jsonOf(r))
+	}
+	r, _ = mustRun(t, "edit-source", routes, body+`,"apply":true}`)
+	if r.Status != result.OK || !strings.Contains(sent, planted2) || !strings.Contains(sent, "root") || strings.Contains(jsonOf(r), planted2) {
+		t.Fatalf("apply: %s sent=%s", r.Status, sent)
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"credential","action":"update","name":"c1","definition":{"type":"CLI"}}`); err == nil {
+		t.Errorf("an update that changes nothing is refused")
+	}
+}
+
+func TestEditSourceJumpServerUpdateAndDeleteAndRapid7Delete(t *testing.T) {
+	js := []any{map[string]any{"id": "j1", "host": "jump.example", "port": 22, "username": "ops"}}
+	var patched string
+	src := []any{map[string]any{"name": "r7", "baseUrl": "https://r7.example"}}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/jumpServers": func(*http.Request, []byte) (int, any) { return 200, js },
+		"PATCH /api/networks/n1/jumpServers/j1": func(_ *http.Request, b []byte) (int, any) {
+			patched = string(b)
+			js = []any{map[string]any{"id": "j1", "host": "jump2.example", "port": 22, "username": "ops"}}
+			return 200, nil
+		},
+		"DELETE /api/networks/n1/jumpServers/j1":    func(*http.Request, []byte) (int, any) { js = nil; return 204, nil },
+		"GET /api/networks/n1/end-host-scanners":    func(*http.Request, []byte) (int, any) { return 200, src },
+		"DELETE /api/networks/n1/rapid7-sources/r7": func(*http.Request, []byte) (int, any) { src = nil; return 204, nil },
+	}
+	f := secretFile(t, 0o600, planted2)
+	upd := `{"network_id":"n1","object":"jump_server","action":"update","name":"j1","definition":{"host":"jump2.example"},"secret_file":"` + f + `","apply":true}`
+	r, _ := mustRun(t, "edit-source", routes, upd)
+	if r.Status != result.OK || !strings.Contains(patched, planted2) || strings.Contains(jsonOf(r), planted2) {
+		t.Fatalf("update: %s %s", r.Status, patched)
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"jump_server","action":"delete","name":"j1","apply":true}`); err == nil || js == nil {
+		t.Errorf("delete without confirm is refused")
+	}
+	if r, _ := mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"jump_server","action":"delete","name":"j1","apply":true,"confirm":"j1"}`); r.Status != result.OK || js != nil {
+		t.Errorf("jump delete: %s", r.Finding)
+	}
+	if r, _ := mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"rapid7_source","action":"delete","name":"r7","apply":true,"confirm":"r7"}`); r.Status != result.OK || src != nil {
+		t.Errorf("rapid7 delete: %s", r.Finding)
+	}
+}

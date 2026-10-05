@@ -61,10 +61,7 @@ func inspectHistory(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		return deviceConfigHistory(ctx, s, in, readable, times, n, cx)
 	}
 	var limits []string
-	if len(readable) > n {
-		readable = readable[:n]
-		limits = append(limits, fmt.Sprintf("only the newest %d processed snapshots were read; raise snapshots (at most %d) to look further back", n, maxHistorySnapshots))
-	}
+	readable, omitted := result.Cap(readable, n, "processed snapshots", fmt.Sprintf("only the newest were read; raise snapshots (at most %d) to look further back", maxHistorySnapshots))
 	type row struct {
 		Snapshot   string `json:"snapshot_id"`
 		At         string `json:"at"`
@@ -124,7 +121,7 @@ func inspectHistory(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		limits = append(limits, "the change, if any, is older than the snapshots read")
 	}
 	cx.SnapshotID, cx.SnapshotTime = &readable[0], func() *string { t := times[readable[0]]; return &t }()
-	return result.Build(historyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(historyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"compare-device-config", "verify-change"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvPolicy, "checkHistory", cx.SnapshotID, detail, finding)}})
 }
@@ -133,10 +130,7 @@ func inspectHistory(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 // whose collected CONFIG files differ for the device. Each pair is one diff read; the walk stops at the first change.
 func deviceConfigHistory(ctx context.Context, s *fwd.Session, in historyInput, readable []string, times map[string]string, n int, cx result.Context) (result.Result, error) {
 	var limits []string
-	if len(readable) > n {
-		readable = readable[:n]
-		limits = append(limits, fmt.Sprintf("only the newest %d processed snapshots were read; raise snapshots (at most %d) to look further back", n, maxHistorySnapshots))
-	}
+	readable, omitted := result.Cap(readable, n, "processed snapshots", fmt.Sprintf("only the newest were read; raise snapshots (at most %d) to look further back", maxHistorySnapshots))
 	if len(readable) < 2 {
 		return result.NewUnknown(historyName, "Fewer than two processed snapshots: there is nothing to compare", cx,
 			[]string{"history needs at least two processed collected snapshots"}, result.Options{NextActions: []string{"inspect-snapshots"}})
@@ -186,7 +180,7 @@ func deviceConfigHistory(ctx context.Context, s *fwd.Session, in historyInput, r
 	}
 	limits = append(limits, "adjacent collected snapshots only: a change between two collections is attributed to the interval, not to a time inside it")
 	cx.SnapshotID, cx.SnapshotTime = &readable[0], func() *string { t := times[readable[0]]; return &t }()
-	return result.Build(historyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(historyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"compare-device-config", "inspect-inventory"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvConfig, "diffFiles", cx.SnapshotID, detail, finding)}})
 }

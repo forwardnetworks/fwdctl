@@ -277,9 +277,7 @@ func diffConnections(before, after []forward.SyntheticNodeConn) map[string]any {
 	}
 	order := func(rows []map[string]any, key func(map[string]any) string) []map[string]any {
 		sort.Slice(rows, func(i, j int) bool { return key(rows[i]) < key(rows[j]) })
-		if len(rows) > maxConnDiffRows {
-			rows = rows[:maxConnDiffRows]
-		}
+		rows, _ = result.CapRow(rows, maxConnDiffRows) // added_count, removed_count and changed_count beside the rows are exact
 		return rows
 	}
 	rk := func(r map[string]any) string { return fmt.Sprint(r["vrf"], "|", r["uplink"], "|", r["vlan"]) }

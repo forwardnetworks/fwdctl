@@ -109,10 +109,7 @@ func checkNetworkCompliance(ctx context.Context, s *fwd.Session, raw json.RawMes
 	}
 	switch {
 	case len(t.violated) > 0:
-		names := t.violated
-		if len(names) > 5 {
-			names = names[:5]
-		}
+		names, _ := result.CapRow(t.violated, 5) // the finding states the full count
 		return result.Build(complianceName, result.Failed, fmt.Sprintf("%d policy(ies) violated, worst first, violation count in parentheses: %s", len(t.violated), strings.Join(names, ", ")),
 			result.Deterministic, cx, result.Options{Limits: t.limits, Evidence: t.evidence, NextActions: []string{"inspect-history", "plan-compliance-audit", "investigate-reachability"}})
 	case t.unevaluated > 0 || t.compliant == 0:
@@ -202,10 +199,7 @@ func evalChecks(ctx context.Context, s *fwd.Session, snapID string, sid *string,
 	}
 	t.unevaluated += len(unevaluated)
 	if len(unevaluated) > 0 {
-		shown := unevaluated
-		if len(shown) > 5 {
-			shown = shown[:5]
-		}
+		shown, _ := result.CapRow(unevaluated, 5) // the limit states the full count
 		t.limits = append(t.limits, fmt.Sprintf("%d check(s) were not evaluated (status NONE/PROCESSING/ERROR/TIMEOUT): %s", len(unevaluated), strings.Join(shown, ", ")))
 	}
 	if len(enabled) == 0 {
@@ -248,10 +242,7 @@ func evalNQE(ctx context.Context, s *fwd.Session, networkID, snapID string, sid 
 	}
 	switch {
 	case viol.Total > 0:
-		rows := viol.Items
-		if len(rows) > sampleRows {
-			rows = rows[:sampleRows]
-		}
+		rows, _ := result.CapRow(viol.Items, sampleRows) // "violations" beside the sample is the full count
 		t.violated = append(t.violated, fmt.Sprintf("%s (%d)", name, viol.Total))
 		t.evidence = append(t.evidence, result.NewEvidence(result.EvNQE, "runNqeQuery", sid,
 			map[string]any{"name": name, "violations": viol.Total, "scope": scopeVal, "sample": rows}, fmt.Sprintf("%s: %d violation(s)", name, viol.Total)))

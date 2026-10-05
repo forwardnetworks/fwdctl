@@ -112,6 +112,7 @@ func summariseSlow(m *forward.SnapshotCollectionMetrics, filter string) *slowSum
 	sm.byType = slowGroupMap(m.Devices, func(d forward.DeviceCollectionMetrics) string { return d.DeviceType }, filter)
 	sm.byConn = slowGroupMap(m.Devices, func(d forward.DeviceCollectionMetrics) string { return d.ConnTypeDisplayName }, filter)
 	sm.stats["by_device_type"], sm.stats["by_connection"] = topSlowGroups(sm.byType, 8), topSlowGroups(sm.byConn, 8)
+	sm.stats["device_type_groups"], sm.stats["connection_groups"] = len(sm.byType), len(sm.byConn)
 	if len(sm.errorsByType) > 0 {
 		sm.stats["errors_by_type"] = sm.errorsByType
 	}
@@ -204,7 +205,6 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	if !ok {
 		return result.NewUnknown(collectionFailureName, fmt.Sprintf("Offset %d is beyond the %d devices", in.Offset, len(sm.rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
-	limits = append(limits, wl...)
 	limits = append(limits,
 		"implied_parallelism is the total device collection time over the collection's wall time: the average number of devices being collected at once. If it sits near the collector's configured concurrency (128 unless configured), the collector's slots are the limit and a slower run means more devices or more time per device, not a stalled collector; it is an average, so a ramp-up or a long tail lowers it: in_flight shows when",
 		"in_flight counts a device from its recorded start to its recorded end, and that start can be when the device was handed to the collector rather than when it got a slot, so the count can exceed the collector's configured concurrency (seen: 1,788 in the first five minutes against 1,024); read it as 'started and not finished', and use idle_gaps and finished_by_seconds for the shape of the run",
@@ -289,7 +289,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		finding += "; " + cmp.summary
 	}
 	d := map[string]any{"stats": stats, "offset": in.Offset, "devices": win}
-	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(collectionFailureName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: wl,
 		NextActions: []string{"inspect-collection", "inspect-device-files"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "getCollectionMetrics", cx.SnapshotID, d, finding)}})
 }
@@ -399,7 +399,8 @@ func inFlightProfile(m *forward.SnapshotCollectionMetrics) map[string]any {
 			}
 			top = append(top, map[string]any{"device_type": k.typ, "connection": k.conn, "devices": counts[k]})
 		}
-		out["started_after_the_longest_gap"] = map[string]any{"devices": after, "most_common": top, "first_devices": names[:min(len(names), 10)]}
+		firstDevices, _ := result.CapRow(names, 10) // "devices" beside it is the full count
+		out["started_after_the_longest_gap"] = map[string]any{"devices": after, "most_common": top, "first_devices": firstDevices}
 	}
 	return out
 }
@@ -566,9 +567,7 @@ func topSlowGroups(groups map[string]*slowAgg, n int) []map[string]any {
 		}
 		return names[i] < names[j]
 	})
-	if len(names) > n {
-		names = names[:n]
-	}
+	names, _ = result.CapRow(names, n) // the caller records the group counts beside the rows (device_type_groups, connection_groups)
 	out := make([]map[string]any, 0, len(names))
 	for _, k := range names {
 		g := groups[k]

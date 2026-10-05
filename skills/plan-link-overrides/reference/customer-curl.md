@@ -1,5 +1,12 @@
 # Applying link overrides with curl (customer side)
 
+## Contents
+- Read what is there (always first)
+- Replace ALL of a snapshot's overrides
+- Add or remove some
+- Network-level, staged
+- Check afterwards
+
 Placeholders only: set `FWD_URL` (for example `https://forward.example.com`), `FWD_KEY` and `FWD_SECRET` (an API token's access key and secret), `NETWORK_ID` and `SNAPSHOT_ID` yourself; never paste real credentials into a ticket or a chat. A port is `<device> <interface>`; a link has no direction.
 Sources: Forward's network-topology API reference and release notes 26.8 and 26.9, and the controller source. `fwdctl` itself uses the snapshot-scoped POST below.
 

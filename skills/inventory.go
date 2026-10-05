@@ -520,8 +520,9 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		return result.NewUnknown(inventoryName, fmt.Sprintf("Offset %d is beyond the %d %s", in.Offset, out.Total, noun(in.Kind)), cx, limits, result.Options{})
 	}
 	end := in.Offset + len(out.Items)
-	if int64(end) < out.Total {
-		limits = append(limits, fmt.Sprintf("%d %s match; rows %d-%d shown. Page with offset=%d.", out.Total, noun(in.Kind), in.Offset+1, end, end))
+	var omitted []result.Omission
+	if in.Offset > 0 || int64(end) < out.Total {
+		omitted = append(omitted, result.Omission{What: noun(in.Kind), Total: int(out.Total), Shown: len(out.Items), From: in.Offset, Paged: true, Next: pageNext(end, int(out.Total))})
 	}
 	detail := map[string]any{"kind": in.Kind, "filters": filters, "total": out.Total, "offset": in.Offset, "returned": len(out.Items), "rows": fwd.Records(out.Items)}
 	finding := fmt.Sprintf("%d %s returned (%d match)", len(out.Items), noun(in.Kind), out.Total)
@@ -588,7 +589,7 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		limits = append(limits, "Collected true means Forward collected the account, not that every resource type was read: a collector can ignore an error from one cloud API (a quota or permission call, say) and still return the rest. When instances or subnets are fewer than expected, read investigate-collection-failure view exceptions, and inspect-collection view config for the cloud setup's regions")
 	}
 	return result.Build(inventoryName, result.OK, finding,
-		result.Deterministic, cx, result.Options{Limits: limits, NextActions: next,
+		result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: next,
 			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", fwd.SnapshotIDPtr(snap), detail,
 				fmt.Sprintf("%s: %d of %d", in.Kind, len(out.Items), out.Total))}})
 }
@@ -796,12 +797,13 @@ func inventorySecurityRules(ctx context.Context, s *fwd.Session, in inventoryInp
 		}
 		vendors[str(r["Vendor"])]++
 	}
-	if int64(len(rows)) < out.Total {
-		limits = append(limits, fmt.Sprintf("%d scopes match; rows %d-%d shown. Page with offset=%d; the totals cover the rows shown", out.Total, in.Offset+1, in.Offset+len(rows), in.Offset+len(rows)))
+	var omitted []result.Omission
+	if in.Offset > 0 || int64(len(rows)) < out.Total {
+		omitted = append(omitted, result.Omission{What: "scopes", Total: int(out.Total), Shown: len(rows), From: in.Offset, Paged: true, Next: joinNext(pageNext(in.Offset+len(rows), int(out.Total)), "the totals cover the rows shown")})
 	}
 	finding := fmt.Sprintf("EXPERIMENTAL model: %d scope row(s) across %d vendor(s) on this page, %d rules and %d address objects", scopes, len(vendors), rules, addr)
 	detail := map[string]any{"kind": in.Kind, "experimental": true, "total": out.Total, "offset": in.Offset, "returned": len(rows), "current_build_fields": full, "by_vendor": vendors, "rows": rows}
-	return result.Build(inventoryName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-environment", "inspect-device-files"},
+	return result.Build(inventoryName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"inspect-environment", "inspect-device-files"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, detail, finding)}})
 }
 

@@ -165,11 +165,10 @@ func accessActivity(ctx context.Context, s *fwd.Session, in inspectAccessInput, 
 	if status != "" {
 		limits = append(limits, fmt.Sprintf("status %s is applied here after reading, to the records read", status))
 	}
-	win, wl, ok := window(rows, in.Limit, in.Offset, 25, 200, "requests")
+	win, omitted, ok := window(rows, in.Limit, in.Offset, 25, 200, "requests")
 	if !ok {
 		return result.NewUnknown(inspectAccessName, fmt.Sprintf("Offset %d is beyond the %d requests read", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
-	limits = append(limits, wl...)
 	finding := fmt.Sprintf("%d audited request(s) since %s", len(recs), start.UTC().Format("2006-01-02"))
 	if !until.IsZero() {
 		finding += " until " + until.UTC().Format("2006-01-02 15:04Z")
@@ -186,7 +185,7 @@ func accessActivity(ctx context.Context, s *fwd.Session, in inspectAccessInput, 
 	finding += fmt.Sprintf("; newest %s, oldest read %s", rows[0]["time"], rows[len(rows)-1]["time"])
 	detail := map[string]any{"total_matching": len(recs), "read_from_forward": len(all), "since": start.UTC().Format(time.RFC3339), "route_prefix": prefix, "method": method,
 		"until": nilIfEmpty(until.UTC().Format(time.RFC3339)), "by_user": topDeviceCountRowsNamed(byUser, 10, "requests"), "by_method": byMethod, "by_outcome": byClass, "by_day": sortedCounts(byDay, false), "by_route": topDeviceCountRowsNamed(byRoute, 15, "requests"), "offset": in.Offset, "requests": win}
-	return result.Build(inspectAccessName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-access", "inspect-collection"},
+	return result.Build(inspectAccessName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"inspect-access", "inspect-collection"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "getAuditLogs", nil, detail, finding)}})
 }
 

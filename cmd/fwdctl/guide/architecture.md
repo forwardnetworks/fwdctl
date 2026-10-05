@@ -65,6 +65,7 @@ The result every tool returns is small and structured, so the model spends its a
 - `confidence`: `deterministic`, `inferred` or `unknown`
 - `evidence`: what the answer rests on, each item with the snapshot and operation it came from
 - `limits`: what was not measured, truncated or unavailable
+- `omitted`: every list that was cut or paged, as data (`what`, `total`, `shown`, `next`), so a comparison of two answers can tell a short list from a cut one; absent when nothing was cut
 - `context`: which network and snapshot, and how old
 - `next_actions`: the skill or playbook that usually follows (a failed result names its owning playbook; a dry run names `plan-safe-write`)
 - for an edit skill also `mode` (`dry_run` or `applied`) and `changes` (each with `before`, `after`, `reversible` and `undo`)

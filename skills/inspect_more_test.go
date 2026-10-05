@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -329,5 +330,47 @@ func TestChecksDetailShowsTheDefinitionAndTheViolatingRowsOfAFailingNQECheck(t *
 	routes["GET /api/snapshots/s1/checks/9"] = fwdtest.Const(200, map[string]any{"id": "9", "name": "no telnet", "status": "PASS", "definition": map[string]any{"checkType": "NQE", "queryId": "Q_x"}})
 	if r, _ := mustRun(t, "inspect-checks", routes, `{"network_id":"n1","check_id":"9"}`); strings.Contains(jsonOf(r), "violation_rows") {
 		t.Errorf("only a failing check lists violations")
+	}
+}
+
+func cliProfileRoutes(assess fwdtest.Handler) map[string]fwdtest.Handler {
+	return map[string]fwdtest.Handler{
+		"GET /api/networks/n1/endpoints": fwdtest.Const(200, []any{
+			map[string]any{"type": "CLI", "name": "e1", "host": "10.1.1.1", "profileId": "CLI-2"}}),
+		"GET /api/endpoint-profiles": fwdtest.Const(200, map[string]any{"profiles": []any{
+			map[string]any{"id": "CLI-2", "name": "cli-x", "type": "CLI", "customCommands": []string{"show version", "reload"}, "detectorCommand": "show hostname", "nameDetectorCommand": "show name"}}}),
+		"GET /api/approved-cli-commands":  fwdtest.Const(200, map[string]any{"commands": []any{}}),
+		"POST /api/approved-cli-commands": assess,
+	}
+}
+
+func TestCollectionConfigSaysWhetherACLIProfileCollectsFromAllItsCommands(t *testing.T) {
+	var asked []any
+	r, _ := mustRun(t, "inspect-collection-config", cliProfileRoutes(func(_ *http.Request, body []byte) (int, any) {
+		var in []string
+		_ = json.Unmarshal(body, &in)
+		for _, c := range in {
+			asked = append(asked, c)
+		}
+		return 200, map[string]any{"approved": []string{"show version"}, "unapproved": []string{"reload"}}
+	}), `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	if len(asked) != 4 {
+		t.Errorf("custom, detector and name detector commands are all assessed: %v", asked)
+	}
+	if !strings.Contains(b, `"collects":false`) || !strings.Contains(b, `"unapproved_commands":["reload"]`) {
+		t.Fatalf("%s", b)
+	}
+	r, _ = mustRun(t, "inspect-collection-config", cliProfileRoutes(fwdtest.Const(200, map[string]any{"approved": []string{"show version", "reload", "show hostname", "show name"}, "unapproved": []string{}})), `{"network_id":"n1"}`)
+	if !strings.Contains(jsonOf(r), `"collects":true`) {
+		t.Fatalf("%s", jsonOf(r))
+	}
+}
+
+func TestCollectionConfigRefusedAssessIsUnknownNotAPass(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection-config", cliProfileRoutes(fwdtest.Const(403, map[string]any{"message": "forbidden"})), `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	if !strings.Contains(b, `"collects":"unknown"`) || strings.Contains(b, `"collects":true`) || !strings.Contains(b, "manage-endpoint-profiles") {
+		t.Fatalf("%s", b)
 	}
 }

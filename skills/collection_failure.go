@@ -221,21 +221,15 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 			limits = append(limits, "snapshot exceptions were not read (they need a permission the caller lacks)")
 		}
 		sort.SliceStable(exc, func(i, j int) bool { return exc[i].Occurrences > exc[j].Occurrences })
-		if len(exc) > 10 {
-			limits = append(limits, fmt.Sprintf("%d kinds of processing exception; the 10 most frequent are cited", len(exc)))
-			exc = exc[:10]
-		}
+		exc, omitted := result.Cap(exc, 10, "kinds of processing exception", "the 10 most frequent are cited")
 		for _, e := range exc {
-			devs := e.Devices
-			if len(devs) > 25 {
-				devs = devs[:25]
-			}
+			devs, devsTotal := result.CapRow(e.Devices, 25)
 			evidence = append(evidence, result.NewEvidence(result.EvCollection, "getSnapshotExceptions", sid,
-				map[string]any{"type": e.Type, "occurrences": e.Occurrences, "devices": devs}, fmt.Sprintf("%s x%d", e.Type, e.Occurrences)))
+				map[string]any{"type": e.Type, "occurrences": e.Occurrences, "devices": devs, "devices_total": devsTotal}, fmt.Sprintf("%s x%d", e.Type, e.Occurrences)))
 		}
 		limits = append(limits, "these are counts: view devices names the failed devices (filter by category, type or device) and view neighbors lists the unmodelled neighbours with BGP peers first")
 		return result.Build(collectionFailureName, result.Failed, strings.Join(problems, "; "), result.Deterministic, cx,
-			result.Options{Limits: limits, Evidence: evidence})
+			result.Options{Limits: limits, Omitted: omitted, Evidence: evidence})
 	}
 
 	if m.SuccessfulDevices == 0 {

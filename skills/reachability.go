@@ -85,10 +85,7 @@ func pathEvidence(p fwd.Path, class string, snapshot *string) result.Evidence {
 				" (a transit L3 VPN drops what none of its connections owns; an internet node owns unassigned public space once it has a connection)"
 		}
 	}
-	shown := devices
-	if len(shown) > 8 {
-		shown = shown[:8]
-	}
+	shown, _ := result.CapRow(devices, 8)
 	// every hop with the interfaces the packet entered and left by, so two paths (two snapshots or two networks) can be compared without the raw path search
 	hops := make([]map[string]any, 0, len(p.Hops))
 	for i, h := range p.Hops {
@@ -280,17 +277,18 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	ordered := orderByClass(all, func(c classified) string { return c.class })
 	outcomes, _ := outcomeSummary(all, func(c classified) string { return c.class })
 	limits = append(limits, outcomes+" (intent "+in.Intent+"). Forward chooses which paths it returns, so another intent (PREFER_VIOLATIONS, VIOLATIONS_ONLY) or a larger max_results can show paths this answer does not")
+	var omitted []result.Omission
 	pathEv := func() []result.Evidence {
 		ev := uniquePathEvidence(ordered, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, maxReachabilityEvidence)
 		if distinct := countDistinct(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }); distinct > len(ev) {
-			limits = append(limits, fmt.Sprintf("%d distinct paths exist in this answer; %d are shown (one per outcome first); narrow the flow (src_port, dst_port, from) to see the rest", distinct, len(ev)))
+			omitted = append(omitted, result.Omission{What: "distinct paths", Total: distinct, Shown: len(ev), Next: "one path per outcome is shown first; narrow the flow (src_port, dst_port, from) to see the rest"})
 		}
 		return ev
 	}
 	if delivered > 0 {
 		return result.Build(reachabilityName, result.OK,
 			fmt.Sprintf("Traffic is delivered (%d of %d returned paths)", delivered, len(doc.Paths)),
-			result.Deterministic, cx, result.Options{Limits: limits, Evidence: pathEv(), NextActions: []string{"verify-change"}})
+			result.Deterministic, cx, result.Options{Limits: limits, Evidence: pathEv(), Omitted: omitted, NextActions: []string{"verify-change"}})
 	}
 	if len(real) == 0 || doc.TimedOut {
 		if len(real) == 0 {
@@ -306,11 +304,11 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 				break
 			}
 		}
-		return result.NewUnknown(reachabilityName, finding, cx, limits, result.Options{Evidence: ev, NextActions: next})
+		return result.NewUnknown(reachabilityName, finding, cx, limits, result.Options{Evidence: ev, Omitted: omitted, NextActions: next})
 	}
 	ev := pathEv()
 	return result.Build(reachabilityName, result.Failed, reachabilityExplain[real[0].class], result.Deterministic, cx,
-		result.Options{Limits: limits, Evidence: ev, NextActions: []string{"inspect-topology", "inspect-device-files", "plan-troubleshoot-connectivity"}})
+		result.Options{Limits: limits, Evidence: ev, Omitted: omitted, NextActions: []string{"inspect-topology", "inspect-device-files", "plan-troubleshoot-connectivity"}})
 }
 
 // orderByClass puts the first item of each classification first (in order of first appearance), then the rest in their original order.

@@ -35,6 +35,7 @@ func inspectExternalConnectivity(ctx context.Context, s *fwd.Session, raw json.R
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	detail := map[string]any{}
 	var limits []string
+	var omitted []result.Omission
 	read := 0
 	if strings.TrimSpace(in.Device) != "" {
 		return externalOneNode(ctx, s, in, cx)
@@ -103,7 +104,7 @@ func inspectExternalConnectivity(ctx context.Context, s *fwd.Session, raw json.R
 		limits = append(limits, "the network has no processed snapshot, so its manual link overrides were not read")
 	} else {
 		cx = fwd.Context(in.NetworkID, sn)
-		if d, more, err := overridePage(ctx, s, in.NetworkID, sn, "", maxDynamicRows, 0); err != nil {
+		if d, more, om, err := overridePage(ctx, s, in.NetworkID, sn, "", maxDynamicRows, 0); err != nil {
 			limits = append(limits, "the link overrides could not be read: "+err.Error())
 		} else {
 			read++
@@ -112,6 +113,7 @@ func inspectExternalConnectivity(ctx context.Context, s *fwd.Session, raw json.R
 			}
 			detail["link_overrides"] = d
 			limits = append(limits, more...)
+			omitted = append(omitted, om...)
 		}
 	}
 	if read == 0 {
@@ -147,7 +149,7 @@ func inspectExternalConnectivity(ctx context.Context, s *fwd.Session, raw json.R
 	if queried > 0 {
 		finding += fmt.Sprintf("; %d driven by an NQE query", queried)
 	}
-	return result.Build(externalConnName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(externalConnName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"investigate-reachability", "inspect-topology"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvTopology, "inspectExternalConnectivity", cx.SnapshotID, detail, finding)}})
 }

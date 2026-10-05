@@ -72,11 +72,12 @@ func inspectChecks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (re
 		}
 		rows = append(rows, checkRow(c))
 	}
-	win, limits, ok := window(rows, in.Limit, in.Offset, 25, 200, "checks")
+	win, omitted, ok := window(rows, in.Limit, in.Offset, 25, 200, "checks")
 	if !ok {
 		return result.NewUnknown(inspectChecksName, fmt.Sprintf("Offset %d is beyond the %d checks", in.Offset, len(rows)), cx,
 			[]string{"offset is past the end of the list"}, result.Options{})
 	}
+	var limits []string
 	detail := map[string]any{"total": len(list), "by_status": byStatus, "offset": in.Offset, "checks": win}
 	// ERROR and TIMEOUT mean Forward produced no verdict: they are not failures of policy, and never a pass.
 	note := ""
@@ -95,10 +96,10 @@ func inspectChecks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (re
 		}
 	case undetermined > 0:
 		return result.NewUnknown(inspectChecksName, fmt.Sprintf("%d checks on snapshot %s; none failing, but %s", len(list), sid, note), cx, limits,
-			result.Options{NextActions: []string{"check-network-compliance", "inspect-snapshots"},
+			result.Options{Omitted: omitted, NextActions: []string{"check-network-compliance", "inspect-snapshots"},
 				Evidence: []result.Evidence{result.NewEvidence(result.EvPolicy, "listChecks", cx.SnapshotID, detail, finding)}})
 	}
-	return result.Build(inspectChecksName, st, finding, conf, cx, result.Options{Limits: limits,
+	return result.Build(inspectChecksName, st, finding, conf, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"check-network-compliance", "verify-change"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvPolicy, "listChecks", cx.SnapshotID, detail, finding)}})
 }
@@ -249,12 +250,12 @@ func checksCatalogue(ctx context.Context, s *fwd.Session, in inspectChecksInput,
 	for _, c := range cat {
 		rows = append(rows, map[string]any{"name": c.Name, "type": c.PredefinedCheckType, "description": c.Description})
 	}
-	win, limits, ok := window(rows, in.Limit, in.Offset, 50, 200, "predefined checks")
+	win, omitted, ok := window(rows, in.Limit, in.Offset, 50, 200, "predefined checks")
 	if !ok {
 		return result.NewUnknown(inspectChecksName, fmt.Sprintf("Offset %d is beyond the %d predefined checks", in.Offset, len(rows)), cx,
 			[]string{"offset is past the end of the list"}, result.Options{})
 	}
 	finding := fmt.Sprintf("%d predefined checks a new check can be made from", len(cat))
-	return result.Build(inspectChecksName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(inspectChecksName, result.OK, finding, result.Deterministic, cx, result.Options{Omitted: omitted,
 		Evidence: []result.Evidence{result.NewEvidence(result.EvPolicy, "listPredefinedChecks", nil, map[string]any{"total": len(cat), "predefined": win}, finding)}})
 }

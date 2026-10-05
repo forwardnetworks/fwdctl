@@ -189,7 +189,7 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	if limit <= 0 {
 		limit = defaultAdvertisedRows
 	}
-	win, wl, ok := window(rowsOut, min(limit, maxAdvertisedRows), in.Offset, defaultAdvertisedRows, maxAdvertisedRows, "prefixes")
+	win, omitted, ok := window(rowsOut, min(limit, maxAdvertisedRows), in.Offset, defaultAdvertisedRows, maxAdvertisedRows, "prefixes")
 	if !ok {
 		return result.NewUnknown(inspectBGPNeighborsName, fmt.Sprintf("Offset %d is beyond the %d prefixes", in.Offset, len(list)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
@@ -197,7 +197,7 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	if len(outside) > 0 {
 		finding += fmt.Sprintf("; %d of those lie outside %s", len(list), strings.Join(adv.Outside, ", "))
 	}
-	limits := append([]string{}, wl...)
+	var limits []string
 	limits = append(limits,
 		"read from the device's Adj-RIB-Out after output policy (not the route-map: that is not in Forward's model), IPv4 unicast, for this peer address and VRF; only Junos, IOS, IOS-XE, NX-OS and IOS-XR devices report it",
 		"the list is the minimal covering set: a prefix inside another advertised prefix is dropped, so it has fewer entries than the neighbor's advertised_prefixes counter and adj_rib_out_distinct_prefixes; the distinct count above is before dropping",
@@ -222,7 +222,7 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	})
 	d := map[string]any{"device": in.Device, "peer": peer.String(), "vrf": firstNonEmpty(in.VRF, "default"), "distinct_prefixes": len(seen), "after_dropping_covered": len(kept),
 		"listed": len(list), "by_origin_type": byOrigin, "learned_by_next_hop": topDeviceCountRowsNamed(byNextHop, 10, "prefixes"), "by_origin_code": byOriginCode, "outside_filter": adv.Outside, "by_containing_16": groups, "offset": in.Offset, "prefixes": win}
-	return result.Build(inspectBGPNeighborsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(inspectBGPNeighborsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"edit-internet-exclusions", "inspect-topology"}, Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, d, finding)}})
 }
 

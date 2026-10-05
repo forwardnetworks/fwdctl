@@ -411,7 +411,7 @@ func planCluster(ctx context.Context, s *fwd.Session, in editNetworkInput) (*net
 			}
 		}
 		return &networkPlan{target: fmt.Sprintf("create device cluster %q (%d devices) at location %s", def.Name, len(def.Devices), def.LocationID), action: "create_cluster", before: nil,
-			after: map[string]any{"name": def.Name, "devices": def.Devices}, reversible: false, undo: "none through the API: the SDK has no cluster delete; rename or empty it with action update",
+			after: map[string]any{"name": def.Name, "devices": def.Devices}, reversible: true, undo: "delete it (action delete, name it, confirm its name); or rename or empty it with action update",
 			do: func(ctx context.Context) error {
 				_, err := s.Client.Locations.CreateCluster(ctx, in.NetworkID, def.LocationID, forward.DeviceCluster{Name: def.Name, Devices: def.Devices})
 				return err
@@ -456,8 +456,34 @@ func planCluster(ctx context.Context, s *fwd.Session, in editNetworkInput) (*net
 				_, err := s.Client.Locations.PatchCluster(ctx, in.NetworkID, def.LocationID, in.Name, patch)
 				return err
 			}}, nil
+	case "delete":
+		var cur *forward.DeviceCluster
+		for i := range clusters {
+			if clusters[i].Name == in.Name {
+				cur = &clusters[i]
+			}
+		}
+		if cur == nil {
+			return nil, nil
+		}
+		before, _ := fwd.Generic(cur)
+		return &networkPlan{target: fmt.Sprintf("delete device cluster %q at location %s", in.Name, def.LocationID), action: "delete_cluster", before: before, reversible: false, confirm: in.Name,
+			undo: "none: create the cluster again with its devices (the devices themselves are not removed)",
+			do: func(ctx context.Context) error {
+				_, err := s.Client.Locations.DeleteCluster(ctx, in.NetworkID, def.LocationID, in.Name)
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				cs, _, e := s.Client.Locations.ListClusters(ctx, in.NetworkID, def.LocationID)
+				for _, c := range cs {
+					if c.Name == in.Name {
+						return false, c, e
+					}
+				}
+				return true, nil, e
+			}}, nil
 	}
-	return nil, fmt.Errorf("%w: object cluster takes action create or update", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: object cluster takes action create, update or delete", ErrInvalidInput)
 }
 
 func planTag(ctx context.Context, s *fwd.Session, in editNetworkInput) (*networkPlan, error) {

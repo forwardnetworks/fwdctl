@@ -1,5 +1,11 @@
 # The fastest safe way to see a synthetic-device change in a trace
 
+## Contents
+- How a change takes effect
+- Options, fastest safe first
+- Which snapshot reflects the change
+- A trace that proves something
+
 Source: Forward's own code for how a synthetic device's configuration is versioned (read in its source), plus what the skills do. **Inferred** or **unknown** marks what Forward does not state: test it.
 
 ## How a change takes effect (from Forward's code)

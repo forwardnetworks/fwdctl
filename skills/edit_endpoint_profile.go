@@ -349,8 +349,9 @@ func btoi(b bool) int {
 }
 
 func clipList(l []string, n int) []string {
-	if len(l) > n {
-		return append(append([]string{}, l[:n]...), fmt.Sprintf("and %d more", len(l)-n))
+	shown, total := result.CapRow(l, n)
+	if total == len(shown) {
+		return l
 	}
-	return l
+	return append(append([]string{}, shown...), fmt.Sprintf("and %d more", total-len(shown)))
 }

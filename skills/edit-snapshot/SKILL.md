@@ -1,6 +1,6 @@
 ---
 name: edit-snapshot
-description: Changes a snapshot or retention: note, reprocess, invalidate, favorite, delete, retention, export, import. Dry run unless apply. Use when labeling, moving or removing snapshots.
+description: Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import. Dry run unless apply. Use when labeling, moving or removing snapshots.
 compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
@@ -28,7 +28,8 @@ The one place to change a snapshot, or how a network keeps its snapshots. It rep
 | `note` | `note` (empty clears; at most 1000 bytes) | sets the snapshot's note, showing what it replaces | run it again with the earlier note |
 | `reprocess` | | recomputes the model (paths, checks, NQE answers) from what was collected; the fix for a FAILED, stale or UNPROCESSED snapshot; does not wait | none needed: same data, same result |
 | `invalidate` | | empties the derived model until reprocessed | `reprocess` |
-| `favorite` | `confirm` = `snapshot_id` | marks it a favorite, which retention never thins | **none**: the API cannot clear a favorite |
+| `favorite` | | marks it a favorite, which retention never thins | `unfavorite` |
+| `unfavorite` | | clears the favorite flag, so retention may thin it | `favorite` |
 | `delete` | `confirm` = `snapshot_id` | removes the snapshot and its model | **none** |
 | `export` | `snapshot_id`, `definition` {`path`, `only_config`, `include_devices`, `exclude_devices`, `obfuscate_names`}, `secret_file` or `secret_env` (obfuscation key) | writes the snapshot (or some devices) to a new ZIP file here; never overwrites; nothing changes in Forward | delete the file |
 | `import` | `definition` {`files`, `exclude_failed_devices`, `skip_processing`}, `note` (no `snapshot_id`) | uploads ZIP files as a new snapshot of the network | `delete` the new snapshot |

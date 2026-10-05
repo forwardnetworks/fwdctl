@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -377,6 +378,10 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		if r, ok := denialResult(inspectPlatformName, err, cx, "could not read "+a.what); ok {
 			return r, nil
 		}
+		if errors.Is(err, forward.ErrEndpointNotServed) {
+			return result.NewUnknown(inspectPlatformName, fmt.Sprintf("Could not read %s", a.what), cx,
+				[]string{"this Forward deployment does not serve that route (it is not mapped here: for example backups exist only on Kubernetes deployments); that is not a permissions problem, and nothing was read"}, result.Options{NextActions: []string{"inspect-environment"}})
+		}
 		// a login without the role, a Forward build without the route, or a route that wants other parameters is a fact about this read, not a failure of the tool
 		if st := fwd.Status(err); st == 400 || st == 403 || st == 404 || st == 405 || st == 501 {
 			return result.NewUnknown(inspectPlatformName, fmt.Sprintf("Could not read %s", a.what), cx,
@@ -418,7 +423,7 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	}
 	finding := fmt.Sprintf("%d %s", len(plain), a.what)
 	d := map[string]any{"area": in.Area, "total": len(plain), "offset": in.Offset, "rows": win}
-	return result.Build(inspectPlatformName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: append(wl, limits...), NextActions: []string{"inspect-access", "inspect-collection"},
+	return result.Build(inspectPlatformName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: wl, NextActions: []string{"inspect-access", "inspect-collection"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "platform_"+in.Area, nil, d, finding)}})
 }
 

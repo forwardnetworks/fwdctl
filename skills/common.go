@@ -10,6 +10,7 @@ import (
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/result"
 )
 
 // resolveSnapshot returns the named snapshot, or the newest processed, non-predicted one. nil means there
@@ -21,21 +22,15 @@ func resolveSnapshot(ctx context.Context, s *fwd.Session, networkID, snapshotID 
 	return s.LatestProcessed(ctx, networkID)
 }
 
-// window pages rows: the slice [offset, offset+limit) and the limit lines that tell the caller how to see the rest. ok is false
-// when offset is past the end.
-func window[T any](rows []T, limit, offset, dflt, max int, noun string) (out []T, limits []string, ok bool) {
+// window pages rows: the slice [offset, offset+limit) and the Omission that tells the caller what was left out and how to see the rest (nil when the page holds everything). ok is false
+// when offset is past the end. The caller puts the omission in Options.Omitted.
+func window[T any](rows []T, limit, offset, dflt, max int, noun string) (out []T, omitted []result.Omission, ok bool) {
 	if limit <= 0 {
 		limit = dflt
 	}
 	limit = min(limit, max)
-	if offset >= len(rows) {
-		return nil, nil, false
-	}
-	end := min(offset+limit, len(rows))
-	if end < len(rows) {
-		limits = append(limits, fmt.Sprintf("%d %s in all; rows %d-%d shown. Page with offset=%d.", len(rows), noun, offset+1, end, end))
-	}
-	return rows[offset:end], limits, true
+	out, omitted, ok = result.Page(rows, offset, limit, noun)
+	return out, omitted, ok
 }
 
 // rejectForeignInputs is the validation of a skill whose inputs belong to views (a view or kind input picks one). viewInputs lists, per
@@ -66,4 +61,23 @@ func rejectForeignInputs(raw json.RawMessage, skill, discriminator, view string,
 	}
 	sort.Strings(bad)
 	return fmt.Errorf("%w: %s %s %s does not take %s", ErrInvalidInput, skill, discriminator, view, strings.Join(bad, ", "))
+}
+
+// pageNext is the "how to see the rest" of a page that ends at end of total: empty on the last page.
+func pageNext(end, total int) string {
+	if end >= total {
+		return ""
+	}
+	return fmt.Sprintf("Page with offset=%d", end)
+}
+
+// joinNext joins the non-empty parts of a "how to see the rest" note.
+func joinNext(parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, "; ")
 }

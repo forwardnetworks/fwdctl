@@ -157,8 +157,8 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 			limits = append(limits, fmt.Sprintf("%d checks regressed; the %d with the most violations are cited", len(regs), maxCitedRegressions))
 		}
 		finding := strings.Join(failed, "; ")
-		if len(failed) > 5 {
-			finding = strings.Join(failed[:5], "; ") + fmt.Sprintf("; and %d more", len(failed)-5)
+		if shown, total := result.CapRow(failed, 5); total > len(shown) {
+			finding = strings.Join(shown, "; ") + fmt.Sprintf("; and %d more", total-len(shown))
 		}
 		return result.Build(verifyChangeName, result.Failed, finding, result.Deterministic, cx,
 			result.Options{Limits: limits, Evidence: evidence, NextActions: next})

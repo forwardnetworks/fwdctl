@@ -84,15 +84,16 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 			[]string{fmt.Sprintf("offset %d is past the end of the %d networks", in.Offset, total)}, result.Options{})
 	}
 	end := min(in.Offset+in.Limit, total)
-	if end < total {
-		limits = append(limits, fmt.Sprintf("%d networks match; rows %d-%d shown. Page with offset=%d.", total, in.Offset+1, end, end))
+	var omitted []result.Omission
+	if in.Offset > 0 || end < total {
+		omitted = append(omitted, result.Omission{What: "networks", Total: total, Shown: end - in.Offset, From: in.Offset, Paged: true, Next: pageNext(end, total)})
 	}
 	if workspaces > 0 {
 		limits = append(limits, fmt.Sprintf("%d of them are workspaces (copies of another network made for a change); use the parent network's id for questions about the real network", workspaces))
 	}
 	detail := map[string]any{"total": total, "offset": in.Offset, "returned": end - in.Offset, "networks": rows[in.Offset:end]}
 	return result.Build(networksName, result.OK, fmt.Sprintf("%d network(s) returned (%d match)", end-in.Offset, total), result.Deterministic, cx,
-		result.Options{Limits: limits, NextActions: []string{"inspect-inventory", "investigate-collection-failure", "inspect-vulnerabilities"},
+		result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"inspect-inventory", "investigate-collection-failure", "inspect-vulnerabilities"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "listNetworks", nil, detail, fmt.Sprintf("%d networks", total))}})
 }
 

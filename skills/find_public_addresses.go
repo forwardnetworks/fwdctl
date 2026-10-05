@@ -582,8 +582,10 @@ func findPublicAddresses(ctx context.Context, s *fwd.Session, raw json.RawMessag
 		limits = append(limits, "the model lists no security zone for any device. Forward models zones only for the firewall platforms that have them (for example FTD managed by FMC, Check Point); a Cisco ASA has no zone, its nameif and security level are not NQE fields, and most ASA firewalls here are virtual contexts. So a firewall's customer-facing interface is told only from its description, interface name or VRF saying inside or outside; the context name (ext, int, lb) and the link's other side (linked_to) qualify a row and are not used to assign a role; the rest stay unknown, see firewall_role_unknown")
 	}
 	limits = append(limits, "ownership_not_verified: this skill does NOT check who owns a public prefix (no whois or registry lookup), so a candidate may be space the customer does not own, such as 2.x.x.x or other public blocks used as if private; excluding space the customer does not own only hides it. Read prefix_groups and largest_aggregates to spot odd ones")
-	if end < total {
-		limits = append(limits, fmt.Sprintf("%d addresses match; rows %d-%d shown (by role, then device). Page with offset=%d (limit up to %d). The summary and the candidate set cover all %d.", total, in.Offset+1, end, end, maxPublicLimit, total))
+	var omitted []result.Omission
+	if in.Offset > 0 || end < total {
+		omitted = append(omitted, result.Omission{What: "addresses", Total: total, Shown: end - in.Offset, From: in.Offset, Paged: true,
+			Next: joinNext(pageNext(end, total), fmt.Sprintf("limit up to %d", maxPublicLimit), fmt.Sprintf("rows are by role, then device; the summary and the candidate set cover all %d", total))})
 	}
 	if trunc {
 		limits = append(limits, fmt.Sprintf("the interface-address read hit its %d-row bound, so addresses may be missing", maxModelRows))
@@ -604,7 +606,7 @@ func findPublicAddresses(ctx context.Context, s *fwd.Session, raw json.RawMessag
 		d["firewall_role_unknown"] = review
 	}
 	finding := fmt.Sprintf("%d public IPv4 interface address(es) on %d device(s) (%d distinct addresses; snapshot %s): %s", total, len(devices), len(distinct), snap.ID, roleSummary(byRole))
-	return result.Build(findPublicAddressesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(findPublicAddressesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: next,
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvNQE, "runNqeQuery", fwd.SnapshotIDPtr(snap), d, finding)}})
 }

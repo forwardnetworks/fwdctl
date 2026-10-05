@@ -280,10 +280,11 @@ func accessUsers(ctx context.Context, s *fwd.Session, in inspectAccessInput, cx 
 	if len(rows) == 0 {
 		return result.NewUnknown(inspectAccessName, "No user matches", cx, []string{fmt.Sprintf("%d users were read; none matched %q", len(users), m)}, result.Options{})
 	}
-	win, limits, ok := window(rows, in.Limit, in.Offset, 50, 200, "users")
+	win, omitted, ok := window(rows, in.Limit, in.Offset, 50, 200, "users")
 	if !ok {
 		return result.NewUnknown(inspectAccessName, fmt.Sprintf("Offset %d is beyond the %d users", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
+	var limits []string
 	if tfaErr != nil {
 		limits = append(limits, "two-factor status could not be read: "+tfaErr.Error())
 	}
@@ -295,7 +296,7 @@ func accessUsers(ctx context.Context, s *fwd.Session, in inspectAccessInput, cx 
 		}
 	}
 	finding := fmt.Sprintf("%d users (%d organization administrators)", len(rows), admins)
-	return result.Build(inspectAccessName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(inspectAccessName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "listUsers", nil, map[string]any{"total": len(rows), "offset": in.Offset, "users": win}, finding)}, NextActions: []string{"edit-access"}})
 }
 
@@ -321,13 +322,14 @@ func accessGroups(ctx context.Context, s *fwd.Session, in inspectAccessInput, cx
 	if len(rows) == 0 {
 		return result.NewUnknown(inspectAccessName, "No access control group matches", cx, []string{fmt.Sprintf("%d groups were read", len(groups))}, result.Options{})
 	}
-	win, limits, ok := window(rows, in.Limit, in.Offset, 50, 200, "groups")
+	win, omitted, ok := window(rows, in.Limit, in.Offset, 50, 200, "groups")
 	if !ok {
 		return result.NewUnknown(inspectAccessName, fmt.Sprintf("Offset %d is beyond the %d groups", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
+	var limits []string
 	limits = append(limits, "a group has no member list: a user is in it when one of their identity-provider group names matches (ignoring case); only SAML and LDAP users use groups; roles from several groups and direct assignment combine to the highest per network")
 	finding := fmt.Sprintf("%d access control groups", len(rows))
-	return result.Build(inspectAccessName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(inspectAccessName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "listAccessControlGroups", nil, map[string]any{"total": len(rows), "offset": in.Offset, "groups": win}, finding)}, NextActions: []string{"edit-access"}})
 }
 

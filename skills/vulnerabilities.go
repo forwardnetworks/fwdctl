@@ -150,10 +150,8 @@ func vulnNetwork(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 			limits = append(limits, l)
 		}
 	}
-	shown := kept
-	if len(shown) > in.Limit {
-		shown = shown[:in.Limit]
-		limits = append(limits, fmt.Sprintf("%d CVEs match; the %d worst are shown", len(kept), in.Limit))
+	shown, omitted := result.Cap(kept, in.Limit, "CVEs", "the worst are shown")
+	if len(omitted) > 0 {
 		s.Annotate(nil, true)
 	}
 	var ev []result.Evidence
@@ -181,14 +179,14 @@ func vulnNetwork(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 		}
 		return result.Build(vulnerabilitiesName, result.Failed,
 			fmt.Sprintf("%d CVE(s) expose devices; worst: %s", exposed, strings.Join(names, ", ")),
-			result.Deterministic, cx, result.Options{Limits: limits, Evidence: ev, NextActions: []string{"plan-vulnerability-response", "investigate-reachability", "verify-change"}})
+			result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, Evidence: ev, NextActions: []string{"plan-vulnerability-response", "investigate-reachability", "verify-change"}})
 	case unsettled > 0:
 		return result.NewUnknown(vulnerabilitiesName, fmt.Sprintf("%d CVE(s) may affect devices but Forward could not settle them", unsettled), cx,
 			append(limits, "UNCONFIRMED and UNIMPLEMENTED results are not exposure and not a pass: they depend on configuration Forward could not confirm or has no analysis for"),
-			result.Options{Evidence: ev})
+			result.Options{Omitted: omitted, Evidence: ev})
 	}
 	return result.Build(vulnerabilitiesName, result.OK, fmt.Sprintf("No device is exposed to any of the %d CVE(s) assessed", len(kept)),
-		result.Deterministic, cx, result.Options{Limits: limits, Evidence: ev})
+		result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, Evidence: ev})
 }
 
 func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Context, sid *string, snapID string, limits []string) (result.Result, error) {
@@ -234,10 +232,8 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 		}
 	}
 	sort.SliceStable(devs, func(i, j int) bool { return fwd.Exposed(devs[i].Result) && !fwd.Exposed(devs[j].Result) })
-	shown := devs
-	if len(shown) > in.Limit {
-		shown = shown[:in.Limit]
-		limits = append(limits, fmt.Sprintf("%d devices are affected; %d shown", len(devs), in.Limit))
+	shown, omitted := result.Cap(devs, in.Limit, "affected devices", "exposed devices come first")
+	if len(omitted) > 0 {
 		if in.InternetAddressable == nil && nilRows < len(d.Devices) {
 			limits = append(limits, fmt.Sprintf("the %d shown are ordered by vulnerability verdict, not by internet exposure, so their internet_addressable flags say nothing about the rest: %d of the %d affected devices are internet addressable; give internet_addressable: true to list those", in.Limit, addressable, len(d.Devices)))
 		}
@@ -260,17 +256,17 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 	switch {
 	case len(devs) == 0:
 		return result.NewUnknown(vulnerabilitiesName, "Forward lists no affected devices for "+in.CVEID, cx,
-			append(limits, "the CVE has no device verdicts (or none after the filters); nothing was assessed"), result.Options{Evidence: ev})
+			append(limits, "the CVE has no device verdicts (or none after the filters); nothing was assessed"), result.Options{Omitted: omitted, Evidence: ev})
 	case exposed > 0:
 		return result.Build(vulnerabilitiesName, result.Failed,
 			fmt.Sprintf("%s (%s) exposes %d device(s)", d.CVE.ID, d.CVE.Severity, exposed), result.Deterministic, cx,
-			result.Options{Limits: limits, Evidence: ev, NextActions: []string{"verify-change"}})
+			result.Options{Limits: limits, Omitted: omitted, Evidence: ev, NextActions: []string{"verify-change"}})
 	case unsettled > 0:
 		return result.NewUnknown(vulnerabilitiesName, fmt.Sprintf("%s may affect %d device(s) but Forward could not settle it", d.CVE.ID, unsettled), cx,
-			append(limits, "UNCONFIRMED and UNIMPLEMENTED are not exposure and not a pass"), result.Options{Evidence: ev})
+			append(limits, "UNCONFIRMED and UNIMPLEMENTED are not exposure and not a pass"), result.Options{Omitted: omitted, Evidence: ev})
 	}
 	return result.Build(vulnerabilitiesName, result.OK, fmt.Sprintf("No device is exposed to %s (%d assessed)", d.CVE.ID, len(devs)),
-		result.Deterministic, cx, result.Options{Limits: limits, Evidence: ev})
+		result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, Evidence: ev})
 }
 
 const deviceCVEsSummary = `@query
@@ -378,11 +374,7 @@ func vulnOneDevice(ctx context.Context, s *fwd.Session, in vulnInput, cx result.
 		}
 		return rows[i].kev && !rows[j].kev
 	})
-	shown := rows
-	if len(shown) > in.Limit {
-		shown = shown[:in.Limit]
-		limits = append(limits, fmt.Sprintf("%d vulnerable CVEs match; the %d worst are shown", len(rows), in.Limit))
-	}
+	shown, omitted := result.Cap(rows, in.Limit, "vulnerable CVEs", "the worst are shown")
 	out := make([]map[string]any, 0, len(shown))
 	for _, r := range shown {
 		d := r.desc
@@ -400,7 +392,7 @@ func vulnOneDevice(ctx context.Context, s *fwd.Session, in vulnInput, cx result.
 	}
 	return result.Build(vulnerabilitiesName, result.Failed,
 		fmt.Sprintf("%s is vulnerable to %d CVE(s); worst: %s", in.Device, len(rows), strings.Join(names, ", ")),
-		result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"verify-change"},
+		result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"verify-change"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "runNqeQuery", sid, head, fmt.Sprintf("%d vulnerable CVE(s)", len(rows)))}})
 }
 

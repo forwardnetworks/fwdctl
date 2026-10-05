@@ -92,7 +92,7 @@ func normalizeExclusions(in []string) ([]string, error) {
 		}
 	}
 	if len(bad) > 0 {
-		shown := bad[:min(len(bad), 20)]
+		shown, _ := result.CapRow(bad, 20)
 		msg := fmt.Sprintf("%d of %d entries are not acceptable: %s", len(bad), len(in), strings.Join(shown, "; "))
 		if len(bad) > len(shown) {
 			msg += fmt.Sprintf("; and %d more", len(bad)-len(shown))

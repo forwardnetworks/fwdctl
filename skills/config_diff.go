@@ -173,17 +173,11 @@ func diffOneDevice(ctx context.Context, s *fwd.Session, in configDiffInput, dev 
 		return out
 	}
 	total := len(added) + len(removed)
-	clip := func(ls []numbered) []numbered {
-		if len(ls) > in.MaxLines {
-			return ls[:in.MaxLines]
-		}
-		return ls
-	}
+	addedShown, addedCut := result.Cap(added, in.MaxLines, "added lines", fmt.Sprintf("raise max_lines (at most %d)", maxDiffLines))
+	removedShown, removedCut := result.Cap(removed, in.MaxLines, "removed lines", fmt.Sprintf("raise max_lines (at most %d)", maxDiffLines))
+	omitted := append(addedCut, removedCut...)
 	detail := map[string]any{"device": in.Device, "file": afterName, "added_count": len(added), "removed_count": len(removed),
-		"added": show(clip(added)), "removed": show(clip(removed))}
-	if len(added) > in.MaxLines || len(removed) > in.MaxLines {
-		limits = append(limits, fmt.Sprintf("%d added and %d removed lines; the first %d of each are shown (raise max_lines, at most %d)", len(added), len(removed), in.MaxLines, maxDiffLines))
-	}
+		"added": show(addedShown), "removed": show(removedShown)}
 	limits = append(limits, "lines are compared as a set, so a line that only moved is not reported; line numbers are from the file where the line appears")
 	if redacted > 0 {
 		limits = append(limits, fmt.Sprintf("%d shown line(s) had a secret replaced with <redacted>; a changed secret shows as the same text on both sides", redacted))
@@ -193,7 +187,7 @@ func diffOneDevice(ctx context.Context, s *fwd.Session, in configDiffInput, dev 
 		finding = fmt.Sprintf("%s %s: no line differs, though Forward lists the file as changed", in.Device, afterName)
 		limits = append(limits, "Forward marks the file changed but no line differs: only ordering or whitespace changed, or the change is past the size cap")
 	}
-	return result.Build(configDiffName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-device-files", "verify-change"},
+	return result.Build(configDiffName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"inspect-device-files", "verify-change"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvConfig, "diffFiles", cx.SnapshotID, detail, finding)}})
 }
 

@@ -89,11 +89,8 @@ func findTraceSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 			[]string{"no candidates (check the VRF name with inspect-inventory; an excluded device is not considered)"}, result.Options{NextActions: []string{"inspect-inventory"}})
 	}
 	limits := []string{"each candidate was traced only to the control address " + in.TargetIP + ": a delivered control means the source reaches that address, not that it reaches the real destination"}
-	truncated := false
-	if len(names) > n {
-		names, truncated = names[:n], true
-		limits = append(limits, fmt.Sprintf("only the first %d candidates (by name) were traced; raise candidates (at most %d) or name a VRF to narrow", n, maxTraceCandidates))
-	}
+	names, omitted := result.Cap(names, n, "candidates", fmt.Sprintf("only the first by name were traced; raise candidates (at most %d) or name a VRF to narrow", maxTraceCandidates))
+	truncated := len(omitted) > 0
 	type row struct {
 		Device    string `json:"device"`
 		Control   string `json:"control"`
@@ -141,8 +138,8 @@ func findTraceSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	d := map[string]any{"snapshot_id": string(snap.ID), "target_ip": in.TargetIP, "vrf": nilIfEmpty(in.VRF), "candidates_traced": len(rows), "good": good, "sources": rows, "truncated": truncated}
 	if good == 0 {
 		return result.Build(findTraceSourceName, result.Failed, fmt.Sprintf("None of the %d candidate source(s) reaches %s, so none is a good place to trace from (snapshot %s)", len(rows), in.TargetIP, snap.ID), result.Deterministic, cx,
-			result.Options{Limits: limits, NextActions: []string{"investigate-reachability"}, Evidence: []result.Evidence{result.NewEvidence(result.EvPath, "getPaths", sid, d, "no source reaches the control")}})
+			result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"investigate-reachability"}, Evidence: []result.Evidence{result.NewEvidence(result.EvPath, "getPaths", sid, d, "no source reaches the control")}})
 	}
 	return result.Build(findTraceSourceName, result.OK, fmt.Sprintf("%d of %d candidate source(s) reach %s; start from %s (snapshot %s)", good, len(rows), in.TargetIP, rows[0].Device, snap.ID), result.Deterministic, cx,
-		result.Options{Limits: limits, NextActions: []string{"investigate-reachability"}, Evidence: []result.Evidence{result.NewEvidence(result.EvPath, "getPaths", sid, d, fmt.Sprintf("%d good source(s)", good))}})
+		result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"investigate-reachability"}, Evidence: []result.Evidence{result.NewEvidence(result.EvPath, "getPaths", sid, d, fmt.Sprintf("%d good source(s)", good))}})
 }

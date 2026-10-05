@@ -5,11 +5,11 @@
   "properties": {
     "network_id": { "type": "string", "minLength": 1 },
     "snapshot_id": { "type": "string", "minLength": 1 },
-    "action": { "type": "string", "enum": ["note", "reprocess", "invalidate", "favorite", "delete", "retention_policy", "export", "import"] },
+    "action": { "type": "string", "enum": ["note", "reprocess", "invalidate", "favorite", "unfavorite", "delete", "retention_policy", "export", "import"] },
     "note": { "type": "string", "description": "note: the new note (an empty string clears it); import: the note of the new snapshot" },
     "secret_file": { "type": "string", "minLength": 1, "description": "export: path of a file (mode 600) holding the obfuscation key" },
     "secret_env": { "type": "string", "minLength": 1, "description": "export: name of an environment variable holding the obfuscation key (instead of secret_file)" },
-    "confirm": { "type": "string", "description": "favorite and delete: the exact snapshot_id; retention_policy: the exact network_id" },
+    "confirm": { "type": "string", "description": "delete: the exact snapshot_id; retention_policy: the exact network_id" },
     "definition": { "type": "object", "description": "retention_policy: {enabled, lastWeek, lastMonth, lastQuarter, lastYear, older}; export: {path, only_config, include_devices, exclude_devices, obfuscate_names}; import: {files, exclude_failed_devices, skip_processing}" },
     "apply": { "type": "boolean", "default": false }
   }

@@ -16,7 +16,7 @@
 
 ## cluster
 
-A cluster groups devices at a location. `create` needs `location_id`, `name` and `devices`; `update` renames it or replaces its devices. The API has no cluster delete.
+A cluster groups devices at a location. `create` needs `location_id`, `name` and `devices`; `update` renames it or replaces its devices. `delete` needs `location_id` in the definition and `confirm` = the cluster name; the devices stay.
 
 ## tag
 

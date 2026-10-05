@@ -33,6 +33,7 @@ func inspectEnvironment(ctx context.Context, s *fwd.Session, raw json.RawMessage
 	cx := result.Context{Scope: "account", State: "current"}
 	detail := map[string]any{}
 	var limits []string
+	var omitted []result.Omission
 	read := 0
 
 	if v, err := s.Version(ctx); err != nil {
@@ -81,11 +82,8 @@ func inspectEnvironment(ctx context.Context, s *fwd.Session, raw json.RawMessage
 			limits = append(limits, "the organization properties could not be read: "+err.Error())
 		} else {
 			read++
-			shown := names
-			if len(shown) > 50 {
-				shown = shown[:50]
-				limits = append(limits, fmt.Sprintf("%d non-default properties; the first 50 by name are shown", len(names)))
-			}
+			shown, capped := result.Cap(names, 50, "non-default properties", "the first 50 by name are shown")
+			omitted = append(omitted, capped...)
 			vals := map[string]string{}
 			for _, n := range shown {
 				vals[n] = p[n]
@@ -112,7 +110,7 @@ func inspectEnvironment(ctx context.Context, s *fwd.Session, raw json.RawMessage
 	if v, ok := detail["version"].(map[string]any); ok {
 		finding = fmt.Sprintf("Forward %v (%v)", v["version"], v["release"])
 	}
-	return result.Build(environmentName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(environmentName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		NextActions: []string{"inspect-networks"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvState, "inspectEnvironment", nil, detail, finding)}})
 }

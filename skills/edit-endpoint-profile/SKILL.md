@@ -55,7 +55,7 @@ A delete cannot be undone (its stored connectivity test results go with it): rec
 ## What it does not do
 
 It does not collect: the new OIDs appear in NQE `network.endpoints[*].snmpOutputs[*].rawOidEntries` only after a **new collection snapshot** (`edit-collection` starts one, with approval). Whether Forward
-walks a custom OID as a subtree is shown by the collected rows, not asserted. CLI profiles are not created here: their commands run only if the organization approved them (`inspect-collection` config shows the approved-command state).
+walks a custom OID as a subtree is shown by the collected rows, not asserted. CLI profiles are not created here: a profile is collected only if ALL its commands (custom, detector, name detector) match the organization's approved-command patterns; if any one fails, the whole endpoint is excluded from collection. The approved list can be replaced only by a Forward-signed file, so a custom list cannot be self-authored (`inspect-collection` config shows the approved-command state).
 
 ## Evidence
 
