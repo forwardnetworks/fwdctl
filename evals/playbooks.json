@@ -225,5 +225,83 @@
     "inspect-topology"
    ]
   ]
+ },
+ {
+  "query": "Is it safe to add a deny rule for tcp/23 on the edge firewall? Will it break anything?",
+  "playbook": "plan-change-review",
+  "steps": [
+   "inspect-snapshots",
+   "verify-change",
+   "check-network-compliance",
+   "investigate-reachability"
+  ],
+  "required": [
+   [
+    "inspect-snapshots"
+   ],
+   [
+    "verify-change"
+   ],
+   [
+    "check-network-compliance",
+    "investigate-reachability"
+   ]
+  ]
+ },
+ {
+  "query": "We have a maintenance window tonight on the core routers. Set up the before and after evidence so we can prove it worked.",
+  "playbook": "plan-maintenance-window",
+  "steps": [
+   "inspect-snapshots",
+   "edit-collection",
+   "edit-snapshot",
+   "compare-device-config",
+   "verify-change"
+  ],
+  "required": [
+   [
+    "inspect-snapshots"
+   ],
+   [
+    "edit-snapshot",
+    "edit-collection"
+   ]
+  ]
+ },
+ {
+  "query": "Are the guest and server zones isolated from each other?",
+  "playbook": "plan-segmentation-check",
+  "steps": [
+   "inspect-snapshots",
+   "inspect-inventory",
+   "investigate-reachability",
+   "check-network-compliance"
+  ],
+  "required": [
+   [
+    "inspect-snapshots"
+   ],
+   [
+    "investigate-reachability"
+   ]
+  ]
+ },
+ {
+  "query": "Traffic to our provider's MPLS core dead-ends at the edge router. Model that segment so paths can cross it.",
+  "playbook": "plan-synthetic-device",
+  "steps": [
+   "inspect-snapshots",
+   "investigate-reachability",
+   "inspect-topology",
+   "edit-synthetic-query"
+  ],
+  "required": [
+   [
+    "investigate-reachability"
+   ],
+   [
+    "inspect-topology"
+   ]
+  ]
  }
 ]
