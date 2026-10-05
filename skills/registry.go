@@ -250,6 +250,7 @@ func Run(ctx context.Context, name string, s *fwd.Session, in json.RawMessage) (
 	if err != nil {
 		return result.Result{}, err
 	}
+	in = dropIgnoredInputs(name, in)
 	run, ok := runners[name]
 	if !ok {
 		return result.Result{}, fmt.Errorf("%w: %s is a procedure-only skill; load its body instead", ErrUnknown, name)
@@ -398,4 +399,26 @@ func Reference(name, ref string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%w: %s has no reference %q", ErrUnknown, name, ref)
+}
+
+// ignoredInputs are inputs a skill no longer declares but still accepts and ignores, so an older caller does not break.
+var ignoredInputs = map[string][]string{"edit-nqe-query": {"network_id"}}
+
+func dropIgnoredInputs(name string, in json.RawMessage) json.RawMessage {
+	keys := ignoredInputs[name]
+	if len(keys) == 0 {
+		return in
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(in, &m) != nil || m == nil {
+		return in
+	}
+	for _, k := range keys {
+		delete(m, k)
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return in
+	}
+	return out
 }

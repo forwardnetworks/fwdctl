@@ -308,3 +308,37 @@ func TestEditNQEQueriesACreateDirectoryRunThatFailsWhileStagingLeavesNothingBehi
 		t.Errorf("both directory drafts must be discarded again: %s", order)
 	}
 }
+
+const newerFieldIn = `{"changes":[{"path":"/Team/a","source":"foreach d in network.devices select {x: d.liveOnlyField}"}],"message":"newer schema"`
+
+func TestEditNQEQueriesOfflineCheckOrgUsesTheLiveSchemaAndSaysSo(t *testing.T) {
+	head := "c1"
+	routes, _, _ := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	routes["GET /api/nqe/schema"] = func(*http.Request, []byte) (int, any) { return 200, []byte(fakeLiveSchema) }
+	// default: the embedded schema lacks the field, so the save is refused
+	r, _ := mustRun(t, "edit-nqe-query", routes, newerFieldIn+`}`)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "offline check") {
+		t.Fatalf("embedded: %s %s", r.Status, r.Finding)
+	}
+	// org: the organization's schema has it, and the result says which schema was used
+	r, _ = mustRun(t, "edit-nqe-query", routes, newerFieldIn+`,"offline_check":"org"}`)
+	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "organization's live schema") {
+		t.Fatalf("org: %s %s %v", r.Status, r.Finding, r.Limits)
+	}
+	// and the embedded schema is back afterwards
+	if r, _ = mustRun(t, "edit-nqe-query", routes, newerFieldIn+`}`); r.Status != result.Failed {
+		t.Errorf("the organization's schema leaked past the call: %s", r.Status)
+	}
+}
+
+func TestEditNQEQueriesOfflineCheckSkipNeedsTypecheckAndSaysItWasSkipped(t *testing.T) {
+	head := "c1"
+	routes, _, _ := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	if _, _, err := runSkill(t, "edit-nqe-query", routes, newerFieldIn+`,"offline_check":"skip"}`); err == nil {
+		t.Error("skip without typecheck must be refused: it would leave nothing to check the query")
+	}
+	r, _ := mustRun(t, "edit-nqe-query", routes, newerFieldIn+`,"offline_check":"skip","typecheck":true}`)
+	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "skipped") {
+		t.Fatalf("skip: %s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}

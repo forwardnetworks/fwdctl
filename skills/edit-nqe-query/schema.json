@@ -61,14 +61,15 @@
       "default": false,
       "description": "with changes: have Forward type the changes and every query that imports them (stages drafts, restores them)"
     },
+    "offline_check": {
+      "enum": ["embedded", "org", "skip"],
+      "default": "embedded",
+      "description": "which schema the offline check uses: embedded (this build's), org (the organization's live schema, like nqe lint --org; for queries using fields newer than this build), or skip (only with changes and typecheck: true, so Forward's own check is the gate)"
+    },
     "snapshot_id": {
       "type": "string",
       "minLength": 1,
       "description": "with typecheck: also type against this snapshot's data model"
-    },
-    "network_id": {
-      "type": "string",
-      "minLength": 1
     },
     "discard_draft": {
       "type": "boolean",

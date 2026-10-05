@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/nqelint"
@@ -30,11 +31,14 @@ type editNQEQueryInput struct {
 	// BasisCommitID is the library head the edits were made against; the plan and the apply refuse if the head is another commit.
 	BasisCommitID string `json:"basis_commit_id"`
 	// Typecheck stages the changes as drafts, has Forward type them and every importer, and restores the drafts.
-	Typecheck  bool   `json:"typecheck"`
-	SnapshotID string `json:"snapshot_id"`
+	Typecheck bool `json:"typecheck"`
+	// OfflineCheck says which schema the offline check uses: "embedded" (default, this build's), "org" (the organization's live schema,
+	// the way `nqe lint --org` does) or "skip" (only with changes and typecheck: Forward's own check is then the gate).
+	OfflineCheck string `json:"offline_check"`
+	SnapshotID   string `json:"snapshot_id"`
 	// DiscardDraft drops the caller's own uncommitted draft at exactly path (nothing else; nothing committed changes).
 	DiscardDraft bool `json:"discard_draft"`
-	// NetworkID is accepted so this skill takes the inputs find-nqe-query does; the library is organization-wide and it is not used.
+	// NetworkID is not declared any more (the library is organization-wide); Run drops it, so an older caller that still sends it works.
 	NetworkID string `json:"network_id"`
 }
 
@@ -59,6 +63,14 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	var in editNQEQueryInput
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	switch in.OfflineCheck {
+	case "", "embedded", "org", "skip":
+	default:
+		return result.Result{}, fmt.Errorf("%w: offline_check is embedded, org or skip", ErrInvalidInput)
+	}
+	if in.OfflineCheck == "skip" && !(len(in.Changes) > 0 && in.Typecheck) {
+		return result.Result{}, fmt.Errorf("%w: offline_check skip needs changes with typecheck: true, so that Forward's own check is the gate (an unchecked save is never offered)", ErrInvalidInput)
 	}
 	if len(in.Changes) > 0 {
 		return editNQEQueries(ctx, s, in)
@@ -94,12 +106,20 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		mode = result.ModeApplied
 	}
 	next := []string{"validate-nqe-query", "find-nqe-query"}
+	schemaNote := ""
 	if !in.Delete {
 		var errs []map[string]any
-		for _, d := range nqelint.Lint(in.Source) {
+		diags, schemaUsed, lerr := lintWithSchema(ctx, s, in.OfflineCheck, in.Source)
+		if lerr != nil {
+			return result.Result{}, lerr
+		}
+		for _, d := range diags {
 			if d.Severity == "error" {
 				errs = append(errs, map[string]any{"line": d.Line, "column": d.Column, "message": d.Message})
 			}
+		}
+		if schemaUsed != "embedded" {
+			schemaNote = "offline check used the " + schemaUsed + " schema"
 		}
 		if len(errs) > 0 {
 			return result.Build(editNQEQueryName, result.Failed, fmt.Sprintf("The query does not pass the offline check (%d error(s)); it was not saved", len(errs)),
@@ -177,7 +197,7 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	if !in.Apply {
 		return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Dry run: would %s the library query at %s and commit it. Nothing was changed; run again with apply=true to make it", what, in.Path),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: changes, Evidence: ev(nil), NextActions: next,
-				Limits: []string{"the commit is visible to everyone in the organization; the offline check proves the query parses and type-checks, not that it returns what you want (validate-nqe-query runs it)"}})
+				Limits: withNote([]string{"the commit is visible to everyone in the organization; the offline check proves the query parses and type-checks, not that it returns what you want (validate-nqe-query runs it)"}, schemaNote)})
 	}
 	if in.Delete {
 		err = s.DeleteOrgQuery(ctx, in.Path, title, "")
@@ -260,4 +280,37 @@ func discardNQEDraft(ctx context.Context, s *fwd.Session, in editNQEQueryInput) 
 	}
 	return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Discarded your uncommitted %s at %s (read back: gone)", strings.ToLower(strings.TrimPrefix(d.Type, "QUERY_")), in.Path),
 		result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, Evidence: ev})
+}
+
+// orgLintMu serialises checks against the organization's schema: the checker's schema is process-wide, so it is set, used and reset
+// under one lock. Other offline checks in the same process run outside it and could see the organization's schema for that moment.
+var orgLintMu sync.Mutex
+
+// lintWithSchema runs the offline check with the schema the caller asked for and says which one it used. skip returns no diagnostics.
+func lintWithSchema(ctx context.Context, s *fwd.Session, mode, src string) ([]nqelint.Diagnostic, string, error) {
+	switch mode {
+	case "skip":
+		return nil, "skipped", nil
+	case "org":
+		raw, err := s.NQESchema(ctx)
+		if err != nil {
+			return nil, "", fmt.Errorf("offline_check org: could not read the organization's schema (use embedded or skip): %w", err)
+		}
+		orgLintMu.Lock()
+		defer orgLintMu.Unlock()
+		if _, _, err := nqelint.UseOrgSchema(raw); err != nil {
+			return nil, "", fmt.Errorf("offline_check org: could not use the organization's schema: %w", err)
+		}
+		defer nqelint.ResetOrgSchema()
+		return nqelint.Lint(src), "organization's", nil
+	}
+	return nqelint.Lint(src), "embedded", nil
+}
+
+// withNote appends a limit when note is not empty.
+func withNote(limits []string, note string) []string {
+	if note == "" {
+		return limits
+	}
+	return append(limits, note)
 }

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
-	"github.com/forwardnetworks/fwdctl/nqelint"
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
@@ -57,8 +56,14 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 
 	// offline check of every source
 	lintErrs := map[string][]map[string]any{}
+	schemaUsed := "embedded"
 	for _, c := range in.Changes {
-		for _, d := range nqelint.Lint(c.Source) {
+		diags, used, lerr := lintWithSchema(ctx, s, in.OfflineCheck, c.Source)
+		if lerr != nil {
+			return result.Result{}, lerr
+		}
+		schemaUsed = used
+		for _, d := range diags {
 			if d.Severity == "error" {
 				lintErrs[c.Path] = append(lintErrs[c.Path], map[string]any{"line": d.Line, "column": d.Column, "message": d.Message})
 			}
@@ -66,6 +71,7 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	}
 	if len(lintErrs) > 0 {
 		return fail(fmt.Sprintf("%d of %d query source(s) fail the offline check; nothing was changed", len(lintErrs), len(in.Changes)), map[string]any{"offline_errors": lintErrs},
+			"offline check schema: "+schemaUsed+" (offline_check: org uses the organization's live schema, skip with typecheck: true lets Forward's own check decide)",
 			"fwdctl nqe lint shows the errors with positions. The offline check is gradual: it can miss shapes Forward rejects (for example a pattern capture's type), so typecheck: true asks Forward")
 	}
 
@@ -159,7 +165,14 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		return result.Build(editNQEQueryName, result.OK, "Every query already has the given source; nothing to commit", result.Deterministic, cx, result.Options{Mode: mode, Evidence: evd(nil)})
 	}
 
-	limits := []string{"the commit is visible to everyone in the organization and is ONE commit for all paths; Forward has no optimistic-concurrency check, so this skill compares the head to the basis before it commits (a commit landing in between is not caught)"}
+	limits := []string{}
+	switch schemaUsed {
+	case "skipped":
+		limits = append(limits, "the offline check was skipped (offline_check: skip): Forward's own typecheck is the only gate; read its result below")
+	case "organization's":
+		limits = append(limits, "the offline check used the organization's live schema (offline_check: org)")
+	}
+	limits = append(limits, "the commit is visible to everyone in the organization and is ONE commit for all paths; Forward has no optimistic-concurrency check, so this skill compares the head to the basis before it commits (a commit landing in between is not caught)")
 	var tc map[string]any
 	if in.Typecheck {
 		if mine, derr := s.DraftsAt(ctx, paths); derr != nil {

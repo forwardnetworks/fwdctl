@@ -27,7 +27,7 @@ false). See `schema.json`.
 
 **Several queries in one commit.** Instead of `path` and `source`, give `changes`: a list of `{path, source}` (up to 25; modules that import each other change together), `message` (the
 commit title), optional `basis_commit_id` (the library head the edits were made against: the plan and the apply refuse if the head is another commit, and say so) and `typecheck: true`
-(optionally with `snapshot_id`). The dry run lints every source offline, compares each with what is committed, writes nothing and says so when dependents were **not** typechecked. With
+(optionally with `snapshot_id`). `offline_check` picks the schema of the offline check: `embedded` (default, this build's), `org` (the organization's live schema, like `fwdctl nqe lint --org`: needed for a query that uses a field newer than this build; the result says which schema was used) or `skip` (only with `changes` and `typecheck: true`, so Forward's own typecheck is the gate). The dry run lints every source offline, compares each with what is committed, writes nothing and says so when dependents were **not** typechecked. With
 `typecheck: true` it **stages the changes as drafts in your workspace, has Forward type every changed query and every query that imports one (and counts the checks and dashboards that
 use them), then discards the drafts** (Forward's discard drops them: the skill refuses to stage when you already have an uncommitted draft at one of the paths, since cleaning up would drop
 it, and says when a discard failed so you can look at the NQE editor). Any new error, or a change this login may not commit, is **failed** and nothing is committed. `apply: true` re-reads the head, commits all
