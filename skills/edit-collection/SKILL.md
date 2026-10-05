@@ -1,7 +1,7 @@
 ---
 name: edit-collection
 description: Starts a collection, or stops a running one, after checking none runs and the collector is up. Dry run unless apply is true. Use when asked to collect now or cancel a collection.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
   summary: "start or stop a collection"

@@ -1,7 +1,7 @@
 ---
 name: plan-synthetic-device
 description: Sequences the skills that model an uncollected segment as a synthetic device. Use when a path dead-ends at the edge.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "edge-synthetic"
   summary: "model an uncollected segment"
@@ -28,6 +28,14 @@ not something Forward observed. Read the reference file a step names only when y
    proof; one that still stops points at a missing subnet, a VRF mismatch or a Missing Peer.
 
 7. **Exposure questions** ("our management or firewall interfaces have public addresses and Forward flags the devices internet addressable; can we exclude an interface, or add a second synthetic device?"): [reference/exposure.md](reference/exposure.md). It says how the flag is computed, that the exclude list is prefix-based and does not hide an address a collected interface carries, that no other synthetic device can help, what to do instead, and the before and after procedure. `inspect-edge` (`view: public_addresses`) lists the addresses with their role first.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 4, 5, 6): committing the query, attaching it or a circuit, and a backdate are writes (a committed query is visible to the whole organization; a backdate reprocesses snapshots): `plan-safe-write`, dry run first
+- **Guided** (steps 1, 3, 7): see the dead-ending flow first; the exposure questions follow `reference/exposure.md`
+- **Open** (steps 2): choose the type from what the segment does, not from names; build the rows from evidence
 
 ## The minimum
 

@@ -1,7 +1,7 @@
 ---
 name: edit-nqe-query
 description: Saves an authored NQE query to the organization's library, or removes one, showing the effect. Dry run unless apply is true. Use when a checked query should be kept for the team or dropped.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "nqe"
   summary: "save or remove a query"

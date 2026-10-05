@@ -1,7 +1,7 @@
 ---
 name: investigate-reachability
 description: Explains whether traffic from a source to a destination is delivered and where it first fails, from Forward's path search. Use when asked whether A can reach B or why a flow is dropped.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "investigate"
   summary: "is a flow delivered"

@@ -1,7 +1,7 @@
 ---
 name: plan-device-audit
 description: Sequences the skills that profile a device or group: identity, links, config, CVEs, performance. Use when reviewing one device or site.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "inventory-topology"
   summary: "full picture of a device"
@@ -22,6 +22,14 @@ A procedure, not a skill that runs. Name the snapshot every fact comes from, and
 5. **Load.** `inspect-performance` for CPU, memory, interface errors and utilisation, only where samples exist.
 6. **History.** `inspect-history` with `device` for when its configuration last changed.
 7. **Grouping.** If asked to group or label devices, `edit-device-tags` (follow `plan-safe-write`).
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 7): grouping or labelling is a write: `plan-safe-write`, dry run first.
+- **Guided** (steps 1, 2): identify the device first, then its connections.
+- **Open** (steps 3, 4, 5, 6): take the areas the question needs (at least the minimum below); search device text, never dump it.
 
 ## The minimum
 

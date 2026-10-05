@@ -1,7 +1,7 @@
 ---
 name: plan-change-review
 description: Sequences read, predict, check and reach for a change. Use when asked whether a change is safe or will break anything.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "change"
   summary: "is a change safe"
@@ -22,6 +22,14 @@ A procedure, not a skill that runs. It orders other skills; each still returns i
 5. **Measure the reach.** `verify-change` with `view: impact`; read the areas that differ and the subnet pairs gained or lost.
 6. **Check policy.** `check-network-compliance` with `view: read` to see which checks got worse; evaluate a specific policy if one was named.
 7. **Explain any surprise.** `investigate-reachability` on a flow that changed.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 2, 3): staging with `edit-change-set` and running the predict follow `plan-safe-write`; say the predicted snapshot cannot be deleted before you run it; stage only what the person supplied.
+- **Guided** (steps 1, 4, 5, 6): keep the order; choose the flows, expectations and checks from what the person said.
+- **Open** (steps 7): explaining a surprise is judgment: pick the flow that changed and the skill that shows why.
 
 ## Answering
 

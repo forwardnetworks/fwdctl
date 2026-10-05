@@ -1,7 +1,7 @@
 ---
 name: plan-safe-write
 description: States the protocol every edit skill follows: plan, show, approve, apply once, verify, keep the undo. Use before any edit-* skill.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "environment"
   summary: "edit protocol; read first"
@@ -22,6 +22,14 @@ A procedure, not a skill that runs. The `edit-*` skills change **Forward's own d
 5. **Apply once.** Run the edit skill with `apply: true` and the same inputs. Do not loop or retry: a retry of a partly applied change repeats it.
 6. **Verify.** Read `status`. `ok` means Forward holds the requested state (the skill read it back). `failed` means it does not: say so, say what was changed (`changes` marked `applied`), and offer the `undo`. `unknown` and `error` are never a success.
 7. **Keep the undo.** Give the person each change's `undo` text; it is the exact inverse. If the change was not reversible, say that before step 5, not after.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 2, 4, 5, 6, 7): the protocol itself: a dry run first, approval of that plan, one apply, read the status, keep the undo.
+- **Guided** (steps 1): read with the matching `inspect-*` or `check-*` skill; which one depends on the object.
+- **Open** (steps 3): explain the change in the person's words, but always state what cannot be undone.
 
 ## Never
 

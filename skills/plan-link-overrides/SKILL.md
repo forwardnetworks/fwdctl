@@ -1,7 +1,7 @@
 ---
 name: plan-link-overrides
 description: Sequences the skills that diagnose and fix missing or drifted link overrides. Use when a manual or suppressed link is missing.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "edge-synthetic"
   summary: "missing or drifted overrides"
@@ -35,6 +35,13 @@ Read the reference file a step names only when you reach that step (where you ca
    - *What was missing:* `<n>` override(s) on `<devices>`, present in snapshot `<id>` and absent in `<id>` (ports, state).
    - *What we did:* the edit applied to snapshot `<id>` (or the staged change), the approval, and that the snapshot reprocessed; the proof (`inspect-topology` with `compare_to_snapshot_id` now shows no difference, the pair is in `inspect-topology` links).
    - *What to expect:* the next collected snapshot may start without these overrides until staged at network level or applied again; how to check (`inspect-topology` with `compare_to_snapshot_id` against this snapshot); the undo.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 3): the edit is a write that invalidates the snapshot: `plan-safe-write`, dry run, approval, apply once, and say plainly that it reprocesses the snapshot.
+- **Guided** (steps 1, 2, 4, 5): compare, then verify each override, and do not edit before both; the hand-over keeps the shape given.
 
 ## The minimum
 

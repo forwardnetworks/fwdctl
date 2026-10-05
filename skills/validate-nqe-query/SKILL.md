@@ -1,7 +1,7 @@
 ---
 name: validate-nqe-query
 description: Checks that an NQE query compiles and runs against a snapshot and reports diagnostics or rows. Use after writing a query, before trusting results, or when one fails.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "nqe"
   summary: "compile and run a query"

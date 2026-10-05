@@ -1,7 +1,7 @@
 ---
 name: inspect-history
 description: Shows how one check's status moved across recent snapshots and where it last changed, or when a device's config last changed. Use when asked when a check started failing or a config changed.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "compliance"
   summary: "when a check or config changed"

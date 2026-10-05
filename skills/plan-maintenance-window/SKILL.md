@@ -1,7 +1,7 @@
 ---
 name: plan-maintenance-window
 description: Sequences before snapshot, change, after data and comparison around a window. Use when planning or closing a maintenance window or cutover.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "change"
   summary: "before and after a change"
@@ -26,6 +26,13 @@ A procedure, not a skill that runs. Forward does not push the change; it bracket
 6. **What changed.** `compare-device-config` between the baseline and the new snapshot: only the devices the window planned to touch should differ; anything else is a finding.
 7. **What broke.** `verify-change` with the saved expectations (before and after snapshot ids) and `check-network-compliance` for checks that got worse.
 8. **Close.** `edit-snapshot` (action note) on the new snapshot ("after change X, verified"), or `plan-troubleshoot-connectivity` for what failed.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 1, 2, 5, 8): collecting and labelling snapshots are writes: `plan-safe-write`, dry run first; the after-snapshot must be processed, not merely started.
+- **Guided** (steps 3, 4, 6, 7): keep the order; the expectations are the person's, written down before the after-check.
 
 ## Answering
 

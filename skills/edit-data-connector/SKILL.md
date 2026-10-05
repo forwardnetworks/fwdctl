@@ -1,7 +1,7 @@
 ---
 name: edit-data-connector
 description: Manages a network's HTTP data connector (add, update, delete, test), polled each collection. Dry run unless apply is true. Use when an API, not SNMP/CLI, is the source.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "nqe"
   summary: "data connector"

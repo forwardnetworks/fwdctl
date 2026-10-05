@@ -1,7 +1,7 @@
 ---
 name: inspect-snapshots
 description: Lists a network's snapshots, says which is the newest worth reading, which are predictions or drafts, and how complete one is. Use when choosing a before and after snapshot.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
   summary: "list, pick the newest"

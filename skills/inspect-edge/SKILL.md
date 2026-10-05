@@ -1,7 +1,7 @@
 ---
 name: inspect-edge
 description: Finds where traffic leaves the network (view exits), its public interface IPs (public_addresses) and good trace sources (trace_sources). Use when asked where the internet attaches.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "edge-synthetic"
   summary: "exits, public IPs, trace"

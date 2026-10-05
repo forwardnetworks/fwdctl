@@ -1,7 +1,7 @@
 ---
 name: plan-what-changed
 description: Sequences the skills that answer what changed and when. Use when asked what changed or when something started.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "change"
   summary: "what changed and when"
@@ -21,6 +21,14 @@ A procedure, not a skill that runs. Forward holds snapshots, not a timeline: a c
 4. **What changed in state?** For a kind of data (BGP neighbours, interfaces, VLANs): `find-nqe-query` for a saved query, then `compare-nqe-results` between the two snapshots: rows added, removed, changed.
 5. **Did the set of devices change, or did collection get slower?** For "why did the network grow" or "why is collection slow", the devices themselves are the first thing to diff: `inspect-inventory` kind `devices` with `compare_to_snapshot_id` lists the devices added and removed between two processed snapshots, with counts by vendor, device type and name prefix (the prefix is often the site), and flags a type that lost and gained about the same number as a probable rename. Then `investigate-collection-failure` view `history` for each collection's duration and device count over time (and collections whose snapshot was replaced), view `slow` for one collection: total device time, how many devices were collected at once against the collector's configured concurrency, idle stretches in the run and what started after them, and `compare_to_snapshot_id` to set two collections side by side. `inspect-collection` view `config` summarises what is collected. A snapshot that is UNPROCESSED cannot be diffed: the answer says so and names `edit-snapshot` (action reprocess). Forward records no reason a device appeared and no device creation time; who changed the source list is in Forward's audit log: `inspect-access` view `activity` with `network_id`, `match` `classic-devices` and `method` DELETE or POST (requests only, no bodies).
 6. **What did it do?** If a change set or an intended change is in play, `verify-change` on it: expected behaviour against the predicted network, and the areas it touched.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 1, 3): name the two snapshots and diff the configuration between them.
+- **Guided** (steps 2, 4, 5): keep the order; choose the check, the data kind and the devices.
+- **Open** (steps 6): what a change did depends on what the person intended.
 
 ## The minimum
 

@@ -1,7 +1,7 @@
 ---
 name: plan-incident-triage
 description: Sequences the skills that check network health or triage an outage of unknown cause. Use for a health check or what is wrong now.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "investigate"
   summary: "health check, outage triage"
@@ -20,6 +20,14 @@ A procedure, not a skill that runs. Forward is a model of the last collection, n
 3. **Anything stressed?** `inspect-performance` unhealthy views (CPU, memory, interface errors, utilisation), only where samples exist.
 4. **Policy regression?** `check-network-compliance` with `view: read`, failing checks first; `inspect-history` for when each started.
 5. **Which flow?** For the symptom the person reports, `plan-troubleshoot-connectivity`.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 1): say how old the picture is before reasoning from it.
+- **Guided** (steps 2, 3, 4): keep the order; narrow the interval, the devices and the checks to the incident.
+- **Open** (steps 5): which flow to test depends on the symptom the person reports.
 
 ## The minimum
 

@@ -1,7 +1,7 @@
 ---
 name: plan-investigation
 description: Maps a network question to the right skill and states what Forward cannot answer. Use at the start of any network question.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "environment"
   summary: "router: question to skill"
@@ -47,6 +47,14 @@ A playbook is a procedure (it does not run): it names the skills to call, their 
 | Audit | "Tell me about this device", everything you know about a device, "audit this site or tag group" | `plan-device-audit` |
 | Health | "Is the network healthy", a morning check, "is anything wrong" | `plan-incident-triage` |
 | Authoring | "Write or fix an NQE query", a custom question, "save this query" | `author-nqe-query` |
+
+## How much freedom a playbook gives
+
+Every playbook has a `## Freedom` section that gives each numbered step one level, so a model of any size knows where it may improvise:
+
+- **Fixed:** do exactly this, in this order, with this gate. Every step that writes (an `edit-*` skill) is Fixed: dry run, show it, wait for approval, apply once. So are the steps the answer cannot skip.
+- **Guided:** follow the order, but choose the inputs (which device, flow, snapshot or check) from what the person asked.
+- **Open:** the goal is given; choose the skill and the approach. Still say what was measured, on which snapshot, and what was not.
 
 ## Which skill, by symptom
 

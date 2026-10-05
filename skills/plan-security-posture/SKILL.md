@@ -1,7 +1,7 @@
 ---
 name: plan-security-posture
 description: Sequences the skills that assess security posture: failing checks, CVEs, internet exposure. Use for a security review.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "security"
   summary: "security review"
@@ -20,6 +20,13 @@ A procedure, not a skill that runs. Posture is a claim about measured things: sa
 3. **Vulnerabilities.** `inspect-vulnerabilities` network view: worst first, known-exploited first, internet-addressable first. For one CVE or one device, follow `plan-vulnerability-response`.
 4. **Exposure.** `investigate-reachability` with `from` "internet" to the addresses that must not be reachable (management, databases, internal ranges); each delivered flow is a finding. `inspect-topology` kind external shows how the internet and other external networks are modelled: if they are not (no internet node, no adjacent networks for partner links), say that exposure is not measured, and that modelling them (`plan-synthetic-device`) is what makes it measurable.
 5. **Configuration hygiene.** `inspect-device-files` for specific lines (an open management protocol, a default credential pattern, a permissive any-any rule), searched, not dumped.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Guided** (steps 1, 2, 3): keep the order; failing and known-exploited first.
+- **Open** (steps 4, 5): choose the addresses to test from the internet and the config lines to search; searched, not dumped.
 
 ## The minimum
 

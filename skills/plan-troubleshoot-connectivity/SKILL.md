@@ -1,7 +1,7 @@
 ---
 name: plan-troubleshoot-connectivity
 description: Sequences the skills that find why traffic does not reach a destination. Use when asked why A cannot reach B.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "investigate"
   summary: "why A cannot reach B"
@@ -23,6 +23,14 @@ A procedure, not a skill that runs. Forward answers from a collected model, so f
 6. **Is the model complete?** A path that stops at the edge device with no next hop may be a gap in the model (an uncollected provider core, the internet, a partner network), not a real failure: say so, and use `plan-synthetic-device`. A device that failed collection also leaves a gap: `investigate-collection-failure` (view devices) names it and the cause, and (view neighbors) lists the unmodelled neighbours, BGP peers first.
 7. **Cloud.** When an end is a cloud instance, `inspect-inventory` kind `cloud` finds its VPC, then `cloud_routes` (the subnet's route table and next hop), `cloud_security` (the security group rules at both ends, in both directions) and `cloud_gateways` (peering, VPN, internet or NAT gateway). Say that the path search was not shown to trace between cloud instances, and that network ACLs, cloud firewalls and transit gateways need `author-nqe-query`.
 8. **Try the neighbours.** If the flow is dropped, test the reverse flow and a flow to a sibling destination: a one-way or partial failure points to a different cause.
+
+## Freedom
+
+How much room each step gives (levels are defined in `plan-investigation`):
+
+- **Fixed** (steps 1, 3): the age of the data and the path search always come first.
+- **Guided** (steps 2): pin down source, destination, protocol and port before asking.
+- **Open** (steps 4, 5, 6, 7, 8): what to look at after the failing hop depends on the reason it gives; say what was not looked at.
 
 ## The minimum
 

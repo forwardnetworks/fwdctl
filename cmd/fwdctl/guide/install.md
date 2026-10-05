@@ -3,15 +3,17 @@
     fwdctl install claude [--dir DIR]       # writes <dir>/<skill>/SKILL.md; default ~/.claude/skills
     fwdctl install agents [--file FILE]     # adds a managed block (rules and a compact skill list) to AGENTS.md or CLAUDE.md (stdout without --file)
 
-The agent reads each skill's description to decide when to use it, then runs it through `fwdctl run`. So `fwdctl` must be on the
-agent's `PATH` and the three `FORWARD_*` variables must be in its environment.
+The agent reads each skill's description to decide when to use it, then runs it through `fwdctl run`. The skills themselves (the
+playbooks, the safe-write protocol, the NQE authoring notes) are plain text and need no binary, and any channel below can deliver
+them. To **run** an analysis against Forward, `fwdctl` must be on the agent's `PATH` and the three `FORWARD_*` variables must be in
+its environment.
 
 Re-running is safe: `install claude` rewrites the skill files and `install agents` replaces only its own marked block.
 
 ## Claude Code plugin
 
 The repository is also a Claude Code plugin: `/plugin marketplace add forwardnetworks/forward-skills`, then
-`/plugin install forward-skills@forward-skills`. The plugin carries the skills; the `fwdctl` binary still has to be on `PATH`.
+`/plugin install forward-skills@forward-skills`. The plugin carries the skills and needs no binary to install; the `fwdctl` binary has to be on `PATH` only to run them.
 
 ## Codex plugin
 

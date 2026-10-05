@@ -1,7 +1,7 @@
 ---
 name: inspect-bgp-neighbors
 description: Lists BGP neighbors per device and VRF with peer, remote AS, session state, prefix counts and whether the peer is modelled. Use when asked who a device peers with or who the upstream is.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "inventory-topology"
   summary: "BGP peers and sessions"

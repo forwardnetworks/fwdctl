@@ -1,7 +1,7 @@
 ---
 name: edit-advanced-reachability
 description: Starts advanced reachability for a processed snapshot that never had it, showing cost first. Dry run unless apply is true. Use when internet exposure is PENDING_ADVANCED_REACHABILITY.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
   summary: "start advanced reachability"

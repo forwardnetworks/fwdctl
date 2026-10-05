@@ -1,7 +1,7 @@
 ---
 name: verify-change
 description: Judges a change: view verify (worked? broke nothing?), describe (what a change set edits), impact (how far it reaches). Use when asked if a change is safe or what a change set does.
-compatibility: Needs the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "change"
   summary: "verify, describe, size a change"
