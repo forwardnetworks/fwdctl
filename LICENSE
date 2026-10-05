@@ -1,4 +1,23 @@
 Copyright (c) 2026 Forward Networks, Inc. All rights reserved.
 
-This software and its documentation are proprietary and confidential. No license is granted to copy, modify,
-distribute, sublicense or use it except as Forward Networks, Inc. has expressly agreed in writing.
+EXPERIMENTAL SOFTWARE. This is a dogfooding project. It is not an official Forward Networks release or product, it is
+not supported, and it may change or be withdrawn at any time without notice.
+
+Limited permission. Forward Networks, Inc. grants you a non-exclusive, non-transferable, revocable permission to
+download, read and run this software and its documentation for your own internal evaluation and use with Forward
+Networks products to which you have lawful access. You may keep unmodified copies for that purpose.
+
+Not permitted without Forward Networks' prior written agreement: selling, sublicensing, redistributing or publishing this
+software or modified versions of it; offering it as a service to others; removing or altering this notice; or using
+Forward Networks' names or marks in a way that suggests the software or any derivative is official or endorsed.
+All rights not expressly granted are reserved. Nothing here grants any right in Forward Networks products, services,
+data or documentation, which are governed by their own terms.
+
+No warranty. The software is provided "as is", without warranty of any kind, express or implied, including merchantability,
+fitness for a particular purpose and non-infringement. Its output (including findings, verdicts and suggested changes)
+may be incomplete or wrong; check it against Forward before acting on it. You are responsible for any change you make
+to Forward or to a network, and for the credentials you give it.
+
+Limitation of liability. To the extent permitted by law, Forward Networks, Inc. is not liable for any indirect,
+incidental, special, consequential or punitive damages, or for lost data, profits or revenue, arising from the use of
+this software.
