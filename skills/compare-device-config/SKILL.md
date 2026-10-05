@@ -56,3 +56,9 @@ The envelope in `schema/skill-result.schema.json`.
 Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run compare-device-config`. It needs the
 `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
 (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+
+## Reference
+
+Read the file you need, when you need it (where you cannot read files: `fwdctl describe compare-device-config reference/<file>`).
+
+- [reference/peer-drift.md](reference/peer-drift.md): comparing a device with its peers (outliers, one level deep, intended versus actual). Read for a peer comparison.

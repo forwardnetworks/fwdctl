@@ -1,5 +1,7 @@
 # fwdctl
 
+> **Experimental.** A dogfooding project, **not an official Forward Networks release or product**. It is unsupported and may change without notice.
+
 The Forward Networks command line: log in to Forward, run its **skills** (read-only questions and dry-run-first changes that return evidence), and run NQE
 queries. It is an API client built on the public Go SDK, [forward-go-sdk](https://github.com/forwardnetworks/forward-go-sdk). The skills themselves, for
 Claude Code, Codex and Gemini, live in [forward-skills](https://github.com/forwardnetworks/fwdctl); this repository is the CLI those skills run.

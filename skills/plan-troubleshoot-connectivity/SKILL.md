@@ -43,3 +43,9 @@ Name the first failing device and the reason in Forward's words, the snapshot, a
 ## Worked example
 
 [reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-troubleshoot-connectivity reference/example.md`.
+
+## Reference
+
+Read the file you need, when you need it (where you cannot read files: `fwdctl describe plan-troubleshoot-connectivity reference/<file>`).
+
+- [reference/bgp-session.md](reference/bgp-session.md): BGP session down, nothing learned or nothing sent: the rungs in order, and what Forward does not model. Read for a BGP question.

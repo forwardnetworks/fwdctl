@@ -22,7 +22,8 @@ A pass must mean "evaluated, and nothing violates", never "nothing was evaluated
 At least one policy source:
 
 - `use_checks: true` (optionally `check_ids`): Forward's own checks. Forward evaluated them,
-  so its PASS is authoritative.
+  so its PASS is Forward's own verdict for what the check tests. An isolation or reachability check can pass vacuously (no valid path
+  ever existed); `fwdctl describe plan-segmentation-check reference/check-vacuity.md` says how to tell.
 - `nqe`: a violations query (`query` or `query_id`, `parameters`) where **each row is a
   violation**, plus a **scope query** (`scope_query` or `scope_query_id`) whose rows are the
   things the policy applies to. The scope is what separates "none violate" from "nothing was
@@ -66,3 +67,9 @@ The envelope in `schema/skill-result.schema.json`.
 Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run check-network-compliance`. It needs the
 `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
 (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+
+## Reference
+
+Read the file you need, when you need it (where you cannot read files: `fwdctl describe check-network-compliance reference/<file>`).
+
+- [reference/stig-results.md](reference/stig-results.md): reading STIG and other catalog-query results (rows that are not violations, zero rows, counting devices). Read when an `nqe` result says the rows are not all violations.

@@ -33,3 +33,9 @@ How much room each step gives (levels are defined in `plan-investigation`):
 ## Answering
 
 Each flow: expected, observed, snapshot, and for a violation the first rule or route responsible. State which zones and protocols were not tested.
+
+## Reference
+
+Read the file you need, when you need it (where you cannot read files: `fwdctl describe plan-segmentation-check reference/<file>`).
+
+- [reference/check-vacuity.md](reference/check-vacuity.md): checks that pass without testing anything, real endpoints, cutover and invariant checks (unverified behaviours, labelled). Read before trusting or staging a check.

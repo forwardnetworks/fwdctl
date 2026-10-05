@@ -80,3 +80,9 @@ incomplete; `plan-synthetic-device` and `inspect-edge` when the last hop is a Mi
 Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run investigate-reachability`. It needs the
 `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
 (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+
+## Reference
+
+Read the file you need, when you need it (where you cannot read files: `fwdctl describe investigate-reachability reference/<file>`).
+
+- [reference/reading-paths.md](reference/reading-paths.md): test both directions, real host addresses, a drop reason to the next read, and an empty result. Read when interpreting a path result.

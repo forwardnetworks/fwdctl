@@ -1,5 +1,7 @@
 # Installing the skills for an agent
 
+*Experimental: a dogfooding project, not an official Forward Networks release or product.*
+
     fwdctl install claude [--dir DIR]       # writes <dir>/<skill>/SKILL.md; default ~/.claude/skills
     fwdctl install agents [--file FILE]     # adds a managed block (rules and a compact skill list) to AGENTS.md or CLAUDE.md (stdout without --file)
 

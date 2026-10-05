@@ -221,3 +221,23 @@ func TestComplianceCheckIDAloneReadsTheCheck(t *testing.T) {
 		t.Fatalf("got %s: %s %v", r.Status, r.Finding, r.Limits)
 	}
 }
+
+func TestComplianceNQERowsWithAViolationColumnAreNotCountedAsViolations(t *testing.T) {
+	rows := []map[string]any{
+		{"device": "r1", "violation": true, "Outcome": "Open"},
+		{"device": "r2", "violation": false, "Outcome": "Not a Finding"},
+		{"device": "r3", "violation": nil, "Outcome": "Not Reviewed"},
+	}
+	r, _ := comply(t, "PROCESSED", "COLLECTION", nil, nqeSplit(rows, 40), nqeIn)
+	if r.Status == result.Failed || r.Status == result.OK {
+		t.Fatalf("rows that are not all violations must not give %s: %s", r.Status, r.Finding)
+	}
+	if strings.Contains(r.Finding, "violated") || !strings.Contains(strings.Join(r.Limits, " "), "not all violations") {
+		t.Fatalf("finding %q limits %v", r.Finding, r.Limits)
+	}
+	// every row a real violation still fails
+	all := []map[string]any{{"device": "r1", "violation": true}, {"device": "r2", "violation": true}}
+	if r, _ = comply(t, "PROCESSED", "COLLECTION", nil, nqeSplit(all, 40), nqeIn); r.Status != result.Failed {
+		t.Fatalf("all-true rows must fail: %s", r.Status)
+	}
+}

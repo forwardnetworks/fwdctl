@@ -61,3 +61,9 @@ The envelope in `schema/skill-result.schema.json`.
 Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run inspect-device-files`. It needs the
 `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
 (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+
+## Reference
+
+Read the file you need, when you need it (where you cannot read files: `fwdctl describe inspect-device-files reference/<file>`).
+
+- [reference/vendor-reading.md](reference/vendor-reading.md): why a missing line is not an answer (feature gates, groups, dormant objects, partial views). Read before saying something is not configured.

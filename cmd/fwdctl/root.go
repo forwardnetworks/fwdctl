@@ -47,7 +47,9 @@ func (a *app) fail(format string, args ...any) error {
 	return exitCode(usage)
 }
 
-const rootLong = `fwdctl asks questions about a Forward network and answers them with evidence. Each question is a named analysis: give "fwdctl run NAME" a JSON object on stdin and it returns one result
+const rootLong = `EXPERIMENTAL: a dogfooding project, not an official Forward Networks release or product; unsupported, and it may change without notice.
+
+fwdctl asks questions about a Forward network and answers them with evidence. Each question is a named analysis: give "fwdctl run NAME" a JSON object on stdin and it returns one result
 (status, evidence, limits, next actions). Names that start with edit- change Forward and do nothing unless the input says "apply": true.
 
 Start here: "fwdctl run" lists every name and what it answers, "echo '{}' | fwdctl run inspect-networks" lists the networks you can see, "fwdctl which \"<question>\"" finds the name for a

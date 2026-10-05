@@ -6,6 +6,8 @@ Forward's model does not hold a neighbor's route-maps, prefix-lists, communities
 - Is an advertisement meant for the internet?
 - Finding the policy of one neighbor (IOS, IOS-XE, NX-OS)
 - Other platforms
+- Confirming a route leak
+- Policy design traps
 
 ## Is an advertisement meant for the internet?
 
@@ -27,3 +29,11 @@ A route-map clause with no match line matches everything. A neighbor with no `ro
 ## Other platforms
 
 Junos holds policy as `policy-statement` terms under `protocols bgp group ... export` and `import`; IOS-XR as `route-policy` blocks referenced under the neighbor address-family. Read them the same way: neighbor, then the named policy, then the sets it matches on. Say which platforms were read; do not generalise from one.
+
+## Confirming a route leak
+
+A session in the Established state can still be leaking: state says nothing about what policy permits. Do not rely on a summary prefix count either, since some platforms report none. Confirm in three steps: (1) read the neighbor's stanza in the device files and look for a missing or permissive outbound policy; (2) list what is sent with `advertised` (platforms that report it only); (3) trace from the receiving peer's address toward a leaked prefix with `investigate-reachability`. Say which of the three you could do.
+
+## Policy design traps
+
+General routing behaviour, from design review, not data in Forward: a local preference set on inbound routes is compared before AS-path length, so it defeats a prepend made on the far side. Adding a scoping `match` to a catch-all clause withdraws everything the clause carried silently. A scoping match with no terminal permit falls through to the implicit deny, which is an outage. When counting prepends, count them from the received route (the RIB), not from the config.

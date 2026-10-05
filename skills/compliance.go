@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	forward "github.com/forwardnetworks/forward-go-sdk"
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
 )
@@ -233,12 +234,22 @@ func evalNQE(ctx context.Context, s *fwd.Session, networkID, snapID string, sid 
 		}
 		scope = sc.Total
 	}
-	if viol.Truncated {
-		t.limits = append(t.limits, fmt.Sprintf("%s: %d violations, %d returned", name, viol.Total, len(viol.Items)))
-	}
 	scopeVal := any(nil)
 	if scope >= 0 {
 		scopeVal = scope
+	}
+	// A catalog query can return a row for every device and control, passes included, with a `violation` column (true, false or
+	// none). Its row count is then not a violation count: say so instead of reporting every row as a violation.
+	if has, not := rowsNotViolations(viol.Items); has && not > 0 {
+		rows, _ := result.CapRow(viol.Items, sampleRows)
+		t.limits = append(t.limits, fmt.Sprintf("%s: the rows are not all violations (a `violation` column is false or empty on %d of the %d rows read, %d rows in all), so the row count is not a violation count; filter the query to violation == true (author-nqe-query) and run it again", name, not, len(viol.Items), viol.Total))
+		t.unevaluated++
+		t.evidence = append(t.evidence, result.NewEvidence(result.EvNQE, "runNqeQuery", sid,
+			map[string]any{"name": name, "rows": viol.Total, "violations": nil, "scope": scopeVal, "sample": rows}, fmt.Sprintf("%s: %d rows, not all violations", name, viol.Total)))
+		return nil
+	}
+	if viol.Truncated {
+		t.limits = append(t.limits, fmt.Sprintf("%s: %d violations, %d returned", name, viol.Total, len(viol.Items)))
 	}
 	switch {
 	case viol.Total > 0:
@@ -270,4 +281,19 @@ func firstNonEmpty(v ...string) string {
 		}
 	}
 	return ""
+}
+
+// rowsNotViolations says whether the rows carry a `violation` column and how many of the rows read are not true.
+func rowsNotViolations(items []forward.NQERecord) (has bool, not int) {
+	for _, it := range items {
+		raw, ok := it["violation"]
+		if !ok {
+			continue
+		}
+		has = true
+		if strings.TrimSpace(string(raw)) != "true" {
+			not++
+		}
+	}
+	return has, not
 }
