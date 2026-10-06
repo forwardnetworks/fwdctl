@@ -37,6 +37,8 @@ type networkPlan struct {
 	confirm        string // the exact value apply needs ("" when none)
 	do             func(ctx context.Context) error
 	verify         func(ctx context.Context) (bool, any, error) // reads back; ok says the change is visible
+	// learn, when set, receives what the read-back returned once the change is proven, and may add to the change (the id of a thing just created, an undo that names it).
+	learn func(got any, ch *result.Change)
 }
 
 // editNetwork manages the objects around a network: the network itself (create, rename, note, delete), its locations and device clusters, and its device tag definitions. The
@@ -117,8 +119,14 @@ func finishPlan(ctx context.Context, name string, cx result.Context, plan *netwo
 				result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"read_back": got}), Limits: plan.limits})
 		}
 	}
+	extra := map[string]any(nil)
+	if plan.learn != nil && plan.verify != nil {
+		_, got, _ := plan.verify(ctx)
+		plan.learn(got, &ch)
+		extra = map[string]any{"read_back": got}
+	}
 	return result.Build(name, result.OK, fmt.Sprintf("Done: %s", plan.target), result.Deterministic, cx,
-		result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: plan.limits, NextActions: next})
+		result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(extra), Limits: plan.limits, NextActions: next})
 }
 
 // decodeDefinition reads the definition refusing fields it does not know.
@@ -159,6 +167,15 @@ func planNetwork(ctx context.Context, s *fwd.Session, in editNetworkInput) (*net
 			},
 			verify: func(ctx context.Context) (bool, any, error) {
 				return created != nil && created.ID != "", map[string]any{"id": idOf(created)}, nil
+			},
+			learn: func(got any, ch *result.Change) {
+				m, _ := got.(map[string]any)
+				id, _ := m["id"].(string)
+				if id == "" {
+					return
+				}
+				ch.After = map[string]any{"name": name, "id": id}
+				ch.Undo = fmt.Sprintf("delete the new network (edit-network object network action delete, network_id %s, confirm %s)", id, id)
 			}}, nil
 	case "update", "delete":
 	default:
@@ -589,10 +606,11 @@ func planCollector(ctx context.Context, s *fwd.Session, in editNetworkInput) (*n
 		return nil, fmt.Errorf("reading the network's collector failed, nothing was changed: %w", err)
 	}
 	before := map[string]any{"attached": cur.IsSet, "username": cur.CollectorUsername, "name": cur.CollectorName}
-	after := map[string]any{"attached": true, "username": target.Username, "name": target.Name, "status": target.Status, "connected": target.Connected}
+	connected := target.Connected || strings.EqualFold(target.ConnectionStatus, "CONNECTED")
+	after := map[string]any{"attached": true, "username": target.Username, "name": target.Name, "status": firstNonEmpty(target.ConnectionStatus, target.Status), "connected": connected}
 	limits := []string{"this changes which collector reaches this network's devices from the next collection; it starts nothing (edit-collection starts one)"}
-	if !target.Connected && target.Status != "" {
-		limits = append(limits, fmt.Sprintf("the collector reports status %q and is not connected: attaching works, but nothing collects until it connects", target.Status))
+	if !connected && firstNonEmpty(target.ConnectionStatus, target.Status) != "" {
+		limits = append(limits, fmt.Sprintf("the collector reports status %q and is not connected: attaching works, but nothing collects until it connects", firstNonEmpty(target.ConnectionStatus, target.Status)))
 	}
 	undo := "attach the previous collector again (edit-network object collector action assign with its username)"
 	reversible := cur.IsSet

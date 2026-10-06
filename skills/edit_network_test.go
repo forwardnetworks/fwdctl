@@ -27,6 +27,9 @@ func TestEditNetworkCreateIsADryRunRefusesADuplicateAndReadsBack(t *testing.T) {
 	if r.Status != result.OK || !r.Changes[0].Applied || len(nets) != 2 {
 		t.Fatalf("apply: %s %s", r.Status, r.Finding)
 	}
+	if after, _ := r.Changes[0].After.(map[string]any); after["id"] != "2" || !strings.Contains(r.Changes[0].Undo, "confirm 2") {
+		t.Errorf("the applied create must return the new network's id and an undo that names it: %v / %s", r.Changes[0].After, r.Changes[0].Undo)
+	}
 	if _, _, err := runSkill(t, "edit-network", routes, `{"object":"network","action":"create","name":"PROD"}`); err == nil {
 		t.Errorf("a name that exists (ignoring case) is refused")
 	}
@@ -105,7 +108,7 @@ func collectorRoutes(attached *string) map[string]fwdtest.Handler {
 	return map[string]fwdtest.Handler{
 		"GET /api/collectors": fwdtest.Const(200, []any{
 			map[string]any{"id": "1", "name": "c-old", "username": "collector-old", "status": "ONLINE", "connected": true},
-			map[string]any{"id": "2", "name": "c-new", "username": "collector-new", "status": "ONLINE", "connected": true}}),
+			map[string]any{"id": "2", "name": "c-new", "username": "collector-new", "connectionStatus": "CONNECTED"}}),
 		"GET /api/networks/n1/collector": func(*http.Request, []byte) (int, any) {
 			if *attached == "" {
 				return 200, map[string]any{}
@@ -128,6 +131,9 @@ func TestEditNetworkCollectorAssignDryRunThenAttachesAndReadsBack(t *testing.T) 
 	r, srv := mustRun(t, "edit-network", routes, in+`}`)
 	if r.Mode != result.ModeDryRun || writes(srv) != 0 || !r.Changes[0].Reversible || !strings.Contains(r.Changes[0].Undo, "collector-old") {
 		t.Fatalf("dry run: %s %+v", r.Finding, r.Changes)
+	}
+	if after, _ := r.Changes[0].After.(map[string]any); after["connected"] != true {
+		t.Errorf("a collector whose connectionStatus is CONNECTED must show connected: %v", after)
 	}
 	r, _ = mustRun(t, "edit-network", routes, in+`,"apply":true}`)
 	if r.Status != result.OK || !r.Changes[0].Applied || attached != "collector-new" {
