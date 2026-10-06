@@ -204,3 +204,20 @@ func TestEditSnapshotImportARealRefusalIsStillAnError(t *testing.T) {
 		t.Fatalf("a 400 is a failure, not an unknown: %v", err)
 	}
 }
+
+func TestEditSnapshotImportWaitIsConfigurableAndZeroDoesNotWait(t *testing.T) {
+	t.Setenv("FORWARD_IMPORT_WAIT", "0")
+	polls := 0
+	routes := map[string]fwdtest.Handler{
+		"POST /api/networks/n1/snapshots": fwdtest.Const(504, map[string]any{"message": "stream timeout"}),
+		"GET /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) {
+			polls++
+			return 200, map[string]any{"snapshots": []any{}}
+		},
+	}
+	start := time.Now()
+	r, _ := mustRun(t, "edit-snapshot", routes, importZip(t))
+	if r.Status != result.Unknown || time.Since(start) > 2*time.Second || polls != 1 {
+		t.Fatalf("%s after %s, %d list reads (only the one before the upload)", r.Status, time.Since(start), polls)
+	}
+}

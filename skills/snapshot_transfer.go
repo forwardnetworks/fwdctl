@@ -215,6 +215,17 @@ var (
 	importPollFor   = 90 * time.Second
 )
 
+// importWait is how long to wait for a new snapshot after an ambiguous upload error: FORWARD_IMPORT_WAIT (a Go duration such as 20s;
+// 0 does not wait) when set and valid, else importPollFor.
+func importWait() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("FORWARD_IMPORT_WAIT")); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d >= 0 {
+			return d
+		}
+	}
+	return importPollFor
+}
+
 // uploadOutcomeUnknown says whether an upload error leaves open that Forward kept the file: a gateway error or a timeout.
 func uploadOutcomeUnknown(err error) bool {
 	var er *forward.ErrorResponse
@@ -231,7 +242,11 @@ func uploadOutcomeUnknown(err error) bool {
 
 // waitForNewSnapshot polls the network's snapshots for one that was not there before the upload.
 func waitForNewSnapshot(ctx context.Context, s *fwd.Session, networkID string, before map[string]bool) *forward.Snapshot {
-	deadline := time.Now().Add(importPollFor)
+	wait := importWait()
+	if wait <= 0 {
+		return nil
+	}
+	deadline := time.Now().Add(wait)
 	for {
 		if list, err := s.Snapshots(ctx, networkID); err == nil {
 			for i := range list {
