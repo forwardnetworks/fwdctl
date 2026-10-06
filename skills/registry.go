@@ -251,6 +251,14 @@ func Run(ctx context.Context, name string, s *fwd.Session, in json.RawMessage) (
 		return result.Result{}, err
 	}
 	in = dropIgnoredInputs(name, in)
+	if as := s.Impersonating(); as != "" && m.Class == "write" {
+		var ap struct {
+			Apply bool `json:"apply"`
+		}
+		if json.Unmarshal(in, &ap) == nil && ap.Apply {
+			return result.Result{}, fmt.Errorf("%w: this session is impersonating user %s and is read-only; %s with apply is refused (a dry run is allowed)", ErrInvalidInput, as, name)
+		}
+	}
 	run, ok := runners[name]
 	if !ok {
 		return result.Result{}, fmt.Errorf("%w: %s is a procedure-only skill; load its body instead", ErrUnknown, name)
@@ -275,6 +283,9 @@ func Run(ctx context.Context, name string, s *fwd.Session, in json.RawMessage) (
 	}
 	if len(r.Operations) == 0 {
 		r.Operations = s.Operations()
+	}
+	if as := s.Impersonating(); as != "" {
+		r.Limits = append(r.Limits, "this run was made by an administrator impersonating Forward user "+as+" (read-only): what it could see is what that user can see")
 	}
 	if s.Insecure() {
 		r.Limits = append(r.Limits, "TLS certificate verification was disabled for this run; the connection to Forward could have been intercepted")

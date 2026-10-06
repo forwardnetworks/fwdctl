@@ -40,6 +40,10 @@ type Config struct {
 	// verified against the system trust store: a certificate is trusted by default or it is not. Insecure is never
 	// the default, and every result records that it was used (see Session.Insecure).
 	Insecure bool
+	// ImpersonateUserID makes the session act as that Forward user through Forward's administrator impersonation (FORWARD_IMPERSONATE): the
+	// login (Username and Password) must be an administrator that Forward allows to impersonate. The session is read-only (PUT, PATCH and
+	// DELETE are refused at the transport, and the skills refuse apply) and every result says it was run as that user.
+	ImpersonateUserID string
 	// Hooks are extra SDK hooks the embedding program wants on every request (an audit logger, for example). They run after the
 	// session's own recorder. fwdctl sets none.
 	Hooks []forward.Hook
@@ -48,10 +52,11 @@ type Config struct {
 // ConfigFromEnv reads FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD, FORWARD_INSECURE and FORWARD_TIMEOUT.
 func ConfigFromEnv() Config {
 	c := Config{
-		BaseURL:  strings.TrimSpace(os.Getenv("FORWARD_URL")),
-		Username: strings.TrimSpace(os.Getenv("FORWARD_USERNAME")),
-		Password: os.Getenv("FORWARD_PASSWORD"),
-		Insecure: truthy(os.Getenv("FORWARD_INSECURE")),
+		BaseURL:           strings.TrimSpace(os.Getenv("FORWARD_URL")),
+		Username:          strings.TrimSpace(os.Getenv("FORWARD_USERNAME")),
+		Password:          os.Getenv("FORWARD_PASSWORD"),
+		Insecure:          truthy(os.Getenv("FORWARD_INSECURE")),
+		ImpersonateUserID: strings.TrimSpace(os.Getenv("FORWARD_IMPERSONATE")),
 	}
 	// FORWARD_TIMEOUT (a Go duration, for example 600s) raises or lowers the time one HTTP call may take, response body included; the default is DefaultTimeout.
 	if d, err := time.ParseDuration(strings.TrimSpace(os.Getenv("FORWARD_TIMEOUT"))); err == nil && d > 0 {
@@ -76,6 +81,8 @@ func truthy(v string) bool {
 // Session is one Forward client plus its operation log.
 type Session struct {
 	Client *forward.Client
+
+	impersonated string // the user id this session acts as (FORWARD_IMPERSONATE), or empty
 
 	// NetworkDeleter, when set, performs every network deletion a skill asks for instead of the direct SDK call. A host that must route destructive calls through its own vetted
 	// path sets it (and may return ErrDeletionRefused to forbid deletion); fwdctl leaves it nil and the SDK deletes directly.
@@ -141,9 +148,15 @@ func NewSession(cfg Config) (*Session, error) {
 			return nil, err
 		}
 	}
-	s := &Session{insecure: cfg.Insecure && cfg.HTTPClient == nil, NQEMode: cfg.NQEMode, NQEWait: cfg.NQEWait}
+	s := &Session{insecure: cfg.Insecure && cfg.HTTPClient == nil, NQEMode: cfg.NQEMode, NQEWait: cfg.NQEWait, impersonated: cfg.ImpersonateUserID}
+	authMode := forward.AuthMode("")
+	if cfg.ImpersonateUserID != "" {
+		authMode = forward.AuthModeBrowser
+		hc = readOnlyClient(hc)
+	}
 	c, err := forward.NewClient(forward.Config{
-		BaseURL: cfg.BaseURL, Username: cfg.Username, Password: cfg.Password, HTTPClient: hc,
+		AuthMode: authMode,
+		BaseURL:  cfg.BaseURL, Username: cfg.Username, Password: cfg.Password, HTTPClient: hc,
 		UserAgent: "fwdctl",
 		// Only a 429 or 503 is retried: the request was turned away before it ran, so repeating it cannot hide a
 		// defect or replay a write. Every other failure comes back on the first attempt.
@@ -154,7 +167,42 @@ func NewSession(cfg Config) (*Session, error) {
 		return nil, err
 	}
 	s.Client = c
+	if cfg.ImpersonateUserID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if _, err := c.Browser.Login(ctx); err != nil {
+			return nil, fmt.Errorf("FORWARD_IMPERSONATE: the administrator login failed: %w", err)
+		}
+		if _, _, err := c.Browser.Impersonate(ctx, cfg.ImpersonateUserID); err != nil {
+			return nil, fmt.Errorf("FORWARD_IMPERSONATE: Forward refused to impersonate user %s (the login must be an administrator allowed to impersonate): %w", cfg.ImpersonateUserID, err)
+		}
+	}
 	return s, nil
+}
+
+// Impersonating returns the user id this session acts as through administrator impersonation, or "" when it acts as its own login.
+func (s *Session) Impersonating() string { return s.impersonated }
+
+// readOnlyClient wraps hc so a PUT, PATCH or DELETE never leaves the process: an impersonated session reads. (Reads that POST, such
+// as NQE and path searches, still go through.)
+func readOnlyClient(hc *http.Client) *http.Client {
+	c := *hc
+	base := c.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	c.Transport = readOnlyTransport{base}
+	return &c
+}
+
+type readOnlyTransport struct{ next http.RoundTripper }
+
+func (t readOnlyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	switch r.Method {
+	case http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return nil, fmt.Errorf("refused: this session is impersonating another user and is read-only (%s %s)", r.Method, r.URL.Path)
+	}
+	return t.next.RoundTrip(r)
 }
 
 // record is the SDK hook: one Operation per response (or transport error).

@@ -48,6 +48,11 @@ func readTokenFile(path string) (url, user, pass string, err error) {
 			lines = append(lines, strings.TrimSpace(l))
 		}
 	}
+	if len(lines) == 1 { // the same three values on one line, separated by whitespace
+		if f := strings.Fields(lines[0]); len(f) == 3 {
+			lines = f
+		}
+	}
 	if len(lines) != 3 {
 		return "", "", "", fmt.Errorf("the token file must have three lines (URL, username, password); %s has %d", path, len(lines))
 	}
@@ -83,7 +88,9 @@ func applyConnectionOptions(o connOptions) error {
 			return fmt.Errorf("cannot read %s: %v", file, err)
 		}
 	}
-	if tokenFile == "" && c.TokenFile != "" && c.URL == "" && c.Username == "" && c.PasswordFile == "" {
+	// A token_file in the config is used with whatever else the config sets: the config's url or username (and flags and the
+	// environment) win over the matching line of the token file; a config password_file wins over the token file's password.
+	if tokenFile == "" && c.TokenFile != "" {
 		tokenFile = c.TokenFile
 	}
 	if tokenFile != "" { // a token file fills what flags and the environment leave empty
@@ -91,13 +98,13 @@ func applyConnectionOptions(o connOptions) error {
 		if err != nil {
 			return err
 		}
-		if url == "" && os.Getenv("FORWARD_URL") == "" {
+		if url == "" && os.Getenv("FORWARD_URL") == "" && c.URL == "" {
 			url = tu
 		}
-		if user == "" && os.Getenv("FORWARD_USERNAME") == "" {
+		if user == "" && os.Getenv("FORWARD_USERNAME") == "" && c.Username == "" {
 			user = tn
 		}
-		if passFile == "" && os.Getenv("FORWARD_PASSWORD") == "" {
+		if passFile == "" && c.PasswordFile == "" && os.Getenv("FORWARD_PASSWORD") == "" {
 			os.Setenv("FORWARD_PASSWORD", tp)
 		}
 	}

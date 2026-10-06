@@ -59,6 +59,7 @@ Credentials (environment): FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (an A
 Or flags: --url URL --username NAME --password-file FILE [--insecure] [--config FILE]; or a saved login (fwdctl login), or a file
 ~/.config/fwdctl/config.json {"url", "username", "password_file"} (the password is read from that file, which must be mode 600).
 Flags win over the environment, the environment over the file.
+To act as another org user without their credential (an administrator Forward allows to impersonate): FORWARD_IMPERSONATE=<user id> with the administrator's login. The session is read-only and every result says it was impersonated.
 Set FORWARD_INSECURE=true only for a self-signed Forward: it turns TLS verification off and every result records it.
 
 Long queries: FORWARD_TIMEOUT=600s raises the per-call HTTP limit (default 120s); a query cut off by it falls back to Forward's asynchronous API

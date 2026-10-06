@@ -160,3 +160,21 @@ func TestTokenFileFillsTheLoginAndIsRefusedWhenOthersCanReadIt(t *testing.T) {
 		t.Error("a token file without three lines must be refused")
 	}
 }
+
+func TestConfigURLAndTokenFileWorkTogetherAndTheOneLineFormIsAccepted(t *testing.T) {
+	dir := t.TempDir()
+	tf := filepath.Join(dir, "one.token")
+	os.WriteFile(tf, []byte("fwd.example.com key123 s3cret\n"), 0o600)
+	for _, k := range []string{"FORWARD_URL", "FORWARD_USERNAME", "FORWARD_PASSWORD"} {
+		t.Setenv(k, "")
+	}
+	cfg := filepath.Join(dir, "c.json")
+	// a config with both url and token_file: the config's url wins, the token file still supplies the login
+	os.WriteFile(cfg, []byte(`{"url":"https://override.example","token_file":"`+tf+`"}`), 0o600)
+	if code, _, errb := call(t, []string{"--config", cfg, "version"}, "", nil); code != 0 {
+		t.Fatalf("%d %s", code, errb)
+	}
+	if os.Getenv("FORWARD_URL") != "https://override.example" || os.Getenv("FORWARD_USERNAME") != "key123" || os.Getenv("FORWARD_PASSWORD") != "s3cret" {
+		t.Errorf("got %s %s %s", os.Getenv("FORWARD_URL"), os.Getenv("FORWARD_USERNAME"), os.Getenv("FORWARD_PASSWORD"))
+	}
+}

@@ -82,5 +82,9 @@ only the path of a file that does, and that file must be mode 600.
     fwdctl login --file ~/forward.token     # once; checks the login, then remembers the file's path
     fwdctl login --forget
 
-The token file has three lines (the Forward URL, the username or API access key, the password or secret) and must be mode 600. Only its path is saved
+The token file has three lines (the Forward URL, the username or API access key, the password or secret; the same three values on one line separated by spaces also work) and must be mode 600. In a `--config` file, `token_file` can sit beside `url` and `username`: a `url` or `username` in the config (and a flag or `FORWARD_*` variable) overrides the matching value in the token file, and a config `password_file` overrides its password. Only its path is saved
 (`~/.config/fwdctl/config.json`); the password is never copied. Flags and `FORWARD_*` variables still win.
+
+## Acting as another user (administrator impersonation)
+
+When a user has no credential you can use (for example an automation user whose password cannot be read), an administrator that Forward allows to impersonate can read as that user: set `FORWARD_IMPERSONATE=<user id>` with the administrator's own login (`FORWARD_USERNAME` and `FORWARD_PASSWORD`, a login file or a token). fwdctl signs in as the administrator, asks Forward to impersonate the user (the id gets `.full` appended if it lacks it) and then reads with that user's session. It is for reading: PUT, PATCH and DELETE are refused before they leave the process, every edit skill refuses `apply: true` (a dry run still works), and every result says "made by an administrator impersonating Forward user ...", so what it saw is what that user can see. If Forward refuses the impersonation the run fails; it never falls back to the administrator. It is off unless the variable is set. Forward's own permission rules decide who may impersonate; this does not add one.
