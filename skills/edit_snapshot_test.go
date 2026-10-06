@@ -5,9 +5,11 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 func snapWorld(state string, extra map[string]fwdtest.Handler) map[string]fwdtest.Handler {
@@ -152,5 +154,53 @@ func TestEditSnapshotFavoriteAndUnfavoriteAreReversibleAndNeedNoConfirm(t *testi
 	}
 	if len(calls) != 2 || calls[0] != "favorite" || calls[1] != "unfavorite" {
 		t.Errorf("calls %v", calls)
+	}
+}
+
+func importZip(t *testing.T) string {
+	f := t.TempDir() + "/a.zip"
+	if err := os.WriteFile(f, []byte("PK\x03\x04"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return `{"network_id":"n1","action":"import","apply":true,"definition":{"files":["` + f + `"]}}`
+}
+
+func TestEditSnapshotImportGatewayTimeoutThatKeptTheFileReportsTheNewSnapshotNotAFailure(t *testing.T) {
+	defer skills.ImportPollHooks(time.Millisecond, 200*time.Millisecond)()
+	uploaded := false
+	routes := map[string]fwdtest.Handler{
+		"POST /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) {
+			uploaded = true
+			return 504, map[string]any{"message": "stream timeout"}
+		},
+		"GET /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) {
+			if !uploaded {
+				return 200, map[string]any{"snapshots": []any{map[string]any{"id": "old1", "state": "PROCESSED"}}}
+			}
+			return 200, map[string]any{"snapshots": []any{map[string]any{"id": "old1", "state": "PROCESSED"}, map[string]any{"id": "new9", "state": "UNPACKING"}}}
+		},
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, importZip(t))
+	if r.Status != result.OK || !strings.Contains(r.Finding, "new9") || !strings.Contains(strings.Join(r.Limits, " "), "not retried") {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}
+
+func TestEditSnapshotImportGatewayTimeoutWithNoNewSnapshotIsUnknownAndSaysDoNotRetryBlindly(t *testing.T) {
+	defer skills.ImportPollHooks(time.Millisecond, 20*time.Millisecond)()
+	routes := map[string]fwdtest.Handler{
+		"POST /api/networks/n1/snapshots": fwdtest.Const(504, map[string]any{"message": "stream timeout"}),
+		"GET /api/networks/n1/snapshots":  fwdtest.Const(200, map[string]any{"snapshots": []any{map[string]any{"id": "old1", "state": "PROCESSED"}}}),
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, importZip(t))
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "do NOT retry") {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}
+
+func TestEditSnapshotImportARealRefusalIsStillAnError(t *testing.T) {
+	routes := map[string]fwdtest.Handler{"POST /api/networks/n1/snapshots": fwdtest.Const(400, map[string]any{"message": "bad zip"})}
+	if _, _, err := runSkill(t, "edit-snapshot", routes, importZip(t)); err == nil || !strings.Contains(err.Error(), "import failed") {
+		t.Fatalf("a 400 is a failure, not an unknown: %v", err)
 	}
 }

@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
@@ -169,13 +172,77 @@ func snapshotImport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 		defer fh.Close()
 		files = append(files, forward.SnapshotUploadFile{Name: filepath.Base(f), Reader: fh})
 	}
+	before := map[string]bool{}
+	if ex, lerr := s.Snapshots(ctx, in.NetworkID); lerr == nil {
+		for _, x := range ex {
+			before[string(x.ID)] = true
+		}
+	}
+	started := time.Now()
 	snap, _, err := s.Client.Snapshots.Upload(ctx, in.NetworkID, files, forward.SnapshotUploadOptions{Note: in.Note, ExcludeFailedDevices: def.ExcludeFailedDevices, SkipSnapshotProcessing: def.SkipProcessing, Timeout: -1})
+	took := time.Since(started).Round(time.Second)
 	if err != nil {
-		return result.Result{}, fmt.Errorf("the import failed, nothing is known to have been added: %w", err)
+		if !uploadOutcomeUnknown(err) {
+			return result.Result{}, fmt.Errorf("the import failed, nothing is known to have been added (%d bytes, %s): %w", total, took, err)
+		}
+		// A gateway or client timeout on a large upload says nothing about whether Forward kept the file: look for the new snapshot
+		// before reporting, and never invite a blind retry (it would add a duplicate).
+		found := waitForNewSnapshot(ctx, s, in.NetworkID, before)
+		if found == nil {
+			return result.NewUnknown(editSnapshotName, fmt.Sprintf("The upload ended with an error (%v) and no new snapshot has appeared yet; it may still have been accepted", err), fwd.Context(in.NetworkID, nil),
+				[]string{fmt.Sprintf("sent %d bytes in %s before the error; a 502/503/504 or a timeout does not mean Forward discarded the file", total, took),
+					"do NOT retry yet: run inspect-snapshots for a new IMPORT snapshot (UNPACKING, PROCESSING or PROCESSED) first; a blind retry would add a duplicate",
+					"for a file over about 100 MB, raise the client timeout (FORWARD_TIMEOUT=600s or more) and apply again only if no new snapshot appears"},
+				result.Options{Mode: mode, NextActions: []string{"inspect-snapshots"}})
+		}
+		snap = found
+		limits = append(limits, fmt.Sprintf("the upload call ended with an error (%v) after %s, but Forward had accepted the file: this snapshot appeared while the skill waited; it was not retried", err, took))
+	}
+	limits = append(limits, fmt.Sprintf("uploaded %d bytes in %s", total, took))
+	if total > 100<<20 {
+		limits = append(limits, "files over about 100 MB can outlast the default 120 s HTTP timeout; set FORWARD_TIMEOUT=600s (or more) so the upload response is not cut off")
 	}
 	ch.Applied = true
 	ch.After = map[string]any{"snapshot_id": string(snap.ID), "state": snap.State}
 	ch.Undo = fmt.Sprintf("delete snapshot %s (edit-snapshot action delete, confirm = %s)", snap.ID, snap.ID)
 	return result.Build(editSnapshotName, result.OK, fmt.Sprintf("Imported %d file(s) as snapshot %s (state %s)", len(def.Files), snap.ID, snap.State), result.Deterministic, fwd.Context(in.NetworkID, snap),
 		result.Options{Mode: mode, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"snapshot_id": string(snap.ID), "state": snap.State}), Limits: limits, NextActions: []string{"inspect-snapshots"}})
+}
+
+// importPollEvery and importPollFor bound the wait for a snapshot after an upload that ended in an ambiguous error (variables so a test can shorten them).
+var (
+	importPollEvery = 5 * time.Second
+	importPollFor   = 90 * time.Second
+)
+
+// uploadOutcomeUnknown says whether an upload error leaves open that Forward kept the file: a gateway error or a timeout.
+func uploadOutcomeUnknown(err error) bool {
+	var er *forward.ErrorResponse
+	if errors.As(err, &er) && er.Response != nil {
+		switch er.Response.StatusCode {
+		case 408, 502, 503, 504:
+			return true
+		}
+		return false
+	}
+	var ne net.Error
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.ErrUnexpectedEOF) || (errors.As(err, &ne) && ne.Timeout())
+}
+
+// waitForNewSnapshot polls the network's snapshots for one that was not there before the upload.
+func waitForNewSnapshot(ctx context.Context, s *fwd.Session, networkID string, before map[string]bool) *forward.Snapshot {
+	deadline := time.Now().Add(importPollFor)
+	for {
+		if list, err := s.Snapshots(ctx, networkID); err == nil {
+			for i := range list {
+				if !before[string(list[i].ID)] {
+					return &list[i]
+				}
+			}
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			return nil
+		}
+		time.Sleep(importPollEvery)
+	}
 }

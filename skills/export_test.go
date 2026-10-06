@@ -11,3 +11,10 @@ func WindowTestHooks(poll time.Duration, now func() time.Time) (restore func()) 
 	}
 	return func() { windowPoll, nowFunc = op, on }
 }
+
+// ImportPollHooks shortens the wait for a snapshot after an ambiguous upload error.
+func ImportPollHooks(every, forHow time.Duration) (restore func()) {
+	oe, of := importPollEvery, importPollFor
+	importPollEvery, importPollFor = every, forHow
+	return func() { importPollEvery, importPollFor = oe, of }
+}
