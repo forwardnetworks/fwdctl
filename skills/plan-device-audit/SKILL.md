@@ -38,3 +38,7 @@ Before you answer, take at least: the identification (step 1) and at least two o
 ## Answering
 
 One short section per area, each ok, failed or unknown with its snapshot. Do not summarise a set of unknowns as clean. Recommend, never change a device.
+
+## Worked example
+
+[reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-device-audit reference/example.md`.

@@ -36,3 +36,7 @@ Before you answer, take at least: the existing checks and their status (step 2) 
 ## Answering
 
 A table of rule, check, status, snapshot. A rule with no check, or a check that returned no rows because nothing matched its scope, is **unknown**, not compliant. Do not claim compliance with a framework Forward does not test (a check set is not a certification).
+
+## Worked example
+
+[reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-compliance-audit reference/example.md`.

@@ -34,3 +34,7 @@ How much room each step gives (levels are defined in `plan-investigation`):
 ## Answering
 
 State the verdict per step. **unknown** at any step means that part is not measured: say what is missing instead of calling the change safe. Safe means every expected flow behaved, nothing regressed and the reach matched what was intended, on a base you named.
+
+## Worked example
+
+[reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-change-review reference/example.md`.

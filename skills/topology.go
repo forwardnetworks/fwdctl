@@ -184,7 +184,7 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 			}
 			rows = append(rows, map[string]any{"device": d, "zones": zm[d], "zone_count": len(zm[d])})
 		}
-		limits = append(limits, "zones are the security zones Forward derived for each device (firewall zones and similar); a device with no zones has an empty list, which is not the same as not analysed; it needs the security analysis permission and a snapshot that has reached the creation stage (unverified against a live Forward: read from Forward's source)")
+		limits = append(limits, "zones are the security zones Forward derived for each device (firewall zones and similar); only devices that have zones are listed (verified live: 7 of 124 devices, all firewalls), so a device missing from the list has no zones or was not analysed, which this read cannot tell apart; it needs the security analysis permission and a snapshot that has reached the creation stage (verified live on one network)")
 	default:
 		return result.NewError(topologyName, "unknown kind "+in.Kind, cx), nil
 	}

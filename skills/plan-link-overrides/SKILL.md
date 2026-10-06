@@ -50,3 +50,7 @@ Before you answer, take at least: the comparison (step 1) and the per-override v
 ## Answering
 
 State which snapshots you compared and what differs, what you verified for each override and what stayed unknown (which side wins, who set it, whether later snapshots inherit it), the fix and whether it was applied, and what was not checked. Never apply while a snapshot is still processing, and never describe a write as harmless: it invalidates the snapshot.
+
+## Worked example
+
+[reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-link-overrides reference/example.md`.

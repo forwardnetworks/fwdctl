@@ -39,3 +39,7 @@ Each flow: expected, observed, snapshot, and for a violation the first rule or r
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe plan-segmentation-check reference/<file>`).
 
 - [reference/check-vacuity.md](reference/check-vacuity.md): checks that pass without testing anything, real endpoints, cutover and invariant checks (unverified behaviours, labelled). Read before trusting or staging a check.
+
+## Worked example
+
+[reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-segmentation-check reference/example.md`.

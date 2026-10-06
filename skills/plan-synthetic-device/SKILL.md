@@ -44,3 +44,7 @@ Before attaching: the dead-ending flow, the type and why, and a preview with no 
 ## Answering
 
 State the type and why, the connection count and a few rows, the preview result, what paths can now do, and what is not verified: the segment's real behaviour beyond what was described, and that this is a preview feature of Forward. Never change a device.
+
+## Worked example
+
+[reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-synthetic-device reference/example.md`.

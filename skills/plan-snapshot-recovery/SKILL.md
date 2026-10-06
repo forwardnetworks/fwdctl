@@ -38,3 +38,7 @@ Before you answer, take at least: the snapshot state (step 1), collection (step 
 ## Answering
 
 State the cause with its evidence, the repair chosen and why, and what was not checked. Never reprocess or collect while one is already running; the skills refuse and say so.
+
+## Worked example
+
+[reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-snapshot-recovery reference/example.md`.

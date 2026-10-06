@@ -37,3 +37,7 @@ How much room each step gives (levels are defined in `plan-investigation`):
 ## Answering
 
 Per expectation: held or violated, with the snapshots compared. Say what was not covered (flows nobody listed). An unprocessed or missing after-snapshot makes the whole result **unknown**.
+
+## Worked example
+
+[reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-maintenance-window reference/example.md`.
