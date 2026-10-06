@@ -3,7 +3,7 @@
   "required": ["object", "action"],
   "additionalProperties": false,
   "properties": {
-    "object": { "type": "string", "enum": ["network", "location", "cluster", "tag"] },
+    "object": { "type": "string", "enum": ["network", "location", "cluster", "tag", "collector"] },
     "action": { "type": "string", "enum": ["create", "update", "delete", "assign"] },
     "network_id": { "type": "string", "minLength": 1 },
     "name": { "type": "string", "minLength": 1, "description": "network create: the new name; cluster update and tag update or delete: the existing cluster or tag" },

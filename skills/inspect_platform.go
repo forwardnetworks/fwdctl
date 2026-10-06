@@ -96,7 +96,11 @@ var platformAreas = map[string]platformArea{
 	"collectors": {false, "collectors and their status", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		v, _, err := s.Client.Collectors.List(ctx)
 		r, err := rowsOf(v, err)
-		return r, []string{"the organization's collection settings (timeouts, retries, concurrency defaults) are in inspect-collection view status and investigate-collection-failure view slow"}, err
+		lim := []string{}
+		if err == nil {
+			lim = append(lim, collectorNetworks(ctx, s, r)...)
+		}
+		return r, append(lim, "the organization's collection settings (timeouts, retries, concurrency defaults) are in inspect-collection view status and investigate-collection-failure view slow"), err
 	}},
 	"endpoint_profiles": {false, "endpoint profiles (SNMP, CLI, HTTP), every one, used or not", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		v, _, err := s.Client.Endpoints.ListProfiles(ctx, "")
@@ -433,4 +437,47 @@ func soft(lim []string, what string, err error) []string {
 		return lim
 	}
 	return append(lim, fmt.Sprintf("%s could not be read (%v)", what, err))
+}
+
+// maxCollectorNetworkReads bounds the per-network reads that say which collector serves which network.
+const maxCollectorNetworkReads = 100
+
+// collectorNetworks adds `networks` (id and name of each network the collector is attached to) to each collector row, from one read of the network's collector per network
+// (Forward has no list of attachments). It returns the limits that say what was and was not read.
+func collectorNetworks(ctx context.Context, s *fwd.Session, rows []any) []string {
+	nets, err := s.Networks(ctx)
+	if err != nil {
+		return []string{"which networks each collector serves was not read (the networks could not be listed): " + err.Error()}
+	}
+	by := map[string][]string{}
+	read, failed := 0, 0
+	for _, n := range nets {
+		if read >= maxCollectorNetworkReads {
+			break
+		}
+		read++
+		a, _, aerr := s.Client.Collectors.Attachment(ctx, idOf(&n))
+		if aerr != nil {
+			failed++
+			continue
+		}
+		if a.IsSet {
+			by[a.CollectorUsername] = append(by[a.CollectorUsername], idOf(&n)+" "+n.Name)
+		}
+	}
+	for _, r := range rows {
+		if m, ok := r.(map[string]any); ok {
+			u, _ := m["username"].(string)
+			ns := by[u]
+			if ns == nil {
+				ns = []string{}
+			}
+			m["networks"] = ns
+		}
+	}
+	lim := []string{fmt.Sprintf("networks lists the networks each collector is attached to, from one read per network (%d of %d networks read)", read-failed, len(nets))}
+	if failed > 0 || len(nets) > read {
+		lim = append(lim, fmt.Sprintf("%d network read(s) failed and %d network(s) were beyond the first %d: a collector may serve one of those", failed, max(0, len(nets)-read), maxCollectorNetworkReads))
+	}
+	return lim
 }

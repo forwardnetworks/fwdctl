@@ -374,3 +374,16 @@ func TestCollectionConfigRefusedAssessIsUnknownNotAPass(t *testing.T) {
 		t.Fatalf("%s", b)
 	}
 }
+
+func TestInspectPlatformCollectorsListWhichNetworksEachServes(t *testing.T) {
+	r, _ := mustRun(t, "inspect-platform", map[string]fwdtest.Handler{
+		"GET /api/collectors":            fwdtest.Const(200, []any{map[string]any{"id": "1", "name": "c1", "username": "collector-a"}, map[string]any{"id": "2", "name": "c2", "username": "collector-b"}}),
+		"GET /api/networks":              fwdtest.Const(200, []any{map[string]any{"id": "n1", "name": "prod"}, map[string]any{"id": "n2", "name": "lab"}}),
+		"GET /api/networks/n1/collector": fwdtest.Const(200, map[string]any{"id": "1", "username": "collector-a"}),
+		"GET /api/networks/n2/collector": fwdtest.Const(200, map[string]any{}),
+	}, `{"area":"collectors"}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || !strings.Contains(b, `"n1 prod"`) || !strings.Contains(b, `"networks":[]`) {
+		t.Fatalf("%s %s", r.Status, b)
+	}
+}

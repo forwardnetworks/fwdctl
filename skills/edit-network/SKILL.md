@@ -37,6 +37,7 @@ Manage the objects around a network: the network itself, its locations and devic
 | `cluster` | `delete` | the cluster | `location_id` | **none**; `confirm` = the cluster name |
 | `tag` | `update` | the tag | `name` (rename), `color` | update back |
 | `tag` | `delete` | the tag | | **none**; `confirm` = the tag name |
+| `collector` | `assign` | attach a registered collector to the network (needs `network_id`) | `definition` {`username`: the collector's username, from `inspect-platform` area `collectors`} | attach the previous collector again; **not reversible here** when the network had none (no detach in the SDK) |
 
 Detail, including what each read and what the API cannot do: `reference/objects.md`.
 

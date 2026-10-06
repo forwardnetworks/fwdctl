@@ -100,3 +100,52 @@ func TestEditNetworkClusterDeleteNeedsItsNameAndSnapshotUnfavoriteIsReversible(t
 		t.Errorf("cluster delete: %s", r.Finding)
 	}
 }
+
+func collectorRoutes(attached *string) map[string]fwdtest.Handler {
+	return map[string]fwdtest.Handler{
+		"GET /api/collectors": fwdtest.Const(200, []any{
+			map[string]any{"id": "1", "name": "c-old", "username": "collector-old", "status": "ONLINE", "connected": true},
+			map[string]any{"id": "2", "name": "c-new", "username": "collector-new", "status": "ONLINE", "connected": true}}),
+		"GET /api/networks/n1/collector": func(*http.Request, []byte) (int, any) {
+			if *attached == "" {
+				return 200, map[string]any{}
+			}
+			return 200, map[string]any{"id": "1", "username": *attached, "name": "x"}
+		},
+		"PUT /api/networks/n1/collector": func(_ *http.Request, b []byte) (int, any) {
+			if strings.Contains(string(b), "collector-new") {
+				*attached = "collector-new"
+			}
+			return 200, map[string]any{}
+		},
+	}
+}
+
+func TestEditNetworkCollectorAssignDryRunThenAttachesAndReadsBack(t *testing.T) {
+	attached := "collector-old"
+	routes := collectorRoutes(&attached)
+	in := `{"object":"collector","action":"assign","network_id":"n1","definition":{"username":"collector-new"}`
+	r, srv := mustRun(t, "edit-network", routes, in+`}`)
+	if r.Mode != result.ModeDryRun || writes(srv) != 0 || !r.Changes[0].Reversible || !strings.Contains(r.Changes[0].Undo, "collector-old") {
+		t.Fatalf("dry run: %s %+v", r.Finding, r.Changes)
+	}
+	r, _ = mustRun(t, "edit-network", routes, in+`,"apply":true}`)
+	if r.Status != result.OK || !r.Changes[0].Applied || attached != "collector-new" {
+		t.Fatalf("apply: %s %s attached=%s", r.Status, r.Finding, attached)
+	}
+}
+
+func TestEditNetworkCollectorWithNoneAttachedIsNotReversibleAndUnknownOnesAreRefused(t *testing.T) {
+	attached := ""
+	routes := collectorRoutes(&attached)
+	r, _ := mustRun(t, "edit-network", routes, `{"object":"collector","action":"assign","network_id":"n1","definition":{"username":"collector-new"}}`)
+	if r.Changes[0].Reversible || !strings.Contains(r.Changes[0].Undo, "no detach") {
+		t.Errorf("a first attach cannot be undone here: %+v", r.Changes[0])
+	}
+	if _, _, err := runSkill(t, "edit-network", routes, `{"object":"collector","action":"assign","network_id":"n1","definition":{"username":"nope"}}`); err == nil || !strings.Contains(err.Error(), "collector-old") {
+		t.Errorf("an unknown collector must be refused and the known ones named: %v", err)
+	}
+	if _, _, err := runSkill(t, "edit-network", routes, `{"object":"collector","action":"delete","network_id":"n1"}`); err == nil {
+		t.Error("detaching is not offered")
+	}
+}

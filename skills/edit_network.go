@@ -59,8 +59,10 @@ func editNetwork(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resu
 		plan, err = planCluster(ctx, s, in)
 	case "tag":
 		plan, err = planTag(ctx, s, in)
+	case "collector":
+		plan, err = planCollector(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: object must be network, location, cluster or tag", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: object must be network, location, cluster, tag or collector", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err
@@ -545,4 +547,74 @@ func planTag(ctx context.Context, s *fwd.Session, in editNetworkInput) (*network
 			}}, nil
 	}
 	return nil, fmt.Errorf("%w: object tag takes action update or delete", ErrInvalidInput)
+}
+
+// planCollector attaches a registered collector to a network (action assign, definition {"username": "<collector username>"}). The SDK has no detach, so the undo is
+// to attach the collector that was attached before; a network that had none cannot be put back that way, and the plan says so.
+func planCollector(ctx context.Context, s *fwd.Session, in editNetworkInput) (*networkPlan, error) {
+	if in.Action != "assign" {
+		return nil, fmt.Errorf("%w: object collector supports action assign (attach a collector to the network); this skill cannot detach one", ErrInvalidInput)
+	}
+	if in.NetworkID == "" {
+		return nil, fmt.Errorf("%w: collector assign needs network_id", ErrInvalidInput)
+	}
+	var def struct {
+		Username string `json:"username"`
+	}
+	if err := decodeDefinition(in.Definition, &def, `username (the collector's username, as inspect-platform area collectors lists it)`); err != nil {
+		return nil, err
+	}
+	def.Username = strings.TrimSpace(def.Username)
+	if def.Username == "" {
+		return nil, fmt.Errorf("%w: definition.username is required (the collector's username; inspect-platform area collectors lists them)", ErrInvalidInput)
+	}
+	cols, _, err := s.Client.Collectors.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading the collectors failed, nothing was changed: %w", err)
+	}
+	var target *forward.Collector
+	var names []string
+	for i := range cols {
+		names = append(names, cols[i].Username)
+		if cols[i].Username == def.Username {
+			target = &cols[i]
+		}
+	}
+	if target == nil {
+		sort.Strings(names)
+		return nil, fmt.Errorf("%w: no collector with username %q in this organization (known: %s)", ErrInvalidInput, def.Username, strings.Join(names, ", "))
+	}
+	cur, _, err := s.Client.Collectors.Attachment(ctx, in.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("reading the network's collector failed, nothing was changed: %w", err)
+	}
+	before := map[string]any{"attached": cur.IsSet, "username": cur.CollectorUsername, "name": cur.CollectorName}
+	after := map[string]any{"attached": true, "username": target.Username, "name": target.Name, "status": target.Status, "connected": target.Connected}
+	limits := []string{"this changes which collector reaches this network's devices from the next collection; it starts nothing (edit-collection starts one)"}
+	if !target.Connected && target.Status != "" {
+		limits = append(limits, fmt.Sprintf("the collector reports status %q and is not connected: attaching works, but nothing collects until it connects", target.Status))
+	}
+	undo := "attach the previous collector again (edit-network object collector action assign with its username)"
+	reversible := cur.IsSet
+	if cur.IsSet && cur.CollectorUsername == target.Username {
+		limits = append(limits, "this collector is already attached to the network: the change would not alter anything")
+	}
+	if cur.IsSet {
+		undo = fmt.Sprintf("attach %q again (edit-network object collector action assign, definition {\"username\": %q})", cur.CollectorUsername, cur.CollectorUsername)
+	} else {
+		undo = "none through the API this skill uses: there is no detach, so a network that had no collector cannot be put back to none; attach a different collector, or detach in the Forward UI"
+		limits = append(limits, "the network has no collector now and this skill cannot detach one, so this is not reversible here")
+	}
+	return &networkPlan{target: fmt.Sprintf("attach collector %q to network %s", target.Username, in.NetworkID), action: "attach_collector", before: before, after: after, reversible: reversible, undo: undo, limits: limits,
+		do: func(ctx context.Context) error {
+			_, err := s.Client.Collectors.Attach(ctx, in.NetworkID, forward.CollectorAttachmentRequest{Username: target.Username})
+			return err
+		},
+		verify: func(ctx context.Context) (bool, any, error) {
+			got, _, e := s.Client.Collectors.Attachment(ctx, in.NetworkID)
+			if e != nil {
+				return false, nil, e
+			}
+			return got.IsSet && got.CollectorUsername == target.Username, map[string]any{"attached": got.IsSet, "username": got.CollectorUsername}, nil
+		}}, nil
 }
