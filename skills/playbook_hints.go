@@ -29,6 +29,8 @@ var playbookFor = map[string]string{
 	"edit-org-property":              "plan-incident-triage",
 	"edit-advanced-reachability":     "plan-snapshot-recovery",
 	"inspect-performance":            "plan-incident-triage",
+	"inspect-jobs":                   "plan-incident-triage",
+	"edit-jobs":                      "plan-incident-triage",
 	"inspect-inventory":              "plan-device-audit",
 	"find-nqe-query":                 "author-nqe-query",
 	"validate-nqe-query":             "author-nqe-query",

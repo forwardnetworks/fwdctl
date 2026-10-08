@@ -1,0 +1,36 @@
+{
+ "skill": "edit-jobs",
+ "cases": [
+  {
+   "query": "A backend job has been stuck for over 20 minutes on network 4610, cancel it instead of restarting the worker.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-jobs dry run first (apply not set)",
+    "lists the matched job(s), then applies only after a dry run was accepted"
+   ]
+  },
+  {
+   "query": "Clear out any jobs that have been running past 20 minutes across every network.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "edit-jobs dry run, then apply: true",
+    "caps at the default limit (10) and says so if more matched"
+   ]
+  },
+  {
+   "query": "Show me which jobs are running and how long, without canceling anything.",
+   "should_trigger": false,
+   "note": "inspect-jobs: a read, not a cancellation"
+  },
+  {
+   "query": "Restart the compute worker pod because it looks pegged.",
+   "should_trigger": false,
+   "note": "a Kubernetes/infrastructure action outside Forward's own API, not a Forward Skill"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

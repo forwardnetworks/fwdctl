@@ -1,0 +1,43 @@
+{
+ "skill": "inspect-jobs",
+ "cases": [
+  {
+   "query": "What backend jobs are running right now, and has anything been running an unusually long time?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-jobs"
+   ]
+  },
+  {
+   "query": "An NQE query on network 4610 has been running for 45 minutes and never returns. Is it actually stuck?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-jobs",
+    "flags the job likely_stuck once it has run past the threshold (default 20 minutes)"
+   ]
+  },
+  {
+   "query": "Why did yesterday's snapshot processing on network 4610 end up TIMEDOUT?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "inspect-jobs with state completed",
+    "finds the row with state TIMEDOUT and reads its longest_running_time_seconds"
+   ]
+  },
+  {
+   "query": "Is collection running on this network right now?",
+   "should_trigger": false,
+   "note": "inspect-collection"
+  },
+  {
+   "query": "Is CPU or memory unhealthy on any Forward component right now?",
+   "should_trigger": false,
+   "note": "inspect-performance"
+  }
+ ],
+ "measure": [
+  "tool_calls",
+  "total_tokens",
+  "failed_calls"
+ ]
+}

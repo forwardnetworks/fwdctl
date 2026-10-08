@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "older_than_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "cancel active jobs running at least this long (default 20, matching NQE_JOB_TIMEOUT_MINUTES)"
+    },
+    "network_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "narrow to one network; omit for every network"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "cancel at most this many jobs in one run (default 10)"
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false,
+      "description": "false (default) is a dry run; true cancels the matched jobs"
+    }
+  }
+}

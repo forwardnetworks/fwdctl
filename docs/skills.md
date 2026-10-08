@@ -25,6 +25,7 @@ Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl 
 | `edit-device-tags` | edit | Puts existing tags on devices or takes them off, after showing the pairs that change. Dry run unless apply is true. |
 | `edit-endpoint-profile` | edit | Copies an SNMP endpoint profile with extra OIDs, repoints endpoints or deletes one, with before and after. Dry run unless apply is true. |
 | `edit-internet-exclusions` | edit | Changes the public subnets excluded from the internet node, showing before and after. Dry run unless apply is true. |
+| `edit-jobs` | edit | Cancels active backend jobs running past a threshold instead of restarting the worker running them. Dry run unless apply is true. |
 | `edit-link-overrides` | edit | Adds or removes a snapshot's manual and suppressed links, showing the change. Dry run unless apply is true. |
 | `edit-network` | edit | Manages networks, locations, device clusters and tag definitions: create, rename, delete. Dry run unless apply is true. |
 | `edit-nqe-query` | edit | Saves an authored NQE query to the organization's library, or removes one, showing the effect. Dry run unless apply is true. |
@@ -44,6 +45,7 @@ Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl 
 | `inspect-environment` | read | Reports the Forward build, organization, login, which features are on (value, default, where set) and non-default properties. |
 | `inspect-history` | read | Shows how one check's status moved across recent snapshots and where it last changed, or when a device's config last changed. |
 | `inspect-inventory` | read | Reads network contents: size, vendors, devices, interfaces, VLANs, VRFs, hosts, cloud VPCs; kind ip_owner finds an IP's interface. |
+| `inspect-jobs` | read | Lists Forward's active or completed backend jobs and flags ones running past a threshold as stuck. |
 | `inspect-networks` | read | Lists the Forward networks the login can see, with ids, names and which are workspaces. |
 | `inspect-performance` | read | Reads device and interface health from performance data: unhealthy devices, highest CPU, memory, utilization, loss or errors, and trends. |
 | `inspect-platform` | read | Reads how Forward is set up, secrets removed: credentials, jump servers, collectors, cloud setups, webhooks, licensing, SAML. |

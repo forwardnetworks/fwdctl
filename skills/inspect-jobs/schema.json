@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": ["active", "completed"],
+      "description": "active (default) or completed"
+    },
+    "network_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "narrow to one network; omit for every network"
+    },
+    "older_than_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "active only: flag (not filter) rows running at least this long as likely_stuck (default 20, matching NQE_JOB_TIMEOUT_MINUTES)"
+    },
+    "match": {
+      "type": "string",
+      "minLength": 1,
+      "description": "a substring of the job type or organization name"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "rows per page (default 50, max 200)"
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "rows to skip"
+    }
+  }
+}

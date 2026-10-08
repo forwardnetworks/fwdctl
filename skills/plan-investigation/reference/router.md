@@ -20,6 +20,8 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | "What version is this", "which features does this Forward have", is a feature or preview flag enabled, what value a property has | `inspect-environment` |
 | "Which snapshot should I use", "is this snapshot complete", "which are predictions" | `inspect-snapshots` |
 | "Is anything unhealthy now", CPU, memory, utilization, errors, packet loss | `inspect-performance` |
+| Forward seems slow or wedged, "what jobs are running", a query or execution that never returns, "is anything stuck" | `inspect-jobs` |
+| Cancel a stuck or wedged backend job instead of restarting a worker | `edit-jobs` (dry run first) |
 | "Is collection running or healthy", "is the collector connected" | `inspect-collection` (view status) |
 | "What is collected", "is device X switched off for collection" | `inspect-collection` (view config) |
 | A path ends at the edge, "is the internet modelled", links added by hand, the connections of an L3 VPN or L2 VPN | `inspect-topology` (kind external) |
