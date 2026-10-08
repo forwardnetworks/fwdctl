@@ -140,7 +140,7 @@ func TestEditNQEQueriesTypecheckReportsImporterErrorsAndRestoresTheDrafts(t *tes
 	dry := map[string]any{"newErrors": map[string]any{"/Team/importer": []any{map[string]any{"severity": "ERROR", "message": "no such field"}}}}
 	routes, state, log := multiLibrary(&head, dry)
 	r, _ := mustRun(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true,"apply":true}`)
-	if r.Status != result.Failed || !strings.Contains(r.Finding, "new error") || head != "c1" {
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "error(s)") || strings.Contains(r.Finding, "new error") || head != "c1" {
 		t.Fatalf("%s %s head=%s", r.Status, r.Finding, head)
 	}
 	// both paths were staged, typed, and the committed sources restored as drafts; nothing committed

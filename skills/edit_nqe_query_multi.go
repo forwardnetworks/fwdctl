@@ -213,12 +213,12 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 			}
 		}
 		tc = map[string]any{"new_errors": errs, "new_error_count": n, "uses_count": len(dr.Uses), "unauthorized": append(append([]string{}, dr.UnauthorizedQueryChanges...), dr.UnauthorizedAccessSettingChanges...)}
-		limits = append(limits, "typecheck staged your changes as drafts in your workspace, asked Forward, and discarded them; new_errors include queries that import the changed ones; uses_count counts the checks and dashboards that consume them")
+		limits = append(limits, "typecheck staged your changes as drafts in your workspace, asked Forward, and discarded them; new_errors is Forward's field name, but it holds every error in the changed queries and their importers, with no comparison against head (an importer already broken at head is listed); uses_count counts the checks and dashboards that consume them")
 		if len(dr.UnauthorizedQueryChanges)+len(dr.UnauthorizedAccessSettingChanges) > 0 {
 			return fail("Forward says this login may not commit some of these changes; nothing was changed", map[string]any{"typecheck": tc, "head_commit_id": head})
 		}
 		if n > 0 {
-			return fail(fmt.Sprintf("Forward's typecheck finds %d new error(s) across %d quer(ies) (including importers); nothing was committed", n, len(errs)),
+			return fail(fmt.Sprintf("Forward's typecheck finds %d error(s) across %d quer(ies), in the changed queries and the queries that import them; Forward does not say which already existed at head, so an importer broken by an earlier commit is listed too. Nothing was committed", n, len(errs)),
 				map[string]any{"typecheck": tc, "head_commit_id": head, "paths": paths})
 		}
 	} else {

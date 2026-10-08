@@ -329,6 +329,7 @@ Examples:
 Flags:
 
 ```
+      --errors-only        report errors only, no warnings or deprecations (the exit status is the same)
       --modules string     where "import" statements are read from (default: the directory of FILE)
       --org                check against the organization's live schema instead of the embedded one (needs a login)
       --synthetic string   check the file as a synthetic-device query of this kind (adjacent-network|internet|intranet|l2vpn|l3vpn)

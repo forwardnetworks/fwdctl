@@ -36,6 +36,13 @@ func nqeTool(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	synth, args := stringFlag(args, "--synthetic")
 	mods, args := modulesFlag(args)
+	errorsOnly := false
+	for i, a := range args {
+		if a == "--errors-only" {
+			errorsOnly, args = true, append(append([]string{}, args[:i]...), args[i+1:]...)
+			break
+		}
+	}
 	if len(args) == 0 || args[0] != "lint" || len(args) > 2 {
 		fmt.Fprintln(stderr, "usage: fwdctl nqe lint [--modules DIR] [FILE|-] | fmt [-w] [--check] [FILE...] | lsp | complete FILE LINE COL | hover FILE LINE COL")
 		return usage
@@ -65,6 +72,15 @@ func nqeTool(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		diags = append(diags, more...)
 	}
+	if errorsOnly { // valid is decided by the errors, so dropping warnings changes nothing but the noise
+		errs := []nqelint.Diagnostic{}
+		for _, d := range diags {
+			if d.Severity == "error" {
+				errs = append(errs, d)
+			}
+		}
+		diags = errs
+	}
 	out := struct {
 		Valid       bool                 `json:"valid"`
 		Diagnostics []nqelint.Diagnostic `json:"diagnostics"`
@@ -76,6 +92,9 @@ func nqeTool(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		out.Diagnostics = []nqelint.Diagnostic{}
 	}
 	out.Schema = lintSchema
+	if lintSchema == nil { // offline: the schema is the one embedded in this release
+		out.Note += "; checked against the schema embedded in this fwdctl release, so a target organization on a newer Forward build may have fields this lacks (and lack fields it has): use --org to check against the organization's live schema"
+	}
 	if m, err := nqeschema.Load(); err == nil {
 		out.SchemaHints = m.Check(string(src))
 	}

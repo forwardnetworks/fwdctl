@@ -23,7 +23,7 @@ func (a *app) nqeCmd() *cobra.Command {
 
 func (a *app) nqeLint() *cobra.Command {
 	var modules, synthetic string
-	var org bool
+	var org, errorsOnly bool
 	c := &cobra.Command{
 		Use: "lint [FILE|-]", Short: "check a query: syntax, names, types, deprecations (offline, or against an organization's live schema with --org)",
 		Long: "Offline NQE check, no Forward connection: syntax errors with line and column, unknown names, wrong argument counts, fields and enum values the data model does not have,\n" +
@@ -63,11 +63,15 @@ func (a *app) nqeLint() *cobra.Command {
 			if modules != "" {
 				tool = append(tool, "--modules", modules)
 			}
+			if errorsOnly {
+				tool = append(tool, "--errors-only")
+			}
 			return a.exit(nqeTool(append(append(tool, "lint"), args...), a.in, a.out, a.err))
 		},
 	}
 	c.Flags().StringVar(&modules, "modules", "", "where \"import\" statements are read from (default: the directory of FILE)")
 	c.Flags().BoolVar(&org, "org", false, "check against the organization's live schema instead of the embedded one (needs a login)")
+	c.Flags().BoolVar(&errorsOnly, "errors-only", false, "report errors only, no warnings or deprecations (the exit status is the same)")
 	c.Flags().StringVar(&synthetic, "synthetic", "", "check the file as a synthetic-device query of this kind ("+join(nqelint.SyntheticKindNames())+")")
 	_ = c.RegisterFlagCompletionFunc("synthetic", cobra.FixedCompletions(nqelint.SyntheticKindNames(), cobra.ShellCompDirectiveNoFileComp))
 	return c
