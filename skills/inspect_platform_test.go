@@ -92,3 +92,32 @@ func TestPlatformScorecardTrendsSummariseTheWindowAndSkipUnscoredPoints(t *testi
 		t.Fatalf("%s %v", r.Status, row)
 	}
 }
+
+func TestPlatformOrgPropertiesSaysWhereEachValueComesFrom(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/version": fwdtest.Const(200, map[string]any{"build": "1.0.0-test", "release": "26.10", "version": "1.0"}),
+		"GET /api/orgs/o1/config": func(r *http.Request, _ []byte) (int, any) {
+			switch r.URL.Query().Get("filter") {
+			case "CONFIGURED":
+				return 200, map[string]any{"predict_alpha": true}
+			}
+			return 200, map[string]any{"predict_alpha": true, "predict_beta": 7, "predict_model_ext_adv": true, "predict_model_config": "x"}
+		},
+		"GET /api/global-config": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("filter") == "CONFIGURED" {
+				return 200, map[string]any{"predict_beta": 7}
+			}
+			return 200, map[string]any{"predict_alpha": false, "predict_beta": 7, "predict_model_ext_adv": true, "predict_model_config": "x"}
+		},
+	}
+	r, srv := mustRun(t, "inspect-platform", routes, `{"area":"org_properties","org_id":"o1","name":"predict_"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"source":"org"`, `"source":"global_override"`, `"source":"compiled_default"`, `"build":"1.0.0-test"`, "PREDICT_MODEL_EXT_ADV is true without an organization setting", "reprocessed"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	if r.Status != result.OK || writes(srv) != 0 {
+		t.Fatalf("%s writes=%d", r.Status, writes(srv))
+	}
+}

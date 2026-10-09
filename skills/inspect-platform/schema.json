@@ -5,10 +5,11 @@
   "properties": {
     "area": {
       "type": "string",
-      "enum": ["credentials", "jump_servers", "proxies", "collectors", "collection_settings", "endpoint_profiles", "schedules", "cloud_setups", "locations", "tag_definitions", "access_labels", "api_tokens", "webhooks", "integrations", "licensing", "backups", "banners", "certificates", "saml", "organizations", "cve_index", "dashboards", "scorecards", "scorecard_trends"],
+      "enum": ["credentials", "jump_servers", "proxies", "collectors", "collection_settings", "endpoint_profiles", "schedules", "cloud_setups", "locations", "tag_definitions", "access_labels", "api_tokens", "webhooks", "integrations", "licensing", "backups", "banners", "certificates", "saml", "organizations", "org_properties", "cve_index", "dashboards", "scorecards", "scorecard_trends"],
       "description": "what to read; the network areas (credentials, jump_servers, proxies, schedules, cloud_setups, locations, tag_definitions) need network_id, the others take none"
     },
     "network_id": { "type": "string", "minLength": 1 },
+    "org_id": { "type": "string", "minLength": 1, "description": "org_properties only: the organization to read (default: the organization of network_id, else the only organization this login sees)" },
     "name": { "type": "string", "minLength": 1, "description": "a substring of the object's name" },
     "limit": { "type": "integer", "minimum": 1 },
     "offset": { "type": "integer", "minimum": 0 }

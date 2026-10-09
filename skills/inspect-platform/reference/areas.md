@@ -14,6 +14,7 @@ Read the section for the area you are answering from. Every area removes secret 
 - integrations
 - licensing, backups, saml
 - organizations and cve_index
+- org_properties
 - dashboards and scorecards
 
 ## credentials
@@ -59,6 +60,10 @@ Licenses for the current organization without the signed key; backup settings fo
 ## organizations and cve_index
 
 Organizations the login can see, and the vulnerability index's metadata (created, size). `inspect-environment` reports the index's age; `edit-platform` syncs it.
+
+## org_properties
+
+Every property the appserver defines for one organization (`org_id`, else the organization of `network_id`, else the only organization the login sees; Forward support permission is needed). Each row has the `effective` value and its `source`: `org` (set on the organization; `org_value`), `global_override` (a global setting), or `compiled_default`. No Forward route exposes the compiled default separately, so `compiled_default` means "not set on the org and not a global override", and the effective value is then the default. `deployment_default` is the global override if there is one, else the compiled default. A first row, `appserver_build`, gives the build, release and version of the Forward read. Filter with `name` (for example `predict_`). Traps: some builds compile `PREDICT_MODEL_EXT_ADV` as true, so a missing org row reads true; a change to `PREDICT_MODEL_CONFIG` needs the snapshot reprocessed. To compare two organizations or two clusters, run it on each (with each login) and compare the rows by name; one call reads one organization of one Forward.
 
 ## dashboards and scorecards
 Both read Forward APIs it has not published, so the shape may change and either can answer 404 on an older build (that is "unknown", not "none"). `dashboards` lists the network's custom dashboards with the widget layout as Forward stores it; the built-in defaults are not listed. `scorecards` returns the scorecard definitions and, when the network has a processed snapshot, each scorecard's score on the latest one (Forward computes them for the organization's license tier). `scorecard_trends` gives each scorecard's score over the last 90 days (at most 60 points): first, latest, min, max and the change, with the snapshot ids of the first and latest points. A point with no score is counted, not averaged. The Excel checks report exists in the SDK but is not read here.

@@ -21,6 +21,7 @@ func init() { Register(inspectPlatformName, inspectPlatform) }
 
 type inspectPlatformInput struct {
 	NetworkID string `json:"network_id"`
+	OrgID     string `json:"org_id"`
 	Area      string `json:"area"`
 	Name      string `json:"name"`
 	Limit     int    `json:"limit"`
@@ -268,6 +269,7 @@ var platformAreas = map[string]platformArea{
 		r, err := rowsOf([]*forward.SAMLSettings{v}, nil)
 		return r, []string{"identity-provider certificates and metadata are shortened or hidden"}, err
 	}},
+	"org_properties": {false, "organization properties: effective value and its source (org setting, global override or compiled default), with the appserver build", nil},
 	"organizations": {false, "organizations this login can see", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		v, _, err := s.Client.Organizations.List(ctx)
 		r, err := rowsOf(v, err)
@@ -374,10 +376,17 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	if a.network && in.NetworkID == "" && in.Area != "integrations" {
 		return result.Result{}, fmt.Errorf("%w: area %s belongs to a network: give network_id", ErrInvalidInput, in.Area)
 	}
-	if !a.network && in.NetworkID != "" && in.Area != "integrations" {
+	if !a.network && in.NetworkID != "" && in.Area != "integrations" && in.Area != "org_properties" {
 		return result.Result{}, fmt.Errorf("%w: area %s belongs to the organization, not a network: leave network_id out", ErrInvalidInput, in.Area)
 	}
-	rows, limits, err := a.list(ctx, s, in.NetworkID)
+	var rows []any
+	var limits []string
+	var err error
+	if in.Area == "org_properties" { // needs org_id, which the generic list signature does not carry
+		rows, limits, err = orgPropertyRows(ctx, s, in)
+	} else {
+		rows, limits, err = a.list(ctx, s, in.NetworkID)
+	}
 	if err != nil {
 		if r, ok := denialResult(inspectPlatformName, err, cx, "could not read "+a.what); ok {
 			return r, nil
@@ -400,7 +409,7 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	if in.Name != "" {
 		kept := rows[:0:0]
 		for _, r := range rows {
-			if m, ok := r.(map[string]any); ok && strings.Contains(strings.ToLower(fmt.Sprint(m["name"])), strings.ToLower(in.Name)) {
+			if m, ok := r.(map[string]any); ok && (m["row"] == "build" || strings.Contains(strings.ToLower(fmt.Sprint(m["name"])), strings.ToLower(in.Name))) {
 				kept = append(kept, r)
 			}
 		}
