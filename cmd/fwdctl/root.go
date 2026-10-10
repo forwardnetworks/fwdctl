@@ -244,7 +244,8 @@ func (a *app) whichCmd() *cobra.Command {
 func (a *app) contextCmd() *cobra.Command {
 	c := parent(&cobra.Command{
 		Use: "context", GroupID: "nqe", Short: "NQE authoring aids: worked examples, real field names",
-		Long: "NQE authoring aids: worked examples closest to a question, or real field names matching a term.",
+		Example: "  fwdctl context nqe \"interfaces that are down\"\n  fwdctl context schema vrf",
+		Long:    "NQE authoring aids: worked examples closest to a question, or real field names matching a term.",
 	})
 	for _, kind := range []string{"nqe", "schema"} {
 		kind := kind
@@ -353,7 +354,8 @@ func (a *app) updateCmd() *cobra.Command {
 func (a *app) installCmd() *cobra.Command {
 	c := parent(&cobra.Command{
 		Use: "install", GroupID: "setup", Short: "put the skills where an agent loads them",
-		Long: "Install the skills for an agent: into Claude Code's skills directory, or as a managed section of an AGENTS.md / CLAUDE.md file.",
+		Example: "  fwdctl install claude\n  fwdctl install agents --file AGENTS.md",
+		Long:    "Install the skills for an agent: into Claude Code's skills directory, or as a managed section of an AGENTS.md / CLAUDE.md file.",
 	})
 	var dir, file string
 	claude := &cobra.Command{

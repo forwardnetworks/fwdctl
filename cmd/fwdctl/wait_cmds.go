@@ -22,6 +22,7 @@ const (
 func (a *app) waitCmd() *cobra.Command {
 	c := parent(&cobra.Command{
 		Use: "wait", GroupID: "skills", Short: "block until Forward finishes something (a snapshot's processing, its advanced reachability)",
+		Example: "  fwdctl wait snapshot --network N --snapshot S --advanced-reachability --timeout 3h",
 		Long: "Blocks, printing one progress line per poll on stderr, until Forward reaches the state asked for. For the work that takes an hour (a reprocess after a backdate, advanced\n" +
 			"reachability) so it does not need a polling loop that dies with the session. Exit 0: reached. 1: Forward ended in a failed, canceled or timed-out state that will not change\n" +
 			"by itself. 2: --timeout passed first (the work may still be running; run the wait again). 3: an error (bad input, Forward unreachable for several polls in a row).",

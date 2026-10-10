@@ -292,3 +292,15 @@ func TestEditSourceClassicDeviceCreateAndUpdateSendCollectorID(t *testing.T) {
 		t.Errorf("collectorId goes to Forward on update: %q", patch)
 	}
 }
+
+func TestEditSourceFailedReadBackSaysNotToApplyAgain(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices":  fwdtest.Const(200, []any{}),
+		"POST /api/networks/n1/classic-devices": fwdtest.Const(201, map[string]any{"name": "r9"}),
+	}
+	r, _ := mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"classic_device","action":"create","apply":true,"definition":{"name":"r9","host":"10.0.0.9"}}`)
+	lim := strings.Join(r.Limits, " | ")
+	if r.Status != result.Failed || !strings.Contains(lim, "do NOT run it again with apply") || len(r.NextActions) == 0 {
+		t.Errorf("a write whose read-back is empty says the request was sent and not to repeat it, and points at the next step: %s / limits %q / next %v", r.Status, lim, r.NextActions)
+	}
+}

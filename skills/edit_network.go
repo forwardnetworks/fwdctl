@@ -116,7 +116,9 @@ func finishPlan(ctx context.Context, name string, cx result.Context, plan *netwo
 		}
 		if !ok {
 			return result.Build(name, result.Failed, fmt.Sprintf("Forward accepted the change but the read-back does not show it (%s)", plan.target), result.Deterministic, cx,
-				result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"read_back": got}), Limits: plan.limits})
+				result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"read_back": got}),
+					Limits:      append(append([]string{}, plan.limits...), "the request was sent and Forward accepted it; do NOT run it again with apply: a repeat can create a duplicate or be refused. Read the current state first (the inspect skills in next_actions), and use the undo in the change if the state is wrong"),
+					NextActions: next})
 		}
 	}
 	extra := map[string]any(nil)

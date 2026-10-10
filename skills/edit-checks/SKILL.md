@@ -22,10 +22,7 @@ until `apply` is true, and the blast radius is stated up front.
 
 ## Inputs
 
-`network_id`, `action` (`create` or `deactivate`). For `create`: `definition` (Forward's check definition: a predefined check type, or an
-NQE query), optional `name` (NQE checks only: Forward names a predefined check itself and answers 400 if a name is sent, so a name with a predefined definition is refused in the dry run), `note`, `tags`, `priority`, `persistent`. For `deactivate`: `check_id`. Optional for both: `snapshot_id`
-(default the newest processed one), `apply` (default false). See `schema.json`. Find predefined types and existing checks with
-`inspect-checks`; validate an NQE query with `validate-nqe-query` first.
+What each input means, and the fields per object and action: `fwdctl run edit-checks --help`, or `reference/inputs.md`.
 
 ## Dry run
 

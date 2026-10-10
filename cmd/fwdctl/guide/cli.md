@@ -23,6 +23,13 @@ NQE authoring aids: worked examples closest to a question, or real field names m
 fwdctl context
 ```
 
+Examples:
+
+```
+  fwdctl context nqe "interfaces that are down"
+  fwdctl context schema vrf
+```
+
 ## fwdctl context nqe
 
 NQE worked examples closest to a question
@@ -100,6 +107,13 @@ Install the skills for an agent: into Claude Code's skills directory, or as a ma
 
 ```
 fwdctl install
+```
+
+Examples:
+
+```
+  fwdctl install claude
+  fwdctl install agents --file AGENTS.md
 ```
 
 ## fwdctl install agents
@@ -187,6 +201,13 @@ Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or 
 
 ```
 fwdctl nqe
+```
+
+Examples:
+
+```
+  fwdctl nqe lint query.nqe
+  fwdctl nqe run --network 123 --file query.nqe --format table
 ```
 
 ## fwdctl nqe bundle
@@ -428,6 +449,12 @@ Derive a synthetic-device query from evidence in the network model, lint it and 
 fwdctl nqe synthesize
 ```
 
+Examples:
+
+```
+  fwdctl nqe synthesize internet --network 123 --vrf default
+```
+
 ## fwdctl nqe synthesize internet
 
 Derive an internet node's connection query from the model (the inspect-edge analysis), lint it and print it; exit 1 if its own output is not clean.
@@ -542,6 +569,12 @@ by itself. 2: --timeout passed first (the work may still be running; run the wai
 
 ```
 fwdctl wait
+```
+
+Examples:
+
+```
+  fwdctl wait snapshot --network N --snapshot S --advanced-reachability --timeout 3h
 ```
 
 ## fwdctl wait snapshot

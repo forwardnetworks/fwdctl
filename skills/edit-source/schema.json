@@ -42,7 +42,7 @@
     },
     "definition": {
       "type": "object",
-      "description": "the non-secret body; see the SKILL.md table. A secret-looking field is refused"
+      "description": "the non-secret body; see Input details in `fwdctl run edit-source --help`. A secret-looking field is refused"
     },
     "secret_file": {
       "type": "string",

@@ -13,6 +13,7 @@ import (
 func (a *app) nqeCmd() *cobra.Command {
 	c := parent(&cobra.Command{
 		Use: "nqe", GroupID: "nqe", Short: "write, check, run and assemble NQE queries",
+		Example: "  fwdctl nqe lint query.nqe\n  fwdctl nqe run --network 123 --file query.nqe --format table",
 		Long: "NQE (Network Query Engine) tools. Offline, no Forward connection: lint, fmt, lsp, complete, hover, template. Connected: run, bundle, synthesize.\n" +
 			"Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or fwdctl login). Long queries: FORWARD_TIMEOUT, FORWARD_NQE_MODE, FORWARD_NQE_WAIT (fwdctl docs troubleshooting).",
 	})
@@ -267,7 +268,8 @@ path replaces the entry; an --override or --add-module the bundle never reads is
 func (a *app) nqeSynth() *cobra.Command {
 	c := parent(&cobra.Command{
 		Use: "synthesize", Short: "derive a synthetic device's query from the model (internet)",
-		Long: "Derive a synthetic-device query from evidence in the network model, lint it and print it; exit 1 if its own output is not clean.",
+		Example: "  fwdctl nqe synthesize internet --network 123 --vrf default",
+		Long:    "Derive a synthetic-device query from evidence in the network model, lint it and print it; exit 1 if its own output is not clean.",
 	})
 	var o nqeSynthOpts
 	internet := &cobra.Command{

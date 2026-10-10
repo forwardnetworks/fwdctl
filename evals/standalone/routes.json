@@ -7,6 +7,13 @@
     "orgId": "o1",
     "creator": "demo",
     "createdAt": "2026-10-01T00:00:00Z"
+   },
+   {
+    "id": "n2",
+    "name": "lab-b",
+    "orgId": "o1",
+    "creator": "demo",
+    "createdAt": "2026-10-02T00:00:00Z"
    }
   ]
  },
@@ -69,8 +76,17 @@
    "user": {
     "id": "u1",
     "username": "demo",
-    "orgId": "o1"
-   }
+    "orgId": "o1",
+    "enabled": true,
+    "authSource": "LOCAL"
+   },
+   "roles": {
+    "org": [],
+    "network": {
+     "n1": "READ_ONLY"
+    }
+   },
+   "groupIds": []
   }
  },
  "GET /api/config": {
@@ -95,6 +111,138 @@
  "GET /api/snapshots/s1/progress": {
   "body": {
    "state": "PROCESSED"
+  }
+ },
+ "GET /api/networks/n2": {
+  "body": {
+   "id": "n2",
+   "name": "lab-b",
+   "orgId": "o1"
+  }
+ },
+ "GET /api/networks/n2/snapshots": {
+  "body": {
+   "snapshots": [
+    {
+     "id": "s3",
+     "state": "PROCESSED",
+     "processingTrigger": "COLLECTION",
+     "processedAt": "2026-10-09T10:00:00Z",
+     "createdAt": "2026-10-09T09:00:00Z"
+    }
+   ]
+  }
+ },
+ "GET /api/snapshots/s3/progress": {
+  "body": {
+   "state": "PROCESSED"
+  }
+ },
+ "GET /api/snapshots/s3/metrics": {
+  "body": {
+   "numSuccessfulDevices": 9,
+   "deviceCollectionFailures": {
+    "AUTHENTICATION_FAILED": 3,
+    "CONNECTION_TIMEOUT": 2
+   }
+  }
+ },
+ "GET /api/snapshots/s3/exceptions": {
+  "body": {
+   "exceptions": []
+  }
+ },
+ "GET /api/networks/n2/missing-devices": {
+  "body": {
+   "devices": []
+  }
+ },
+ "GET /api/networks/n1/paths": {
+  "body": {
+   "timedOut": false,
+   "info": {
+    "totalHits": {
+     "type": "EXACT",
+     "value": 1
+    },
+    "paths": [
+     {
+      "forwardingOutcome": "DELIVERED",
+      "securityOutcome": "DENIED",
+      "hops": [
+       {
+        "deviceName": "r1",
+        "displayName": "r1",
+        "ingressInterface": "e0",
+        "egressInterface": "e1"
+       },
+       {
+        "deviceName": "fw01",
+        "displayName": "fw01",
+        "ingressInterface": "ethernet1/3",
+        "egressInterface": ""
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "GET /api/users": {
+  "body": [
+   {
+    "id": "u1",
+    "username": "demo",
+    "email": "demo@example.test",
+    "enabled": true,
+    "authSource": "LOCAL",
+    "orgAdmin": false
+   },
+   {
+    "id": "u2",
+    "username": "dana@example.test",
+    "email": "dana@example.test",
+    "enabled": true,
+    "authSource": "LOCAL",
+    "orgAdmin": true
+   },
+   {
+    "id": "u3",
+    "username": "bob@example.test",
+    "email": "bob@example.test",
+    "enabled": true,
+    "authSource": "LOCAL",
+    "orgAdmin": false
+   }
+  ]
+ },
+ "GET /api/access-control-groups": {
+  "body": []
+ },
+ "POST /api/nqe": {
+  "body": {
+   "items": [
+    {
+     "name": "r1",
+     "os": "CISCO_IOS_XE"
+    },
+    {
+     "name": "r2",
+     "os": "ARISTA_EOS"
+    }
+   ],
+   "totalNumItems": 2,
+   "snapshotId": "s2"
+  }
+ },
+ "GET /api/networks/n1/snmpCredentials": {
+  "body": []
+ },
+ "POST /api/networks/n1/snmpCredentials": {
+  "status": 201,
+  "body": {
+   "id": "cred1",
+   "name": "poll"
   }
  }
 }

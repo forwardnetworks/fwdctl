@@ -32,7 +32,7 @@ Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl 
 | `edit-org-property` | edit | Lists Forward's org properties with value, who may change them and risk, and sets or clears one. Dry run unless apply is true. |
 | `edit-platform` | edit | Changes org admin settings (banners, webhooks, certificates, labels, integrations, backups). Dry run unless apply. |
 | `edit-snapshot` | edit | Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import. Dry run unless apply. |
-| `edit-source` | edit | Adds device logins and paths: CLI, SNMP, HTTP credentials, jump servers, proxies; secrets come from a file. Dry run unless apply is true. |
+| `edit-source` | edit | Adds devices to the collection list (pin to a collector), logins, jump servers, proxies; secrets from a file. Dry run unless apply: true. |
 | `edit-synthetic-query` | edit | Attaches a saved NQE query to a synthetic node so Forward generates its connections from the rows, or detaches it. Dry run unless apply is true. |
 | `edit-wan-circuit` | edit | Manages one WAN circuit (a synthetic device for a provider's point-to-point L2 link), showing before and after. Dry run unless apply is true. |
 | `edit-workspace` | edit | Makes a temporary workspace network, adds endpoints to a workspace, or deletes one. Dry run unless apply is true. |
