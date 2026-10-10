@@ -1,0 +1,100 @@
+{
+ "GET /api/networks": {
+  "body": [
+   {
+    "id": "n1",
+    "name": "lab-a",
+    "orgId": "o1",
+    "creator": "demo",
+    "createdAt": "2026-10-01T00:00:00Z"
+   }
+  ]
+ },
+ "GET /api/networks/n1": {
+  "body": {
+   "id": "n1",
+   "name": "lab-a",
+   "orgId": "o1"
+  }
+ },
+ "GET /api/networks/n1/snapshots": {
+  "body": {
+   "snapshots": [
+    {
+     "id": "s2",
+     "state": "PROCESSED",
+     "processingTrigger": "REPROCESS",
+     "processedAt": "2026-10-08T10:00:00Z",
+     "createdAt": "2026-10-08T09:00:00Z"
+    },
+    {
+     "id": "s1",
+     "state": "PROCESSED",
+     "processingTrigger": "COLLECTION",
+     "processedAt": "2026-10-07T10:00:00Z",
+     "createdAt": "2026-10-07T09:00:00Z"
+    }
+   ]
+  }
+ },
+ "GET /api/version": {
+  "body": {
+   "release": "26.10.0-02",
+   "build": "2142"
+  }
+ },
+ "GET /api/networks/n1/classic-devices": {
+  "body": [
+   {
+    "name": "r1",
+    "host": "10.0.0.1",
+    "type": "CISCO_IOS_XE",
+    "collectorId": "C42"
+   },
+   {
+    "name": "r2",
+    "host": "10.0.0.2",
+    "type": "ARISTA_EOS"
+   }
+  ]
+ },
+ "POST /api/networks/n1/classic-devices": {
+  "status": 201,
+  "body": {
+   "name": "r9"
+  }
+ },
+ "GET /api/users/current": {
+  "body": {
+   "user": {
+    "id": "u1",
+    "username": "demo",
+    "orgId": "o1"
+   }
+  }
+ },
+ "GET /api/config": {
+  "body": {}
+ },
+ "GET /api/global-config": {
+  "body": {}
+ },
+ "GET /api/orgs": {
+  "body": [
+   {
+    "id": "o1",
+    "name": "demo-org"
+   }
+  ]
+ },
+ "GET /api/snapshots/s2/progress": {
+  "body": {
+   "state": "PROCESSED"
+  }
+ },
+ "GET /api/snapshots/s1/progress": {
+  "body": {
+   "state": "PROCESSED"
+  }
+ }
+}

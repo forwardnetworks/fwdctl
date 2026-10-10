@@ -1,0 +1,10 @@
+[
+ {"id": "list-networks", "prompt": "Which networks can I see in Forward, and what is the id of each?", "answer_has": ["lab-a", "n1"], "no_writes": true},
+ {"id": "latest-snapshot", "prompt": "In network n1, what is the newest processed snapshot, and how was it produced (collection or reprocess)?", "answer_has": ["s2", "reprocess"], "no_writes": true},
+ {"id": "list-devices", "prompt": "Which devices are on network n1's collection list, and which collector is r1 pinned to?", "answer_has": ["r1", "r2", "C42"], "no_writes": true},
+ {"id": "dry-run-add", "prompt": "Show me what adding device r9 (host 10.0.0.9) to network n1, collected through collector C7, would change. Do not change anything.", "answer_has": ["r9", "C7"], "no_writes": true},
+ {"id": "apply-add", "prompt": "Add device r9 (host 10.0.0.9) to network n1 and pin it to collector C7.", "answer_has": ["r9"], "must_write": "POST /api/networks/n1/classic-devices", "body_has": ["C7"]},
+ {"id": "forward-version", "prompt": "Which Forward release is this server running?", "answer_has": ["26.10.0-02"], "no_writes": true},
+ {"id": "nqe-lint", "prompt": "Check this NQE query for errors without running it against the network: foreach d in network.devices select {name: d.nme}", "answer_has": ["nme"], "no_writes": true},
+ {"id": "who-am-i", "prompt": "Which user and Forward URL is fwdctl connected as?", "answer_has": ["demo"], "no_writes": true}
+]

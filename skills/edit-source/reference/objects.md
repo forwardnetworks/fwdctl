@@ -30,7 +30,7 @@ A proxy has no secret. `create` needs `name`, `host`, `port` and `protocol`; `up
 
 ## classic_device
 
-A device in the list Forward collects (CLI/SNMP/HTTP devices). `create` needs `name` and `host`; credentials and the jump server are given by id (`inspect-platform` areas `credentials` and `jump_servers`). `update` changes host, type, port, the CLI and HTTP credential, `collect` and `note` (it patches); the SNMP credential, jump server and extra CLI credentials cannot be changed in place, so delete and re-add. `delete` removes it from the list (`confirm` = its name); past snapshots keep it. Nothing here touches the device.
+A device in the list Forward collects (CLI/SNMP/HTTP devices). `create` needs `name` and `host`; credentials and the jump server are given by id (`inspect-platform` areas `credentials` and `jump_servers`). `collectorId` pins the device to one collector of the org (numeric id such as `C42` or `42`, not the collector UUID); without it the network's default collector is used. `update` can move a device to another collector. `update` changes host, type, port, the CLI and HTTP credential, `collectorId`, `collect` and `note` (it patches); the SNMP credential, jump server and extra CLI credentials cannot be changed in place, so delete and re-add. `delete` removes it from the list (`confirm` = its name); past snapshots keep it. Nothing here touches the device.
 
 ## schedule
 

@@ -54,6 +54,9 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			if d.Port != nil {
 				row["port"] = *d.Port
 			}
+			if c := string(d.CollectorID); c != "" {
+				row["collector_id"] = c
+			}
 			rows = append(rows, row)
 		}
 		win, wl, ok := window(rows, in.Limit, in.Offset, 50, 500, "devices")
@@ -67,6 +70,16 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			}
 		}
 		detail["device_count"] = len(rows)
+		// devices pinned to a collector, by collector id; devices without one use the network's default collector
+		byCollector := map[string]int{}
+		for _, d := range devs {
+			if c := string(d.CollectorID); c != "" {
+				byCollector[c]++
+			}
+		}
+		if len(byCollector) > 0 {
+			detail["devices_by_collector"] = byCollector
+		}
 		// a summary of the WHOLE list, whatever page is shown: a network of tens of thousands of devices is read by its totals first
 		byType := map[string]int{}
 		noCLI, snmpOn, snmpUnknown := 0, 0, 0

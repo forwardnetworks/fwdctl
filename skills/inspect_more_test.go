@@ -387,3 +387,16 @@ func TestInspectPlatformCollectorsListWhichNetworksEachServes(t *testing.T) {
 		t.Fatalf("%s %s", r.Status, b)
 	}
 }
+
+func TestCollectionConfigShowsEachDevicesCollectorAndCountsPerCollector(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection-config", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{
+			map[string]any{"name": "r1", "host": "10.0.0.1", "type": "CISCO_IOS", "collectorId": "C42"},
+			map[string]any{"name": "r2", "host": "10.0.0.2", "type": "ARISTA_EOS", "collectorId": "C42"},
+			map[string]any{"name": "r3", "host": "10.0.0.3", "type": "ARISTA_EOS"}}),
+	}, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	if !strings.Contains(b, `"collector_id":"C42"`) || !strings.Contains(b, `"devices_by_collector":{"C42":2}`) {
+		t.Errorf("each pinned device shows its collector and the pinned ones are counted per collector: %s", b)
+	}
+}

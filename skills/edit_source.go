@@ -610,10 +610,11 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 		HTTPCredentialID string `json:"httpCredentialId"`
 		SNMPCredentialID string `json:"snmpCredentialId"`
 		JumpServerID     string `json:"jumpServerId"`
+		CollectorID      string `json:"collectorId"`
 		Collect          *bool  `json:"collect"`
 		Note             string `json:"note"`
 	}
-	fields := "name, host, type, port, cliCredentialId, cliCredential2Id, cliCredential3Id, httpCredentialId, snmpCredentialId, jumpServerId, collect, note"
+	fields := "name, host, type, port, cliCredentialId, cliCredential2Id, cliCredential3Id, httpCredentialId, snmpCredentialId, jumpServerId, collectorId, collect, note"
 	switch in.Action {
 	case "delete":
 		if in.Name == "" || len(in.Definition) > 0 {
@@ -652,7 +653,7 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 			return nil, fmt.Errorf("%w: a device named %q is already in the list", ErrInvalidInput, def.Name)
 		}
 		req := forward.ClassicDeviceRequest{Name: def.Name, Host: def.Host, Type: def.Type, Port: def.Port, CLICredentialID: def.CLICredentialID, CLICredential2ID: def.CLICredential2ID, CLICredential3ID: def.CLICredential3ID,
-			HTTPCredentialID: def.HTTPCredentialID, SNMPCredentialID: def.SNMPCredentialID, JumpServerID: def.JumpServerID, Collect: def.Collect, Note: def.Note}
+			HTTPCredentialID: def.HTTPCredentialID, SNMPCredentialID: def.SNMPCredentialID, JumpServerID: def.JumpServerID, CollectorID: def.CollectorID, Collect: def.Collect, Note: def.Note}
 		return &networkPlan{target: fmt.Sprintf("add device %q (%s) to the collection list of network %s", def.Name, def.Host, in.NetworkID), action: "add_device", before: nil, after: def, reversible: true,
 			undo:   "delete it from the list (edit-source object classic_device action delete)",
 			limits: []string{"credentials and the jump server are referred to by id (inspect-platform areas credentials, jump_servers); it is collected from the next collection, which edit-collection can start"},
@@ -690,8 +691,9 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 		set(def.CLICredentialID, &patch.CLICredentialID)
 		set(def.HTTPCredentialID, &patch.HTTPCredentialID)
 		set(def.Note, &patch.Note)
+		set(def.CollectorID, &patch.CollectorID)
 		if def.SNMPCredentialID != "" || def.JumpServerID != "" || def.CLICredential2ID != "" || def.CLICredential3ID != "" {
-			return nil, fmt.Errorf("%w: update can change host, type, port, cliCredentialId, httpCredentialId, collect and note; to change the SNMP credential, jump server or second and third CLI credentials, delete the device and add it again", ErrInvalidInput)
+			return nil, fmt.Errorf("%w: update can change host, type, port, cliCredentialId, httpCredentialId, collectorId, collect and note; to change the SNMP credential, jump server or second and third CLI credentials, delete the device and add it again", ErrInvalidInput)
 		}
 		before, _ := fwd.Generic(d)
 		return &networkPlan{target: fmt.Sprintf("update device %q on network %s", in.Name, in.NetworkID), action: "update_device", before: before, after: def, reversible: true, undo: "update it again with the before values",

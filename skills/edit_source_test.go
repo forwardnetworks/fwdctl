@@ -267,3 +267,28 @@ func TestEditSourceJumpServerUpdateAndDeleteAndRapid7Delete(t *testing.T) {
 		t.Errorf("rapid7 delete: %s", r.Finding)
 	}
 }
+
+func TestEditSourceClassicDeviceCreateAndUpdateSendCollectorID(t *testing.T) {
+	var body, patch string
+	var devs []any
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": func(*http.Request, []byte) (int, any) { return 200, devs },
+		"POST /api/networks/n1/classic-devices": func(_ *http.Request, b []byte) (int, any) {
+			body = string(b)
+			devs = []any{map[string]any{"name": "r9", "host": "10.0.0.9", "collectorId": "C42"}}
+			return 201, map[string]any{"name": "r9"}
+		},
+		"PATCH /api/networks/n1/classic-devices/r9": func(_ *http.Request, b []byte) (int, any) {
+			patch = string(b)
+			return 200, map[string]any{"name": "r9", "collectorId": "C7"}
+		},
+	}
+	r, _ := mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"classic_device","action":"create","apply":true,"definition":{"name":"r9","host":"10.0.0.9","collectorId":"C42"}}`)
+	if r.Status != result.OK || !strings.Contains(body, `"collectorId":"C42"`) {
+		t.Errorf("collectorId goes to Forward on create: %s / %s", body, jsonOf(r))
+	}
+	mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"classic_device","action":"update","name":"r9","apply":true,"definition":{"collectorId":"C7"}}`)
+	if !strings.Contains(patch, `"collectorId":"C7"`) {
+		t.Errorf("collectorId goes to Forward on update: %q", patch)
+	}
+}
