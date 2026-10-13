@@ -14,14 +14,29 @@ Give it a Forward login in the environment:
 TLS is verified against the system trust store. For a self-signed Forward set `FORWARD_INSECURE=true`: it turns verification off,
 prints a warning and every result records it.
 
-## A 30-second tour
+## Getting started: five examples
 
-    echo '{}' | fwdctl run inspect-networks               # which networks can I see, and their ids
-    fwdctl list                                             # every skill with its description and inputs
-    fwdctl run inspect-snapshots --help                     # what one skill answers, its inputs, an example
-    fwdctl nqe --help                                       # the NQE commands; fwdctl nqe run --help lists every flag of one
-    echo '{"network_id": "<id>"}' | fwdctl run inspect-snapshots
-    fwdctl describe plan-investigation                      # which skill answers which question
+Each one is a command you can run now. `--help` on any command or name shows its inputs and an example, so you rarely need more than this page.
+
+    fwdctl whoami                                           # who you are connected as: URL, login, organization, Forward version
+    echo '{}' | fwdctl run inspect-networks                 # 1. which networks can I see, and their ids
+    fwdctl which "is CVE-2024-3400 relevant to us"          # 2. which name answers a question in words (offline)
+    echo '{"network_id": "<id>"}' | fwdctl run inspect-vulnerabilities
+    echo '{"network_id": "<id>", "kind": "summary"}' | fwdctl run inspect-inventory
+    fwdctl nqe lint query.nqe                               # 3. check an NQE query offline, then run it:
+    fwdctl nqe run --network <id> --file query.nqe --limit 5 --format table
+    fwdctl run edit-alias --help                            # 4. a name that starts edit- changes Forward; read its help first
+    fwdctl describe plan-investigation                      # 5. which skill answers which question
+
+What to expect from any of them:
+
+- One JSON result: `status` (`ok`, `failed`, `unknown`, `error`), `finding`, `evidence`, `limits` and `next_actions`. `limits` says what was **not** measured. Read it before you rely on an answer.
+- `failed` is a finding (for example, CVEs expose devices), not a crash. `unknown` means it could not decide and is never a pass. The exit status tells a script which (below).
+- A name that needs more input says so and what to add: `invalid input: $: missing required "kind"`. `fwdctl run NAME --help` lists the allowed values.
+- The first query on a large snapshot can take minutes while Forward loads it. Later ones take seconds. The result says when it did.
+- A name that starts `edit-` is a dry run until the input has `"apply": true`. The dry run returns `before`, `after` and `mode: dry_run`, and changes nothing.
+
+With an agent (Claude Code, Codex or Gemini) you ask in plain words and it picks the names: "Which CVEs expose devices here, worst first?", "Why can't 10.1.1.5 reach 10.2.2.9 on TCP 443?", "Run our compliance checks and tell me what's worst." `fwdctl docs install` covers the plugin.
 
 ## Commands
 
