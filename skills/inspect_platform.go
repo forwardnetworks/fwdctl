@@ -397,8 +397,13 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		}
 		// a login without the role, a Forward build without the route, or a route that wants other parameters is a fact about this read, not a failure of the tool
 		if st := fwd.Status(err); st == 400 || st == 403 || st == 404 || st == 405 || st == 501 {
+			lim := []string{fmt.Sprintf("Forward answered %d: %v", st, err), "this login lacks the role, or this Forward build does not serve that route; nothing was read, which is not proof the area is empty (inspect-access view explain names the role)"}
+			if st == 403 && strings.Contains(strings.ToLower(err.Error()), "support authority") {
+				// seen live: an organization administrator is not enough; the same read works for a login that has it
+				lim = append(lim, "this area needs a login with Forward support authority, which an organization administrator does not have; ask a platform administrator to run it, or read the properties with an administrator's client. This tool knows no lower-privilege route to the effective values")
+			}
 			return result.NewUnknown(inspectPlatformName, fmt.Sprintf("Could not read %s", a.what), cx,
-				[]string{fmt.Sprintf("Forward answered %d: %v", st, err), "this login lacks the role, or this Forward build does not serve that route; nothing was read, which is not proof the area is empty (inspect-access view explain names the role)"}, result.Options{NextActions: []string{"inspect-access"}})
+				lim, result.Options{NextActions: []string{"inspect-access"}})
 		}
 		return result.Result{}, err
 	}

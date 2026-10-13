@@ -89,3 +89,18 @@ func TestRunnableNameHelpNeverPointsAtFilesAReaderCannotSee(t *testing.T) {
 		}
 	}
 }
+
+// What a person pins with edit-source must be readable back from inspect-collection, and each name's help must say so and name the id form:
+// a collector id is the numeric C<n>, not the UUID a caller may have recorded.
+func TestCollectorPinningIsExplainedInTheHelpOfBothSidesOfIt(t *testing.T) {
+	_, out, _ := call(t, []string{"run", "edit-source", "--help"}, "", nil)
+	if !strings.Contains(out, "NOT the collector UUID") || !strings.Contains(out, "C42") {
+		t.Errorf("run edit-source --help must say collectorId is the numeric C<n> and not the UUID:\n%s", out)
+	}
+	_, out, _ = call(t, []string{"run", "inspect-collection", "--help"}, "", nil)
+	for _, want := range []string{"collector_id", "devices_by_collector", "edit-source"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("run inspect-collection --help does not mention %s", want)
+		}
+	}
+}

@@ -121,3 +121,15 @@ func TestPlatformOrgPropertiesSaysWhereEachValueComesFrom(t *testing.T) {
 		t.Fatalf("%s writes=%d", r.Status, writes(srv))
 	}
 }
+
+func TestPlatformOrgPropertiesTellsWhatLoginIsNeededOn403(t *testing.T) {
+	r, _ := mustRun(t, "inspect-platform", map[string]fwdtest.Handler{
+		"GET /api/version":        fwdtest.Const(200, map[string]any{"build": "1.0.0-test", "release": "26.10", "version": "1.0"}),
+		"GET /api/orgs/o1/config": fwdtest.Const(403, map[string]any{"message": "Forward support authority required"}),
+		"GET /api/global-config":  fwdtest.Const(403, map[string]any{"message": "Forward support authority required"}),
+	}, `{"area":"org_properties","org_id":"o1"}`)
+	lim := strings.Join(r.Limits, " | ")
+	if r.Status != result.Unknown || !strings.Contains(lim, "support authority") || !strings.Contains(lim, "platform administrator") {
+		t.Errorf("a 403 for support authority says which login is needed and who can run it: %s / %s", r.Status, lim)
+	}
+}
