@@ -15,7 +15,7 @@ var completionCommands = []string{"list", "describe", "run", "context", "nqe", "
 var completionSub = map[string][]string{
 	"nqe":        {"lint", "fmt", "lsp", "complete", "hover"},
 	"context":    {"nqe", "schema"},
-	"install":    {"claude", "agents"},
+	"install":    {"claude", "agents", "lsp"},
 	"docs":       {"overview", "skills", "nqe", "install", "troubleshooting"},
 	"completion": {"bash", "zsh", "fish", "powershell"},
 }

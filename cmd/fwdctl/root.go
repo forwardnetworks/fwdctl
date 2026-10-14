@@ -354,8 +354,8 @@ func (a *app) updateCmd() *cobra.Command {
 func (a *app) installCmd() *cobra.Command {
 	c := parent(&cobra.Command{
 		Use: "install", GroupID: "setup", Short: "put the skills where an agent loads them",
-		Example: "  fwdctl install claude\n  fwdctl install agents --file AGENTS.md",
-		Long:    "Install the skills for an agent: into Claude Code's skills directory, or as a managed section of an AGENTS.md / CLAUDE.md file.",
+		Example: "  fwdctl install claude\n  fwdctl install agents --file AGENTS.md\n  fwdctl install lsp",
+		Long:    "Install the skills for an agent: into Claude Code's skills directory, or as a managed section of an AGENTS.md / CLAUDE.md file. `install lsp` sets up the NQE language server for Claude Code without the skills.",
 	})
 	var dir, file string
 	claude := &cobra.Command{
@@ -374,7 +374,16 @@ func (a *app) installCmd() *cobra.Command {
 		},
 	}
 	agents.Flags().StringVar(&file, "file", "", "the file to add the section to (default: print it)")
-	c.AddCommand(claude, agents)
+	lsp := &cobra.Command{
+		Use: "lsp", Short: "set up the NQE language server in Claude Code, without the skills (writes a local plugin, prints the two claude commands)", Args: cobra.NoArgs,
+		Long:    "Write a small local Claude Code marketplace (default ~/.claude/plugins-local) holding one plugin that declares `fwdctl nqe lsp` as the language server for .nqe files. Claude Code takes a language server only from a plugin. This writes files only: it prints the two `claude plugin` commands to run, and does not run them. fwdctl must be on PATH; no login is needed. The forward-skills plugin already includes the server, so this is for using it without the skills.",
+		Example: "  fwdctl install lsp\n  fwdctl install lsp --dir ~/plugins",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.exit(installRun("lsp", dir, "", a.out, a.err))
+		},
+	}
+	lsp.Flags().StringVar(&dir, "dir", "", "directory to write the marketplace into (default ~/.claude/plugins-local)")
+	c.AddCommand(claude, agents, lsp)
 	return c
 }
 

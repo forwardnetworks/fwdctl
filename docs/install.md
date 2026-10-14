@@ -37,15 +37,24 @@ Each skill is installed with its `reference/` files under `~/.gemini/skills/<nam
 ## The NQE language server in Claude Code
 
 `fwdctl nqe lsp` is a language server for `*.nqe` files. It is part of the binary, not a skill, and the skills do not need it (they use `fwdctl nqe lint` and `validate-nqe-query`);
-it gives Claude Code diagnostics, hover, definitions and completion on the NQE files it edits. The `forward-skills` plugin registers it already (its `.lsp.json`). To get only the server,
-Claude Code needs it declared by a plugin; a two-file local plugin does it:
+it gives Claude Code diagnostics, hover, definitions and completion on the NQE files it edits. It needs only `fwdctl` on `PATH`: no login, no Forward connection.
 
-    mkdir -p ~/.claude/plugins-local/fwd-nqe-lsp/.claude-plugin && cd ~/.claude/plugins-local/fwd-nqe-lsp
-    printf '{"name":"fwd-nqe-lsp","description":"NQE language server","version":"1.0.0","lspServers":"./.lsp.json"}\n' > .claude-plugin/plugin.json
-    printf '{"nqe":{"command":"fwdctl","args":["nqe","lsp"],"extensionToLanguage":{".nqe":"nqe"}}}\n' > .lsp.json
+**With the skills:** the `forward-skills` plugin registers it already (its `.lsp.json`). Install the plugin, restart Claude Code, done.
+
+**Without the skills:** Claude Code only takes a language server declared by a plugin. `fwdctl install lsp` writes a small local one (a marketplace with a single plugin, no skills) and prints the two commands to run. It writes files only and runs nothing:
+
+    fwdctl install lsp                         # default ~/.claude/plugins-local; --dir DIR to change it
+    claude plugin marketplace add ~/.claude/plugins-local && claude plugin install fwd-nqe-lsp@fwd-local
+
+For one session only, with no install, load the plugin directory with a flag instead:
+
     claude --plugin-dir ~/.claude/plugins-local/fwd-nqe-lsp
 
-Check: ask Claude to use the LSP tool on a `.nqe` file with a misspelt field; it returns `Record does not have field: "nmae"`. Restart Claude Code after installing or updating a plugin.
+The files are three small JSON files (`.claude-plugin/marketplace.json`, `fwd-nqe-lsp/.claude-plugin/plugin.json`, `fwd-nqe-lsp/.lsp.json`); `.lsp.json` is `{"nqe":{"command":"fwdctl","args":["nqe","lsp"],"extensionToLanguage":{".nqe":"nqe"}}}`, so you can write them by hand on a machine with an older fwdctl.
+
+`claude plugin details fwd-nqe-lsp@fwd-local` should list "LSP servers (1) nqe". Restart Claude Code after installing or updating a plugin.
+
+Check: ask Claude to use the LSP tool (`hover`) on a `.nqe` file with a misspelt field. The tool has no diagnostics operation; opening the file makes the server publish them, and they come back as `Record does not have field: "nmae"`. Other editors: run `fwdctl nqe lsp` as the language server over stdio for `*.nqe`.
 
 ## Installing the binary
 

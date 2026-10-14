@@ -270,8 +270,46 @@ func exampleInput(schema json.RawMessage) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-// installRun writes the skills for an agent: kind "claude" into dir (default ~/.claude/skills), kind "agents" into file (printed without one).
+// lspFiles is the local Claude Code marketplace `install lsp` writes: one plugin whose only content is the NQE language server (`fwdctl nqe lsp` for .nqe files).
+// Claude Code takes a language server only from a plugin, so this is the smallest thing that registers it without the skills.
+var lspFiles = []struct{ path, body string }{
+	{".claude-plugin/marketplace.json", `{"name":"fwd-local","owner":{"name":"local"},"plugins":[{"name":"fwd-nqe-lsp","source":"./fwd-nqe-lsp","description":"NQE language server (fwdctl nqe lsp)"}]}` + "\n"},
+	{"fwd-nqe-lsp/.claude-plugin/plugin.json", `{"name":"fwd-nqe-lsp","description":"NQE language server","version":"1.0.0","lspServers":"./.lsp.json"}` + "\n"},
+	{"fwd-nqe-lsp/.lsp.json", `{"nqe":{"command":"fwdctl","args":["nqe","lsp"],"extensionToLanguage":{".nqe":"nqe"}}}` + "\n"},
+}
+
+// installLSP writes lspFiles under dir (default ~/.claude/plugins-local) and returns the directory. It never runs claude: the user runs the two printed commands.
+func installLSP(dir string) (string, error) {
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, ".claude", "plugins-local")
+	}
+	for _, f := range lspFiles {
+		p := filepath.Join(dir, f.path)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(p, []byte(f.body), 0o644); err != nil {
+			return "", err
+		}
+	}
+	return dir, nil
+}
+
+// installRun writes the skills for an agent: kind "claude" into dir (default ~/.claude/skills), kind "agents" into file (printed without one), kind "lsp" the NQE language server plugin into dir.
 func installRun(kind, dir, file string, stdout, stderr io.Writer) int {
+	if kind == "lsp" {
+		target, err := installLSP(dir)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "wrote the NQE language server plugin under %s\nnow run, then restart Claude Code:\n  claude plugin marketplace add %s\n  claude plugin install fwd-nqe-lsp@fwd-local\n", target, target)
+		return 0
+	}
 	all, err := skills.All()
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)

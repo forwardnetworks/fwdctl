@@ -103,7 +103,7 @@ Examples:
 
 ## fwdctl install
 
-Install the skills for an agent: into Claude Code's skills directory, or as a managed section of an AGENTS.md / CLAUDE.md file.
+Install the skills for an agent: into Claude Code's skills directory, or as a managed section of an AGENTS.md / CLAUDE.md file. `install lsp` sets up the NQE language server for Claude Code without the skills.
 
 ```
 fwdctl install
@@ -114,6 +114,7 @@ Examples:
 ```
   fwdctl install claude
   fwdctl install agents --file AGENTS.md
+  fwdctl install lsp
 ```
 
 ## fwdctl install agents
@@ -154,6 +155,27 @@ Flags:
 
 ```
       --dir string   directory to write the skills into (default ~/.claude/skills)
+```
+
+## fwdctl install lsp
+
+Write a small local Claude Code marketplace (default ~/.claude/plugins-local) holding one plugin that declares `fwdctl nqe lsp` as the language server for .nqe files. Claude Code takes a language server only from a plugin. This writes files only: it prints the two `claude plugin` commands to run, and does not run them. fwdctl must be on PATH; no login is needed. The forward-skills plugin already includes the server, so this is for using it without the skills.
+
+```
+fwdctl install lsp [flags]
+```
+
+Examples:
+
+```
+  fwdctl install lsp
+  fwdctl install lsp --dir ~/plugins
+```
+
+Flags:
+
+```
+      --dir string   directory to write the marketplace into (default ~/.claude/plugins-local)
 ```
 
 ## fwdctl list

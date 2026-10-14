@@ -284,3 +284,57 @@ func TestPickListChoosesByNameAndNamesTheRest(t *testing.T) {
 		t.Errorf("%d %s", code, errb)
 	}
 }
+
+// `install lsp` writes a local Claude Code marketplace holding one plugin that declares the NQE language server (`fwdctl nqe lsp` for .nqe files), and prints the two
+// claude commands that install it. It writes no skills, and running it again changes nothing.
+func TestInstallLSPWritesALocalMarketplaceWithTheNQEServerAndPrintsTheClaudeCommands(t *testing.T) {
+	dir := t.TempDir()
+	readJSON := func(rel string) map[string]any {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(dir, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatalf("%s is not JSON: %v", rel, err)
+		}
+		return m
+	}
+	code, out, errOut := call(t, []string{"install", "lsp", "--dir", dir}, "", nil)
+	if code != 0 {
+		t.Fatalf("install lsp = %d: %s", code, errOut)
+	}
+	for _, want := range []string{"claude plugin marketplace add " + dir, "claude plugin install fwd-nqe-lsp@fwd-local", "restart Claude Code"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	mk := readJSON(".claude-plugin/marketplace.json")
+	pl, _ := mk["plugins"].([]any)
+	if mk["name"] != "fwd-local" || len(pl) != 1 || pl[0].(map[string]any)["name"] != "fwd-nqe-lsp" || pl[0].(map[string]any)["source"] != "./fwd-nqe-lsp" {
+		t.Errorf("marketplace.json = %v", mk)
+	}
+	if pj := readJSON("fwd-nqe-lsp/.claude-plugin/plugin.json"); pj["name"] != "fwd-nqe-lsp" || pj["lspServers"] != "./.lsp.json" {
+		t.Errorf("plugin.json = %v", pj)
+	}
+	srv, _ := readJSON("fwd-nqe-lsp/.lsp.json")["nqe"].(map[string]any)
+	args, _ := srv["args"].([]any)
+	ext, _ := srv["extensionToLanguage"].(map[string]any)
+	if srv["command"] != "fwdctl" || len(args) != 2 || args[0] != "nqe" || args[1] != "lsp" || ext[".nqe"] != "nqe" {
+		t.Errorf(".lsp.json nqe server = %v", srv)
+	}
+	before, _ := os.ReadFile(filepath.Join(dir, "fwd-nqe-lsp/.lsp.json"))
+	if code, _, _ := call(t, []string{"install", "lsp", "--dir", dir}, "", nil); code != 0 {
+		t.Fatalf("second install lsp = %d", code)
+	}
+	if after, _ := os.ReadFile(filepath.Join(dir, "fwd-nqe-lsp/.lsp.json")); string(after) != string(before) {
+		t.Error("a second install lsp changed .lsp.json")
+	}
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, _ error) error {
+		if d != nil && d.Name() == "SKILL.md" {
+			t.Errorf("install lsp wrote a skill: %s", p)
+		}
+		return nil
+	})
+}
