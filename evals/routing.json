@@ -546,5 +546,20 @@
     "query": "A query has been stuck for 25 minutes, cancel it instead of restarting the compute worker.",
     "expect": "edit-jobs",
     "rival": "edit-snapshot"
+  },
+  {
+    "query": "Turn off one of the AWS accounts in our cloud collection",
+    "expect": "edit-source",
+    "rival": "inspect-collection"
+  },
+  {
+    "query": "Which AWS accounts are enabled for collection and which one is erroring?",
+    "expect": "inspect-collection",
+    "rival": "inspect-inventory"
+  },
+  {
+    "query": "AWS cloud collection dropped the last two collections, credentials request fails with HTTP 400",
+    "expect": "investigate-collection-failure",
+    "rival": "inspect-collection"
   }
 ]

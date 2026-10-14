@@ -40,6 +40,9 @@ type Config struct {
 	// verified against the system trust store: a certificate is trusted by default or it is not. Insecure is never
 	// the default, and every result records that it was used (see Session.Insecure).
 	Insecure bool
+	// CABundle is the path of a PEM file of certificate authorities to trust INSTEAD of the system roots, for a Forward with a private or self-signed certificate
+	// (FORWARD_CA_BUNDLE). Verification stays on. It cannot be combined with Insecure.
+	CABundle string
 	// ImpersonateUserID makes the session act as that Forward user through Forward's administrator impersonation (FORWARD_IMPERSONATE): the
 	// login (Username and Password) must be an administrator that Forward allows to impersonate. The session is read-only (PUT, PATCH and
 	// DELETE are refused at the transport, and the skills refuse apply) and every result says it was run as that user.
@@ -49,13 +52,14 @@ type Config struct {
 	Hooks []forward.Hook
 }
 
-// ConfigFromEnv reads FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD, FORWARD_INSECURE and FORWARD_TIMEOUT.
+// ConfigFromEnv reads FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD, FORWARD_INSECURE, FORWARD_CA_BUNDLE and FORWARD_TIMEOUT.
 func ConfigFromEnv() Config {
 	c := Config{
 		BaseURL:           strings.TrimSpace(os.Getenv("FORWARD_URL")),
 		Username:          strings.TrimSpace(os.Getenv("FORWARD_USERNAME")),
 		Password:          os.Getenv("FORWARD_PASSWORD"),
 		Insecure:          truthy(os.Getenv("FORWARD_INSECURE")),
+		CABundle:          strings.TrimSpace(os.Getenv("FORWARD_CA_BUNDLE")),
 		ImpersonateUserID: strings.TrimSpace(os.Getenv("FORWARD_IMPERSONATE")),
 	}
 	// FORWARD_TIMEOUT (a Go duration, for example 600s) raises or lowers the time one HTTP call may take, response body included; the default is DefaultTimeout.
@@ -122,8 +126,18 @@ func (s *Session) Insecure() bool { return s.insecure }
 func httpClient(cfg Config, timeout time.Duration) (*http.Client, error) {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if cfg.Insecure && cfg.CABundle != "" {
+		return nil, fmt.Errorf("insecure mode and a CA bundle cannot be combined: the bundle verifies the certificate and insecure turns that off; use one")
+	}
 	if cfg.Insecure {
 		tlsCfg.InsecureSkipVerify = true //nolint:gosec // explicit, opt-in, and recorded in every result
+	}
+	if cfg.CABundle != "" {
+		pool, err := forward.LoadRootCAs(cfg.CABundle)
+		if err != nil {
+			return nil, fmt.Errorf("CA bundle %s: %w", cfg.CABundle, err)
+		}
+		tlsCfg.RootCAs = pool // replaces the system roots: only this bundle is trusted, and the certificate is still verified
 	}
 	tr.TLSClientConfig = tlsCfg
 	return &http.Client{Timeout: timeout, Transport: tr}, nil

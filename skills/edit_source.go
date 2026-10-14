@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -794,6 +795,41 @@ func planSchedule(ctx context.Context, s *fwd.Session, in editSourceInput) (*net
 	return nil, fmt.Errorf("%w: object schedule takes action create, update or delete", ErrInvalidInput)
 }
 
+// cloudDefinitionFields are the definition fields each cloud_account action uses. A field outside its action's list is refused by name: decoding into one shared struct
+// would otherwise accept it and the action would ignore it, reporting success for a change that did not happen.
+var cloudDefinitionFields = map[string][]string{
+	"create": {"type", "name", "collect", "proxyServerId", "regions", "username", "clientId", "clientEmail", "privateKeyId", "tenant", "environment", "subscriptionIds", "concurrency"},
+	"rotate": {"type", "name", "username", "clientId", "clientEmail", "privateKeyId", "tenant"},
+	"update": {"collect", "accounts_enabled", "c2s_accounts"},
+}
+
+// refuseUnusedCloudFields returns an invalid-input error naming any definition field the action does not use.
+func refuseUnusedCloudFields(raw json.RawMessage, action string) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		return nil // decodeDefinition reports a malformed definition
+	}
+	allowed := map[string]bool{}
+	for _, f := range cloudDefinitionFields[action] {
+		allowed[f] = true
+	}
+	var extra []string
+	for k := range keys {
+		if !allowed[k] {
+			extra = append(extra, k)
+		}
+	}
+	if len(extra) == 0 {
+		return nil
+	}
+	sort.Strings(extra)
+	return fmt.Errorf("%w: cloud_account %s does not use definition field(s) %s (it takes: %s); a field it would ignore is refused so a change that did not happen is never reported as done",
+		ErrInvalidInput, action, strings.Join(extra, ", "), strings.Join(cloudDefinitionFields[action], ", "))
+}
+
 func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (*networkPlan, error) {
 	cur, _, err := s.Client.CloudAccounts.List(ctx, in.NetworkID)
 	if err != nil {
@@ -821,8 +857,15 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 		Environment     string         `json:"environment"`
 		SubscriptionIDs []string       `json:"subscriptionIds"`
 		Concurrency     *int64         `json:"concurrency"`
+		// AccountsEnabled turns discovered member accounts (AWS assume-role) on or off by account id; update only
+		AccountsEnabled map[string]bool `json:"accounts_enabled"`
+		// C2SAccounts is a C2S Access Portal (CAP) account's portal account list; update only. A pointer: an empty list (collect every portal account) is not the same as absent.
+		C2SAccounts *[]struct {
+			AccountID string `json:"account_id"`
+			Role      string `json:"role"`
+		} `json:"c2s_accounts"`
 	}
-	fields := "type (AWS, AZURE, GCP, ...), name, collect, proxyServerId, regions, username (an AWS access key id), clientId, clientEmail, privateKeyId, tenant, environment, subscriptionIds, concurrency"
+	fields := "type (AWS, AZURE, GCP, ...), name, collect, proxyServerId, regions, username (an AWS access key id), clientId, clientEmail, privateKeyId, tenant, environment, subscriptionIds, concurrency, accounts_enabled and c2s_accounts (update only)"
 	// the credential half: the secret names each provider needs, read from the secret file
 	credentialOf := func(secs map[string]fwd.Secret) forward.CloudAccountCredentialRequest {
 		return forward.CloudAccountCredentialRequest{Type: strings.ToUpper(def.Type), Username: def.Username, Password: secs["password"].Reveal(), ClientID: def.ClientID, Tenant: def.Tenant,
@@ -842,6 +885,7 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 			return nil, nil
 		}
 		before, _ := fwd.Generic(a)
+		fwd.RedactSecrets(before) // the account as read back carries assume-role external ids
 		return &networkPlan{target: fmt.Sprintf("delete cloud account %q from network %s", in.Name, in.NetworkID), action: "delete_cloud_account", before: before, after: nil, reversible: false, confirm: in.Name,
 			undo:   "none: the stored keys are gone; create the account again with its credentials",
 			limits: []string{"its VPCs and instances disappear from the next snapshot; past snapshots keep them"},
@@ -871,7 +915,148 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 				_, err := s.Client.CloudAccounts.Test(ctx, in.NetworkID, in.Name)
 				return err
 			}}, nil
+	case "update":
+		if in.Name == "" {
+			return nil, fmt.Errorf("%w: update needs name (the account)", ErrInvalidInput)
+		}
+		if err := noSecretInputs(in); err != nil {
+			return nil, err
+		}
+		a := find(in.Name)
+		if a == nil {
+			return nil, nil
+		}
+		if err := refuseUnusedCloudFields(in.Definition, "update"); err != nil {
+			return nil, err
+		}
+		if err := decodeDefinition(in.Definition, &def, fields); err != nil {
+			return nil, err
+		}
+		isCAP := a.HasCAPCredential()
+		if isCAP && len(def.AccountsEnabled) > 0 {
+			return nil, fmt.Errorf("%w: %q is collected through a C2S Access Portal credential: Forward filters its accounts with the portal account list, the enabled flags in accounts_enabled are not used for it, so turning an account on or off there would change nothing that is collected. Set the portal account list with c2s_accounts (an empty list collects every account the portal returns), or switch the whole setup with collect", ErrInvalidInput, in.Name)
+		}
+		if def.C2SAccounts != nil && !isCAP {
+			return nil, fmt.Errorf("%w: %q is not collected through a C2S Access Portal credential, so it has no portal account list; use accounts_enabled for its member accounts", ErrInvalidInput, in.Name)
+		}
+		if def.Collect == nil && len(def.AccountsEnabled) == 0 && def.C2SAccounts == nil {
+			return nil, fmt.Errorf("%w: update needs definition.collect (true or false), definition.accounts_enabled (an account id mapped to true or false) or, for a C2S Access Portal setup, definition.c2s_accounts", ErrInvalidInput)
+		}
+		infos := append([]forward.AWSAssumeRoleInfo(nil), a.AssumeRoleInfos...)
+		index := map[string]int{}
+		for i, x := range infos {
+			index[x.AccountID] = i
+		}
+		beforeAcc, afterAcc := map[string]bool{}, map[string]bool{}
+		for id, on := range def.AccountsEnabled {
+			i, ok := index[id]
+			if !ok {
+				known := make([]string, 0, len(infos))
+				for _, x := range infos {
+					known = append(known, x.AccountID)
+				}
+				sort.Strings(known)
+				shown, _ := result.CapRow(known, 12)
+				return nil, fmt.Errorf("%w: %q is not a member account of %q; its accounts are: %s", ErrInvalidInput, id, in.Name, strings.Join(shown, ", "))
+			}
+			beforeAcc[id], afterAcc[id] = infos[i].Enabled, on
+			infos[i].Enabled = on
+		}
+		var wantC2S []forward.AWSC2SAccountInfo
+		if def.C2SAccounts != nil {
+			wantC2S = make([]forward.AWSC2SAccountInfo, 0, len(*def.C2SAccounts))
+			for _, x := range *def.C2SAccounts {
+				if x.AccountID == "" || x.Role == "" {
+					return nil, fmt.Errorf("%w: each c2s_accounts entry needs account_id and role", ErrInvalidInput)
+				}
+				wantC2S = append(wantC2S, forward.AWSC2SAccountInfo{AccountID: x.AccountID, AccountRole: x.Role})
+			}
+		}
+		c2sView := func(l []forward.AWSC2SAccountInfo) []map[string]any {
+			out := make([]map[string]any, 0, len(l))
+			for _, x := range l {
+				out = append(out, map[string]any{"account_id": x.AccountID, "role": x.AccountRole})
+			}
+			return out
+		}
+		before := map[string]any{"collect": a.Collect}
+		after := map[string]any{"collect": a.Collect}
+		if def.Collect != nil {
+			after["collect"] = *def.Collect
+		}
+		if len(def.AccountsEnabled) > 0 {
+			before["accounts_enabled"], after["accounts_enabled"] = beforeAcc, afterAcc
+		}
+		if def.C2SAccounts != nil {
+			before["c2s_accounts"], after["c2s_accounts"] = c2sView(a.AWSC2SAccountInfos), c2sView(wantC2S)
+		}
+		patch := forward.CloudAccountPatch{Type: a.Type, Collect: def.Collect}
+		if len(def.AccountsEnabled) > 0 {
+			patch.AssumeRoleInfos = &infos
+		}
+		if def.C2SAccounts != nil {
+			patch.AWSC2SAccountInfos = &wantC2S // non-nil even when empty: an empty list is sent and means every portal account
+		}
+		limits := []string{"an account's errorMsg is Forward's own record of its last attempt; this does not clear it, and the next collection or a test (action test) refreshes it",
+			"this sets what the next collection will use; it does not start one (edit-collection)"}
+		if len(def.AccountsEnabled) > 0 {
+			limits = append([]string{"the account list is replaced as a whole: every other account is sent unchanged, with its current enabled flag"}, limits...)
+		}
+		if def.C2SAccounts != nil {
+			limits = append([]string{"c2s_accounts replaces the whole portal account list: list every account that should be collected; an empty list means every account the portal returns (the default for a setup with no list)"}, limits...)
+		}
+		return &networkPlan{target: fmt.Sprintf("update cloud account %q on network %s", in.Name, in.NetworkID), action: "update_cloud_account", before: before, after: after, reversible: true,
+			undo:   "run update again with the before values (accounts_enabled, c2s_accounts and collect as shown in before)",
+			limits: limits,
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.CloudAccounts.Patch(ctx, in.NetworkID, in.Name, patch)
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				l, _, e := s.Client.CloudAccounts.List(ctx, in.NetworkID)
+				for _, x := range l {
+					if x.Name != in.Name {
+						continue
+					}
+					got := map[string]bool{}
+					for _, m := range x.AssumeRoleInfos {
+						if _, asked := def.AccountsEnabled[m.AccountID]; asked {
+							got[m.AccountID] = m.Enabled
+						}
+					}
+					ok := def.Collect == nil || x.Collect == *def.Collect
+					for id, on := range def.AccountsEnabled {
+						if v, seen := got[id]; !seen || v != on {
+							ok = false
+						}
+					}
+					back := map[string]any{"collect": x.Collect}
+					if len(def.AccountsEnabled) > 0 {
+						back["accounts_enabled"] = got
+					}
+					if def.C2SAccounts != nil {
+						have := map[string]string{}
+						for _, c := range x.AWSC2SAccountInfos {
+							have[c.AccountID] = c.AccountRole
+						}
+						if len(have) != len(wantC2S) {
+							ok = false
+						}
+						for _, w := range wantC2S {
+							if have[w.AccountID] != w.AccountRole {
+								ok = false
+							}
+						}
+						back["c2s_accounts"] = c2sView(x.AWSC2SAccountInfos)
+					}
+					return ok, back, e
+				}
+				return false, nil, e
+			}}, nil
 	case "create", "rotate":
+		if err := refuseUnusedCloudFields(in.Definition, in.Action); err != nil {
+			return nil, err
+		}
 		if err := decodeDefinition(in.Definition, &def, fields); err != nil {
 			return nil, err
 		}
@@ -945,7 +1130,7 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 		}
 		return plan, nil
 	}
-	return nil, fmt.Errorf("%w: object cloud_account takes action create, rotate, test or delete", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: object cloud_account takes action create, update, rotate, test or delete", ErrInvalidInput)
 }
 
 // planRapid7 creates or updates a Rapid7 vulnerability source of the network. Its login is a credential that already exists (credential_id), so no secret is read here.

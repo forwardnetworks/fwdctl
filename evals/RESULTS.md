@@ -104,3 +104,13 @@ Not re-run after the scoring rule changed; the count above applies the rule to t
 - **Took at least 60% of the steps (any order): 5 of 10** (`plan-security-posture` 4/5, `plan-health-check` 4/5, `plan-device-audit` 6/6, `plan-compliance-audit` 3/4, `plan-snapshot-recovery` 3/3). In order: the device audit took all six steps but only three in the playbook's order.
 - **The misses are early stops**, not wrong steps: connectivity stopped after the path search found the failing hop (2 of 5), vulnerability response after the CVE verdict (2 of 4), what-changed after the config diff (2 of 4), incident triage after snapshots and collection (2 of 4). The playbooks say to stop when the evidence answers the question, so some of this is correct; incident triage skipping performance and policy is the one worth a look.
 - This is one run per case at one model; treat it as a baseline, not a score to tune the playbooks to.
+
+## Standalone eval: grounding, investigation and register tasks, 2026-10-14 (11 new tasks, no skills installed, one run per model)
+
+`python3 evals/standalone/run.py` against the synthetic fake Forward (see README), Sonnet and Haiku, `fwdctl --help` only. Ideas drawn from a review of an external SecOps skill repo's behavioural cases; every fixture and phrase is ours.
+
+- **Sonnet: 10 of 11 on the first run, 11 of 11 once two checks were fixed.** Both failures were the check, not the model: one forbade any query where the right behaviour is to look at both networks and say it cannot tell which is meant, and one listed phrasings too narrow for a correct "I can't answer, I have no source address" reply. The second check was re-run and passes; the register task's cap was loosened afterwards and not re-run.
+- **Haiku: 9 of 11 after the same fixes.** The two it fails are real: it ran a path search for "can the finance servers reach the internet" without asking which servers (the grounding behaviour the task exists to catch), and it answered "just the names" in 121 words with advice.
+- **What the tasks show.** The investigation tasks (a down BGP peer, a configuration mismatch read from two devices, a snapshot diff, template drift across three devices, a firewall rule behind a dropped port, an exposed management path, two paths through one firewall) all passed on both models from `--help` alone. The tasks that discriminate are the ones about not guessing; the register tasks are soft (length only).
+- **Caveats.** One run per cell, no skills arm yet for these tasks, synthetic fixtures, and substring checks (a bad check looks like a bad model: read the answer first). Three checks were found wrong by an independent review before these numbers were taken, and one more after.
+

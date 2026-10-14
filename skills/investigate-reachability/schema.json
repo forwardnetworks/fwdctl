@@ -13,6 +13,7 @@
     "snapshot_id": { "type": "string", "minLength": 1 },
     "max_results": { "type": "integer", "minimum": 1 },
     "max_seconds": { "type": "integer", "minimum": 1 },
+    "return_path": { "type": "boolean", "default": false, "description": "also ask Forward for the return flow (destination back to source) and summarize it; warns when the forward flow is delivered but the return is not" },
     "intent": { "enum": ["PREFER_DELIVERED", "PREFER_VIOLATIONS", "VIOLATIONS_ONLY"], "default": "PREFER_DELIVERED", "description": "how Forward orders and selects the paths it returns" }
   }
 }

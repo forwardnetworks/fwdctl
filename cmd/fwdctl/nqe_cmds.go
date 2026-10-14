@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/forwardnetworks/fwdctl/skills"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/forwardnetworks/fwdctl/nqelint"
+	"github.com/forwardnetworks/fwdctl/nqeschema"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 func (a *app) nqeCmd() *cobra.Command {
@@ -18,7 +21,7 @@ func (a *app) nqeCmd() *cobra.Command {
 			"Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or fwdctl login). Long queries: FORWARD_TIMEOUT, FORWARD_NQE_MODE, FORWARD_NQE_WAIT (fwdctl docs troubleshooting).",
 	})
 	c.AddCommand(a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
-		a.nqeTemplate(), a.nqeRun(), a.nqeBundle(), a.nqeExport(), a.nqePack(), a.nqeSynth())
+		a.nqeTemplate(), a.nqeFeatures(), a.nqeRun(), a.nqeBundle(), a.nqeExport(), a.nqePack(), a.nqeSynth())
 	return c
 }
 
@@ -42,6 +45,9 @@ func (a *app) nqeLint() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tool := []string{}
 			lintSchema = nil
+			if err := a.applyNQEFeatures(cmd); err != nil {
+				return err
+			}
 			if org {
 				sess, err := a.session()
 				if err != nil {
@@ -70,6 +76,8 @@ func (a *app) nqeLint() *cobra.Command {
 			return a.exit(nqeTool(append(append(tool, "lint"), args...), a.in, a.out, a.err))
 		},
 	}
+	addFeaturesFlag(c)
+	addExperimentalFlag(c)
 	c.Flags().StringVar(&modules, "modules", "", "where \"import\" statements are read from (default: the directory of FILE)")
 	c.Flags().BoolVar(&org, "org", false, "check against the organization's live schema instead of the embedded one (needs a login)")
 	c.Flags().BoolVar(&errorsOnly, "errors-only", false, "report errors only, no warnings or deprecations (the exit status is the same)")
@@ -101,25 +109,37 @@ func (a *app) nqeFmt() *cobra.Command {
 }
 
 func (a *app) nqeLSP() *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use: "lsp", Short: "a language server for NQE (editors: diagnostics, completion, hover, quick fixes)",
 		Example: "  fwdctl nqe lsp   # an editor launches this over stdin/stdout",
 		Long:    "A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch.",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := a.applyNQEFeatures(cmd); err != nil {
+				return err
+			}
 			return a.exit(nqeTool([]string{"lsp"}, a.in, a.out, a.err))
 		},
 	}
+	addFeaturesFlag(c)
+	addExperimentalFlag(c)
+	return c
 }
 
 func (a *app) nqePos(name, short string) *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use: name + " FILE|- LINE COL", Short: short + " (1-based line and column)", Args: cobra.ExactArgs(3),
 		Example: "  fwdctl nqe " + name + " query.nqe 3 12",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := a.applyNQEFeatures(cmd); err != nil {
+				return err
+			}
 			return a.exit(nqeTool(append([]string{name}, args...), a.in, a.out, a.err))
 		},
 	}
+	addFeaturesFlag(c)
+	addExperimentalFlag(c)
+	return c
 }
 
 func (a *app) nqeTemplate() *cobra.Command {
@@ -303,4 +323,105 @@ func join(s []string) string {
 		out += v
 	}
 	return out
+}
+
+// featuresFlagHelp is the help of --features on every command that reads the data model.
+const featuresFlagHelp = "turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). " +
+	"Forward's defaults apply otherwise. List them with `fwdctl nqe features`. Also FORWARD_NQE_FEATURES"
+
+// applyNQEFeatures puts the --features flag and FORWARD_NQE_FEATURES (the flag first) into effect for the schema the offline checker reads. An unknown name is a usage error that lists the known ones.
+func (a *app) applyNQEFeatures(cmd *cobra.Command) error {
+	var names []string
+	if cmd != nil && cmd.Flags().Lookup("features") != nil {
+		v, _ := cmd.Flags().GetStringSlice("features")
+		names = append(names, v...)
+	}
+	if env := strings.TrimSpace(os.Getenv("FORWARD_NQE_FEATURES")); env != "" && len(names) == 0 {
+		names = strings.Split(env, ",")
+	}
+	if len(names) == 0 {
+		nqelint.ResetFeatures()
+	} else if err := nqelint.SetFeatures(names); err != nil {
+		return a.fail("%v", err)
+	}
+	var rules []string
+	if cmd != nil && cmd.Flags().Lookup("experimental") != nil {
+		rules, _ = cmd.Flags().GetStringSlice("experimental")
+	}
+	if env := strings.TrimSpace(os.Getenv("FORWARD_NQE_EXPERIMENTAL")); env != "" && len(rules) == 0 {
+		rules = strings.Split(env, ",")
+	}
+	if len(rules) == 0 {
+		nqelint.ResetExperimental()
+	} else if err := nqelint.SetExperimental(rules); err != nil {
+		return a.fail("%v", err)
+	}
+	return nil
+}
+
+// experimentalFlagHelp is the help of --experimental.
+const experimentalFlagHelp = "turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see `fwdctl nqe features`. Also FORWARD_NQE_EXPERIMENTAL"
+
+func addExperimentalFlag(c *cobra.Command) {
+	c.Flags().StringSlice("experimental", nil, experimentalFlagHelp)
+	_ = c.RegisterFlagCompletionFunc("experimental", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		var out []string
+		for _, r := range nqelint.ExperimentalRules() {
+			out = append(out, r.Name)
+		}
+		return append(out, "all"), cobra.ShellCompDirectiveNoFileComp
+	})
+}
+
+func addFeaturesFlag(c *cobra.Command) {
+	c.Flags().StringSlice("features", nil, featuresFlagHelp)
+	_ = c.RegisterFlagCompletionFunc("features", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		var out []string
+		for _, f := range nqeschema.Features() {
+			out = append(out, f.Name)
+		}
+		return append(out, "all", "none"), cobra.ShellCompDirectiveNoFileComp
+	})
+}
+
+// nqeFeatures is `fwdctl nqe features`: Forward's NQE feature flags, what each does and whether it is on for the check in effect.
+func (a *app) nqeFeatures() *cobra.Command {
+	c := &cobra.Command{
+		Use: "features", Short: "list Forward's NQE feature flags: org property, default, what it changes, whether it is on", Args: cobra.NoArgs,
+		Example: "  fwdctl nqe features\n  fwdctl nqe features --features security-rules-fortios,device-services",
+		Long: "Forward serves each organization an NQE schema filtered by its feature flags (org properties). The offline checker uses Forward's defaults; --features turns flags on, as an organization with them would have, " +
+			"so a query using a field behind a flag (the Palo Alto and Fortinet security policy are experimental and off by default) checks clean. `nqe lint --org` reads the organization's own live schema and is the authority for one organization. " +
+			"Kinds: schema (fields and types), language (a function), runtime (storage and summaries: no effect on the checker).",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := a.applyNQEFeatures(cmd); err != nil {
+				return err
+			}
+			on := map[string]bool{}
+			for _, n := range nqeschema.EnabledFeatures() {
+				on[n] = true
+			}
+			type row struct {
+				nqeschema.Feature
+				Enabled bool `json:"enabled"`
+			}
+			rows := []row{}
+			for _, f := range nqeschema.Features() {
+				rows = append(rows, row{f, on[f.Name]})
+			}
+			type rule struct {
+				nqelint.ExperimentalRule
+				Enabled bool `json:"enabled"`
+			}
+			rules := []rule{}
+			for _, r := range nqelint.ExperimentalRules() {
+				rules = append(rules, rule{r, nqelint.ExperimentalOn(r.Name)})
+			}
+			a.emit(map[string]any{"features": rows, "experimental_rules": rules, "note": "enabled is for this run (Forward's defaults, plus --features or FORWARD_NQE_FEATURES). NQE_ORDERED_LIST, Forward's eleventh NQE feature, is retired: lists are always ordered and it is not settable. " +
+				"The embedded schema is Forward's full master schema; these flags select what an organization with them sees. Check one organization exactly with `fwdctl nqe lint --org`."})
+			return nil
+		},
+	}
+	addFeaturesFlag(c)
+	addExperimentalFlag(c)
+	return c
 }

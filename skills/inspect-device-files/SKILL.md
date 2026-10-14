@@ -57,3 +57,5 @@ Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fw
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe inspect-device-files reference/<file>`).
 
 - [reference/vendor-reading.md](reference/vendor-reading.md): why a missing line is not an answer (feature gates, groups, dormant objects, partial views), and how to read a rule or policy (order, referenced objects, paired devices, contexts). Read before saying something is not configured or what a rule does.
+- [reference/routing-config.md](reference/routing-config.md): the config side of BGP, OSPF, IS-IS, static routes and first-hop redundancy by vendor (where a neighbor lives, what hides config, why a session will not come up). Read when a routing question is answered from device text.
+- [reference/footguns.md](reference/footguns.md): settings worth a closer look when a device's text is open (open management, loose rules, disabled logging), by vendor. Read for an exposure question about one device.

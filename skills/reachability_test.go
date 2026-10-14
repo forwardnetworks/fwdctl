@@ -323,3 +323,120 @@ func TestReachabilityShowsEveryOutcomeAndCountsWhatItDidNotShow(t *testing.T) {
 		t.Errorf("an unknown intent is refused")
 	}
 }
+
+// A hop's ACL and security zones say which rule or zone pair stopped the flow. Forward sends them only when asked (includeNetworkFunctions), and
+// a hop without them is reported exactly as before.
+func TestReachabilityAsksForAndShowsEachHopsACLAndSecurityZones(t *testing.T) {
+	fw := hop("fw01", "ethernet1/3", "ethernet1/4")
+	fw["networkFunctions"] = map[string]any{
+		"acl":     []any{map[string]any{"name": "outside-in", "context": "INGRESS", "action": "DENY"}},
+		"ingress": map[string]any{"securityZone": "untrust"},
+		"egress":  map[string]any{"securityZone": "trust"},
+	}
+	r, srv := reach(t, pathsBody(false, "EXACT", path("DELIVERED", "DENIED", hop("r1", "e0", "e1"), fw)), nil, reachIn)
+	if c := srv.Calls()[len(srv.Calls())-1]; c.Query["includeNetworkFunctions"] != "true" {
+		t.Errorf("the search did not ask for network functions: %v", c.Query)
+	}
+	hops := r.Evidence[0].Detail["hops"].([]map[string]any)
+	acls, _ := hops[1]["acls"].([]map[string]any)
+	if len(acls) != 1 || acls[0]["name"] != "outside-in" || acls[0]["action"] != "DENY" || acls[0]["context"] != "INGRESS" {
+		t.Errorf("fw01 acls = %v", hops[1]["acls"])
+	}
+	if hops[1]["ingress_zone"] != "untrust" || hops[1]["egress_zone"] != "trust" {
+		t.Errorf("zones = %v / %v", hops[1]["ingress_zone"], hops[1]["egress_zone"])
+	}
+	for _, k := range []string{"acls", "ingress_zone", "egress_zone"} {
+		if _, has := hops[0][k]; has {
+			t.Errorf("r1 carries no network functions but its hop has %q: %v", k, hops[0])
+		}
+	}
+}
+
+// return_path asks Forward for the return flow (maxReturnPathResults) and summarizes it beside the forward answer. Without it nothing changes: no query
+// parameter, no extra limit. Forward delivered but the return not delivered is the asymmetric case a one-way check misses.
+func TestReachabilityReturnPathIsOptInAndSummarizesTheReturnFlow(t *testing.T) {
+	body := pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED"))
+	body["returnPathInfo"] = map[string]any{"totalHits": map[string]any{"type": "EXACT", "value": 2},
+		"paths": []map[string]any{path("DELIVERED", "PERMITTED"), path("BLACKHOLE", "PERMITTED", hop("r2", "e0", ""))}}
+	r, srv := reach(t, body, nil, reachIn)
+	if c := srv.Calls()[len(srv.Calls())-1]; c.Query["maxReturnPathResults"] != "" {
+		t.Errorf("a plain search must not ask for return paths: %v", c.Query)
+	}
+	if strings.Contains(strings.Join(r.Limits, "|"), "return flow") {
+		t.Errorf("a plain search must say nothing about a return flow: %v", r.Limits)
+	}
+	r, srv = reach(t, body, nil, strings.TrimSuffix(reachIn, "}")+`,"return_path":true}`)
+	if c := srv.Calls()[len(srv.Calls())-1]; c.Query["maxReturnPathResults"] == "" {
+		t.Errorf("return_path did not ask for return paths: %v", c.Query)
+	}
+	var ret map[string]any
+	for _, e := range r.Evidence {
+		if e.Detail["return_flow"] != nil {
+			ret = e.Detail["return_flow"].(map[string]any)
+		}
+	}
+	if ret == nil {
+		t.Fatalf("no return_flow in the evidence: %+v", r.Evidence)
+	}
+	if ret["paths"] != 2 || ret["delivered"] != 1 || ret["verdict"] != "delivered" {
+		t.Errorf("return_flow = %v", ret)
+	}
+}
+
+// When return_path is asked for, the answer is about both directions: a forward flow that is delivered while the return flow is blocked is a FAILURE (the connection
+// cannot complete), and one whose return flow Forward could not determine is UNKNOWN, never ok. The return_flow summary is in the evidence either way.
+func TestReachabilityReturnPathDecidesTheStatusOfABothWaysQuestion(t *testing.T) {
+	in := strings.TrimSuffix(reachIn, "}") + `,"return_path":true}`
+	retBody := func(paths ...map[string]any) map[string]any {
+		b := pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED"))
+		b["returnPathInfo"] = map[string]any{"totalHits": map[string]any{"type": "EXACT", "value": len(paths)}, "paths": paths}
+		return b
+	}
+	flowOf := func(r result.Result) map[string]any {
+		for _, e := range r.Evidence {
+			if f, ok := e.Detail["return_flow"].(map[string]any); ok {
+				return f
+			}
+		}
+		return nil
+	}
+	r, _ := reach(t, retBody(path("DROPPED", "PERMITTED", hop("r2", "e0", ""))), nil, in)
+	if r.Status != result.Failed || !strings.Contains(strings.ToLower(r.Finding), "return flow") || flowOf(r)["verdict"] != "blocked" {
+		t.Errorf("forward delivered, return blocked: %s %q %v", r.Status, r.Finding, flowOf(r))
+	}
+	r, _ = reach(t, retBody(), nil, in)
+	if r.Status != result.Unknown || !strings.Contains(strings.ToLower(r.Finding), "return flow") || flowOf(r)["verdict"] != "undetermined" {
+		t.Errorf("forward delivered, no return paths: %s %q %v", r.Status, r.Finding, flowOf(r))
+	}
+	r, _ = reach(t, retBody(path("DELIVERED", "PERMITTED")), nil, in)
+	if r.Status != result.OK || flowOf(r)["verdict"] != "delivered" {
+		t.Errorf("both ways delivered: %s %v", r.Status, flowOf(r))
+	}
+	// without return_path nothing about the return flow changes the answer
+	if r, _ = reach(t, retBody(path("DROPPED", "PERMITTED", hop("r2", "e0", ""))), nil, reachIn); r.Status != result.OK {
+		t.Errorf("a plain search ignores the return flow: %s", r.Status)
+	}
+	// a forward failure keeps its own status and still carries the return flow
+	b := pathsBody(false, "EXACT", path("DROPPED", "PERMITTED"))
+	b["returnPathInfo"] = map[string]any{"totalHits": map[string]any{"type": "EXACT", "value": 1}, "paths": []map[string]any{path("DELIVERED", "PERMITTED")}}
+	if r, _ = reach(t, b, nil, in); r.Status != result.Failed || flowOf(r) == nil {
+		t.Errorf("forward failed: %s %v", r.Status, flowOf(r))
+	}
+}
+
+// Only the skill that shows each hop's ACLs and zones asks Forward for them: verify-change's per-expectation searches do not send includeNetworkFunctions.
+func TestOnlyReachabilityAsksForNetworkFunctions(t *testing.T) {
+	_, srv := verify(t, changeFix{}, flow("delivered"))
+	searched := false
+	for _, c := range srv.Calls() {
+		if c.Path == "/api/networks/n1/paths" {
+			searched = true
+			if c.Query["includeNetworkFunctions"] != "" {
+				t.Errorf("a verify-change search asked for network functions: %v", c.Query)
+			}
+		}
+	}
+	if !searched {
+		t.Error("the expectation was not searched, so this checked nothing")
+	}
+}

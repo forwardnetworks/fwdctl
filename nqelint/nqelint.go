@@ -21,6 +21,31 @@ func UseOrgSchemaDiff([]byte) (added, removed int, removedPaths []string, err er
 // ResetOrgSchema is a no-op in the public source build.
 func ResetOrgSchema() {}
 
+// SetFeatures is unavailable in the public source build.
+func SetFeatures([]string) error { return ErrNotInThisBuild }
+
+// ResetFeatures is a no-op in the public source build.
+func ResetFeatures() {}
+
+// ExperimentalRule is one experimental lint rule; the public source tree has none.
+type ExperimentalRule struct {
+	Name     string `json:"name"`
+	Doc      string `json:"doc"`
+	Evidence string `json:"evidence"`
+}
+
+// ExperimentalRules lists nothing in the public source build.
+func ExperimentalRules() []ExperimentalRule { return nil }
+
+// ExperimentalOn is false in the public source build.
+func ExperimentalOn(string) bool { return false }
+
+// SetExperimental is unavailable in the public source build.
+func SetExperimental([]string) error { return ErrNotInThisBuild }
+
+// ResetExperimental is a no-op in the public source build.
+func ResetExperimental() {}
+
 // Program is a parsed query; the public source build cannot parse NQE.
 type Program struct{ Imports []string }
 

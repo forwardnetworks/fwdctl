@@ -25,6 +25,8 @@ type reachabilityInput struct {
 	SnapshotID string          `json:"snapshot_id"`
 	MaxResults int             `json:"max_results"`
 	MaxSeconds int             `json:"max_seconds"`
+	// ReturnPath also asks Forward for the return flow (destination back to source) and summarizes it beside the forward answer.
+	ReturnPath bool `json:"return_path"`
 	// Intent is how Forward orders the paths it returns: PREFER_DELIVERED (default), PREFER_VIOLATIONS or VIOLATIONS_ONLY. With a result cap, the intent decides which paths exist in the answer at all.
 	Intent string `json:"intent"`
 }
@@ -62,6 +64,24 @@ func hopName(h fwd.Hop) string {
 	return "?"
 }
 
+// addNetworkFunctions adds what Forward says a hop evaluated: the ACLs (name, where, action) and the security zones the packet entered and left by.
+// A hop with none gets no keys, so a device without ACLs or zones is shown as before.
+func addNetworkFunctions(row map[string]any, h fwd.Hop) {
+	if len(h.ACLs) > 0 {
+		acls := make([]map[string]any, 0, len(h.ACLs))
+		for _, a := range h.ACLs {
+			acls = append(acls, map[string]any{"name": a.Name, "context": nilIfEmpty(a.Context), "action": nilIfEmpty(a.Action)})
+		}
+		row["acls"] = acls
+	}
+	if h.IngressZone != "" {
+		row["ingress_zone"] = h.IngressZone
+	}
+	if h.EgressZone != "" {
+		row["egress_zone"] = h.EgressZone
+	}
+}
+
 func pathEvidence(p fwd.Path, class string, snapshot *string) result.Evidence {
 	devices := make([]string, 0, len(p.Hops))
 	for _, h := range p.Hops {
@@ -72,6 +92,7 @@ func pathEvidence(p fwd.Path, class string, snapshot *string) result.Evidence {
 		h := p.Hops[n-1]
 		last = map[string]any{"device": hopName(h), "ingress_interface": nilIfEmpty(h.IngressInterface),
 			"egress_interface": nilIfEmpty(h.EgressInterface)}
+		addNetworkFunctions(last, h)
 	}
 	// A synthetic device names its ports "<vrf>/<uplink device>/<uplink port>": the VRF the packet arrived in and the collected port it came from. Forward
 	// gives no drop reason in its path answer, so say what the hop shows and where to look, never why.
@@ -92,7 +113,9 @@ func pathEvidence(p fwd.Path, class string, snapshot *string) result.Evidence {
 		if i == maxPathHops {
 			break
 		}
-		hops = append(hops, map[string]any{"device": hopName(h), "ingress_interface": nilIfEmpty(h.IngressInterface), "egress_interface": nilIfEmpty(h.EgressInterface)})
+		row := map[string]any{"device": hopName(h), "ingress_interface": nilIfEmpty(h.IngressInterface), "egress_interface": nilIfEmpty(h.EgressInterface)}
+		addNetworkFunctions(row, h)
+		hops = append(hops, row)
 	}
 	// the interface the packet entered the first hop by, so a caller can keep only the paths from the ingress it means without a second query
 	var src any
@@ -234,7 +257,7 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	doc, err := s.SearchPaths(ctx, in.NetworkID, fwd.PathQuery{
 		DstIP: in.DstIP, SrcIP: in.SrcIP, From: in.From, Protocol: protocolText(in.Protocol),
 		SrcPort: in.SrcPort, DstPort: in.DstPort, Intent: in.Intent, SnapshotID: fwd.SnapshotID(cx),
-		MaxResults: in.MaxResults, MaxSeconds: in.MaxSeconds,
+		MaxResults: in.MaxResults, MaxSeconds: in.MaxSeconds, ReturnPaths: returnPathResults(in.ReturnPath), WithNetworkFunctions: true,
 	})
 	if err != nil {
 		return result.Result{}, err
@@ -277,24 +300,46 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	ordered := orderByClass(all, func(c classified) string { return c.class })
 	outcomes, _ := outcomeSummary(all, func(c classified) string { return c.class })
 	limits = append(limits, outcomes+" (intent "+in.Intent+"). Forward chooses which paths it returns, so another intent (PREFER_VIOLATIONS, VIOLATIONS_ONLY) or a larger max_results can show paths this answer does not")
+	retFlow, retVerdict, retLimit := returnFlowSummary(doc, in.ReturnPath)
+	if retLimit != "" {
+		limits = append(limits, retLimit)
+	}
 	var omitted []result.Omission
 	pathEv := func() []result.Evidence {
 		ev := uniquePathEvidence(ordered, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, maxReachabilityEvidence)
+		if retFlow != nil && len(ev) > 0 {
+			ev[0].Detail["return_flow"] = retFlow
+		}
 		if distinct := countDistinct(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }); distinct > len(ev) {
 			omitted = append(omitted, result.Omission{What: "distinct paths", Total: distinct, Shown: len(ev), Next: "one path per outcome is shown first; narrow the flow (src_port, dst_port, from) to see the rest"})
 		}
 		return ev
 	}
 	if delivered > 0 {
-		return result.Build(reachabilityName, result.OK,
-			fmt.Sprintf("Traffic is delivered (%d of %d returned paths)", delivered, len(doc.Paths)),
-			result.Deterministic, cx, result.Options{Limits: limits, Evidence: pathEv(), Omitted: omitted, NextActions: []string{"verify-change"}})
+		finding := fmt.Sprintf("Traffic is delivered (%d of %d returned paths)", delivered, len(doc.Paths))
+		next := []string{"verify-change"}
+		if in.ReturnPath { // a both-ways question: the status is about both directions
+			switch retVerdict {
+			case "delivered":
+				finding += "; the return flow is delivered too"
+			case "blocked":
+				return result.Build(reachabilityName, result.Failed, finding+", but the return flow is blocked: the connection cannot complete both ways",
+					result.Deterministic, cx, result.Options{Limits: limits, Evidence: pathEv(), Omitted: omitted, NextActions: []string{"plan-troubleshoot-connectivity", "inspect-device-files"}})
+			default:
+				return result.NewUnknown(reachabilityName, finding+", but the return flow could not be determined, so the connection is not established as working both ways",
+					cx, limits, result.Options{Evidence: pathEv(), Omitted: omitted, NextActions: []string{"plan-troubleshoot-connectivity", "inspect-topology"}})
+			}
+		}
+		return result.Build(reachabilityName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Evidence: pathEv(), Omitted: omitted, NextActions: next})
 	}
 	if len(real) == 0 || doc.TimedOut {
 		if len(real) == 0 {
 			limits = append(limits, "only incomplete or unclassified outcomes were returned")
 		}
 		ev := uniquePathEvidence(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, 3)
+		if retFlow != nil && len(ev) > 0 {
+			ev[0].Detail["return_flow"] = retFlow
+		}
 		finding, next := "The returned paths do not establish whether the flow is delivered", []string{"investigate-collection-failure"}
 		for _, c := range all {
 			if mp := missingPeerOf(c.path); mp != nil && len(real) == 0 {
@@ -351,4 +396,33 @@ func countDistinct[T any](items []T, path func(T) fwd.Path, class func(T) string
 		seen[pathSignature(path(it), class(it))] = true
 	}
 	return len(seen)
+}
+
+// returnPathResults is how many return paths to ask Forward for when return_path is set (it sends none unless asked).
+func returnPathResults(on bool) int {
+	if on {
+		return 5
+	}
+	return 0
+}
+
+// returnFlowSummary describes the return flow (destination back to source) beside the forward answer: the summary for the evidence, its verdict (delivered, blocked or
+// undetermined) and a limit when it was asked for but Forward returned no return paths. It returns nothing unless return_path was asked for.
+func returnFlowSummary(doc fwd.PathResult, asked bool) (map[string]any, string, string) {
+	if !asked {
+		return nil, "", ""
+	}
+	if len(doc.ReturnPaths) == 0 {
+		return map[string]any{"paths": 0, "verdict": "undetermined"}, "undetermined", "return_path was asked for but Forward returned no return paths; the return flow is undetermined, not delivered"
+	}
+	delivered, classes := 0, map[string]int{}
+	for _, p := range doc.ReturnPaths {
+		k := fwd.Classify(p)
+		classes[k]++
+		if k == "delivered" {
+			delivered++
+		}
+	}
+	verdict := fwd.Verdict(doc.ReturnPaths, doc.TimedOut)
+	return map[string]any{"paths": len(doc.ReturnPaths), "delivered": delivered, "outcomes": classes, "verdict": verdict}, verdict, ""
 }

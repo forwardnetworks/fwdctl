@@ -83,7 +83,7 @@ sets it up for bash, zsh and fish by itself; otherwise add the line above to you
 `fwdctl docs cli` is the whole command reference, and the release archives carry man pages (`man fwdctl`, `man fwdctl-nqe-run`; a Homebrew install puts them in place).
 
 The login comes from flags (anywhere on the command line), else `FORWARD_URL` / `FORWARD_USERNAME` / `FORWARD_PASSWORD`, else the file
-`~/.config/fwdctl/config.json` (`{"url", "username", "password_file"}`; `--config FILE` names another). The file never holds the password,
+`~/.config/fwdctl/config.json` (`{"url", "username", "password_file", "ca_bundle"}`; `--config FILE` names another). The file never holds the password,
 only the path of a file that does, and that file must be mode 600.
 
 ## Remember a login: `fwdctl login`

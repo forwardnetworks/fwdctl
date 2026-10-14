@@ -5,6 +5,7 @@ Generated from the command tree (`fwdctl <command> --help` shows the same for on
 Connection flags work on every command that talks to Forward:
 
 ```
+      --ca-bundle string       PEM file of the certificate authorities to trust for Forward's certificate, for a private or self-signed CA (overrides FORWARD_CA_BUNDLE; verification stays on; not with --insecure)
       --config string          connection config file (default ~/.config/fwdctl/config.json)
       --insecure               do NOT verify the TLS certificate (a self-signed Forward; every result records it)
       --password-file string   file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)
@@ -67,7 +68,8 @@ Examples:
 Flags:
 
 ```
-  -k, --top int   how many to return (default 3)
+      --features fwdctl nqe features   turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+  -k, --top int                        how many to return (default 3)
 ```
 
 ## fwdctl describe
@@ -265,13 +267,20 @@ Flags:
 what could be written at a position (1-based line and column)
 
 ```
-fwdctl nqe complete FILE|- LINE COL
+fwdctl nqe complete FILE|- LINE COL [flags]
 ```
 
 Examples:
 
 ```
   fwdctl nqe complete query.nqe 3 12
+```
+
+Flags:
+
+```
+      --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
 ## fwdctl nqe export
@@ -309,6 +318,28 @@ Flags:
       --zip string               also write the tree and manifest as this zip (fwdctl's own format: the Forward UI cannot import it)
 ```
 
+## fwdctl nqe features
+
+Forward serves each organization an NQE schema filtered by its feature flags (org properties). The offline checker uses Forward's defaults; --features turns flags on, as an organization with them would have, so a query using a field behind a flag (the Palo Alto and Fortinet security policy are experimental and off by default) checks clean. `nqe lint --org` reads the organization's own live schema and is the authority for one organization. Kinds: schema (fields and types), language (a function), runtime (storage and summaries: no effect on the checker).
+
+```
+fwdctl nqe features [flags]
+```
+
+Examples:
+
+```
+  fwdctl nqe features
+  fwdctl nqe features --features security-rules-fortios,device-services
+```
+
+Flags:
+
+```
+      --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+```
+
 ## fwdctl nqe fmt
 
 Lay NQE out in the standard style. With no file it filters stdin to stdout. -w rewrites the files; --check prints the files that would change and exits 1 if any would.
@@ -336,13 +367,20 @@ Flags:
 what is at a position: its type and documentation (1-based line and column)
 
 ```
-fwdctl nqe hover FILE|- LINE COL
+fwdctl nqe hover FILE|- LINE COL [flags]
 ```
 
 Examples:
 
 ```
   fwdctl nqe hover query.nqe 3 12
+```
+
+Flags:
+
+```
+      --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
 ## fwdctl nqe lint
@@ -372,10 +410,12 @@ Examples:
 Flags:
 
 ```
-      --errors-only        report errors only, no warnings or deprecations (the exit status is the same)
-      --modules string     where "import" statements are read from (default: the directory of FILE)
-      --org                check against the organization's live schema instead of the embedded one (needs a login)
-      --synthetic string   check the file as a synthetic-device query of this kind (adjacent-network|internet|intranet|l2vpn|l3vpn)
+      --errors-only                        report errors only, no warnings or deprecations (the exit status is the same)
+      --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+      --modules string                     where "import" statements are read from (default: the directory of FILE)
+      --org                                check against the organization's live schema instead of the embedded one (needs a login)
+      --synthetic string                   check the file as a synthetic-device query of this kind (adjacent-network|internet|intranet|l2vpn|l3vpn)
 ```
 
 ## fwdctl nqe lsp
@@ -383,13 +423,20 @@ Flags:
 A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch.
 
 ```
-fwdctl nqe lsp
+fwdctl nqe lsp [flags]
 ```
 
 Examples:
 
 ```
   fwdctl nqe lsp   # an editor launches this over stdin/stdout
+```
+
+Flags:
+
+```
+      --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
 ## fwdctl nqe pack

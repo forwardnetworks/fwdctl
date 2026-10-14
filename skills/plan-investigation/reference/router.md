@@ -15,7 +15,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | "Did this change work", "is it safe to push" | `verify-change` |
 | "What does this change touch", "how big is it", the extent of a change, which areas differ, which subnets lose connectivity | `verify-change` with `view: impact` |
 | Collection takes too long, a slow or long collection, how long collection runs, the collection duration got worse, hours instead of minutes, is the collector the bottleneck, why a snapshot took so long, how collection time trended | `investigate-collection-failure` (view `history` for each collection's duration and device count over time, view `slow` for the slowest devices, total device time and how many ran at once) |
-| A device is missing, a snapshot looks incomplete, a collection failed; which devices failed collection (refused, timed out, authentication), a parser failure, a slow or longest collection, a collection log, unmodelled neighbours | `investigate-collection-failure` (view devices, slow, logs or neighbors) |
+| Cloud (AWS, Azure, GCP) collection failing or dropping, an AWS account erroring, authentication failed for a cloud region, a C2S or access portal credentials error; A device is missing, a snapshot looks incomplete, a collection failed; which devices failed collection (refused, timed out, authentication), a parser failure, a slow or longest collection, a collection log, unmodelled neighbours | `investigate-collection-failure` (view devices, slow, logs or neighbors) |
 | "Are we compliant", does the network comply with a rule, "does anything violate X" | `check-network-compliance` |
 | "What version is this", "which features does this Forward have", is a feature or preview flag enabled, what value a property has | `inspect-environment` |
 | "Which snapshot should I use", "is this snapshot complete", "which are predictions" | `inspect-snapshots` |
@@ -23,7 +23,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Forward seems slow or wedged, "what jobs are running", a query or execution that never returns, "is anything stuck" | `inspect-jobs` |
 | Cancel a stuck or wedged backend job instead of restarting a worker | `edit-jobs` (dry run first) |
 | "Is collection running or healthy", "is the collector connected" | `inspect-collection` (view status) |
-| "What is collected", "is device X switched off for collection" | `inspect-collection` (view config) |
+| "What is collected", "is device X switched off for collection", which cloud or AWS accounts are enabled for collection, member accounts, the last test of each region, cloud collection setup, a C2S access portal (CAP) setup and which accounts it collects | `inspect-collection` (view config) |
 | A path ends at the edge, "is the internet modelled", links added by hand, the connections of an L3 VPN or L2 VPN | `inspect-topology` (kind external) |
 | "When did this check start failing", "is this new or old" | `inspect-history` |
 | "Which checks exist or fail", "how many checks fail or error", "why is this check in ERROR", "what did this check find", "what checks does Forward offer" | `check-network-compliance` (view read) |
@@ -57,7 +57,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | What a device connects to, which sites, tags or aliases exist | `inspect-topology` |
 | A cloud account shows fewer routes than expected, a VPC route table, cloud routes or next hops | `inspect-inventory` with kind `cloud_routes` (`account` is the cloud account NAME, `name` the VPC; kind `cloud_accounts` lists the accounts) |
 | Compare two networks (a seed and a lab, production and a copy): devices, interfaces, links, cloud routes; there is no cross-network compare | `compare-nqe-results` with `after_network_id` (a saved query run on both networks, rows diffed by `key`, `ignore` for fields that should differ); with no saved query, read the same `inspect-inventory` kind on each network and diff (compare-device-config diffs two snapshots of one network) |
-| Add a device to the collection list (optionally pinned to a collector), a device login (CLI, SNMP or HTTP credential), a jump server or a proxy | `edit-source` (dry run first; secrets from a file) |
+| Add a device to the collection list (optionally pinned to a collector), a device login (CLI, SNMP or HTTP credential), a jump server or a proxy; add, rotate, test or delete a cloud account; turn a cloud (AWS) member account on or off, enable or disable an account for collection, change the C2S access portal account list | `edit-source` (dry run first; secrets from a file) |
 | Create, rename or delete a network, add a location or device cluster, rename or delete a device tag | `edit-network` (dry run first) |
 | Change a banner, webhook, trusted certificate, device access label, ServiceNow or Infoblox integration, or cancel or delete a backup (organization admin settings) | `edit-platform` (dry run first) |
 | What is set up on Forward, is SAML or SSO configured, when does the license expire: credentials, jump servers, proxies, collectors, cloud accounts, webhooks, licensing, backups (read, secrets removed) | `inspect-platform` |
@@ -69,7 +69,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Which devices are internet addressable (a device list, not CVEs), or why internet exposure is unavailable: disabled, blocked or never triggered | `inspect-vulnerabilities` (`view: devices`, `internet_addressable: true`) |
 | "What changed in X between snapshots" for a kind of data: which rows of a saved query changed, were added or removed | `find-nqe-query`, then `compare-nqe-results` |
 | Anything not covered above (custom config questions) | write an NQE query (`author-nqe-query`) and check it with `validate-nqe-query` |
-| NQE syntax or data-model questions | `author-nqe-query` |
+| NQE syntax or data-model questions, a field reported missing that should exist (securityPolicy, services, an NQE feature flag or org property) | `author-nqe-query` |
 | "Is this NQE query valid", checking a query without Forward | `fwdctl nqe lint` (offline syntax, deprecations, field names), then `validate-nqe-query` for the type check |
 
 Prefer a dedicated skill to a hand-written query when one exists.

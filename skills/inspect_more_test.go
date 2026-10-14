@@ -400,3 +400,111 @@ func TestCollectionConfigShowsEachDevicesCollectorAndCountsPerCollector(t *testi
 		t.Errorf("each pinned device shows its collector and the pinned ones are counted per collector: %s", b)
 	}
 }
+
+// A cloud setup that discovers member accounts (AWS assume-role) reports which are enabled and Forward's last error per account, so an account switched off
+// but still failing, or one that is on and erroring, shows without opening the UI. The role ARN and external id are not part of the answer.
+func TestCollectionConfigShowsDiscoveredMemberAccountsWithEnabledAndTheirLastError(t *testing.T) {
+	infos := []any{
+		map[string]any{"accountId": "111", "accountName": "app", "enabled": true, "roleArn": "arn:aws:iam::111:role/FwdRole", "externalId": "EXT-SECRET-77"},
+		map[string]any{"accountId": "222", "accountName": "data", "enabled": true, "errorMsg": "Exception during credentials request: HTTP 400"},
+		map[string]any{"accountId": "333", "accountName": "old", "enabled": false, "errorMsg": "stale error"}}
+	r, _ := mustRun(t, "inspect-collection-config", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/cloudAccounts":   fwdtest.Const(200, []any{map[string]any{"type": "AWS", "name": "prod-aws", "collect": true, "assumeRoleInfos": infos}}),
+	}, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	for _, leak := range []string{"EXT-SECRET-77", "arn:aws:iam"} {
+		if strings.Contains(b, leak) {
+			t.Errorf("%q leaked into the result: %s", leak, b)
+		}
+	}
+	var setup map[string]any
+	for _, e := range r.Evidence {
+		if rows, ok := e.Detail["cloud_setups"].([]map[string]any); ok && len(rows) > 0 {
+			setup = rows[0]
+		}
+	}
+	m, _ := setup["member_accounts"].(map[string]any)
+	if m == nil || m["total"] != 3 || m["enabled"] != 2 || m["disabled"] != 1 || m["enabled_with_error"] != 1 {
+		t.Fatalf("member_accounts summary = %v (setup %v)", m, setup)
+	}
+	rows, _ := m["rows"].([]map[string]any) // on and erroring first, then disabled, then the rest
+	if len(rows) != 3 || rows[0]["account_id"] != "222" || rows[0]["enabled"] != true || !strings.Contains(rows[0]["error"].(string), "HTTP 400") || rows[1]["account_id"] != "333" || rows[2]["account_id"] != "111" {
+		t.Errorf("rows = %v", m["rows"])
+	}
+}
+
+// An AWS setup with a C2S Access Portal (CAP) credential collects the accounts in awsC2SAccountInfos (or, when that list is empty, every account the portal
+// returns); the enabled flags of its assumeRoleInfos are not used. The answer says so, so a flag that looks switched off is not read as an account that is not collected.
+func TestCollectionConfigMarksACAPSetupAndListsItsAccessPortalAccounts(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection-config", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/aws-cap-credentials/cap-1": fwdtest.Const(200, map[string]any{"id": "cap-1", "baseCapServerUrl": "https://cap.example",
+			"clientCertificateBase64": "CERT-SECRET-55", "certificateAuthorityBase64": "CA-BYTES-77"}),
+		"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{
+			map[string]any{"type": "AWS", "name": "cap-aws", "collect": true, "awsCapCredentialId": "cap-1", "awsCapCredential": map[string]any{"baseCapServerUrl": "https://cap.example", "clientCertificateBase64": "CERT-SECRET-55"},
+				"awsC2SAccountInfos": []any{map[string]any{"accountId": "111", "accountRole": "fwd-role"}, map[string]any{"accountId": "222", "accountRole": "fwd-role"}},
+				"assumeRoleInfos":    []any{map[string]any{"accountId": "111", "enabled": false}}},
+			map[string]any{"type": "AWS", "name": "plain-aws", "collect": true, "assumeRoleInfos": []any{map[string]any{"accountId": "333", "enabled": true}}}}),
+	}, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	if strings.Contains(b, "CERT-SECRET-55") || strings.Contains(b, "CA-BYTES-77") {
+		t.Errorf("the CAP client certificate or CA leaked into the result: %s", b)
+	}
+	byName := map[string]map[string]any{}
+	for _, e := range r.Evidence {
+		if rows, ok := e.Detail["cloud_setups"].([]map[string]any); ok {
+			for _, row := range rows {
+				byName[row["name"].(string)] = row
+			}
+		}
+	}
+	capRow, plain := byName["cap-aws"], byName["plain-aws"]
+	if capRow["cap_credential"] != true {
+		t.Fatalf("a setup with a CAP credential is marked: %v", capRow)
+	}
+	c2s, _ := capRow["c2s_accounts"].(map[string]any)
+	if c2s == nil || c2s["count"] != 2 {
+		t.Errorf("c2s_accounts = %v", capRow["c2s_accounts"])
+	}
+	if capRow["cap_server_url"] != "https://cap.example" || capRow["cap_ca_set"] != true {
+		t.Errorf("the portal URL and whether a CA is set are shown, nothing more: %v", capRow)
+	}
+	if _, has := plain["cap_credential"]; has {
+		t.Errorf("a plain assume-role setup is not marked as CAP: %v", plain)
+	}
+	if !strings.Contains(strings.Join(r.Limits, "|"), "not used") {
+		t.Errorf("limits do not say the enabled flags are not used for a CAP setup: %v", r.Limits)
+	}
+}
+
+// Reading the portal credential needs VIEW_DEVICE_CREDENTIALS. A login without it still gets the CAP marker and the account list; the missing URL is a limit.
+func TestCollectionConfigACAPSetupWithoutPermissionToReadTheCredentialIsALimitNotAFailure(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection-config", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices":           fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/aws-cap-credentials/cap-1": fwdtest.Const(403, map[string]any{"message": "Missing permission: NetworkOperation.VIEW_DEVICE_CREDENTIALS"}),
+		"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{map[string]any{"type": "AWS", "name": "cap-aws", "collect": true, "awsCapCredentialId": "cap-1",
+			"awsC2SAccountInfos": []any{map[string]any{"accountId": "111", "accountRole": "r"}}}}),
+	}, `{"network_id":"n1"}`)
+	if r.Status != result.OK {
+		t.Fatalf("status %s: %s", r.Status, r.Finding)
+	}
+	b := jsonOf(r)
+	if !strings.Contains(b, `"cap_credential":true`) || strings.Contains(b, "cap_server_url") || !strings.Contains(strings.Join(r.Limits, "|"), "VIEW_DEVICE_CREDENTIALS") {
+		t.Errorf("marker kept, URL absent, permission named in the limits: %s %v", b, r.Limits)
+	}
+}
+
+// An AWS assume-role external id is a shared secret Forward expects a customer role to require. It is hidden wherever a cloud account is read back, not only in one view:
+// inspect-platform cloud_setups returns the account's own fields, so the field name itself must be treated as a secret.
+func TestInspectPlatformCloudSetupsNeverReturnsAnAssumeRoleExternalID(t *testing.T) {
+	r, _ := mustRun(t, "inspect-platform", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{map[string]any{"type": "AWS", "name": "prod-aws", "collect": true,
+			"assumeRoleInfos": []any{map[string]any{"accountId": "111", "enabled": true, "roleArn": "arn:aws:iam::111:role/FwdRole", "externalId": "EXT-SECRET-77"}}}}),
+		"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/mist-setups":               fwdtest.Const(200, []any{}),
+	}, `{"area":"cloud_setups","network_id":"n1"}`)
+	if b := jsonOf(r); strings.Contains(b, "EXT-SECRET-77") {
+		t.Errorf("the external id leaked: %s", b)
+	}
+}

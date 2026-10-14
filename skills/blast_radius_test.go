@@ -1,6 +1,7 @@
 package skills_test
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -107,5 +108,86 @@ func TestBlastRadiusAConnectivityFeatureSwitchedOffStillReportsTheAreaCounts(t *
 	r, _ := mustRun(t, "analyze-blast-radius", routes, csInput+"}")
 	if r.Status != result.OK || !strings.Contains(r.Finding, "acl (2)") || !strings.Contains(strings.Join(r.Limits, " "), "is off") {
 		t.Fatalf("got %s %q %v", r.Status, r.Finding, r.Limits)
+	}
+}
+
+// aclRoutes answers GET /api/diffs/b1/a1/acl with the count (?count) or the changed devices, and a device's changed rules, like Forward.
+func aclRoutes(f changeFix, devices []any, rules map[string]any) map[string]fwdtest.Handler {
+	r := f.routes()
+	count := r["GET /api/diffs/b1/a1/acl"]
+	r["GET /api/diffs/b1/a1/acl"] = func(req *http.Request, b []byte) (int, any) {
+		if _, counting := req.URL.Query()["count"]; counting {
+			return count(req, b)
+		}
+		return 200, map[string]any{"deviceInfos": devices}
+	}
+	for dev, body := range rules {
+		r["GET /api/diffs/b1/a1/acl/devices/"+dev] = fwdtest.Const(200, body)
+	}
+	return r
+}
+
+// With the ACL area changed, the impact view names the devices whose ACLs changed, the most changed first, with their added, deleted and modified rule counts. It does not
+// pull each device's rules: that is asked for with `device`.
+func TestBlastRadiusNamesTheDevicesWhoseACLsChangedMostChangedFirst(t *testing.T) {
+	devices := []any{
+		map[string]any{"deviceName": "r2", "stats": map[string]any{"ADDED": 1, "DELETED": 0, "MODIFIED": 0}},
+		map[string]any{"deviceName": "fw01", "stats": map[string]any{"ADDED": 2, "DELETED": 3, "MODIFIED": 4}}}
+	r, srv := mustRun(t, "verify-change", aclRoutes(changeFix{counts: map[string]int{"acl": 10}}, devices, nil), csInput+`,"view":"impact"}`)
+	var rows []map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["acl_devices"].([]map[string]any); ok {
+			rows = v
+		}
+	}
+	if len(rows) != 2 || rows[0]["device"] != "fw01" || rows[0]["added"] != 2 || rows[0]["deleted"] != 3 || rows[0]["modified"] != 4 || rows[1]["device"] != "r2" {
+		t.Fatalf("acl_devices = %v", rows)
+	}
+	if srv.Called("GET", "/api/diffs/b1/a1/acl/devices/fw01") {
+		t.Error("the rules of every device were pulled without asking for one")
+	}
+}
+
+// With `device` the changed rules are listed: each as added, deleted or modified, with its action, name, where it applies and the config lines it came from. A modified rule
+// shows what it was.
+func TestBlastRadiusListsADevicesChangedACLRulesWithActionAndConfigLines(t *testing.T) {
+	rules := map[string]any{"fw01": map[string]any{"stats": map[string]any{"ADDED": 1, "DELETED": 1, "MODIFIED": 1}, "diffs": []any{
+		map[string]any{"diffType": "ADDED", "b": map[string]any{"name": "outside-in", "action": "PERMIT", "aclContext": "INPUT", "inputInterfaces": []string{"e1"},
+			"matches": []any{map[string]any{"field": "TP_DST", "values": []string{"443"}}}, "fileLines": map[string]any{"configuration.txt": []any{map[string]any{"start": 10, "end": 12}}}}},
+		map[string]any{"diffType": "DELETED", "a": map[string]any{"name": "outside-in", "action": "DENY", "aclContext": "INPUT"}},
+		map[string]any{"diffType": "MODIFIED", "a": map[string]any{"name": "mgmt", "action": "DENY"}, "b": map[string]any{"name": "mgmt", "action": "PERMIT"}}}}}
+	r, _ := mustRun(t, "verify-change", aclRoutes(changeFix{counts: map[string]int{"acl": 3}}, []any{map[string]any{"deviceName": "fw01"}}, rules), csInput+`,"view":"impact","device":"fw01"}`)
+	var detail map[string]any
+	for _, e := range r.Evidence {
+		if e.Detail["acl_changes"] != nil {
+			detail = e.Detail
+		}
+	}
+	if detail == nil {
+		t.Fatalf("no acl_changes evidence: %+v", r.Evidence)
+	}
+	entries, _ := detail["acl_changes"].([]map[string]any)
+	if len(entries) != 3 || entries[0]["change"] != "ADDED" || entries[0]["action"] != "PERMIT" || entries[0]["name"] != "outside-in" || entries[1]["change"] != "DELETED" || entries[1]["action"] != "DENY" {
+		t.Fatalf("entries = %v", entries)
+	}
+	if lines, _ := entries[0]["file_lines"].(map[string]any); lines["configuration.txt"] != "10-12" {
+		t.Errorf("config lines = %v", entries[0]["file_lines"])
+	}
+	if was, _ := entries[2]["was"].(map[string]any); entries[2]["change"] != "MODIFIED" || entries[2]["action"] != "PERMIT" || was["action"] != "DENY" {
+		t.Errorf("a modified rule shows what it was: %v", entries[2])
+	}
+}
+
+// A device the diff does not list is not evidence that it has no ACLs or does not exist: zero changed rules says so in the limits, and a device given while the acl area shows no
+// difference says it was not looked up. A diff that carries neither side is skipped, not a crash.
+func TestBlastRadiusADeviceWithNoChangedRulesIsALimitNotAFact(t *testing.T) {
+	rules := map[string]any{"fw0": map[string]any{"stats": map[string]any{}, "diffs": []any{map[string]any{"diffType": "ADDED"}}}}
+	r, _ := mustRun(t, "verify-change", aclRoutes(changeFix{counts: map[string]int{"acl": 3}}, []any{}, rules), csInput+`,"view":"impact","device":"fw0"}`)
+	if !strings.Contains(strings.Join(r.Limits, "|"), "does not show the device exists") {
+		t.Errorf("limits do not caveat an empty rule list: %v", r.Limits)
+	}
+	r, _ = mustRun(t, "verify-change", changeFix{}.routes(), csInput+`,"view":"impact","device":"fw01"}`)
+	if !strings.Contains(strings.Join(r.Limits, "|"), "no ACL rules were listed for fw01") {
+		t.Errorf("limits do not say the device was not looked up: %v", r.Limits)
 	}
 }

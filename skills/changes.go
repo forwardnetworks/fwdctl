@@ -17,6 +17,8 @@ type changeInput struct {
 	BeforeSnapshotID string `json:"before_snapshot_id"`
 	AfterSnapshotID  string `json:"after_snapshot_id"`
 	ConnectivitySecs int    `json:"connectivity_timeout_seconds"`
+	// Device: view describe takes a firewall whose rule diff to include; view impact takes a device whose changed ACL rules between the two snapshots to list.
+	Device string `json:"device"`
 }
 
 // resolvedChange is the before/after pair a change skill compares.

@@ -32,14 +32,12 @@ type verifyChangeInput struct {
 	// been predicted, which of its checks got worse) or "impact" (measure how far it reaches and judge nothing).
 	View         string        `json:"view"`
 	Expectations []expectation `json:"expectations"`
-	// Device belongs to the describe view: a firewall whose rule diff to include.
-	Device string `json:"device"`
 }
 
 // Inputs by view (an input of another view is rejected). describe reads one change set; verify and impact compare a before and an after.
 var verifyChangeViewInputs = map[string][]string{
 	"verify":   {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "expectations"},
-	"impact":   {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id"},
+	"impact":   {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
 	"describe": {"change_set_id", "device"},
 }
 

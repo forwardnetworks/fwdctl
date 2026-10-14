@@ -32,7 +32,7 @@ Junos holds policy as `policy-statement` terms under `protocols bgp group ... ex
 
 ## Confirming a route leak
 
-A session in the Established state can still be leaking: state says nothing about what policy permits. Do not rely on a summary prefix count either, since some platforms report none. Confirm in three steps: (1) read the neighbor's stanza in the device files and look for a missing or permissive outbound policy; (2) list what is sent with `advertised` (platforms that report it only); (3) trace from the receiving peer's address toward a leaked prefix with `investigate-reachability`. Say which of the three you could do.
+A session in the Established state can still be leaking: state says nothing about what policy permits. Do not rely on a summary prefix count either, since some platforms report none. Confirm in three steps: (1) read the neighbor's stanza in the device files and look for a missing or permissive outbound policy; (2) list what is sent with `advertised` (platforms that report it only); (3) trace from the receiving peer's address toward a leaked prefix with `investigate-reachability`; (4) if the receiving peer is a modelled device, read its own neighbor row (`device`, `peer`): its `received_prefixes` against the sender's `advertised_prefixes` shows how much its inbound policy kept out, and a receiver that accepts everything gives you no protection. Say which of the four you could do.
 
 ## Policy design traps
 

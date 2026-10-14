@@ -1,6 +1,7 @@
 package skills_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -302,5 +303,152 @@ func TestEditSourceFailedReadBackSaysNotToApplyAgain(t *testing.T) {
 	lim := strings.Join(r.Limits, " | ")
 	if r.Status != result.Failed || !strings.Contains(lim, "do NOT run it again with apply") || len(r.NextActions) == 0 {
 		t.Errorf("a write whose read-back is empty says the request was sent and not to repeat it, and points at the next step: %s / limits %q / next %v", r.Status, lim, r.NextActions)
+	}
+}
+
+// A cloud account that discovers member accounts (AWS assume-role) lists them with an enabled flag and Forward's last error per account. update flips the
+// flags (and collect) the caller names, sends every other account unchanged (the list is replaced as a whole), and proves the change by reading it back.
+func TestEditSourceCloudAccountUpdateTogglesDiscoveredAccountsAndKeepsTheOthers(t *testing.T) {
+	var patched map[string]any
+	acct := map[string]any{"name": "prod-aws", "type": "AWS", "collect": true, "assumeRoleInfos": []any{
+		map[string]any{"accountId": "111", "accountName": "app", "enabled": true},
+		map[string]any{"accountId": "222", "accountName": "data", "enabled": true, "errorMsg": "HTTP 400 from the credentials request"},
+		map[string]any{"accountId": "333", "accountName": "old", "enabled": false}}}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/cloudAccounts": func(*http.Request, []byte) (int, any) { return 200, []any{acct} },
+		"PATCH /api/networks/n1/cloudAccounts/prod-aws": func(_ *http.Request, b []byte) (int, any) {
+			if err := json.Unmarshal(b, &patched); err != nil {
+				return 400, nil
+			}
+			acct["assumeRoleInfos"] = patched["assumeRoleInfos"]
+			if c, ok := patched["collect"]; ok {
+				acct["collect"] = c
+			}
+			return 200, acct
+		},
+	}
+	in := `{"network_id":"n1","object":"cloud_account","action":"update","name":"prod-aws","definition":{"accounts_enabled":{"222":false,"333":true},"collect":false}`
+	r, srv := mustRun(t, "edit-source", routes, in+`}`)
+	if r.Mode != result.ModeDryRun || writes(srv) != 0 || len(r.Changes) != 1 || !r.Changes[0].Reversible {
+		t.Fatalf("dry run: mode %s writes %d changes %d: %s", r.Mode, writes(srv), len(r.Changes), jsonOf(r))
+	}
+	d := jsonOf(r)
+	for _, want := range []string{`"222"`, `"333"`, "collect"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("the plan does not show %s: %s", want, d)
+		}
+	}
+	if !strings.Contains(strings.Join(r.Limits, "|"), "every other account is sent unchanged") {
+		t.Errorf("limits do not say the other accounts are kept: %v", r.Limits)
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"prod-aws","definition":{"accounts_enabled":{"999":false}}}`); err == nil || !strings.Contains(err.Error(), "111") {
+		t.Errorf("an unknown member account is refused and the known ids are listed: %v", err)
+	}
+	r, _ = mustRun(t, "edit-source", routes, in+`,"apply":true}`)
+	if r.Status != result.OK || r.Mode != result.ModeApplied {
+		t.Fatalf("apply: %s %s", r.Status, r.Finding)
+	}
+	infos, _ := patched["assumeRoleInfos"].([]any)
+	enabled := map[string]bool{}
+	for _, x := range infos {
+		m := x.(map[string]any)
+		enabled[m["accountId"].(string)], _ = m["enabled"].(bool)
+	}
+	if patched["type"] != "AWS" || patched["collect"] != false || len(infos) != 3 || enabled["111"] != true || enabled["222"] != false || enabled["333"] != true {
+		t.Errorf("patch body wrong (all three accounts, only the named ones changed): %v", patched)
+	}
+	if r, _ := mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"nope","definition":{"collect":false}}`); r.Status != result.Unknown {
+		t.Errorf("an account that is not there is unknown: %s", r.Status)
+	}
+}
+
+// For an account with a C2S Access Portal credential, Forward's per-account filter is awsC2SAccountInfos and the enabled flags of assumeRoleInfos are not used, and
+// c2s_accounts is how that filter is changed. So turning a member account on or off there would report success and change nothing in what is collected:
+// it is refused (pointing at c2s_accounts), and collect still works.
+func TestEditSourceCloudAccountUpdateRefusesAccountTogglesOnACAPAccountButAllowsCollect(t *testing.T) {
+	acct := map[string]any{"name": "cap-aws", "type": "AWS", "collect": true, "awsCapCredentialId": "cap-1",
+		"awsC2SAccountInfos": []any{map[string]any{"accountId": "111", "accountRole": "r"}},
+		"assumeRoleInfos":    []any{map[string]any{"accountId": "111", "enabled": true}}}
+	routes := map[string]fwdtest.Handler{"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{acct})}
+	_, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"cap-aws","definition":{"accounts_enabled":{"111":false}}}`)
+	if err == nil || !strings.Contains(err.Error(), "Access Portal") || !strings.Contains(err.Error(), "not used") || !strings.Contains(err.Error(), "c2s_accounts") {
+		t.Errorf("accounts_enabled on a CAP account is refused with the reason: %v", err)
+	}
+	r, srv := mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"cap-aws","definition":{"collect":false}}`)
+	if r.Mode != result.ModeDryRun || writes(srv) != 0 || r.Status != result.OK {
+		t.Errorf("collect on a CAP account is still a plain dry run: %s %s", r.Mode, r.Finding)
+	}
+}
+
+// Each cloud_account action takes only the definition fields it uses; a field it would ignore is refused by name, so {"regions":...} on update never reports success
+// for a change that did not happen, and accounts_enabled on create never vanishes.
+func TestEditSourceCloudAccountRefusesDefinitionFieldsTheActionDoesNotUse(t *testing.T) {
+	acct := map[string]any{"name": "prod-aws", "type": "AWS", "collect": true}
+	routes := map[string]fwdtest.Handler{"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{acct})}
+	_, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"prod-aws","definition":{"regions":{"us-east-1":1},"collect":true}}`)
+	if err == nil || !strings.Contains(err.Error(), "regions") || !strings.Contains(err.Error(), "update") {
+		t.Errorf("update with regions is refused by name: %v", err)
+	}
+	_, _, err = runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"create","definition":{"type":"AWS","name":"new-aws","accounts_enabled":{"1":true}}}`)
+	if err == nil || !strings.Contains(err.Error(), "accounts_enabled") {
+		t.Errorf("create with accounts_enabled is refused by name: %v", err)
+	}
+}
+
+// A CAP account's per-account filter is its portal account list, and PATCH accepts it. c2s_accounts REPLACES the list (an empty list means every account the
+// portal returns); the plan says so, the apply sends exactly the list with the account's type, and the read-back proves it. A non-CAP account has no portal list.
+func TestEditSourceCloudAccountUpdateSetsTheCAPPortalAccountList(t *testing.T) {
+	var patched map[string]any
+	acct := map[string]any{"name": "cap-aws", "type": "AWS", "collect": true, "awsCapCredentialId": "cap-1",
+		"awsC2SAccountInfos": []any{map[string]any{"accountId": "111", "accountRole": "r1"}, map[string]any{"accountId": "222", "accountRole": "r2"}}}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/cloudAccounts": func(*http.Request, []byte) (int, any) { return 200, []any{acct} },
+		"PATCH /api/networks/n1/cloudAccounts/cap-aws": func(_ *http.Request, b []byte) (int, any) {
+			if err := json.Unmarshal(b, &patched); err != nil {
+				return 400, nil
+			}
+			acct["awsC2SAccountInfos"] = patched["awsC2SAccountInfos"]
+			return 200, acct
+		},
+	}
+	in := `{"network_id":"n1","object":"cloud_account","action":"update","name":"cap-aws","definition":{"c2s_accounts":[{"account_id":"222","role":"r2"}]}`
+	r, srv := mustRun(t, "edit-source", routes, in+`}`)
+	if r.Mode != result.ModeDryRun || writes(srv) != 0 || len(r.Changes) != 1 || !r.Changes[0].Reversible {
+		t.Fatalf("dry run: %s", jsonOf(r))
+	}
+	if !strings.Contains(strings.Join(r.Limits, "|"), "replaces the whole portal account list") {
+		t.Errorf("limits do not say the list is replaced: %v", r.Limits)
+	}
+	r, _ = mustRun(t, "edit-source", routes, in+`,"apply":true}`)
+	if r.Status != result.OK || r.Mode != result.ModeApplied {
+		t.Fatalf("apply: %s %s", r.Status, r.Finding)
+	}
+	got, _ := patched["awsC2SAccountInfos"].([]any)
+	if patched["type"] != "AWS" || len(got) != 1 || got[0].(map[string]any)["accountId"] != "222" || got[0].(map[string]any)["accountRole"] != "r2" {
+		t.Errorf("patch body = %v", patched)
+	}
+	// an empty list is sent as an empty list and means every portal account
+	patched = nil
+	mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"cap-aws","apply":true,"definition":{"c2s_accounts":[]}}`)
+	if l, ok := patched["awsC2SAccountInfos"].([]any); !ok || len(l) != 0 {
+		t.Errorf("an empty c2s_accounts is sent as an empty list: %v", patched)
+	}
+	// a plain assume-role account has no portal list
+	plain := map[string]any{"name": "plain-aws", "type": "AWS", "collect": true}
+	routes["GET /api/networks/n1/cloudAccounts"] = fwdtest.Const(200, []any{plain})
+	_, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"plain-aws","definition":{"c2s_accounts":[{"account_id":"1","role":"r"}]}}`)
+	if err == nil || !strings.Contains(err.Error(), "not collected through") {
+		t.Errorf("c2s_accounts on a non-CAP account is refused: %v", err)
+	}
+}
+
+// The delete dry run shows the account as it is now ("before"); that read-back must not carry an assume-role external id.
+func TestEditSourceCloudAccountDeleteDryRunDoesNotShowAnExternalID(t *testing.T) {
+	acct := map[string]any{"name": "prod-aws", "type": "AWS", "collect": true,
+		"assumeRoleInfos": []any{map[string]any{"accountId": "111", "enabled": true, "externalId": "EXT-SECRET-77"}}}
+	r, _ := mustRun(t, "edit-source", map[string]fwdtest.Handler{"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{acct})},
+		`{"network_id":"n1","object":"cloud_account","action":"delete","name":"prod-aws"}`)
+	if b := jsonOf(r); strings.Contains(b, "EXT-SECRET-77") {
+		t.Errorf("the external id is in the delete plan: %s", b)
 	}
 }

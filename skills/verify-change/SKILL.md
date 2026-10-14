@@ -20,14 +20,9 @@ the intended outcome holds and whether anything regressed.
 
 `view` picks the question; an input that belongs to another view is rejected by name. `verify` (the default; `verdict` is the same view) judges a change; `impact` measures how far it reaches; `describe` reads a change set that has not been run.
 
-## Inputs (view verify)
+## Inputs
 
-`network_id`, plus either `change_set_id` (a Predict change set; `run_predict: true` lets
-the skill run Predict if no processed prediction exists) or both `before_snapshot_id` and
-`after_snapshot_id`. Optional `expectations`: flows that must end `delivered` or
-`blocked` after the change (`dst_ip`, `expect`, optionally `src_ip`, `from`, `protocol`,
-`src_port`, `dst_port`). `connectivity_timeout_seconds` (default 300) bounds the wait for the
-connectivity diff to settle. See `schema.json`.
+What each input means, per view: `fwdctl run verify-change --help`, or `reference/inputs.md`.
 
 ## Procedure
 
@@ -48,7 +43,7 @@ connectivity diff to settle. See `schema.json`.
    - Any expectation undetermined (and nothing failed), or no expectations given: **unknown**.
      Without a stated intent the skill reports the impact but does not judge it.
 
-**view impact.** Takes the same selector (`change_set_id`, or before and after snapshots) but no expectations. It counts the differences in every area Forward can count and compares subnet connectivity, then reports the extent. It never judges and never reports a regression: use the default view for a verdict. Areas that were not measured are named in the limits, and nothing is said about them.
+**view impact.** Takes the same selector (`change_set_id`, or before and after snapshots) but no expectations. It counts the differences in every area Forward can count and compares subnet connectivity, then reports the extent. It never judges and never reports a regression: use the default view for a verdict. Areas that were not measured are named in the limits, and nothing is said about them. When the ACL area changed it also names the devices whose ACLs changed (`acl_devices`, the most changed first, with rules added, deleted and modified); with `device` it lists that device's changed ACL rules (`acl_changes`: added, deleted or modified, with action, name, where it applies, match conditions and the configuration lines, and for a modified rule what it was). A rule diff is evidence of what changed, not a verdict on whether it is safe.
 
 **view describe.** Reads a change set without touching it: it never runs a prediction, stages a command or commits (`verify-change` view verify runs and compares, `edit-change-set` builds). Inputs: `network_id`, `change_set_id` (required), and optionally `device` (a firewall whose rule diff to include); it takes none of the view verify inputs.
 

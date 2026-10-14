@@ -33,6 +33,7 @@ type app struct {
 type connOptions struct {
 	url, username, passwordFile, tokenFile, configFile string
 	insecure                                           bool
+	caBundle                                           string
 }
 
 func (a *app) emit(v any) {
@@ -56,11 +57,11 @@ Start here: "fwdctl run" lists every name and what it answers, "echo '{}' | fwdc
 question, and "fwdctl help --tree" lists every command. Every command answers --help; "fwdctl run NAME --help" shows one name's inputs and an example.
 
 Credentials (environment): FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (an API token's access key and secret work).
-Or flags: --url URL --username NAME --password-file FILE [--insecure] [--config FILE]; or a saved login (fwdctl login), or a file
-~/.config/fwdctl/config.json {"url", "username", "password_file"} (the password is read from that file, which must be mode 600).
+Or flags: --url URL --username NAME --password-file FILE [--ca-bundle FILE | --insecure] [--config FILE]; or a saved login (fwdctl login), or a file
+~/.config/fwdctl/config.json {"url", "username", "password_file", "ca_bundle"} (the password is read from that file, which must be mode 600).
 Flags win over the environment, the environment over the file.
 To act as another org user without their credential (an administrator Forward allows to impersonate): FORWARD_IMPERSONATE=<user id> with the administrator's login. The session is read-only and every result says it was impersonated.
-Set FORWARD_INSECURE=true only for a self-signed Forward: it turns TLS verification off and every result records it.
+For a Forward with a private or self-signed certificate prefer --ca-bundle FILE (or FORWARD_CA_BUNDLE): it trusts only that PEM file and verification stays on. Set FORWARD_INSECURE=true only as a last resort: it turns TLS verification off and every result records it.
 
 Long queries: FORWARD_TIMEOUT=600s raises the per-call HTTP limit (default 120s); a query cut off by it falls back to Forward's asynchronous API
 (FORWARD_NQE_MODE=auto|sync|async, FORWARD_NQE_WAIT=20m). More: fwdctl docs troubleshooting.
@@ -117,6 +118,7 @@ func (a *app) newRoot() *cobra.Command {
 	pf.StringVar(&a.conn.passwordFile, "password-file", "", "file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)")
 	pf.StringVar(&a.conn.tokenFile, "token-file", "", "a token file: URL, username and password on three lines, mode 600")
 	pf.StringVar(&a.conn.configFile, "config", "", "connection config file (default ~/.config/fwdctl/config.json)")
+	pf.StringVar(&a.conn.caBundle, "ca-bundle", "", "PEM file of the certificate authorities to trust for Forward's certificate, for a private or self-signed CA (overrides FORWARD_CA_BUNDLE; verification stays on; not with --insecure)")
 	pf.BoolVar(&a.conn.insecure, "insecure", false, "do NOT verify the TLS certificate (a self-signed Forward; every result records it)")
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		a.top = topLevel(cmd)
@@ -257,6 +259,11 @@ func (a *app) contextCmd() *cobra.Command {
 			RunE: func(cmd *cobra.Command, args []string) error {
 				// context needs no login (it is read offline from this binary's sealed corpus); schema uses one when the
 				// environment has it configured, to search the organization's own live data model instead of the static one.
+				if kind == "schema" {
+					if err := a.applyNQEFeatures(cmd); err != nil {
+						return err
+					}
+				}
 				sess, _ := a.session()
 				out, err := skills.Context(cmd.Context(), kind, args[0], k, sess)
 				if err != nil {
@@ -267,6 +274,9 @@ func (a *app) contextCmd() *cobra.Command {
 			},
 		}
 		sub.Flags().IntVarP(&k, "top", "k", 3, "how many to return")
+		if kind == "schema" {
+			addFeaturesFlag(sub)
+		}
 		c.AddCommand(sub)
 	}
 	return c

@@ -11,7 +11,7 @@ Give it a Forward login in the environment:
     export FORWARD_USERNAME=<an API token's access key, or a login name>
     export FORWARD_PASSWORD=<its secret, or a password>
 
-TLS is verified against the system trust store. For a self-signed Forward set `FORWARD_INSECURE=true`: it turns verification off,
+TLS is verified against the system trust store. For a Forward with a private or self-signed certificate, give fwdctl the CA file with `--ca-bundle FILE` or `FORWARD_CA_BUNDLE=FILE` (PEM; only that bundle is trusted, verification stays on). The last resort is `FORWARD_INSECURE=true`: it turns verification off,
 prints a warning and every result records it.
 
 ## Getting started: five examples

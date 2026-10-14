@@ -62,3 +62,5 @@ Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fw
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe check-network-compliance reference/<file>`).
 
 - [reference/stig-results.md](reference/stig-results.md): reading STIG and other catalog-query results (rows that are not violations, zero rows, counting devices). Read when an `nqe` result says the rows are not all violations.
+- [reference/baseline.md](reference/baseline.md): what to look at in a general configuration review (management, control and data plane), as prompts, not findings. Read when asked for a review with no policy to check against.
+- [reference/citations.md](reference/citations.md): the IETF RFCs behind common routing and security findings. Read when a finding should cite a standard.

@@ -3,7 +3,9 @@ package fwd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -288,4 +290,101 @@ func (s *Session) ChangeSets(ctx context.Context, networkID string) ([]forward.C
 		s.Annotate(intp(len(list)), false)
 	}
 	return list, err
+}
+
+// ACLDeviceChange is one device whose ACLs changed between two snapshots, with the count of rules added, deleted and modified.
+type ACLDeviceChange struct {
+	Device                   string
+	Added, Deleted, Modified int
+}
+
+// ACLChangedDevices lists the devices whose ACLs changed, the most changed first. It carries counts, not rules: ACLRuleChanges lists one device's rules.
+func (s *Session) ACLChangedDevices(ctx context.Context, beforeID, afterID string) ([]ACLDeviceChange, error) {
+	list, _, err := s.Client.Diffs.ACLDevices(ctx, beforeID, afterID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ACLDeviceChange, 0, len(list))
+	for _, d := range list {
+		out = append(out, ACLDeviceChange{Device: d.DeviceName, Added: d.Stats["ADDED"], Deleted: d.Stats["DELETED"], Modified: d.Stats["MODIFIED"]})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ti, tj := out[i].Added+out[i].Deleted+out[i].Modified, out[j].Added+out[j].Deleted+out[j].Modified
+		if ti != tj {
+			return ti > tj
+		}
+		return out[i].Device < out[j].Device
+	})
+	s.Annotate(intp(len(out)), false)
+	return out, nil
+}
+
+// ACLRule is one side of a changed ACL rule in a stable shape: its action, name, where it applies, its match conditions as "FIELD=values" text and the config lines it
+// came from ("file": "10-12, 20-20").
+type ACLRule struct {
+	Name, Action, Context string
+	InputInterfaces       []string
+	OutputInterfaces      []string
+	Matches               []string
+	FileLines             map[string]string
+}
+
+// ACLRuleChange is one rule that was added (After only), deleted (Before only) or modified (both).
+type ACLRuleChange struct {
+	Change        string // ADDED | DELETED | MODIFIED
+	Before, After *ACLRule
+}
+
+// ACLRuleChanges lists one device's ACL rules that changed between two snapshots, in the order Forward returns them, with Forward's counts by kind of change.
+func (s *Session) ACLRuleChanges(ctx context.Context, beforeID, afterID, device string) ([]ACLRuleChange, map[string]int, error) {
+	d, _, err := s.Client.Diffs.DeviceACL(ctx, beforeID, afterID, device)
+	if err != nil {
+		return nil, nil, err
+	}
+	rule := func(e *forward.ACLDiffEntry) *ACLRule {
+		if e == nil {
+			return nil
+		}
+		r := &ACLRule{Name: e.Name, Action: e.Action, Context: e.ACLContext, InputInterfaces: e.InputInterfaces, OutputInterfaces: e.OutputInterfaces}
+		for _, m := range e.Matches {
+			r.Matches = append(r.Matches, matchText(m, false))
+		}
+		for _, m := range e.NegatedMatches {
+			r.Matches = append(r.Matches, matchText(m, true))
+		}
+		if len(e.FileLines) > 0 {
+			r.FileLines = map[string]string{}
+			for file, ranges := range e.FileLines {
+				parts := make([]string, 0, len(ranges))
+				for _, x := range ranges {
+					if x.Start == x.End {
+						parts = append(parts, fmt.Sprint(x.Start))
+					} else {
+						parts = append(parts, fmt.Sprintf("%d-%d", x.Start, x.End))
+					}
+				}
+				r.FileLines[file] = strings.Join(parts, ", ")
+			}
+		}
+		return r
+	}
+	out := make([]ACLRuleChange, 0, len(d.Diffs))
+	for _, e := range d.Diffs {
+		out = append(out, ACLRuleChange{Change: e.Type, Before: rule(e.Before), After: rule(e.After)})
+	}
+	s.Annotate(intp(len(out)), false)
+	return out, d.Stats, nil
+}
+
+// matchText renders one ACL match condition as FIELD=values (or FIELD!=values when negated). Values arrive raw because their shape follows the field.
+func matchText(m forward.ACLMatch, negated bool) string {
+	op := "="
+	if negated || m.Negated {
+		op = "!="
+	}
+	vals := strings.TrimSpace(string(m.Values))
+	if vals == "" || vals == "null" {
+		return m.Field
+	}
+	return m.Field + op + vals
 }

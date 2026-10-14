@@ -21,6 +21,8 @@ type connFile struct {
 	// TokenFile is a file of three lines: the Forward URL, the username (or an API token's access key) and the password (or its secret).
 	TokenFile string `json:"token_file"`
 	Insecure  bool   `json:"insecure"`
+	// CABundle is the path of a PEM file of certificate authorities to trust for Forward's certificate.
+	CABundle string `json:"ca_bundle"`
 }
 
 // readTokenFile reads the three-line login file: URL, username, password. A URL without a scheme gets https://. The file must not be readable
@@ -118,6 +120,7 @@ func applyConnectionOptions(o connOptions) error {
 	}
 	set("FORWARD_URL", url, c.URL)
 	set("FORWARD_USERNAME", user, c.Username)
+	set("FORWARD_CA_BUNDLE", expandHome(o.caBundle), expandHome(c.CABundle))
 	if insecure || (c.Insecure && os.Getenv("FORWARD_INSECURE") == "") {
 		os.Setenv("FORWARD_INSECURE", "true")
 	}
@@ -157,4 +160,14 @@ func readPasswordFile(path string) (string, error) {
 		return "", errors.New("the password file is empty")
 	}
 	return pw, nil
+}
+
+// expandHome turns a leading ~/ into the user's home directory, as the password and token file paths are.
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if h, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(h, path[2:])
+		}
+	}
+	return path
 }

@@ -186,7 +186,103 @@
      }
     ]
    }
-  }
+  },
+  "variants": [
+   {
+    "if": "srcIp=198.51.100.7",
+    "body": {
+     "timedOut": false,
+     "info": {
+      "totalHits": {
+       "type": "EXACT",
+       "value": 1
+      },
+      "paths": [
+       {
+        "forwardingOutcome": "DELIVERED",
+        "securityOutcome": "PERMITTED",
+        "hops": [
+         {
+          "deviceName": "edge1",
+          "displayName": "edge1",
+          "ingressInterface": "e0",
+          "egressInterface": "e1"
+         },
+         {
+          "deviceName": "r1",
+          "displayName": "r1",
+          "ingressInterface": "e2",
+          "egressInterface": ""
+         }
+        ]
+       }
+      ]
+     }
+    }
+   },
+   {
+    "if": "srcIp=10.0.0.9",
+    "body": {
+     "timedOut": false,
+     "info": {
+      "totalHits": {
+       "type": "EXACT",
+       "value": 2
+      },
+      "paths": [
+       {
+        "forwardingOutcome": "DELIVERED",
+        "securityOutcome": "PERMITTED",
+        "hops": [
+         {
+          "deviceName": "r1",
+          "displayName": "r1",
+          "ingressInterface": "e0",
+          "egressInterface": "e1"
+         },
+         {
+          "deviceName": "fw01",
+          "displayName": "fw01",
+          "ingressInterface": "ethernet1/1",
+          "egressInterface": "ethernet1/2"
+         },
+         {
+          "deviceName": "r2",
+          "displayName": "r2",
+          "ingressInterface": "e3",
+          "egressInterface": ""
+         }
+        ]
+       },
+       {
+        "forwardingOutcome": "DELIVERED",
+        "securityOutcome": "PERMITTED",
+        "hops": [
+         {
+          "deviceName": "r3",
+          "displayName": "r3",
+          "ingressInterface": "e0",
+          "egressInterface": "e1"
+         },
+         {
+          "deviceName": "fw01",
+          "displayName": "fw01",
+          "ingressInterface": "ethernet1/5",
+          "egressInterface": "ethernet1/2"
+         },
+         {
+          "deviceName": "r2",
+          "displayName": "r2",
+          "ingressInterface": "e4",
+          "egressInterface": ""
+         }
+        ]
+       }
+      ]
+     }
+    }
+   }
+  ]
  },
  "GET /api/users": {
   "body": [
@@ -242,6 +338,79 @@
      "totalNumItems": 0,
      "snapshotId": "s2"
     }
+   },
+   {
+    "body": {
+     "items": [],
+     "totalNumItems": 0,
+     "snapshotId": "s2"
+    },
+    "if": "bgpRib"
+   },
+   {
+    "if": "bgp",
+    "body": {
+     "items": [
+      {
+       "device": "r1",
+       "vrf": "default",
+       "peer": "10.1.1.2",
+       "peerAS": 65002,
+       "localAS": 65001,
+       "state": "IDLE",
+       "peerDevice": "r2",
+       "description": "to r2"
+      },
+      {
+       "device": "r2",
+       "vrf": "default",
+       "peer": "10.1.1.1",
+       "peerAS": 65001,
+       "localAS": 65003,
+       "state": "IDLE",
+       "peerDevice": "r1",
+       "description": "to r1"
+      }
+     ],
+     "totalNumItems": 2,
+     "snapshotId": "s2"
+    }
+   },
+   {
+    "body": {
+     "items": [
+      {
+       "Device": "dist-1",
+       "Area": "0.0.0.1",
+       "AreaType": "STUB"
+      },
+      {
+       "Device": "core-2",
+       "Area": "0.0.0.1",
+       "AreaType": "NORMAL"
+      }
+     ],
+     "totalNumItems": 2,
+     "snapshotId": "s2"
+    },
+    "if": "ospf"
+   },
+   {
+    "body": {
+     "items": [
+      {
+       "Device": "r1",
+       "Community": "public"
+      },
+      {
+       "Device": "r2",
+       "Community": "public"
+      }
+     ],
+     "totalNumItems": 2,
+     "snapshotId": "s2"
+    },
+    "if": "snmp"
    }
   ]
  },
@@ -254,5 +423,100 @@
    "id": "cred1",
    "name": "poll"
   }
+ },
+ "GET /api/networks/n1/devices/r1/files": {
+  "body": {
+   "files": [
+    {
+     "name": "configuration.txt",
+     "bytes": 300,
+     "command": "show running-config"
+    }
+   ]
+  }
+ },
+ "GET /api/networks/n1/devices/r1/files/configuration.txt": {
+  "text": "hostname r1\nntp server 10.0.0.1\nrouter bgp 65001\n neighbor 10.1.1.2 remote-as 65002\n"
+ },
+ "GET /api/networks/n1/devices/r2/files": {
+  "body": {
+   "files": [
+    {
+     "name": "configuration.txt",
+     "bytes": 300,
+     "command": "show running-config"
+    }
+   ]
+  }
+ },
+ "GET /api/networks/n1/devices/r2/files/configuration.txt": {
+  "text": "hostname r2\nntp server 10.0.0.1\nrouter bgp 65003\n neighbor 10.1.1.1 remote-as 65001\n"
+ },
+ "GET /api/networks/n1/devices/r3/files": {
+  "body": {
+   "files": [
+    {
+     "name": "configuration.txt",
+     "bytes": 300,
+     "command": "show running-config"
+    }
+   ]
+  }
+ },
+ "GET /api/networks/n1/devices/r3/files/configuration.txt": {
+  "text": "hostname r3\nntp server 10.9.9.9\nrouter bgp 65004\n"
+ },
+ "GET /api/networks/n1/devices/fw01/files": {
+  "body": {
+   "files": [
+    {
+     "name": "configuration.txt",
+     "bytes": 300,
+     "command": "show running-config"
+    }
+   ]
+  }
+ },
+ "GET /api/networks/n1/devices/fw01/files/configuration.txt": {
+  "text": "hostname fw01\naccess-list outside-in extended deny tcp host 10.0.0.1 host 10.0.1.1 eq 443\naccess-list outside-in extended deny tcp any host 10.0.1.1 eq 1433\naccess-group outside-in in interface outside\n"
+ },
+ "GET /api/networks/n1/devices/edge1/files": {
+  "body": {
+   "files": [
+    {
+     "name": "configuration.txt",
+     "bytes": 300,
+     "command": "show running-config"
+    }
+   ]
+  }
+ },
+ "GET /api/networks/n1/devices/edge1/files/configuration.txt": {
+  "text": "hostname edge1\nntp server 2.2.2.2\nsnmp-server location lab\n"
+ },
+ "GET /api/diffs/s1/s2/files": {
+  "body": [
+   {
+    "name": "edge1",
+    "hasConfigChange": true,
+    "files": [
+     {
+      "name": "edge1,CONFIGURATION.txt"
+     }
+    ]
+   }
+  ]
+ },
+ "GET /api/networks/n1/devices/edge1/files/CONFIGURATION.txt": {
+  "text": "hostname edge1\nntp server 2.2.2.2\nsnmp-server location lab\n",
+  "variants": [
+   {
+    "if": "snapshotId=s1",
+    "text": "hostname edge1\nntp server 1.1.1.1\nsnmp-server location lab\n"
+   }
+  ]
+ },
+ "GET /api/networks/n1/device-tags": {
+  "body": []
  }
 }

@@ -36,7 +36,7 @@ apply named vendors/OS as explicit `where` filters, filter before you emit a `vi
 3. Decide:
    - Forward rejects the query (syntax, type or schema error): **failed**, with each diagnostic and
      its line and column, plus schema hints: an enum value that does not exist comes with the closest
-     real values (`Vendor.PALO_ALTO` -> `PALO_ALTO_NETWORKS`). This is a deterministic finding about the query, not about the network.
+     real values (`Vendor.PALO_ALTO` -> `PALO_ALTO_NETWORKS`). This is a deterministic finding about the query, not about the network. A "Record does not have field" on a correct name can be a field hidden by a feature flag the organization has off (`device.securityPolicy`, `device.services`): `offline_lint` carries a `hint` naming the org property when so, and `fwdctl describe author-nqe-query reference/feature-flags.md` says what to do; report the flag, not a typo.
    - It runs and returns rows: **ok**, with the total row count and a bounded sample.
    - It runs and returns **zero rows**: **unknown**. Zero rows may mean the condition is absent or
      that the query filtered on the wrong thing; the skill cannot tell them apart. On a predicted

@@ -51,3 +51,39 @@ func Available() bool { return false }
 func (*Model) Search(string, int) []Field { return nil }
 func (*Model) Check(string) []Finding     { return nil }
 func (*Model) Children(string) []Field    { return nil }
+
+// Feature is one NQE feature flag; the public source tree has none.
+type Feature struct {
+	Name        string `json:"name"`
+	OrgProperty string `json:"org_property"`
+	Default     bool   `json:"default"`
+	Kind        string `json:"kind"`
+	Doc         string `json:"doc"`
+}
+
+// Features lists nothing in this build.
+func Features() []Feature { return nil }
+
+// EnabledFeatures lists nothing in this build.
+func EnabledFeatures() []string { return nil }
+
+// SetFeatures fails in this build: there is no data model to filter.
+func SetFeatures([]string) error { return ErrNoModel }
+
+// ResetFeatures is a no-op in this build.
+func ResetFeatures() {}
+
+// FeatureOnByProperty knows no feature in this build.
+func FeatureOnByProperty(string) (known, on bool) { return false, false }
+
+// FeaturedModel always fails in this build.
+func FeaturedModel() (*Model, error) { return nil, ErrNoModel }
+
+// GatedBy knows no gated field in this build.
+func GatedBy(string, string) []Feature { return nil }
+
+// FeatureNames is empty in this build.
+func FeatureNames([]Feature) string { return "" }
+
+// UsingOrgSchema is false in this build.
+func UsingOrgSchema() bool { return false }

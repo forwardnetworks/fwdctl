@@ -26,14 +26,28 @@ type PathQuery struct {
 	SnapshotID         string
 	MaxResults         int
 	MaxSeconds         int
+	ReturnPaths        int // > 0: also ask Forward for up to this many paths of the return flow (it sends none otherwise)
+	// WithNetworkFunctions asks Forward for each hop's ACLs and security zones. It costs Forward more work per path, so only a caller that shows them (investigate-reachability)
+	// sets it; the per-device and per-expectation searches of other skills do not.
+	WithNetworkFunctions bool
 }
 
 // Hop is one hop of a path, in a stable shape independent of the SDK's types.
 type Hop struct {
-	Device           string `json:"device"`
-	DisplayName      string `json:"display_name"`
-	IngressInterface string `json:"ingress_interface"`
-	EgressInterface  string `json:"egress_interface"`
+	Device           string   `json:"device"`
+	DisplayName      string   `json:"display_name"`
+	IngressInterface string   `json:"ingress_interface"`
+	EgressInterface  string   `json:"egress_interface"`
+	ACLs             []HopACL `json:"acls,omitempty"`
+	IngressZone      string   `json:"ingress_zone,omitempty"`
+	EgressZone       string   `json:"egress_zone,omitempty"`
+}
+
+// HopACL is an ACL (or policy) Forward evaluated on a hop: its name, where it applied (INGRESS or EGRESS) and what it did.
+type HopACL struct {
+	Name    string `json:"name"`
+	Context string `json:"context,omitempty"`
+	Action  string `json:"action,omitempty"`
 }
 
 // Path is one candidate path.
@@ -48,6 +62,8 @@ type PathResult struct {
 	TimedOut  bool   `json:"timed_out"`
 	TotalType string `json:"total_type"` // EXACT | LOWER_BOUND
 	Paths     []Path `json:"paths"`
+	// ReturnPaths are the paths of the return flow (destination back to source), only when PathQuery.ReturnPaths asked for them.
+	ReturnPaths []Path `json:"return_paths,omitempty"`
 }
 
 // ParseProtocol maps tcp/udp/icmp or a number to the IP protocol number.
@@ -79,22 +95,27 @@ func (s *Session) SearchPaths(ctx context.Context, networkID string, q PathQuery
 	if maxSeconds <= 0 {
 		maxSeconds = DefaultMaxSeconds
 	}
+	var returnPaths *int
+	if q.ReturnPaths > 0 {
+		returnPaths = &q.ReturnPaths
+	}
+	var withFunctions *bool
+	if q.WithNetworkFunctions {
+		on := true
+		withFunctions = &on
+	}
 	resp, _, err := s.Client.Networks.Paths(ctx, networkID, forward.PathSearchRequest{
 		From: q.From, SrcIP: q.SrcIP, DstIP: q.DstIP, Intent: q.Intent, SnapshotID: q.SnapshotID,
 		IPProto: proto, SrcPort: q.SrcPort, DstPort: q.DstPort,
-		MaxResults: &maxResults, MaxSeconds: &maxSeconds,
+		MaxResults: &maxResults, MaxSeconds: &maxSeconds, IncludeNetworkFunctions: withFunctions,
+		MaxReturnPathResults: returnPaths,
 	})
 	if err != nil {
 		return PathResult{}, err
 	}
-	out := PathResult{TimedOut: resp.TimedOut, TotalType: resp.Info.TotalHits.Type}
-	for _, p := range resp.Info.Paths {
-		path := Path{ForwardingOutcome: p.ForwardingOutcome, SecurityOutcome: p.SecurityOutcome}
-		for _, h := range p.Hops {
-			path.Hops = append(path.Hops, Hop{Device: h.DeviceName, DisplayName: h.DisplayName,
-				IngressInterface: h.IngressInterface, EgressInterface: h.EgressInterface})
-		}
-		out.Paths = append(out.Paths, path)
+	out := PathResult{TimedOut: resp.TimedOut, TotalType: resp.Info.TotalHits.Type, Paths: convertPaths(resp.Info.Paths)}
+	if q.ReturnPaths > 0 {
+		out.ReturnPaths = convertPaths(resp.ReturnPathInfo.Paths)
 	}
 	s.Annotate(intp(len(out.Paths)), out.TotalType == "LOWER_BOUND")
 	return out, nil
@@ -142,4 +163,25 @@ func Verdict(paths []Path, timedOut bool) string {
 		return "blocked"
 	}
 	return "undetermined"
+}
+
+// convertPaths turns the SDK's path results into ours, with each hop's ACLs and security zones when Forward sent them.
+func convertPaths(in []forward.NetworkPathResult) []Path {
+	var out []Path
+	for _, p := range in {
+		path := Path{ForwardingOutcome: p.ForwardingOutcome, SecurityOutcome: p.SecurityOutcome}
+		for _, h := range p.Hops {
+			hop := Hop{Device: h.DeviceName, DisplayName: h.DisplayName,
+				IngressInterface: h.IngressInterface, EgressInterface: h.EgressInterface}
+			if nf := h.NetworkFunctions; nf != nil {
+				for _, a := range nf.ACL {
+					hop.ACLs = append(hop.ACLs, HopACL{Name: a.Name, Context: a.Context, Action: a.Action})
+				}
+				hop.IngressZone, hop.EgressZone = nf.Ingress.SecurityZone, nf.Egress.SecurityZone
+			}
+			path.Hops = append(path.Hops, hop)
+		}
+		out = append(out, path)
+	}
+	return out
 }

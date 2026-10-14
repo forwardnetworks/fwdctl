@@ -206,5 +206,192 @@
    "of 2"
   ],
   "no_writes": true
+ },
+ {
+  "id": "grounding-ask-which-network",
+  "tier": "grounding",
+  "prompt": "Show me the BGP peers on the core router.",
+  "answer_has": [
+   "lab-a",
+   "lab-b"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "grounding-ask-for-endpoints",
+  "tier": "grounding",
+  "prompt": "Can the finance servers reach the internet? The network is n1.",
+  "answer_has_any": [
+   "which servers",
+   "which addresses",
+   "which ip",
+   "what ip",
+   "what address",
+   "specific address",
+   "need the",
+   "need to know",
+   "please provide",
+   "provide the",
+   "give me the",
+   "tell me which",
+   "which hosts",
+   "identify the finance",
+   "not sure which",
+   "source address",
+   "couldn't answer",
+   "could not answer",
+   "can't answer",
+   "cannot answer",
+   "unable to answer",
+   "no way to identify",
+   "don't have the",
+   "do not have the"
+  ],
+  "must_not_call": [
+   "GET /api/networks/n1/paths"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "investigate-bgp-down-peer",
+  "tier": "investigate",
+  "prompt": "In network n1, are all BGP sessions on r1 established? If not, which peer is down?",
+  "answer_has": [
+   "10.1.1.2"
+  ],
+  "answer_has_any": [
+   "idle",
+   "down",
+   "not established"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "investigate-bgp-config-mismatch",
+  "tier": "investigate",
+  "prompt": "The BGP session between r1 (10.1.1.1) and r2 (10.1.1.2) in network n1 is not coming up. Find out why from the devices' configuration.",
+  "answer_has": [
+   "65002",
+   "65003"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "investigate-what-changed",
+  "tier": "investigate",
+  "prompt": "What changed in edge1's configuration between snapshot s1 and snapshot s2 in network n1?",
+  "answer_has": [
+   "1.1.1.1",
+   "2.2.2.2"
+  ],
+  "must_call": "GET /api/diffs/s1/s2/files",
+  "no_writes": true
+ },
+ {
+  "id": "investigate-template-drift",
+  "tier": "investigate",
+  "prompt": "In network n1, r1, r2 and r3 should have the same NTP server. Which one is different, and what is it set to?",
+  "answer_has": [
+   "r3",
+   "10.9.9.9"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "investigate-db-port-drop",
+  "tier": "investigate",
+  "prompt": "In network n1, traffic from 10.0.0.1 to the database 10.0.1.1 on tcp port 1433 is being dropped. Which device stops it, and which rule?",
+  "answer_has": [
+   "fw01",
+   "outside-in"
+  ],
+  "must_call_before": [
+   "GET /api/networks/n1/paths",
+   "GET /api/networks/n1/devices/fw01/files/configuration.txt"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "investigate-mgmt-exposed",
+  "tier": "investigate",
+  "prompt": "In network n1, can 198.51.100.7 (an address outside our network) reach SSH on 10.0.0.1? Is management protected from outside?",
+  "answer_lacks": [
+   "not delivered",
+   "cannot reach",
+   "can't reach",
+   "not reachable",
+   "unreachable",
+   "is protected",
+   "is blocked",
+   "not exposed"
+  ],
+  "no_writes": true,
+  "answer_has_any": [
+   "is delivered",
+   "are delivered",
+   "can reach",
+   "reaches",
+   "is reachable",
+   "are reachable"
+  ]
+ },
+ {
+  "id": "investigate-shared-fate",
+  "tier": "investigate",
+  "prompt": "In network n1, traffic from 10.0.0.9 to 10.0.1.1 on tcp 443 has two paths. Are they redundant?",
+  "answer_has": [
+   "fw01"
+  ],
+  "answer_has_any": [
+   "shared",
+   "single point",
+   "not independent",
+   "same firewall",
+   "both pass",
+   "both cross",
+   "both traverse",
+   "not redundant"
+  ],
+  "answer_lacks": [
+   "are redundant",
+   "are fully redundant"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "register-ospf-terse",
+  "tier": "register",
+  "prompt": "I'm a network engineer. In network n1, are the OSPF areas configured consistently? Be brief.",
+  "answer_has": [
+   "stub"
+  ],
+  "first_words_have": [
+   "stub"
+  ],
+  "first_words": 40,
+  "max_words": 200,
+  "answer_lacks": [
+   "great question",
+   "ospf is a",
+   "let me explain"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "register-snmp-terse",
+  "tier": "register",
+  "prompt": "Which devices in network n1 use the SNMP community 'public'? Just the names.",
+  "answer_has": [
+   "r1",
+   "r2"
+  ],
+  "max_words": 80,
+  "answer_lacks": [
+   "snmpv3",
+   "insecure",
+   "you should",
+   "recommend"
+  ],
+  "no_writes": true
  }
 ]

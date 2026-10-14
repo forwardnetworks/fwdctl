@@ -19,7 +19,7 @@ affects. The answer is read from Forward's own snapshot metrics and task records
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run investigate-collection-failure --help`, or `reference/inputs.md`, `reference/timing.md`, `reference/views.md`.
+What each input means, and the fields per object and action: `fwdctl run investigate-collection-failure --help`, or `reference/inputs.md`, `reference/timing.md`, `reference/views.md`. For a cloud (AWS, Azure, GCP) collection that fails or drops, read `reference/cloud.md`.
 
 ## Evidence
 

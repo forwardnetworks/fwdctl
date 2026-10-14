@@ -86,6 +86,7 @@ func nqeTool(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		Diagnostics []nqelint.Diagnostic `json:"diagnostics"`
 		SchemaHints []nqeschema.Finding  `json:"schema_hints,omitempty"`
 		Schema      map[string]any       `json:"schema,omitempty"`
+		Features    []string             `json:"features,omitempty"`
 		Note        string               `json:"note"`
 	}{Valid: !nqelint.HasErrors(diags), Diagnostics: diags, Note: "offline: syntax, names, types and deprecations; the type check is gradual (silent where a type is unknown), so validate-nqe-query has the last word"}
 	if out.Diagnostics == nil {
@@ -93,6 +94,7 @@ func nqeTool(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	out.Schema = lintSchema
 	if lintSchema == nil { // offline: the schema is the one embedded in this release
+		out.Features = nqeschema.EnabledFeatures()
 		out.Note += "; checked against the schema embedded in this fwdctl release, so a target organization on a newer Forward build may have fields this lacks (and lack fields it has): use --org to check against the organization's live schema"
 	}
 	if m, err := nqeschema.Load(); err == nil {

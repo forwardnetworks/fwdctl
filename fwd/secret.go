@@ -66,7 +66,7 @@ func ReadSecret(file, env string) (Secret, error) {
 	return Secret{v: v}, nil
 }
 
-var secretKeyRe = regexp.MustCompile(`(?i)(pass(word|wd|phrase)?|secret|privatekey|sshkey|apikey|accesskey|community|authenticationkey|privacykey|signedlicensekey|licensekey|^token$|bearer|authorization|credentialvalue|signingkey|clientsecret)`)
+var secretKeyRe = regexp.MustCompile(`(?i)(pass(word|wd|phrase)?|secret|privatekey|sshkey|apikey|accesskey|community|authenticationkey|privacykey|signedlicensekey|licensekey|^token$|bearer|authorization|credentialvalue|signingkey|clientsecret|externalid)`)
 
 // SecretKey says whether a JSON field name holds a secret, by name. It errs on the side of hiding.
 func SecretKey(name string) bool { return secretKeyRe.MatchString(name) }

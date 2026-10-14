@@ -186,6 +186,7 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 		read++
 		total += len(ca)
 		rows := make([]map[string]any, 0, len(ca))
+		capSeen, membersSeen := false, false
 		for _, c := range ca {
 			row := map[string]any{"name": c.Name, "type": c.Type, "collect": c.Collect}
 			var regions []map[string]any
@@ -217,6 +218,28 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			if failing > 0 {
 				row["failing_tests"] = failing
 			}
+			if m := memberAccounts(c.AssumeRoleInfos); m != nil {
+				row["member_accounts"] = m
+				membersSeen = true
+			}
+			if c.HasCAPCredential() {
+				row["cap_credential"] = true
+				row["c2s_accounts"] = c2sAccounts(c.AWSC2SAccountInfos)
+				capSeen = true
+				// the portal's URL and whether a CA is set, never the client certificate; a login without VIEW_DEVICE_CREDENTIALS gets a limit instead
+				if id := c.AWSCapCredentialID; id != "" {
+					if cred, _, cerr := s.Client.CloudAccounts.GetAWSCapCredential(ctx, in.NetworkID, id); cerr != nil {
+						if op, ok := forward.MissingPermission(cerr); ok {
+							limits = append(limits, fmt.Sprintf("the access portal URL of %q could not be read: this login lacks %s", c.Name, op))
+						} else {
+							limits = append(limits, fmt.Sprintf("the access portal URL of %q could not be read: %v", c.Name, cerr))
+						}
+					} else {
+						row["cap_server_url"] = cred.BaseCapServerURL
+						row["cap_ca_set"] = cred.HasCertificateAuthority
+					}
+				}
+			}
 			if c.ProxyServerID != "" {
 				row["proxy_server_id"] = c.ProxyServerID
 			}
@@ -226,6 +249,12 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			rows = append(rows, row)
 		}
 		detail["cloud_setups"] = rows
+		if capSeen {
+			limits = append(limits, "cap_credential marks an AWS setup collected through a C2S Access Portal credential: it collects the accounts in c2s_accounts, or every account the portal returns when that list is empty; the enabled flags in member_accounts are not used for it (from Forward's source, not confirmed on a live setup), and the credential's client certificate is never shown (the portal URL and whether a CA is set are)")
+		}
+		if membersSeen {
+			limits = append(limits, "member_accounts (a setup that discovers accounts, AWS assume-role): each account's enabled flag and Forward's last error for it (accounts that are on and erroring come first, then disabled ones, then the rest, so a row cap hides none of them). Forward keeps the last error message, so an error on a disabled account may be old, except on a cap_credential setup, where the enabled flags are not used and an account shown as off may still be requested. The role ARN and external id are not shown. Change the flags with edit-source object cloud_account action update")
+		}
 		limits = append(limits, "cloud_setups lists each cloud collection source with its configured regions and the result of its last connectivity TEST (not of the last collection: Forward keeps no per-setup collection outcome here). The regions decide which zones Forward keeps from the cloud's aggregated lists, so a missing instance can be a region that is not listed; collector errors during a collection are in investigate-collection-failure view exceptions, and inspect-inventory kind cloud_accounts shows whether each account was collected. Credentials are never read or shown")
 	}
 	if dfs, _, err := s.Client.DataFiles.List(ctx); err != nil {
@@ -520,4 +549,62 @@ func topDeviceCounts(m map[string]int, n int) []map[string]any {
 		out = append(out, map[string]any{"name": fmt.Sprintf("(other %d groups)", restN), "devices": rest})
 	}
 	return out
+}
+
+const maxMemberAccountRows = 25
+
+// memberAccounts summarises the member accounts a cloud setup discovered (AWS assume-role): how many are on, how many are on and carry an error, and each account's
+// id, name, enabled flag and Forward's last error (capped). Nil when the setup has none. The role ARN and external id are left out on purpose.
+func memberAccounts(infos []forward.AWSAssumeRoleInfo) map[string]any {
+	if len(infos) == 0 {
+		return nil
+	}
+	enabled, withError := 0, 0
+	for _, x := range infos {
+		if x.Enabled {
+			enabled++
+			if x.ErrorMsg != "" {
+				withError++
+			}
+		}
+	}
+	// the accounts worth a look come first, so the row cap never hides them: enabled with an error, then disabled, then the rest
+	rank := func(x forward.AWSAssumeRoleInfo) int {
+		switch {
+		case x.Enabled && x.ErrorMsg != "":
+			return 0
+		case !x.Enabled:
+			return 1
+		}
+		return 2
+	}
+	sorted := append([]forward.AWSAssumeRoleInfo(nil), infos...)
+	sort.SliceStable(sorted, func(i, j int) bool { return rank(sorted[i]) < rank(sorted[j]) })
+	shown, total := result.CapRow(sorted, maxMemberAccountRows)
+	rows := make([]map[string]any, 0, len(shown))
+	for _, x := range shown {
+		row := map[string]any{"account_id": x.AccountID, "enabled": x.Enabled}
+		if x.AccountName != "" {
+			row["name"] = x.AccountName
+		}
+		if x.ErrorMsg != "" {
+			row["error"] = oneLineNote(x.ErrorMsg)
+		}
+		rows = append(rows, row)
+	}
+	return map[string]any{"total": total, "enabled": enabled, "disabled": total - enabled, "enabled_with_error": withError, "rows": rows, "rows_shown": len(rows)}
+}
+
+// c2sAccounts is a C2S Access Portal setup's account list as the answer shows it: how many accounts it holds and (capped) their ids and roles. An empty list means Forward
+// collects every account the portal returns.
+func c2sAccounts(accounts []forward.AWSC2SAccountInfo) map[string]any {
+	if len(accounts) == 0 {
+		return map[string]any{"count": 0, "note": "empty: every account the portal returns is collected"}
+	}
+	shown, total := result.CapRow(accounts, maxMemberAccountRows)
+	rows := make([]map[string]any, 0, len(shown))
+	for _, a := range shown {
+		rows = append(rows, map[string]any{"account_id": a.AccountID, "role": a.AccountRole})
+	}
+	return map[string]any{"count": total, "rows": rows, "rows_shown": len(rows)}
 }

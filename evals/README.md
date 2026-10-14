@@ -32,3 +32,23 @@ expects `unknown`.
 
 Forward's own agent evaluations (143 tasks, with a judging rubric per set) are in [../eval](../eval); score those the same way
 once the Copilot uses the skills.
+
+## The standalone-help eval (evals/standalone)
+
+Can an agent finish a task with only `fwdctl --help` (no skills, no docs), and does it stay grounded? `python3 evals/standalone/run.py --bin DIR_WITH_FWDCTL --model haiku|sonnet --arm without|with [--only id,id] [--repeat N] [--out DIR]` starts `fake_forward.py` (a tiny HTTP server with canned, synthetic JSON per `METHOD /path` in `routes.json`), runs each task in `tasks.json` with a headless `claude -p` that has Bash and Read only, and scores from the fake's request log and the final answer. No judge model. Unrouted requests answer 599 and are reported as `fixture_gaps`, so a missing fixture never looks like a model failure. A route may carry `variants` (the first whose `if` is a substring of the request path with its query, or of the body, wins; put specific ones first) and a `text` body served as plain text (a configuration file).
+
+A task is `{id, prompt, tier, files?}` plus checks, all plain substring matches on the lowercased answer, so write them as affirmative phrases: a check like `answer_lacks: "all match"` also fails the correct answer "not all match".
+
+| Check | Meaning |
+|---|---|
+| `answer_has`, `answer_has_any` | every phrase is in the answer / at least one is |
+| `answer_lacks` | none of these phrases is (a secret, or a wrong conclusion) |
+| `first_words_have`, `first_words` | the finding is in the first N words (default 40) |
+| `max_words`, `max_tool_calls` | the answer or the work is no longer than this (register checks: soft, not a gate) |
+| `must_call`, `must_not_call` | a request `METHOD /path` was (not) made |
+| `must_call_before` | the first request happens before the second (evidence before the config read) |
+| `must_write`, `body_has` | a write was made and some request of that kind carried every `body_has` string |
+| `no_writes` | no request other than a read (an NQE run is a read) |
+
+Tiers: `grounding` (answer from what was queried, not from the conversation or the user's claim; a missing thing is said to be missing; ask when the question is underspecified), `investigate` (a multi-step read ending in a concrete finding), `register` (brief, in the reader's vocabulary), the rest are tool use. A grounding or investigate failure is a blocker; a register failure is soft. One run of a model is noisy: use `--repeat 3` before reading anything into a single failure, and read the model's answer before blaming the model, because the check or the fixture is as often at fault.
+

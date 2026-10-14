@@ -15,11 +15,11 @@ A procedure, not a skill that runs. Forward is a model of the last collection, n
 
 ## Steps
 
-1. **How old is the picture?** `inspect-snapshots` and `inspect-collection` (view status): newest processed snapshot, last collection, collector connected. If the picture predates the incident, ask for a fresh collection (`plan-snapshot-recovery`) before diagnosing.
+1. **How old is the picture?** `inspect-snapshots` and `inspect-collection` (view status): newest processed snapshot, last collection, collector connected. If the picture predates the incident, ask for a fresh collection (`plan-snapshot-recovery`) before diagnosing. House guidance, not a Forward fact: under about an hour old, say the age and go on; a few hours old, say the age and what could have changed since; over about four hours old during an active incident, ask for a fresh collection before concluding; over a day old, treat it as history, not as current state.
 2. **What changed?** `plan-what-changed` for the interval around the start of the incident: configuration and state differences are the strongest leads.
 3. **Anything stressed?** `inspect-performance` unhealthy views (CPU, memory, interface errors, utilisation), only where samples exist.
 4. **Policy regression?** `check-network-compliance` with `view: read`, failing checks first; `inspect-history` for when each started.
-5. **Which flow?** For the symptom the person reports, `plan-troubleshoot-connectivity`.
+5. **Which flow?** For the symptom the person reports, `plan-troubleshoot-connectivity`. For a suspect or compromised address, run `investigate-reachability` from it to each target the person names (domain controllers, databases, management subnets, the internet boundary) and report how many of the targets are reachable, each with its path or the device that stops it; never guess the target list.
 
 ## Freedom
 
