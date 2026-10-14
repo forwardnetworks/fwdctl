@@ -62,3 +62,4 @@ Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fw
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe compare-device-config reference/<file>`).
 
 - [reference/peer-drift.md](reference/peer-drift.md): comparing a device with its peers (outliers, one level deep, intended versus actual). Read for a peer comparison.
+- `fwdctl describe inspect-device-files reference/vendor-reading.md`: how to read a changed rule or policy by vendor (order, referenced objects, paired devices). Read before saying what a changed rule now does.

@@ -56,4 +56,4 @@ Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fw
 
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe inspect-device-files reference/<file>`).
 
-- [reference/vendor-reading.md](reference/vendor-reading.md): why a missing line is not an answer (feature gates, groups, dormant objects, partial views). Read before saying something is not configured.
+- [reference/vendor-reading.md](reference/vendor-reading.md): why a missing line is not an answer (feature gates, groups, dormant objects, partial views), and how to read a rule or policy (order, referenced objects, paired devices, contexts). Read before saying something is not configured or what a rule does.
