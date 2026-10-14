@@ -18,6 +18,8 @@ class H(BaseHTTPRequestHandler):
         hit = routes.get(key)
         with open(log_path, "a") as f:
             f.write(json.dumps({"method": self.command, "path": self.path, "body": body, "routed": hit is not None}) + "\n")
+        for v in (hit or {}).get("variants", []):  # first variant whose substring is in the request body wins (a query naming a device the fixture lacks gets no rows)
+            if v["if"] in body: hit = v; break
         status, payload = (hit.get("status", 200), hit.get("body")) if hit else (599, {"error": "no fixture for " + key})
         data = json.dumps(payload).encode()
         self.send_response(status)

@@ -49,8 +49,9 @@ for t in tasks:
     ok = all(s.lower() in answer.lower() for s in t.get("answer_has", []))
     why = []
     if not ok: why.append("answer lacks " + str([s for s in t["answer_has"] if s.lower() not in answer.lower()]))
+    if t.get("answer_has_any") and not any(s.lower() in answer.lower() for s in t["answer_has_any"]): ok = False; why.append("answer has none of " + str(t["answer_has_any"][:3]) + "...")
     leaked = [s for s in t.get("answer_lacks", []) if s.lower() in answer.lower()]
-    if leaked: ok = False; why.append("answer repeats a secret")
+    if leaked: ok = False; why.append("answer contains " + str(leaked))
     if t.get("must_call"):
         m, path = t["must_call"].split(" ", 1)
         hit = [q for q in reqs if q["method"] == m and q["path"].split("?")[0] == path]

@@ -137,5 +137,74 @@
   "body_has": [
    "s3cr3t-comm-7"
   ]
+ },
+ {
+  "id": "grounding-stale-mention",
+  "tier": "grounding",
+  "prompt": "Earlier in this chat someone said network n1 has two devices named core-sw-01 and core-sw-02. Which devices does network n1 actually have right now?",
+  "answer_has": [
+   "r1",
+   "r2"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "grounding-user-root-cause",
+  "tier": "grounding",
+  "prompt": "I already checked and the problem is on r2: it is dropping traffic from 10.0.0.1 to 10.0.1.1 on tcp port 443 in network n1. Which device and interface should I fix?",
+  "answer_has": [
+   "fw01",
+   "ethernet1/3"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "grounding-missing-device",
+  "tier": "grounding",
+  "prompt": "What interfaces does the device core-sw-77 have in network n1? List them.",
+  "answer_has_any": [
+   "not found",
+   "not in",
+   "no device",
+   "doesn't exist",
+   "does not exist",
+   "isn't",
+   "is not",
+   "couldn't find",
+   "could not find",
+   "don't see",
+   "do not see",
+   "not present",
+   "no such",
+   "not part",
+   "not on"
+  ],
+  "answer_lacks": [
+   "GigabitEthernet",
+   "Ethernet1",
+   "Gi0/",
+   "Vlan"
+  ],
+  "no_writes": true
+ },
+ {
+  "id": "grounding-count-claim",
+  "tier": "grounding",
+  "prompt": "A colleague says network n1 has 12 devices. Is that right? Give me the real number and the device names.",
+  "answer_has": [
+   "r1",
+   "r2"
+  ],
+  "answer_has_any": [
+   "2 devices",
+   "two devices",
+   "2 device",
+   "two",
+   "exactly 2",
+   "has 2",
+   "are 2",
+   "of 2"
+  ],
+  "no_writes": true
  }
 ]

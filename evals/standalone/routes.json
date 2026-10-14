@@ -233,7 +233,17 @@
    ],
    "totalNumItems": 2,
    "snapshotId": "s2"
-  }
+  },
+  "variants": [
+   {
+    "if": "core-sw-77",
+    "body": {
+     "items": [],
+     "totalNumItems": 0,
+     "snapshotId": "s2"
+    }
+   }
+  ]
  },
  "GET /api/networks/n1/snmpCredentials": {
   "body": []
