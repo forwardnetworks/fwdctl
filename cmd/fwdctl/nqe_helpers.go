@@ -40,3 +40,14 @@ func inlineSizeWarning(bytes int) string {
 	}
 	return fmt.Sprintf("this query is %d KB sent inline: Forward analyses an inline query again on every cold run and a very large one can back up the analysis queue. Save it to the NQE library and run it with --query-id (the analysis is cached by query, snapshot and parameters)", bytes/1024)
 }
+
+// estimateTotalBytes is the size, as text, a whole result would be, extrapolated from the rows of one page: what a job needs to decide to page, or to pass --allow-large, before paying for the full run.
+func estimateTotalBytes(page []map[string]any, total int64) int64 {
+	if len(page) == 0 {
+		return 0
+	}
+	if total <= int64(len(page)) {
+		return estimateRowsBytes(page)
+	}
+	return estimateRowsBytes(page) / int64(len(page)) * total
+}

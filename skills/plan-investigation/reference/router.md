@@ -55,6 +55,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Drive a synthetic node (internet, intranet, L3 VPN, L2 VPN, adjacent network) from a saved NQE query, or take it off | `edit-synthetic-query` (dry run first) |
 | Add a link Forward missed, or ignore a wrong one, in a snapshot's topology | `edit-link-overrides` (dry run first) |
 | What a device connects to, which sites, tags or aliases exist | `inspect-topology` |
+| Diff the rows of an ad-hoc NQE query between two snapshots, tens of thousands of changed rows, added or removed or modified rows by key (rules, routes, anything) | `fwdctl nqe diff --before-snapshot A --after-snapshot B --file q.nqe --key COL,COL` (exact counts, every difference in `--out`); `compare-nqe-results` is for a query already saved in the library and shows at most 100 rows |
 | How many endpoints of a profile are collected, which endpoints failed, endpoints by profile, how many endpoints are switched off | `inspect-inventory` with kind `endpoints` |
 | End of support, end of life, EoS, EoL, devices past their last support date, OS lifecycle coverage, devices with no lifecycle record | `inspect-inventory` with kind `lifecycle` |
 | How much of a cloud network was collected, which cloud accounts or subscriptions were not collected and why, cloud coverage by setup | `inspect-inventory` with kind `cloud_coverage` |

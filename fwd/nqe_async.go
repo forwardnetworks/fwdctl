@@ -26,6 +26,8 @@ type NQEMeta struct {
 	// QueuedMillis is measured by this client: the time from submitting the execution to the first status that was no longer waiting (EXECUTING or done). It covers Forward's queue and analysis wait,
 	// to the granularity of the poll (about a second); the wall time minus MillisExecuting minus this is transfer and polling.
 	QueuedMillis *int64 `json:"queued_millis,omitempty"`
+	// EstimatedTotalBytes is, for one page of a larger result, the size the whole result would be as text (extrapolated from the page), so a job can choose to page before paying for the full run.
+	EstimatedTotalBytes *int64 `json:"estimated_total_bytes,omitempty"`
 	// Note is advice about this run, for example that a failure came from Forward's cache.
 	Note string `json:"note,omitempty"`
 	// Attempts is how many times the run was tried when --retry-transient allowed more than one; TransportClean is false when a retry was needed (a Forward restart or a gateway failure).

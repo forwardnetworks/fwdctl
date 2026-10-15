@@ -357,6 +357,11 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 			fwd.MetaFromError(&meta, err)
 		}
 		meta.Mode = map[bool]string{true: "async", false: "sync"}[*asyncRun]
+		if *pageLimit > 0 && total > int64(len(rows)) {
+			if est := estimateTotalBytes(rows, total); est > 0 {
+				meta.EstimatedTotalBytes = &est
+			}
+		}
 		// Forward caches an execution by a normalised form of the query (a comment, an unused let and useLatestDataFiles were all measured to reuse it; a filter on a changing
 		// constant was measured NOT to be folded away, so it makes a new execution). A real execution takes at least the time Forward recorded for it, so a wall time below that
 		// means the result came from the cache (measured: a hit took 43.7s against 114.6s recorded; a cold run 165-175s against 115-117s, polling and transfer included)
@@ -414,6 +419,9 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 	fmt.Fprintln(stderr)
 	if paged {
 		fmt.Fprintf(stderr, "page: rows %d-%d of %d (offset %d, limit %d)\n", *pageOffset, *pageOffset+len(rows), total, *pageOffset, *pageLimit)
+		if est := estimateTotalBytes(rows, total); total > int64(len(rows)) && est > 0 {
+			fmt.Fprintf(stderr, "the whole result would be about %d MB as text (%d rows)%s\n", est>>20, total, map[bool]string{true: ": over the 100 MB limit, so a full run needs --allow-large (write to a file) or paging", false: ""}[est > maxOutputBytes])
+		}
 	} else if truncated {
 		fmt.Fprintf(stderr, "note: %d rows exist; the first %d are shown (--max raises the bound)\n", total, len(rows))
 	}

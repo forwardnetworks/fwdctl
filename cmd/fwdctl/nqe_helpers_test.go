@@ -47,3 +47,14 @@ func TestHugeInlineQueryWarningNamesTheRemedy(t *testing.T) {
 		t.Errorf("large: %q", w)
 	}
 }
+
+func TestEstimatedTotalBytesFromAPage(t *testing.T) {
+	rows := []map[string]any{{"a": strings.Repeat("x", 90)}, {"a": strings.Repeat("y", 90)}}
+	est := estimateTotalBytes(rows, 1000)
+	if est < 90_000 || est > 130_000 {
+		t.Errorf("1000 rows of ~100 bytes should estimate ~100 KB, got %d", est)
+	}
+	if estimateTotalBytes(nil, 1000) != 0 || estimateTotalBytes(rows, 2) != estimateRowsBytes(rows) {
+		t.Errorf("an empty page has no estimate, and a page that is everything is its own size")
+	}
+}
