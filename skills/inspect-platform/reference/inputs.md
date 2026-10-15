@@ -12,7 +12,7 @@
 | `cloud_setups` | network | cloud accounts, controller-managed and Mist setups, with regions and collect flags |
 | `locations`, `tag_definitions` | network | locations, and the device tags defined on the network |
 | `access_labels`, `api_tokens` | organization | device access labels; this login's own API tokens (names and dates) |
-| `webhooks`, `banners`, `certificates`, `organizations`, `cve_index` | organization | as named; a webhook with its last test result |
+| `webhooks`, `banners`, `certificates`, `organizations`, `cve_index` | organization | as named; a webhook with its last test result; `banners` also reads the system announcement and the critical states |
 | `org_properties` | organization (`org_id`, or `network_id` to find it) | every organization property: effective value and its source (org, global override or compiled default), plus the appserver build |
 | `dashboards`, `scorecards`, `scorecard_trends` | network | custom dashboards (raw layout); scorecard definitions and the latest snapshot's scores; each scorecard's score over the last 90 days (first, latest, min, max, change). **Unpublished Forward API** |
 | `integrations` | organization (`network_id` adds Rapid7) | ServiceNow, Infoblox and Rapid7, without passwords |

@@ -248,10 +248,50 @@ var platformAreas = map[string]platformArea{
 		}
 		return out, append(lim, "access and secret keys are never returned"), nil
 	}},
-	"banners": {false, "custom banners", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
+	"banners": {false, "banner rows (custom banners, the system announcement on SaaS, the org-wide critical states)", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		v, _, err := s.Client.Banners.List(ctx)
 		r, err := rowsOf(v, err)
-		return r, nil, err
+		if err != nil {
+			return nil, nil, err
+		}
+		var lim []string
+		// the other banners are best effort: a failed read is a limit, never the area's failure
+		if a, _, aerr := s.Client.Banners.Announcement(ctx); errors.Is(aerr, forward.ErrEndpointNotServed) {
+			lim = append(lim, "no system announcement: this Forward does not serve them (on-prem has none)")
+		} else if aerr != nil {
+			lim = append(lim, "the system announcement could not be read: "+aerr.Error())
+		} else if a == nil {
+			lim = append(lim, "no system announcement is posted")
+		} else if g, gerr := fwd.Generic(a); gerr == nil {
+			r = append(r, map[string]any{"system_announcement": g})
+		}
+		if cs, _, cerr := s.Client.Banners.CriticalStates(ctx); cerr != nil {
+			lim = append(lim, "the critical states could not be read: "+cerr.Error())
+		} else if cs != nil {
+			active := append([]string{}, cs.Active()...)
+			if ts, _, terr := s.Client.Licensing.TierAndStatus(ctx); terr == nil && ts != nil {
+				if st := forward.LicenseStatusCriticalState(ts.LicenseStatus); st != "" {
+					active = append([]string{st}, active...)
+				}
+			} else if terr != nil {
+				lim = append(lim, "the license status could not be read, so UNLICENSED, LICENSE_EXPIRED and LICENSE_NOT_STARTED_YET (derived from it, not sent by the server) are not shown: "+terr.Error())
+			}
+			row := map[string]any{"active": active, "reported": cs.Reported}
+			if cs.MaintenanceWindow != nil {
+				row["maintenance_window"] = map[string]any{"start": cs.MaintenanceWindow.Start, "end": cs.MaintenanceWindow.End}
+			}
+			if len(cs.Unknown) > 0 {
+				names := make([]string, 0, len(cs.Unknown))
+				for n := range cs.Unknown {
+					names = append(names, n)
+				}
+				sort.Strings(names)
+				row["unmodelled"] = names
+				lim = append(lim, "critical states this build does not model by name are listed under unmodelled with their raw values omitted: "+strings.Join(names, ", "))
+			}
+			r = append(r, map[string]any{"critical_states": row})
+		}
+		return r, lim, nil
 	}},
 	"certificates": {false, "trusted certificates", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		v, _, err := s.Client.TrustedCertificates.List(ctx)

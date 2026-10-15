@@ -64,7 +64,7 @@ func TestEditPlatformCertificatesAddRefusesNonPEMAndApplyNeedsConfirm(t *testing
 }
 
 func TestEditPlatformBannerUpdateDisables(t *testing.T) {
-	b := map[string]any{"id": "b1", "enabled": true, "message": "hi", "backgroundColor": "#fff", "networkIds": []any{"1"}}
+	b := map[string]any{"id": "b1", "enabled": true, "message": "hi", "backgroundColor": "RED", "networkIds": []any{"1"}}
 	routes := map[string]fwdtest.Handler{
 		"GET /api/custom-banners":    func(*http.Request, []byte) (int, any) { return 200, map[string]any{"banners": []any{b}} },
 		"PUT /api/custom-banners/b1": func(*http.Request, []byte) (int, any) { b["enabled"] = false; return 200, nil },
@@ -271,7 +271,7 @@ func TestEditPlatformBackupsSettingsS3AndTrigger(t *testing.T) {
 }
 
 func TestEditPlatformBannerDeleteInfobloxChangeAndWebhookCredential(t *testing.T) {
-	banners := []any{map[string]any{"id": "b1", "enabled": true, "message": "hi", "backgroundColor": "#fff", "networkIds": []any{"1"}}}
+	banners := []any{map[string]any{"id": "b1", "enabled": true, "message": "hi", "backgroundColor": "RED", "networkIds": []any{"1"}}}
 	infoblox := []any{map[string]any{"id": "5", "name": "ipam", "ipAddress": "10.0.0.5", "username": "u"}}
 	var infoSent, hookSent string
 	hook := map[string]any{"name": "ops", "url": "https://h.example", "enabled": true}
@@ -307,5 +307,30 @@ func TestEditPlatformBannerDeleteInfobloxChangeAndWebhookCredential(t *testing.T
 	}
 	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"webhooks","action":"update","name":"ops","definition":{"credential_type":"BASIC","credential_username":"u","disable_ssl_validation":true},"secret_file":"`+f+`","apply":true}`); r.Status != result.OK || !strings.Contains(hookSent, plantedPlatform) || strings.Contains(jsonOf(r), plantedPlatform) {
 		t.Errorf("webhook credential: %s %s", r.Status, hookSent)
+	}
+}
+
+// Forward's banner color is one of five names (the Color enum behind the UI's banner manager), not a CSS color: anything else is refused before a write is planned, a lower-case name is accepted and
+// sent in Forward's spelling, and the create's undo names the delete the API does have.
+func TestEditPlatformBannerColorIsOneOfForwardsFiveNames(t *testing.T) {
+	var sent map[string]any
+	routes := map[string]fwdtest.Handler{
+		"GET /api/custom-banners": func(*http.Request, []byte) (int, any) { return 200, map[string]any{"banners": []any{}} },
+		"POST /api/custom-banners": func(_ *http.Request, body []byte) (int, any) {
+			_ = json.Unmarshal(body, &sent)
+			return 200, map[string]any{"id": "b2", "message": "m"}
+		},
+	}
+	for _, bad := range []string{"#ff0000", "blue", ""} {
+		if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"banners","action":"create","definition":{"message":"m","background_color":"`+bad+`","network_ids":["1"]}}`); err == nil || !strings.Contains(err.Error(), "RED, ORANGE, YELLOW, GREEN, PURPLE") {
+			t.Errorf("color %q should be refused naming the five: %v", bad, err)
+		}
+	}
+	r, _ := mustRun(t, "edit-platform", routes, `{"area":"banners","action":"create","definition":{"message":"m","background_color":"orange","network_ids":["1"]},"apply":true}`)
+	if sent["backgroundColor"] != "ORANGE" {
+		t.Errorf("sent %v", sent)
+	}
+	if len(r.Changes) == 0 || strings.Contains(r.Changes[0].Undo, "no banner delete") {
+		t.Errorf("undo = %+v", r.Changes)
 	}
 }

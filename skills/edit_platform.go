@@ -71,13 +71,28 @@ func editPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		plan, err = planOrganization(ctx, s, in)
 	case "cve_index":
 		plan, err = planCVEIndex(ctx, s, in)
+	case "collectors":
+		plan, err = planPlatformCollector(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: area must be banners, webhooks, certificates, access_labels, backups, integrations, collection_settings, saml, api_tokens, licensing, organizations or cve_index", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: area must be banners, webhooks, certificates, access_labels, backups, integrations, collection_settings, saml, api_tokens, licensing, organizations, cve_index or collectors", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err
 	}
 	return finishPlan(ctx, editPlatformName, cx, plan, in.Area, in.Action, in.Apply, in.Confirm)
+}
+
+// bannerColors are the names of Forward's banner Color enum, the five the UI's banner manager offers. Forward does not take a CSS color.
+var bannerColors = []string{"RED", "ORANGE", "YELLOW", "GREEN", "PURPLE"}
+
+func bannerColor(c string) (string, error) {
+	u := strings.ToUpper(strings.TrimSpace(c))
+	for _, v := range bannerColors {
+		if u == v {
+			return u, nil
+		}
+	}
+	return "", fmt.Errorf("%w: background_color %q is not a banner color; Forward takes one of %s", ErrInvalidInput, c, strings.Join(bannerColors, ", "))
 }
 
 func planBanner(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
@@ -100,11 +115,14 @@ func planBanner(ctx context.Context, s *fwd.Session, in editPlatformInput) (*net
 		if def.Message == nil || def.BackgroundColor == nil || len(def.NetworkIDs) == 0 {
 			return nil, fmt.Errorf("%w: create needs message, background_color and network_ids", ErrInvalidInput)
 		}
-		req := forward.CustomBannerRequest{Enabled: def.Enabled == nil || *def.Enabled, Message: *def.Message, BackgroundColor: *def.BackgroundColor, NetworkIDs: def.NetworkIDs}
+		color, cerr := bannerColor(*def.BackgroundColor)
+		if cerr != nil {
+			return nil, cerr
+		}
+		req := forward.CustomBannerRequest{Enabled: def.Enabled == nil || *def.Enabled, Message: *def.Message, BackgroundColor: color, NetworkIDs: def.NetworkIDs}
 		return &networkPlan{target: "create a banner", action: "create_banner", before: nil, after: req, reversible: true,
-			undo:   "update the banner with enabled=false (the API has no banner delete)",
-			limits: []string{"a banner cannot be deleted through the API; disabling it hides it"},
-			do:     func(ctx context.Context) error { _, _, err := s.Client.Banners.Create(ctx, req); return err },
+			undo: "update the banner with enabled=false to hide it, or delete it (action delete, confirm = its id)",
+			do:   func(ctx context.Context) error { _, _, err := s.Client.Banners.Create(ctx, req); return err },
 			verify: func(ctx context.Context) (bool, any, error) {
 				bs, err := list(ctx)
 				for _, b := range bs {
@@ -134,7 +152,11 @@ func planBanner(ctx context.Context, s *fwd.Session, in editPlatformInput) (*net
 				next.Message = *def.Message
 			}
 			if def.BackgroundColor != nil {
-				next.BackgroundColor = *def.BackgroundColor
+				color, cerr := bannerColor(*def.BackgroundColor)
+				if cerr != nil {
+					return nil, cerr
+				}
+				next.BackgroundColor = color
 			}
 			if def.NetworkIDs != nil {
 				next.NetworkIDs = def.NetworkIDs

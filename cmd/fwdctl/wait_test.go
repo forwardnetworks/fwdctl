@@ -167,3 +167,44 @@ func TestNqeRunRetriesAGatewayErrorOnlyWhenAskedAndRecordsTheAttempts(t *testing
 		t.Errorf("the meta records the attempts and that the run was not transport-clean: %s", b)
 	}
 }
+
+func coll(status string) *forward.Collector {
+	return &forward.Collector{ID: "C9", Name: "lab", Username: "collector-ab12", ConnectionStatus: status}
+}
+
+func runWaitCollector(t *testing.T, seq []any, timeout time.Duration) (int, string, string) {
+	t.Helper()
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	i := 0
+	get := func(context.Context) (*forward.Collector, error) {
+		v := seq[min(i, len(seq)-1)]
+		i++
+		if err, ok := v.(error); ok {
+			return nil, err
+		}
+		c, _ := v.(*forward.Collector)
+		return c, nil
+	}
+	var out, errb bytes.Buffer
+	code := waitForCollector(context.Background(), get, "lab", timeout, time.Minute, clk.sleep, clk.now, &out, &errb)
+	return code, out.String(), errb.String()
+}
+
+func TestWaitCollectorReachesConnectedAndSaysSoOnTimeoutOrADeletedCollector(t *testing.T) {
+	code, out, _ := runWaitCollector(t, []any{coll("NEVER_CONNECTED"), coll("NEVER_CONNECTED"), coll("CONNECTED")}, time.Hour)
+	if code != waitReached || !strings.Contains(out, `"status":"ok"`) || !strings.Contains(out, `"connection":"CONNECTED"`) || !strings.Contains(out, `"waited_seconds":120`) {
+		t.Fatalf("code %d out %s", code, out)
+	}
+	code, out, errs := runWaitCollector(t, []any{coll("NEVER_CONNECTED")}, 5*time.Minute)
+	if code != waitTimedOut || !strings.Contains(out, `"status":"timed_out"`) || !strings.Contains(errs, "TOKEN") {
+		t.Fatalf("a collector that never connects times out and the hint names the TOKEN: %d %s %s", code, out, errs)
+	}
+	code, out, _ = runWaitCollector(t, []any{coll("DISCONNECTED"), (*forward.Collector)(nil)}, time.Hour)
+	if code != waitFailed || !strings.Contains(out, `"status":"failed"`) {
+		t.Fatalf("a collector that no longer exists cannot connect: %d %s", code, out)
+	}
+	code, _, errs = runWaitCollector(t, []any{errors.New("boom")}, time.Hour)
+	if code != 3 || !strings.Contains(errs, "5 polls") {
+		t.Fatalf("code %d %s", code, errs)
+	}
+}

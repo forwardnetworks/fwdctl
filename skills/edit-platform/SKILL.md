@@ -21,7 +21,7 @@ Change what an administrator sets up for the whole organization, not for one net
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run edit-platform --help`, or `reference/inputs.md`, `reference/areas.md`.
+What each input means, and the fields per object and action: `fwdctl run edit-platform --help`, or `reference/inputs.md`, `reference/areas.md`. Standing up a new collector (register, run, wait, attach): `reference/collectors.md`.
 
 ## Dry run
 

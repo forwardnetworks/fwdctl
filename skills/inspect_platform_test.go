@@ -133,3 +133,37 @@ func TestPlatformOrgPropertiesTellsWhatLoginIsNeededOn403(t *testing.T) {
 		t.Errorf("a 403 for support authority says which login is needed and who can run it: %s / %s", r.Status, lim)
 	}
 }
+
+// The banners area reads every banner the UI can show: the org's custom banners, the operator's system announcement (SaaS only; on-prem has none and that is not a failure), and the org-wide critical
+// states with the license-derived ones, the scheduled maintenance window, and any state this build does not know by name.
+func TestPlatformBannersIncludeTheSystemAnnouncementAndCriticalStates(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/custom-banners":       fwdtest.Const(200, map[string]any{"banners": []any{map[string]any{"id": "b1", "enabled": true, "message": "freeze", "backgroundColor": "RED", "networkIds": []any{"1"}}}}),
+		"GET /api/system-announcement":  fwdtest.Const(200, map[string]any{"announcement": map[string]any{"message": "Upgrade Saturday", "linkUrl": "https://example.test/n", "createdAt": "2026-10-01T00:00:00Z"}}),
+		"GET /api/critical-states":      fwdtest.Const(200, map[string]any{"COLLECTOR_OUTDATED": true, "LICENSE_CCH_EXHAUSTED": false, "MAINTENANCE_WINDOW": map[string]any{"start": 1792000000000, "end": 1792003600000}, "LICENSE_WILL_EXPIRE": true}),
+		"GET /api/licenses?view=status": fwdtest.Const(200, map[string]any{"licenseTier": "ENTERPRISE", "licenseStatus": "EXPIRED"}),
+	}
+	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"banners"}`)
+	all := fmtAny(r)
+	for _, want := range []string{"freeze", "Upgrade Saturday", "COLLECTOR_OUTDATED", "LICENSE_EXPIRED", "LICENSE_WILL_EXPIRE", "maintenance_window"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the banners area lacks %q: %s", want, all)
+		}
+	}
+	if r.Status != result.OK {
+		t.Errorf("status %s %s", r.Status, r.Finding)
+	}
+}
+
+func TestPlatformBannersOnPremHasNoAnnouncementAndThatIsNotAFailure(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/custom-banners":      fwdtest.Const(200, map[string]any{"banners": []any{}}),
+		"GET /api/system-announcement": fwdtest.Const(404, map[string]any{"message": "No endpoint GET /api/system-announcement."}),
+		"GET /api/critical-states":     fwdtest.Const(200, map[string]any{"LOW_STORAGE": true, "NO_STORAGE": false}),
+	}
+	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"banners"}`)
+	all := fmtAny(r)
+	if r.Status != result.OK || !strings.Contains(all, "LOW_STORAGE") || !strings.Contains(strings.Join(r.Limits, " "), "no system announcement") {
+		t.Errorf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}

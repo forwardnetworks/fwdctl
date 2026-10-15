@@ -6,7 +6,7 @@ A secret (an S3 secret key, a ServiceNow or Infoblox password, a license key) is
 
 | `area` | `action` | `name` | `definition` | Undo |
 |---|---|---|---|---|
-| `banners` | `create` | | `message`, `background_color`, `network_ids`, `enabled` | update with `enabled: false` (no delete) |
+| `banners` | `create` | | `message`, `background_color` (RED, ORANGE, YELLOW, GREEN or PURPLE; not a CSS color), `network_ids`, `enabled` | update with `enabled: false`, or delete |
 | `banners` | `update` | the banner id | any of the create fields | update back |
 | `banners` | `delete` | the banner id | | **none**; `confirm` = the id |
 | `webhooks` | `create` | | `name`, `url`, `description`, `enabled`, `disable_ssl_validation`, `event_params` | delete it |
@@ -28,6 +28,8 @@ A secret (an S3 secret key, a ServiceNow or Infoblox password, a license key) is
 | `organizations` | `delete` | the organization | | **none**; `confirm` = the name |
 | `cve_index` | `upload` | | `path` (a .gz file), `sha256` (optional) | delete it |
 | `cve_index` | `delete` | | | **none**; `confirm` = `cve_index` |
+| `collectors` | `register` | | `name`, `env_file` (a new path; gets `TOKEN=username:password`, mode 600; the key is in no result) | delete the collector |
+| `collectors` | `delete` | the collector name, id or username | | **none**; `confirm` = the name |
 | `api_tokens` | `delete` | the token name (this login's own) | | **none**; `confirm` = the name |
 | `integrations` | `set` | `servicenow` | `instance_url`, `username`, `enabled`, `auto_create`, `auto_create_impact`, `auto_create_urgency`, `auto_update`; secret = the password | set back |
 | `integrations` | `delete` | `servicenow` | | **none**; `confirm` = `servicenow` |

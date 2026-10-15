@@ -2,6 +2,7 @@
 
 ## Contents
 - banners
+- collectors
 - webhooks
 - certificates
 - access_labels
@@ -12,7 +13,7 @@
 - cve_index
 
 ## banners
-A banner shows a message on the chosen networks. `network_ids` is required and `background_color` is a CSS color. `delete` removes one for good (`confirm` = the id); `update` with `enabled: false` hides it instead. The banner id is in `inspect-platform` area `banners`.
+A banner shows a message on the chosen networks. `network_ids` is required and `background_color` is one of RED, ORANGE, YELLOW, GREEN or PURPLE (Forward's banner colors, as in the UI's banner manager; case does not matter; a CSS color is refused). `delete` removes one for good (`confirm` = the id); `update` with `enabled: false` hides it instead. The banner id is in `inspect-platform` area `banners`.
 
 ## webhooks
 Preview: Forward has not published the webhook schemas, and the feature is gated by deployment. `event_params` depends on the event type; copy it from an existing webhook read with `inspect-platform`. Credentials and templates are not set here. Deleting needs `confirm` because the credentials and template cannot be recovered.
@@ -44,3 +45,6 @@ Deletes one of this login's own API tokens by name. Nothing that used it can sig
 
 ## cve_index
 The vulnerability index the vulnerability skills match against. `upload` replaces it with a gzip file (for an installation that cannot reach the vendor feed; the file is read on apply, with the optional `sha256` checked); `delete` goes back to the index bundled with Forward, and is refused as "nothing to delete" when the bundled one is already in use. Forward accepts either change and applies it in the background, so completion is not proven here: read `inspect-platform` area `cve_index` for the digest.
+
+## collectors
+Register a new collector (its credential goes only to the `env_file` you name) or delete one. Standing one up end to end, with the run, wait and attach steps, is in `collectors.md`. Attaching it to a network is `edit-network` object `collector`.

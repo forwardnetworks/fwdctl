@@ -571,5 +571,20 @@
     "query": "Is collection healthy on our cloud network? The collector tasks all passed but I think accounts are missing.",
     "expect": "inspect-collection",
     "rival": "inspect-inventory"
+  },
+  {
+    "query": "I need to register a new collector for our org and get its token so I can run it on a Linux host",
+    "expect": "edit-platform",
+    "rival": "edit-source"
+  },
+  {
+    "query": "Attach the new collector to the network now that it is connected",
+    "expect": "edit-network",
+    "rival": "edit-platform"
+  },
+  {
+    "query": "Is there a maintenance window or system announcement banner showing in the Forward UI right now?",
+    "expect": "inspect-platform",
+    "rival": "inspect-collection"
   }
 ]

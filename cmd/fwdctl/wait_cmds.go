@@ -27,7 +27,7 @@ func (a *app) waitCmd() *cobra.Command {
 			"reachability) so it does not need a polling loop that dies with the session. Exit 0: reached. 1: Forward ended in a failed, canceled or timed-out state that will not change\n" +
 			"by itself. 2: --timeout passed first (the work may still be running; run the wait again). 3: an error (bad input, Forward unreachable for several polls in a row).",
 	})
-	c.AddCommand(a.waitSnapshotCmd())
+	c.AddCommand(a.waitSnapshotCmd(), a.waitCollectorCmd())
 	return c
 }
 
@@ -129,6 +129,93 @@ func waitForSnapshot(ctx context.Context, get func(context.Context) (*forward.Sn
 			}
 			fmt.Fprintf(stderr, "timed out after %s; the work may still be running: run the wait again\n", elapsed.Round(time.Second))
 			return emit("timed_out", state, adv, waitTimedOut)
+		}
+		sleep(interval)
+	}
+}
+
+func (a *app) waitCollectorCmd() *cobra.Command {
+	var timeout, interval time.Duration
+	c := &cobra.Command{
+		Use: "collector NAME_OR_USERNAME [--timeout 10m]", Short: "wait for a registered collector to show CONNECTED",
+		Long: "Polls the organization's collectors every --interval until the named one (its name, id or username) is CONNECTED. Use it after starting the collector software and before attaching the collector to a network " +
+			"(edit-network object collector action assign).\nExit 0: CONNECTED. 1: the collector no longer exists. 2: --timeout passed first. 3: an error (Forward unreachable for several polls in a row). " +
+			"The last line on stdout is a JSON object: status, collector, connection, version, waited_seconds. A collector that stays NEVER_CONNECTED has not authenticated: check the container's log and that its TOKEN is the registration key verbatim (it is already username:password).",
+		Example: "  fwdctl wait collector lab --timeout 10m",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if timeout <= 0 || interval < time.Second {
+				fmt.Fprintln(a.err, "error: usage: fwdctl wait collector NAME [--timeout 10m] [--interval 10s]")
+				return a.exit(usage)
+			}
+			sess, err := a.session()
+			if err != nil {
+				return a.fail("%v", err)
+			}
+			ctx, cancel := context.WithTimeout(cmd.Context(), timeout+time.Minute)
+			defer cancel()
+			get := func(ctx context.Context) (*forward.Collector, error) {
+				list, _, err := sess.Client.Collectors.List(ctx)
+				for i := range list {
+					if string(list[i].ID) == args[0] || list[i].Name == args[0] || list[i].Username == args[0] {
+						return &list[i], err
+					}
+				}
+				return nil, err
+			}
+			return a.exit(waitForCollector(ctx, get, args[0], timeout, interval, time.Sleep, time.Now, a.out, a.err))
+		},
+	}
+	c.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "give up after this long (exit 2)")
+	c.Flags().DurationVar(&interval, "interval", 10*time.Second, "time between polls (at least 1s)")
+	return c
+}
+
+// waitForCollector polls get until the collector is CONNECTED (0), is gone (1) or the timeout passes (2); several polls in a row that error end it with 3.
+func waitForCollector(ctx context.Context, get func(context.Context) (*forward.Collector, error), name string, timeout, interval time.Duration,
+	sleep func(time.Duration), now func() time.Time, stdout, stderr io.Writer) int {
+	start := now()
+	errs, polls := 0, 0
+	emit := func(status string, c *forward.Collector, code int) int {
+		out := map[string]any{"status": status, "collector": name, "waited_seconds": int(now().Sub(start).Seconds())}
+		if c != nil {
+			out["connection"], out["version"], out["update_status"] = c.ConnectionStatus, c.Version, c.UpdateStatus
+		}
+		b, _ := json.Marshal(out)
+		fmt.Fprintln(stdout, string(b))
+		return code
+	}
+	var last *forward.Collector
+	for {
+		c, err := get(ctx)
+		elapsed := now().Sub(start)
+		if err != nil {
+			errs++
+			fmt.Fprintf(stderr, "%s poll failed (%d in a row): %v\n", elapsed.Round(time.Second), errs, err)
+			if errs >= 5 {
+				fmt.Fprintf(stderr, "error: Forward could not be read for %d polls in a row; the wait stopped\n", errs)
+				return 3
+			}
+		} else {
+			errs = 0
+			polls++
+			switch {
+			case c == nil:
+				fmt.Fprintf(stderr, "collector %s no longer exists\n", name)
+				return emit("failed", last, waitFailed)
+			case c.ConnectionStatus == "CONNECTED":
+				fmt.Fprintf(stderr, "%s collector %s: CONNECTED\n", elapsed.Round(time.Second), name)
+				return emit("ok", c, waitReached)
+			}
+			last = c
+			fmt.Fprintf(stderr, "%s collector %s: %s\n", elapsed.Round(time.Second), name, c.ConnectionStatus)
+		}
+		if elapsed+interval > timeout {
+			if last != nil && last.ConnectionStatus == "NEVER_CONNECTED" {
+				fmt.Fprintf(stderr, "the collector never authenticated: check the container's log and that TOKEN is the registration key verbatim (already username:password)\n")
+			}
+			fmt.Fprintf(stderr, "timed out after %s: run the wait again\n", elapsed.Round(time.Second))
+			return emit("timed_out", last, waitTimedOut)
 		}
 		sleep(interval)
 	}

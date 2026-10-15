@@ -684,6 +684,28 @@ Examples:
   fwdctl wait snapshot --network N --snapshot S --advanced-reachability --timeout 3h
 ```
 
+## fwdctl wait collector
+
+Polls the organization's collectors every --interval until the named one (its name, id or username) is CONNECTED. Use it after starting the collector software and before attaching the collector to a network (edit-network object collector action assign).
+Exit 0: CONNECTED. 1: the collector no longer exists. 2: --timeout passed first. 3: an error (Forward unreachable for several polls in a row). The last line on stdout is a JSON object: status, collector, connection, version, waited_seconds. A collector that stays NEVER_CONNECTED has not authenticated: check the container's log and that its TOKEN is the registration key verbatim (it is already username:password).
+
+```
+fwdctl wait collector NAME_OR_USERNAME [--timeout 10m] [flags]
+```
+
+Examples:
+
+```
+  fwdctl wait collector lab --timeout 10m
+```
+
+Flags:
+
+```
+      --interval duration   time between polls (at least 1s) (default 10s)
+      --timeout duration    give up after this long (exit 2) (default 10m0s)
+```
+
 ## fwdctl wait snapshot
 
 Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.

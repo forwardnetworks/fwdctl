@@ -49,6 +49,8 @@ Device access labels (organization-wide). API tokens: only the calling login's o
 
 Webhooks with their last test result (the signing secret and any URL token are removed), custom banners, and trusted certificates (bodies shortened).
 
+**banners** reads everything the UI shows as a banner: the org's custom banners (colour is RED, ORANGE, YELLOW, GREEN or PURPLE), the operator's **system announcement** (SaaS only: on-prem has none and says so in the limits), and the org-wide **critical states** row: `active` (in the UI's priority order), the scheduled `maintenance_window` (SaaS), `reported` (the state names this Forward sent) and `unmodelled` (a state this build does not know by name). `UNLICENSED`, `LICENSE_EXPIRED` and `LICENSE_NOT_STARTED_YET` are not sent by Forward: they are derived from the org's license status, as the UI does. The free-trial banner has no route of its own: it shows for an org of type FREE_TRIAL with an ACTIVE license, with the days left from that license's expiry (`inspect-platform` area `licensing`).
+
 ## integrations
 
 ServiceNow settings, Infoblox instances and, with `network_id`, Rapid7 sources. Passwords are removed.
