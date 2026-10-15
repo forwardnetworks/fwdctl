@@ -839,7 +839,7 @@ func planSchedule(ctx context.Context, s *fwd.Session, in editSourceInput) (*net
 var cloudDefinitionFields = map[string][]string{
 	"create": {"type", "name", "collect", "proxyServerId", "regions", "username", "clientId", "clientEmail", "privateKeyId", "tenant", "environment", "subscriptionIds", "concurrency"},
 	"rotate": {"type", "name", "username", "clientId", "clientEmail", "privateKeyId", "tenant"},
-	"update": {"collect", "accounts_enabled", "c2s_accounts"},
+	"update": {"collect", "accounts_enabled", "c2s_accounts", "accounts_external_ids", "accounts_add", "add_newly_discovered"},
 }
 
 // refuseUnusedCloudFields returns an invalid-input error naming any definition field the action does not use.
@@ -958,8 +958,11 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 		if in.Name == "" {
 			return nil, fmt.Errorf("%w: update needs name (the account)", ErrInvalidInput)
 		}
-		if err := noSecretInputs(in); err != nil {
-			return nil, err
+		memberEdit := hasMemberEdit(in.Definition)
+		if !memberEdit {
+			if err := noSecretInputs(in); err != nil {
+				return nil, err
+			}
 		}
 		a := find(in.Name)
 		if a == nil {
@@ -967,6 +970,9 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 		}
 		if err := refuseUnusedCloudFields(in.Definition, "update"); err != nil {
 			return nil, err
+		}
+		if memberEdit {
+			return planMembers(ctx, s, in, a)
 		}
 		if err := decodeDefinition(in.Definition, &def, fields); err != nil {
 			return nil, err

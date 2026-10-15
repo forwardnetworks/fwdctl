@@ -16,7 +16,7 @@ import (
 const (
 	maxQueueBuckets = 48
 	// subtasks read to find the ones that went wrong: Forward lists running, failed, timed-out and cancelled subtasks before succeeded ones
-	problemSubTasks  = 3000
+	problemSubTasks  = 10000
 	maxEndStateShown = 50
 )
 

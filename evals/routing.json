@@ -611,5 +611,10 @@
     "query": "Our AWS cloud collection dropped and the log shows C2S Access Portal credentials request failures with HTTP 400",
     "expect": "investigate-collection-failure",
     "rival": "inspect-collection"
+  },
+  {
+    "query": "Set the External ID on a few AWS member accounts and add the newly discovered accounts to the setup",
+    "expect": "edit-source",
+    "rival": "edit-platform"
   }
 ]

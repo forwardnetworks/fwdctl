@@ -152,6 +152,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	var timeout map[string]any
 	var timeoutMs int64
 	gapAtTimeout := false
+	slotSentence := ""
 	atTimeout := 0
 	if in.Device == "" {
 		if name, conc, isDefault, cerr := s.CollectorConcurrency(ctx, in.NetworkID); cerr != nil {
@@ -183,6 +184,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		if prof := inFlightProfile(m); prof != nil {
 			stats["in_flight"] = prof
 			addQueue(ctx, s, in, cx, m, prof, stats, &limits)
+			slotSentence = addSlotAnalysis(ctx, s, in, cx, sm, stats, concurrency, &limits)
 		} else {
 			limits = append(limits, "the devices carry no collection start time, so how many were in flight over the run is not computed")
 		}
@@ -264,6 +266,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 			}
 		}
 	}
+	finding += slotSentence
 	if gapAtTimeout {
 		run, _ := stats["running_in_the_gap"].(map[string]any)
 		timedOut, _ := run["timed_out"].(int)
