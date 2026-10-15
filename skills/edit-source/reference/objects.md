@@ -6,6 +6,7 @@
 - jump_server
 - proxy
 - classic_device
+- endpoint
 - schedule
 - cloud_account
 - rapid7_source
@@ -18,7 +19,22 @@ One file or one environment variable per call. For CLI and HTTP credentials and 
 
 ## credential
 
-`type` CLI takes `username`, `kind` (omit for a login credential; Forward's other kinds are privilege escalation, expert and shell), `privilegeLevel`, `privilegedModePasswordId` (an id of a stored privileged-mode password, not a password) and `autoAssociate`. HTTP takes `username`, `loginType`, `autoAssociate`. SNMP takes `version` V2C or V3, `port`, `timeoutSec`, and for V3 `authUsername`, `authType` (MD5, SHA, SHA_256, SHA_384, SHA_512) and `privacyProtocol` (DES, AES_128, AES_192, AES_256); V3 requires a username, and a privacy password requires an auth type. Forward returns only an id for the stored secret. Delete needs the credential's id and type and `confirm` equal to the id.
+`type` CLI takes `username`, `kind`, `privilegeLevel`, `privilegedModePasswordId` (an id of a stored privileged-mode password, not a password) and `autoAssociate`.
+
+**CLI kinds** (Forward's CliCredentialType; `kind` is checked at the dry run, case does not matter):
+
+| `kind` | What it is | Takes |
+|---|---|---|
+| omitted or `LOGIN` | the login (SSH or Telnet) | `username` (required); `privilegedModePasswordId` links a stored enable password so devices that need one use it |
+| `PRIVILEGED_MODE` | the enable (privilege escalation) password of Cisco-like devices; on Checkpoint a TACACS privilege escalation | `privilegeLevel` (the enable level, the highest when absent; on Checkpoint the TACACS level; on HP Comware the super level); no username |
+| `EXPERT_MODE` | Checkpoint expert mode | no username |
+| `SHELL` | Avi controller shell | `username` (required) |
+
+Examples (the secret is `secret_file` or `secret_env`, never in the definition): a login `{"type":"CLI","name":"lab-login","username":"admin"}`; an enable password for a Cisco-like device (an IOS or EOS style) `{"type":"CLI","name":"lab-enable","kind":"PRIVILEGED_MODE","privilegeLevel":15}`; a Linux host over SSH is an ordinary login `{"type":"CLI","name":"linux-login","username":"ops"}`. `privilegeLevel` is refused on any kind but PRIVILEGED_MODE and `privilegedModePasswordId` on any kind but LOGIN.
+
+**Pairing a login with its enable password.** Two ways, both in Forward's model: (1) create the PRIVILEGED_MODE credential, then create the LOGIN with `privilegedModePasswordId` set to its id, and every device that uses that login and needs an enable password uses it; (2) set the device's second credential (`cliCredential2Id` on the device, where this skill supports it) so the one device uses that enable credential. A device's own setting wins over the one stored on the login. Which vendors need an enable password is decided by Forward's device type, not by this skill: an unset credential is auto-associated only if the credential allows it (`autoAssociate`, default true).
+
+HTTP credentials: `loginType` is one of LOCAL, RADIUS, TACACS, OAUTH, JWT, SAML; the HTTP credential `kind` is LOGIN or API_KEY (an API key for devices such as firewalls that authenticate by key). HTTP takes `username`, `loginType`, `autoAssociate`. SNMP takes `version` V2C or V3, `port`, `timeoutSec`, and for V3 `authUsername`, `authType` (MD5, SHA, SHA_256, SHA_384, SHA_512) and `privacyProtocol` (DES, AES_128, AES_192, AES_256); V3 requires a username, and a privacy password requires an auth type. Forward returns only an id for the stored secret. Delete needs the credential's id and type and `confirm` equal to the id.
 
 ## jump_server
 
@@ -30,7 +46,11 @@ A proxy has no secret. `create` needs `name`, `host`, `port` and `protocol`; `up
 
 ## classic_device
 
-A device in the list Forward collects (CLI/SNMP/HTTP devices). `create` needs `name` and `host`; credentials and the jump server are given by id (`inspect-platform` areas `credentials` and `jump_servers`). `collectorId` pins the device to one collector of the org (numeric id such as `C42` or `42`, not the collector UUID); without it the network's default collector is used. `update` can move a device to another collector. `update` changes host, type, port, the CLI and HTTP credential, `collectorId`, `collect` and `note` (it patches); the SNMP credential, jump server and extra CLI credentials cannot be changed in place, so delete and re-add. `delete` removes it from the list (`confirm` = its name); past snapshots keep it. Nothing here touches the device.
+A device in the list Forward collects (CLI/SNMP/HTTP devices). `create` needs `name` and `host`; an enable password is the device's **second credential** `cliCredential2Id` (a PRIVILEGED_MODE credential; `cliCredential3Id` is EXPERT_MODE for Checkpoint); per-device collection options (`enableSnmpCollection`, `collectBgpAdvertisements`, `bgpTableType`, `bgpPeerType`, `bgpAndBmpFailureHandling`, `disableIpv6Collection`, `fullCollectionLog`) are checked against Forward's enums, and a BGP table or peer type needs `collectBgpAdvertisements: true` or Forward drops it. `update` can change every one of these, including the SNMP credential and the jump server. credentials and the jump server are given by id (`inspect-platform` areas `credentials` and `jump_servers`). `collectorId` pins the device to one collector of the org (numeric id such as `C42` or `42`, not the collector UUID); without it the network's default collector is used. `update` can move a device to another collector. `update` changes host, type, port, the CLI and HTTP credential, `collectorId`, `collect` and `note` (it patches); the SNMP credential, jump server and extra CLI credentials cannot be changed in place, so delete and re-add. `delete` removes it from the list (`confirm` = its name); past snapshots keep it. Nothing here touches the device.
+
+## endpoint
+
+A network endpoint is a host or device Forward collects that is not a classic network device: a Linux host over SSH (type CLI), an SNMP device or an HTTP device. `create` needs `name` and `host`; `credentialId` (a CLI login from `inspect-platform` area `credentials`) and `profileId` (an endpoint profile, for example a CLI profile made with `edit-platform` area `endpoint_profiles`; `inspect-collection` view `config` lists them) are ids. A CLI endpoint takes `protocol` SSH or TELNET and may use a `jumpServerId`. A create is idempotent by name: the same host, credential and profile again is reported as already done; a different definition is refused (use `update`). Collection runs the profile's commands only if the organization approved them.
 
 ## schedule
 

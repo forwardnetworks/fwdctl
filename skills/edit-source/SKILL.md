@@ -25,7 +25,7 @@ A secret (a password, SNMP community string, SSH key) is never put in the input.
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run edit-source --help`, or `reference/inputs.md`, `reference/objects.md`.
+What each input means, and the fields per object and action: `fwdctl run edit-source --help`, or `reference/inputs.md`, `reference/inventory.md` (many items from one file: `fwdctl source apply`), `reference/objects.md`.
 
 ## Dry run
 

@@ -73,8 +73,10 @@ func editPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		plan, err = planCVEIndex(ctx, s, in)
 	case "collectors":
 		plan, err = planPlatformCollector(ctx, s, in)
+	case "endpoint_profiles":
+		plan, err = planEndpointProfile(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: area must be banners, webhooks, certificates, access_labels, backups, integrations, collection_settings, saml, api_tokens, licensing, organizations, cve_index or collectors", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: area must be banners, webhooks, certificates, access_labels, backups, integrations, collection_settings, saml, api_tokens, licensing, organizations, cve_index, collectors or endpoint_profiles", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err

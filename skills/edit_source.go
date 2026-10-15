@@ -107,6 +107,8 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 		plan, err = planProxy(ctx, s, in)
 	case "classic_device":
 		plan, err = planClassicDevice(ctx, s, in)
+	case "endpoint":
+		plan, err = planEndpoint(ctx, s, in)
 	case "schedule":
 		plan, err = planSchedule(ctx, s, in)
 	case "cloud_account":
@@ -118,7 +120,7 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 	case "mist_setup":
 		plan, err = planMistSetup(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, schedule, cloud_account, rapid7_source, controller_setup or mist_setup", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, endpoint, schedule, cloud_account, rapid7_source, controller_setup or mist_setup", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err
@@ -186,6 +188,13 @@ func planCredential(ctx context.Context, s *fwd.Session, in editSourceInput) (*n
 	case "create":
 		if strings.TrimSpace(def.Name) == "" || kind == "" {
 			return nil, fmt.Errorf("%w: create needs definition.type (CLI, HTTP or SNMP) and definition.name", ErrInvalidInput)
+		}
+		if kind == "CLI" {
+			k, kerr := cliCredentialKind(def.Kind, def.Username, def.PrivilegeLevel, def.PrivilegedID)
+			if kerr != nil {
+				return nil, kerr
+			}
+			def.Kind = k
 		}
 		shown := map[string]any{"type": kind, "name": def.Name, "username": nilIfEmpty(def.Username), "secret": "<secret>"}
 		plan := &networkPlan{target: fmt.Sprintf("create %s credential %q on network %s", kind, def.Name, in.NetworkID), action: "create_credential", before: nil, after: shown, reversible: true,
@@ -614,8 +623,16 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 		CollectorID      string `json:"collectorId"`
 		Collect          *bool  `json:"collect"`
 		Note             string `json:"note"`
+		// collection options
+		EnableSNMP *bool  `json:"enableSnmpCollection"`
+		CollectBGP *bool  `json:"collectBgpAdvertisements"`
+		BGPTable   string `json:"bgpTableType"`
+		BGPPeer    string `json:"bgpPeerType"`
+		BGPFailure string `json:"bgpAndBmpFailureHandling"`
+		NoIPv6     *bool  `json:"disableIpv6Collection"`
+		FullLog    *bool  `json:"fullCollectionLog"`
 	}
-	fields := "name, host, type, port, cliCredentialId, cliCredential2Id, cliCredential3Id, httpCredentialId, snmpCredentialId, jumpServerId, collectorId, collect, note"
+	fields := "name, host, type, port, cliCredentialId, cliCredential2Id (the PRIVILEGED_MODE / enable credential), cliCredential3Id (EXPERT_MODE), httpCredentialId, snmpCredentialId, jumpServerId, collectorId, collect, note, enableSnmpCollection, collectBgpAdvertisements, bgpTableType, bgpPeerType, bgpAndBmpFailureHandling, disableIpv6Collection, fullCollectionLog"
 	switch in.Action {
 	case "delete":
 		if in.Name == "" || len(in.Definition) > 0 {
@@ -650,11 +667,18 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 		if def.Name == "" || def.Host == "" {
 			return nil, fmt.Errorf("%w: create needs name and host", ErrInvalidInput)
 		}
+		if err := checkDeviceOptions(def.BGPTable, def.BGPPeer, def.BGPFailure); err != nil {
+			return nil, err
+		}
+		if err := bgpNeedsAdvertisements(def.BGPTable, def.BGPPeer, def.CollectBGP); err != nil {
+			return nil, err
+		}
 		if find(def.Name) != nil {
 			return nil, fmt.Errorf("%w: a device named %q is already in the list", ErrInvalidInput, def.Name)
 		}
 		req := forward.ClassicDeviceRequest{Name: def.Name, Host: def.Host, Type: def.Type, Port: def.Port, CLICredentialID: def.CLICredentialID, CLICredential2ID: def.CLICredential2ID, CLICredential3ID: def.CLICredential3ID,
-			HTTPCredentialID: def.HTTPCredentialID, SNMPCredentialID: def.SNMPCredentialID, JumpServerID: def.JumpServerID, CollectorID: def.CollectorID, Collect: def.Collect, Note: def.Note}
+			HTTPCredentialID: def.HTTPCredentialID, SNMPCredentialID: def.SNMPCredentialID, JumpServerID: def.JumpServerID, CollectorID: def.CollectorID, Collect: def.Collect, Note: def.Note,
+			EnableSNMPCollection: def.EnableSNMP, CollectBGPAdvertisements: def.CollectBGP, BGPTableType: def.BGPTable, BGPPeerType: def.BGPPeer, BGPAndBMPFailureHandling: def.BGPFailure, DisableIPv6Collection: def.NoIPv6, FullCollectionLog: def.FullLog}
 		return &networkPlan{target: fmt.Sprintf("add device %q (%s) to the collection list of network %s", def.Name, def.Host, in.NetworkID), action: "add_device", before: nil, after: def, reversible: true,
 			undo:   "delete it from the list (edit-source object classic_device action delete)",
 			limits: []string{"credentials and the jump server are referred to by id (inspect-platform areas credentials, jump_servers); it is collected from the next collection, which edit-collection can start"},
@@ -690,11 +714,26 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 		set(def.Host, &patch.Host)
 		set(def.Type, &patch.Type)
 		set(def.CLICredentialID, &patch.CLICredentialID)
+		set(def.CLICredential2ID, &patch.CLICredential2ID)
+		set(def.CLICredential3ID, &patch.CLICredential3ID)
+		set(def.SNMPCredentialID, &patch.SNMPCredentialID)
+		set(def.JumpServerID, &patch.JumpServerID)
 		set(def.HTTPCredentialID, &patch.HTTPCredentialID)
 		set(def.Note, &patch.Note)
 		set(def.CollectorID, &patch.CollectorID)
-		if def.SNMPCredentialID != "" || def.JumpServerID != "" || def.CLICredential2ID != "" || def.CLICredential3ID != "" {
-			return nil, fmt.Errorf("%w: update can change host, type, port, cliCredentialId, httpCredentialId, collectorId, collect and note; to change the SNMP credential, jump server or second and third CLI credentials, delete the device and add it again", ErrInvalidInput)
+		set(def.BGPTable, &patch.BGPTableType)
+		set(def.BGPPeer, &patch.BGPPeerType)
+		set(def.BGPFailure, &patch.BGPAndBMPFailureHandling)
+		patch.EnableSNMPCollection, patch.CollectBGPAdvertisements, patch.DisableIPv6Collection, patch.FullCollectionLog = def.EnableSNMP, def.CollectBGP, def.NoIPv6, def.FullLog
+		if err := checkDeviceOptions(def.BGPTable, def.BGPPeer, def.BGPFailure); err != nil {
+			return nil, err
+		}
+		on := def.CollectBGP
+		if on == nil {
+			on = d.CollectBGPAdvertisements
+		}
+		if err := bgpNeedsAdvertisements(def.BGPTable, def.BGPPeer, on); err != nil {
+			return nil, err
 		}
 		before, _ := fwd.Generic(d)
 		return &networkPlan{target: fmt.Sprintf("update device %q on network %s", in.Name, in.NetworkID), action: "update_device", before: before, after: def, reversible: true, undo: "update it again with the before values",
@@ -1511,4 +1550,55 @@ func planJumpServerChange(ctx context.Context, s *fwd.Session, in editSourceInpu
 		}
 	}
 	return plan, nil
+}
+
+// cliCredentialKind checks a CLI credential's kind and the fields that belong to one kind only (Forward's NewCliCredential): LOGIN and SHELL need a username; privilegeLevel is for PRIVILEGED_MODE;
+// privilegedModePasswordId (the stored enable password a login uses) is for LOGIN. It returns the kind in Forward's spelling; empty stays empty, which Forward reads as LOGIN.
+func cliCredentialKind(kind, username string, level *int32, privilegedID string) (string, error) {
+	k := strings.ToUpper(strings.TrimSpace(kind))
+	switch k {
+	case "", "LOGIN", "SHELL", "PRIVILEGED_MODE", "EXPERT_MODE":
+	default:
+		return "", fmt.Errorf("%w: kind %q is not one of LOGIN, PRIVILEGED_MODE, EXPERT_MODE, SHELL (omit it for a login credential)", ErrInvalidInput, kind)
+	}
+	if (k == "" || k == "LOGIN" || k == "SHELL") && strings.TrimSpace(username) == "" {
+		return "", fmt.Errorf("%w: a LOGIN or SHELL credential needs a username", ErrInvalidInput)
+	}
+	if level != nil && k != "PRIVILEGED_MODE" {
+		return "", fmt.Errorf("%w: privilegeLevel is only for kind PRIVILEGED_MODE (the enable level)", ErrInvalidInput)
+	}
+	if privilegedID != "" && k != "" && k != "LOGIN" {
+		return "", fmt.Errorf("%w: privilegedModePasswordId is only for a LOGIN credential (the stored enable password it uses)", ErrInvalidInput)
+	}
+	return k, nil
+}
+
+// checkDeviceOptions checks a device's BGP collection options against Forward's enums (NewClassicDevice), so a typo fails at the dry run, not as a 400.
+func checkDeviceOptions(table, peer, failure string) error {
+	in := func(field, v string, allowed ...string) error {
+		if v == "" {
+			return nil
+		}
+		for _, a := range allowed {
+			if v == a {
+				return nil
+			}
+		}
+		return fmt.Errorf("%w: %s %q is not one of %s", ErrInvalidInput, field, v, strings.Join(allowed, ", "))
+	}
+	if err := in("bgpTableType", table, "BOTH", "ADJ_RIB_IN", "ADJ_RIB_OUT"); err != nil {
+		return err
+	}
+	if err := in("bgpPeerType", peer, "BOTH", "EBGP", "IBGP"); err != nil {
+		return err
+	}
+	return in("bgpAndBmpFailureHandling", failure, "FAIL_DEVICE", "SWITCH_TO_CLI", "ALWAYS_USE_CLI", "ALWAYS_USE_BMP", "CONTINUE_WITHOUT_BGP_DATA")
+}
+
+// bgpNeedsAdvertisements refuses a BGP table or peer type while advertisement collection is off: Forward honours them only when collectBgpAdvertisements is true and drops them otherwise.
+func bgpNeedsAdvertisements(table, peer string, collect *bool) error {
+	if (table != "" || peer != "") && (collect == nil || !*collect) {
+		return fmt.Errorf("%w: bgpTableType and bgpPeerType take effect only when collectBgpAdvertisements is true (Forward drops them otherwise); set it in the same call", ErrInvalidInput)
+	}
+	return nil
 }

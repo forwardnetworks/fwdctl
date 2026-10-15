@@ -629,6 +629,45 @@ Flags:
       --quiet           with --format table or csv: print only the status line on stderr, not the limits and the other lists (the limits still matter: read them once)
 ```
 
+## fwdctl source
+
+Works on a whole source inventory at once instead of one edit-source call per item.
+
+```
+fwdctl source
+```
+
+Examples:
+
+```
+  fwdctl source apply lab.json            # dry run: what would be created or updated
+  fwdctl source apply lab.json --apply
+```
+
+## fwdctl source apply
+
+FILE is JSON: {"network_id", "endpoint_profiles":[{name, command_sets, custom_commands}], "credentials":[{name, type, kind, username, secret_env or secret_file}], "devices":[{name, host, type, port, credential, enable_credential, expert_credential, http_credential, snmp_credential, jump_server, collector_id, collect, note, enableSnmpCollection, collectBgpAdvertisements, bgpTableType, bgpPeerType, bgpAndBmpFailureHandling, disableIpv6Collection, fullCollectionLog}], "endpoints":[{name, type, host, port, protocol, credential, profile, jump_server, collect, collector_id}]}. Credentials and profiles are referred to by NAME and resolved to ids. A secret is never in the file: a credential names the environment variable (secret_env) or the mode-600 file (secret_file) that holds it.
+Order: profiles, credentials, devices, endpoints. Each item is compared by name with what Forward holds: create, update, or unchanged. A dry run (the default) changes nothing. With --apply it stops at the first failure and marks the rest skipped, so a partial run is easy to read; run it again after fixing it, because unchanged items are left alone. Secrets are never compared, so a changed password is not detected (rotate with edit-source). A device's enable credential and collection options are compared with what Forward reports.
+The last line on stdout is JSON: status, mode, counts, items. Exit 0: done; 1: an item failed; 64: bad file; 3: Forward could not be read.
+
+```
+fwdctl source apply FILE [--network ID] [--apply] [flags]
+```
+
+Examples:
+
+```
+  fwdctl source apply lab.json --network 252606            # dry run: create / update / unchanged per item
+  LAB_PW=... fwdctl source apply lab.json --network 252606 --apply
+```
+
+Flags:
+
+```
+      --apply            make the changes (default: a dry run)
+      --network string   network id (overrides network_id in the file)
+```
+
 ## fwdctl update
 
 Replaces this binary with the newest release after checking it against the release's SHA256SUMS. --check only reports (exit 2 when an update

@@ -586,5 +586,15 @@
     "query": "Is there a maintenance window or system announcement banner showing in the Forward UI right now?",
     "expect": "inspect-platform",
     "rival": "inspect-collection"
+  },
+  {
+    "query": "Add 20 Linux hosts as endpoints with an SSH login and a CLI endpoint profile that runs the UNIX commands",
+    "expect": "edit-source",
+    "rival": "edit-endpoint-profile"
+  },
+  {
+    "query": "Set the enable password credential on our Arista devices and turn on BGP advertisement collection",
+    "expect": "edit-source",
+    "rival": "edit-platform"
   }
 ]

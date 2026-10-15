@@ -37,6 +37,8 @@ type networkPlan struct {
 	confirm        string // the exact value apply needs ("" when none)
 	do             func(ctx context.Context) error
 	verify         func(ctx context.Context) (bool, any, error) // reads back; ok says the change is visible
+	// noop, when set, says the thing is already as asked: the run reports it and sends nothing, in a dry run or an apply alike (an idempotent create).
+	noop string
 	// learn, when set, receives what the read-back returned once the change is proven, and may add to the change (the id of a thing just created, an undo that names it).
 	learn func(got any, ch *result.Change)
 }
@@ -81,6 +83,10 @@ func finishPlan(ctx context.Context, name string, cx result.Context, plan *netwo
 	mode := result.ModeDryRun
 	if apply {
 		mode = result.ModeApplied
+	}
+	if plan.noop != "" {
+		return result.Build(name, result.OK, "Already as asked, nothing to change: "+plan.noop, result.Deterministic, cx,
+			result.Options{Mode: mode, Limits: plan.limits, Evidence: []result.Evidence{result.NewEvidence(result.EvState, name, nil, map[string]any{"object": object, "action": action, "mode": mode, "current": plan.before}, "")}})
 	}
 	if apply && plan.confirm != "" && confirm != plan.confirm {
 		return result.Result{}, fmt.Errorf("%w: %s cannot be undone; set confirm to the exact value %q to apply", ErrInvalidInput, plan.action, plan.confirm)

@@ -18,6 +18,7 @@
         "jump_server",
         "proxy",
         "classic_device",
+        "endpoint",
         "schedule",
         "cloud_account",
         "rapid7_source",
