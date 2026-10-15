@@ -26,7 +26,8 @@ existing file's inferred schema; this skill only writes.
 
 | `action` | Inputs | Undo |
 |---|---|---|
-| `upload` | `name`, `file_type` (CSV, JSON, XML, YAML or TEXT), `content`, optional `nqe_name`, `description`, `headers` (CSV only) | `delete` the same name (clean while no network has attached it) |
+| `upload` | `name`, `file_type` (CSV, JSON, XML, YAML or TEXT), `content` or `file_path`, optional `nqe_name`, `description`, `headers` (CSV only) | `delete` the same name (clean while no network has attached it) |
+| `replace` | `name` (existing), `content` or `file_path` (local file, up to 50 MB), optional `headers` (CSV) | `replace` again with the old content (Forward keeps no copy) |
 | `attach` | `name`, `network_id` | `detach` the same file and network |
 | `detach` | `name`, `network_id` | `attach` the same file and network |
 | `delete` | `name`, `confirm` (must equal `name`) | **none**: Forward keeps the content nowhere else; read or download it first |
@@ -68,3 +69,10 @@ One `state` item (upload) or two (attach/detach: before and read-back).
 `echo '{"action":"upload","name":"sites.csv","file_type":"CSV","content":"site,owner\nnyc,ops\n"}' | fwdctl run edit-data-file` is the dry run;
 add `"apply": true` after it is accepted. `echo '{"action":"attach","name":"sites.csv","network_id":"<id>","apply":true}' | fwdctl run edit-data-file`
 attaches it.
+
+## Large files and nightly replacement
+
+`content` carries up to 500 KB inline; `file_path` reads a local file up to Forward's 50 MB cap, for `upload` and `replace`. `replace` overwrites
+an existing file's content (a refresh job's normal operation): Forward assesses first whether the new content parses and keeps queries that read
+the file working, the plan shows old and new line counts, identical content is reported as nothing to change, and an incompatible file is refused.
+`upload` of a name that exists is refused and points at `replace`. Unattended: `FORWARD_URL`/`FORWARD_USERNAME`/`FORWARD_PASSWORD` log in without a prompt.

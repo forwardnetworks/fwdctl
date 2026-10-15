@@ -326,7 +326,7 @@ Flags:
 Runs the query (--file or stdin) on --before-snapshot and --after-snapshot and compares the rows by the --key columns: which keys were added, which removed, which changed (and which columns). The key columns must
 identify a row uniquely in each snapshot (a repeated key is refused, since the diff would be ambiguous). Counts are exact; the stdout JSON lists up to --show of each kind; --out writes every difference as
 JSON lines {change, key, before, after, changed_columns}. If a result is larger than --max rows the diff is refused rather than reported on a partial read.
-Exit status: 0 no differences, 1 differences found, 64 bad usage or a key that is not unique, 3 error. Runs are asynchronous by default; for a large result run the query alone first (`nqe run --limit 1 --meta`) to see its size.
+Exit status: 0 no differences, 1 differences found (0 with --exit-zero), 64 bad usage or a key that is not unique, 3 error. Runs are asynchronous by default; for a large result run the query alone first (`nqe run --limit 1 --meta`) to see its size.
 
 ```
 fwdctl nqe diff [flags]
@@ -343,6 +343,7 @@ Flags:
 ```
       --after-snapshot string    the later snapshot id
       --before-snapshot string   the earlier snapshot id
+      --exit-zero                exit 0 when differences are found (for scripts); errors and bad usage still fail
       --file string              the query (default: stdin)
       --key string               the column(s) that identify a row, comma separated
       --max int                  refuse a result of more rows than this in either snapshot (default 200000)

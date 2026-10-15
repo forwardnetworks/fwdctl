@@ -25,6 +25,13 @@ func inspectCollection(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 	}
 	switch in.View {
 	case "", "status":
+		var present map[string]json.RawMessage
+		_ = json.Unmarshal(raw, &present)
+		for _, k := range []string{"collector", "names_only"} {
+			if _, bad := present[k]; bad {
+				return result.Result{}, fmt.Errorf("%w: %s is an input of view config (the devices list), not of view status", ErrInvalidInput, k)
+			}
+		}
 		return inspectCollectionStatus(ctx, s, raw)
 	case "config":
 		return inspectCollectionConfig(ctx, s, raw)

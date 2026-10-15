@@ -609,29 +609,6 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 		}
 		return nil
 	}
-	type devDef struct {
-		Name             string `json:"name"`
-		Host             string `json:"host"`
-		Type             string `json:"type"`
-		Port             *int32 `json:"port"`
-		CLICredentialID  string `json:"cliCredentialId"`
-		CLICredential2ID string `json:"cliCredential2Id"`
-		CLICredential3ID string `json:"cliCredential3Id"`
-		HTTPCredentialID string `json:"httpCredentialId"`
-		SNMPCredentialID string `json:"snmpCredentialId"`
-		JumpServerID     string `json:"jumpServerId"`
-		CollectorID      string `json:"collectorId"`
-		Collect          *bool  `json:"collect"`
-		Note             string `json:"note"`
-		// collection options
-		EnableSNMP *bool  `json:"enableSnmpCollection"`
-		CollectBGP *bool  `json:"collectBgpAdvertisements"`
-		BGPTable   string `json:"bgpTableType"`
-		BGPPeer    string `json:"bgpPeerType"`
-		BGPFailure string `json:"bgpAndBmpFailureHandling"`
-		NoIPv6     *bool  `json:"disableIpv6Collection"`
-		FullLog    *bool  `json:"fullCollectionLog"`
-	}
 	fields := "name, host, type, port, cliCredentialId, cliCredential2Id (the PRIVILEGED_MODE / enable credential), cliCredential3Id (EXPERT_MODE), httpCredentialId, snmpCredentialId, jumpServerId, collectorId, collect, note, enableSnmpCollection, collectBgpAdvertisements, bgpTableType, bgpPeerType, bgpAndBmpFailureHandling, disableIpv6Collection, fullCollectionLog"
 	switch in.Action {
 	case "delete":
@@ -660,7 +637,7 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 				return true, nil, e
 			}}, nil
 	case "create":
-		var def devDef
+		var def classicDeviceDef
 		if err := decodeDefinition(in.Definition, &def, fields); err != nil {
 			return nil, err
 		}
@@ -696,7 +673,10 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 				return false, nil, e
 			}}, nil
 	case "update":
-		var def devDef
+		if hasBulkDevices(in.Definition) {
+			return planDevicesBulk(ctx, s, in, cur)
+		}
+		var def classicDeviceDef
 		if err := decodeDefinition(in.Definition, &def, fields); err != nil {
 			return nil, err
 		}
@@ -704,39 +684,17 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 		if d == nil {
 			return nil, nil
 		}
-		patch := forward.ClassicDevicePatch{Port: def.Port, Collect: def.Collect}
-		set := func(v string, to **string) {
-			if v != "" {
-				x := v
-				*to = &x
-			}
-		}
-		set(def.Host, &patch.Host)
-		set(def.Type, &patch.Type)
-		set(def.CLICredentialID, &patch.CLICredentialID)
-		set(def.CLICredential2ID, &patch.CLICredential2ID)
-		set(def.CLICredential3ID, &patch.CLICredential3ID)
-		set(def.SNMPCredentialID, &patch.SNMPCredentialID)
-		set(def.JumpServerID, &patch.JumpServerID)
-		set(def.HTTPCredentialID, &patch.HTTPCredentialID)
-		set(def.Note, &patch.Note)
-		set(def.CollectorID, &patch.CollectorID)
-		set(def.BGPTable, &patch.BGPTableType)
-		set(def.BGPPeer, &patch.BGPPeerType)
-		set(def.BGPFailure, &patch.BGPAndBMPFailureHandling)
-		patch.EnableSNMPCollection, patch.CollectBGPAdvertisements, patch.DisableIPv6Collection, patch.FullCollectionLog = def.EnableSNMP, def.CollectBGP, def.NoIPv6, def.FullLog
-		if err := checkDeviceOptions(def.BGPTable, def.BGPPeer, def.BGPFailure); err != nil {
-			return nil, err
-		}
-		on := def.CollectBGP
-		if on == nil {
-			on = d.CollectBGPAdvertisements
-		}
-		if err := bgpNeedsAdvertisements(def.BGPTable, def.BGPPeer, on); err != nil {
+		patch, err := def.patchFor(d)
+		if err != nil {
 			return nil, err
 		}
 		before, _ := fwd.Generic(d)
-		return &networkPlan{target: fmt.Sprintf("update device %q on network %s", in.Name, in.NetworkID), action: "update_device", before: before, after: def, reversible: true, undo: "update it again with the before values",
+		after, _ := fwd.Generic(patch) // only the fields that change: the update is partial, so the rest of the device stays as it is
+		if am, ok := after.(map[string]any); ok && len(patch.Clear) > 0 {
+			am["clear"] = patch.Clear
+		}
+		return &networkPlan{target: fmt.Sprintf("update device %q on network %s", in.Name, in.NetworkID), action: "update_device", before: before, after: after, reversible: true, undo: "update it again with the before values",
+			limits: []string{"after lists only the fields this update changes; every other field of the device stays as it is"},
 			do: func(ctx context.Context) error {
 				_, _, err := s.Client.ClassicDevices.Patch(ctx, in.NetworkID, in.Name, patch)
 				return err
@@ -1607,4 +1565,88 @@ func bgpNeedsAdvertisements(table, peer string, collect *bool) error {
 		return fmt.Errorf("%w: bgpTableType and bgpPeerType take effect only when collectBgpAdvertisements is true (Forward drops them otherwise); set it in the same call", ErrInvalidInput)
 	}
 	return nil
+}
+
+// classicDeviceDef is the definition of a classic device: the fields create takes and update may change. A zero value is "not given".
+type classicDeviceDef struct {
+	Name             string `json:"name"`
+	Host             string `json:"host"`
+	Type             string `json:"type"`
+	Port             *int32 `json:"port"`
+	CLICredentialID  string `json:"cliCredentialId"`
+	CLICredential2ID string `json:"cliCredential2Id"`
+	CLICredential3ID string `json:"cliCredential3Id"`
+	HTTPCredentialID string `json:"httpCredentialId"`
+	SNMPCredentialID string `json:"snmpCredentialId"`
+	JumpServerID     string `json:"jumpServerId"`
+	CollectorID      string `json:"collectorId"`
+	Collect          *bool  `json:"collect"`
+	Note             string `json:"note"`
+	// collection options
+	EnableSNMP *bool  `json:"enableSnmpCollection"`
+	CollectBGP *bool  `json:"collectBgpAdvertisements"`
+	BGPTable   string `json:"bgpTableType"`
+	BGPPeer    string `json:"bgpPeerType"`
+	BGPFailure string `json:"bgpAndBmpFailureHandling"`
+	NoIPv6     *bool  `json:"disableIpv6Collection"`
+	FullLog    *bool  `json:"fullCollectionLog"`
+	// Clear resets properties to unset (an explicit null on the wire): the only way to unpin a device from a collector or remove a credential or option.
+	Clear []string `json:"clear"`
+}
+
+// patchFor builds the partial update this definition asks for, checking the collection options against the device as it is now.
+func (def classicDeviceDef) patchFor(cur *forward.ClassicDevice) (forward.ClassicDevicePatch, error) {
+	patch := forward.ClassicDevicePatch{Port: def.Port, Collect: def.Collect}
+	set := func(v string, to **string) {
+		if v != "" {
+			x := v
+			*to = &x
+		}
+	}
+	set(def.Host, &patch.Host)
+	set(def.Type, &patch.Type)
+	set(def.CLICredentialID, &patch.CLICredentialID)
+	set(def.CLICredential2ID, &patch.CLICredential2ID)
+	set(def.CLICredential3ID, &patch.CLICredential3ID)
+	set(def.SNMPCredentialID, &patch.SNMPCredentialID)
+	set(def.JumpServerID, &patch.JumpServerID)
+	set(def.HTTPCredentialID, &patch.HTTPCredentialID)
+	set(def.Note, &patch.Note)
+	set(def.CollectorID, &patch.CollectorID)
+	set(def.BGPTable, &patch.BGPTableType)
+	set(def.BGPPeer, &patch.BGPPeerType)
+	set(def.BGPFailure, &patch.BGPAndBMPFailureHandling)
+	patch.EnableSNMPCollection, patch.CollectBGPAdvertisements, patch.DisableIPv6Collection, patch.FullCollectionLog = def.EnableSNMP, def.CollectBGP, def.NoIPv6, def.FullLog
+	if err := checkDeviceOptions(def.BGPTable, def.BGPPeer, def.BGPFailure); err != nil {
+		return patch, err
+	}
+	if len(def.Clear) > 0 {
+		for _, c := range def.Clear {
+			if !deviceClearable[c] {
+				return patch, fmt.Errorf("%w: clear %q: only these can be reset to unset: %s", ErrInvalidInput, c, strings.Join(clearableNames(), ", "))
+			}
+		}
+		patch.Clear = append([]string(nil), def.Clear...)
+	}
+	on := def.CollectBGP
+	if on == nil && cur != nil {
+		on = cur.CollectBGPAdvertisements
+	}
+	if err := bgpNeedsAdvertisements(def.BGPTable, def.BGPPeer, on); err != nil {
+		return patch, err
+	}
+	return patch, nil
+}
+
+// deviceClearable are the device properties a patch may reset to unset (Forward reads an explicit null as "clear it").
+var deviceClearable = map[string]bool{"cliCredentialId": true, "cliCredential2Id": true, "cliCredential3Id": true, "httpCredentialId": true, "snmpCredentialId": true, "jumpServerId": true, "collectorId": true,
+	"note": true, "port": true, "enableSnmpCollection": true, "collectBgpAdvertisements": true, "bgpTableType": true, "bgpPeerType": true, "bgpAndBmpFailureHandling": true, "disableIpv6Collection": true, "fullCollectionLog": true}
+
+func clearableNames() []string {
+	out := make([]string, 0, len(deviceClearable))
+	for k := range deviceClearable {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

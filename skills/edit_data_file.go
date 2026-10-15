@@ -1,9 +1,13 @@
 package skills
 
 import (
+	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -29,6 +33,8 @@ type editDataFileInput struct {
 	FileType    string   `json:"file_type"`
 	Headers     []string `json:"headers"`
 	Content     string   `json:"content"`
+	// FilePath reads the content from a local file instead (upload and replace; up to 50 MB, the platform cap).
+	FilePath string `json:"file_path"`
 	// NetworkID is the network to attach to or detach from.
 	NetworkID string `json:"network_id"`
 	// Confirm must equal name to delete.
@@ -36,7 +42,10 @@ type editDataFileInput struct {
 	Apply   bool   `json:"apply"`
 }
 
-const maxDataFileContent = 500_000 // bytes; Forward's own cap is 50MB, this keeps the input to a size a tool call should carry
+const (
+	maxDataFileContent = 500_000    // bytes inline in `content`: keeps a tool call a sensible size
+	maxDataFileBytes   = 50_000_000 // bytes via file_path: Forward's own cap (50 MB)
+)
 
 var dataFileNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
@@ -65,10 +74,12 @@ func editDataFile(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return planDataFileUpload(ctx, s, in, cx, mode)
 	case "attach", "detach":
 		return planDataFileAttachment(ctx, s, in, cx, mode)
+	case "replace":
+		return planDataFileReplace(ctx, s, in, cx, mode)
 	case "delete":
 		return planDataFileDelete(ctx, s, in, cx, mode)
 	default:
-		return result.Result{}, fmt.Errorf("%w: action must be upload, attach, detach or delete", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: action must be upload, replace, attach, detach or delete", ErrInvalidInput)
 	}
 }
 
@@ -93,11 +104,9 @@ func planDataFileUpload(ctx context.Context, s *fwd.Session, in editDataFileInpu
 	if len(in.Headers) > 0 && ft != "CSV" {
 		return result.Result{}, fmt.Errorf("%w: headers apply only to file_type CSV", ErrInvalidInput)
 	}
-	if strings.TrimSpace(in.Content) == "" {
-		return result.Result{}, fmt.Errorf("%w: upload needs content (the file's text)", ErrInvalidInput)
-	}
-	if len(in.Content) > maxDataFileContent {
-		return result.Result{}, fmt.Errorf("%w: content is %d bytes; at most %d", ErrInvalidInput, len(in.Content), maxDataFileContent)
+	content, err := dataFileBody(in)
+	if err != nil {
+		return result.Result{}, err
 	}
 	nqeName := in.NQEName
 	if nqeName == "" {
@@ -110,12 +119,12 @@ func planDataFileUpload(ctx context.Context, s *fwd.Session, in editDataFileInpu
 	lower := strings.ToLower(in.Name)
 	for _, f := range existing {
 		if f.Name == lower {
-			return result.Build(editDataFileName, result.Failed, fmt.Sprintf("Refused, nothing was changed: a data file named %q already exists (type %s, nqe_name %s)", lower, f.Type, f.NQEName),
-				result.Deterministic, cx, result.Options{Mode: mode, Limits: []string{"names are lower-cased and unique; use attach to add the existing file to a network"},
+			return result.Build(editDataFileName, result.Failed, fmt.Sprintf("Refused, nothing was changed: a data file named %q already exists (type %s, nqe_name %s); to overwrite its content use action replace", lower, f.Type, f.NQEName),
+				result.Deterministic, cx, result.Options{Mode: mode, Limits: []string{"names are lower-cased and unique; use replace to overwrite its content or attach to add it to a network"},
 					Evidence: dfEvidence("upload", map[string]any{"name": lower, "existing_type": f.Type})})
 		}
 	}
-	after := map[string]any{"name": lower, "nqe_name": nqeName, "type": ft, "content_bytes": len(in.Content)}
+	after := map[string]any{"name": lower, "nqe_name": nqeName, "type": ft, "content_bytes": len(content), "rows": countLines(content)}
 	if len(in.Headers) > 0 {
 		after["headers"] = in.Headers
 	}
@@ -130,7 +139,7 @@ func planDataFileUpload(ctx context.Context, s *fwd.Session, in editDataFileInpu
 		return result.Build(editDataFileName, result.OK, fmt.Sprintf("Dry run: would upload data file %q (%s, nqe_name %s). Nothing was changed; run again with apply=true", lower, ft, nqeName),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: dfEvidence("upload", after)})
 	}
-	created, err := s.AddDataFile(ctx, forward.DataFileCreateRequest{Name: in.Name, NQEName: in.NQEName, Description: in.Description, FileType: forward.DataFileType(ft), Headers: in.Headers}, []byte(in.Content))
+	created, err := s.AddDataFile(ctx, forward.DataFileCreateRequest{Name: in.Name, NQEName: in.NQEName, Description: in.Description, FileType: forward.DataFileType(ft), Headers: in.Headers}, content)
 	if err != nil {
 		return result.Result{}, fmt.Errorf("the upload failed, nothing is known to have changed: %w", err)
 	}
@@ -291,4 +300,147 @@ func camelIdent(name string) string {
 		out = "file" + strings.ToUpper(out[:min(1, len(out))]) + out[min(1, len(out)):]
 	}
 	return out
+}
+
+// dataFileBody returns the content to send: inline `content` (up to 500 KB) or a local `file_path` (up to Forward's 50 MB cap), not both.
+func dataFileBody(in editDataFileInput) ([]byte, error) {
+	if in.FilePath != "" {
+		if in.Content != "" {
+			return nil, fmt.Errorf("%w: give content or file_path, not both", ErrInvalidInput)
+		}
+		fi, err := os.Stat(in.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("%w: file_path: %v", ErrInvalidInput, err)
+		}
+		if !fi.Mode().IsRegular() {
+			return nil, fmt.Errorf("%w: file_path %q is not a regular file", ErrInvalidInput, in.FilePath)
+		}
+		if fi.Size() > maxDataFileBytes {
+			return nil, fmt.Errorf("%w: file_path is %d bytes; Forward accepts at most %d", ErrInvalidInput, fi.Size(), maxDataFileBytes)
+		}
+		b, err := os.ReadFile(in.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("%w: file_path: %v", ErrInvalidInput, err)
+		}
+		if strings.TrimSpace(string(b)) == "" {
+			return nil, fmt.Errorf("%w: file_path %q is empty", ErrInvalidInput, in.FilePath)
+		}
+		return b, nil
+	}
+	if strings.TrimSpace(in.Content) == "" {
+		return nil, fmt.Errorf("%w: needs content (the file's text, up to %d bytes) or file_path (a local file, up to %d bytes)", ErrInvalidInput, maxDataFileContent, maxDataFileBytes)
+	}
+	if len(in.Content) > maxDataFileContent {
+		return nil, fmt.Errorf("%w: content is %d bytes; at most %d inline, pass file_path for a larger file (up to %d)", ErrInvalidInput, len(in.Content), maxDataFileContent, maxDataFileBytes)
+	}
+	return []byte(in.Content), nil
+}
+
+// countLines counts the lines of a text file (a CSV's rows, header included).
+func countLines(b []byte) int {
+	n := bytes.Count(b, []byte("\n"))
+	if len(b) > 0 && b[len(b)-1] != '\n' {
+		n++
+	}
+	return n
+}
+
+type lineCounter struct {
+	n    int
+	last byte
+	any  bool
+}
+
+func (c *lineCounter) Write(p []byte) (int, error) {
+	if len(p) > 0 {
+		c.n += bytes.Count(p, []byte("\n"))
+		c.last, c.any = p[len(p)-1], true
+	}
+	return len(p), nil
+}
+
+func (c *lineCounter) lines() int {
+	if c.any && c.last != '\n' {
+		return c.n + 1
+	}
+	return c.n
+}
+
+// planDataFileReplace overwrites an existing data file's content (the nightly-producer operation): compatibility is assessed by Forward first,
+// the plan carries the old and new line counts, and an identical file is reported as nothing to do.
+func planDataFileReplace(ctx context.Context, s *fwd.Session, in editDataFileInput, cx result.Context, mode string) (result.Result, error) {
+	if in.NetworkID != "" || in.Confirm != "" || in.FileType != "" || in.NQEName != "" || in.Description != "" {
+		return result.Result{}, fmt.Errorf("%w: replace takes name, content or file_path, and headers (CSV); the file keeps its type, nqe_name and attachments", ErrInvalidInput)
+	}
+	if in.Name == "" {
+		return result.Result{}, fmt.Errorf("%w: replace needs name (an existing data file, exact)", ErrInvalidInput)
+	}
+	content, err := dataFileBody(in)
+	if err != nil {
+		return result.Result{}, err
+	}
+	existing, err := s.DataFiles(ctx)
+	if err != nil {
+		return result.Result{}, err
+	}
+	var file *forward.DataFile
+	for i := range existing {
+		if existing[i].Name == in.Name {
+			file = &existing[i]
+		}
+	}
+	if file == nil {
+		return result.Build(editDataFileName, result.Failed, fmt.Sprintf("Refused, nothing was changed: no data file named %q (names are exact; use upload to create it)", in.Name),
+			result.Deterministic, cx, result.Options{Mode: mode, Evidence: dfEvidence("replace", map[string]any{"name": in.Name, "found": false})})
+	}
+	if file.Type == forward.DataFileSTIG || file.Type == forward.DataFileXLSX {
+		return result.Build(editDataFileName, result.Failed, fmt.Sprintf("Refused, nothing was changed: %s data files are not replaced by this skill", file.Type), result.Deterministic, cx,
+			result.Options{Mode: mode, Evidence: dfEvidence("replace", map[string]any{"name": in.Name, "type": string(file.Type)})})
+	}
+	if len(in.Headers) > 0 && file.Type != forward.DataFileCSV {
+		return result.Result{}, fmt.Errorf("%w: headers apply only to a CSV data file", ErrInvalidInput)
+	}
+	after := map[string]any{"content_bytes": len(content), "lines": countLines(content)}
+	var cur lineCounter
+	trunc, cerr := s.DataFileContent(ctx, in.Name, maxDataFileBytes, &cur)
+	before := map[string]any{"type": string(file.Type), "nqe_name": file.NQEName}
+	limits := []string{"lines count every line, a CSV's header row included; a new CSV sent with headers is stored with the header line added",
+		"replace keeps the file's name, type, nqe_name and network attachments; a network's queries see the new content from its NEXT snapshot onward",
+		"the old content is not kept by Forward: the undo is a replace with the old content, so keep a copy before overwriting"}
+	switch {
+	case cerr != nil:
+		limits = append(limits, "the current content could not be read to count its lines: "+cerr.Error())
+	case trunc:
+		limits = append(limits, "the current content is larger than the read cap, so its line count is not shown")
+	default:
+		before["lines"] = cur.lines()
+		after["lines_change"] = countLines(content) - cur.lines()
+	}
+	if file.ContentMD5Hex != "" {
+		sum := md5.Sum(content)
+		if len(in.Headers) == 0 && strings.EqualFold(file.ContentMD5Hex, hex.EncodeToString(sum[:])) {
+			return result.Build(editDataFileName, result.OK, fmt.Sprintf("Data file %q already holds exactly this content; nothing to change", in.Name), result.Deterministic, cx,
+				result.Options{Mode: mode, Limits: limits, Evidence: dfEvidence("replace", map[string]any{"name": in.Name, "unchanged": true, "lines": after["lines"]})})
+		}
+	}
+	compatible, err := s.AssessDataFileReplacement(ctx, in.Name, content, in.Headers)
+	if err != nil {
+		return result.Result{}, fmt.Errorf("Forward could not assess the replacement, nothing was changed: %w", err)
+	}
+	after["compatible"] = compatible
+	if !compatible {
+		return result.Build(editDataFileName, result.Failed, fmt.Sprintf("Refused, nothing was changed: the new content does not parse as the file's type or would break queries that read %q (its inferred NQE type is not a subtype of the stored one)", in.Name),
+			result.Deterministic, cx, result.Options{Mode: mode, Limits: limits, Evidence: dfEvidence("replace", map[string]any{"name": in.Name, "before": before, "after": after})})
+	}
+	ch := result.Change{Action: "replace_data_file", Target: "data file " + in.Name, Before: before, After: after, Reversible: false, Undo: "replace " + in.Name + " again with its previous content (not kept by Forward)"}
+	if !in.Apply {
+		return result.Build(editDataFileName, result.OK, fmt.Sprintf("Dry run: would replace the content of data file %q (%v lines now, %v after). Nothing was changed; run again with apply=true", in.Name, before["lines"], after["lines"]),
+			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: dfEvidence("replace", map[string]any{"name": in.Name, "before": before, "after": after})})
+	}
+	if _, err := s.ReplaceDataFile(ctx, in.Name, content, in.Headers); err != nil {
+		return result.Result{}, fmt.Errorf("the replace failed, the old content is believed unchanged: %w", err)
+	}
+	ch.Applied = true
+	return result.Build(editDataFileName, result.OK, fmt.Sprintf("Replaced the content of data file %q (%v lines)", in.Name, after["lines"]), result.Deterministic, cx,
+		result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"inspect-collection"}, Evidence: dfEvidence("replace", map[string]any{"name": in.Name, "after": after})})
 }

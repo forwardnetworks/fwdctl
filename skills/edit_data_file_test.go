@@ -7,6 +7,9 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -202,5 +205,66 @@ func TestEditDataFileWarnsWhenTheNQENameIsNotAnIdentifier(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(r.Limits, " "), "network.extensions.endpointLifecycle.value") {
 		t.Errorf("the limits should show how to read the rows: %v", r.Limits)
+	}
+}
+
+func replaceWorld(stored string, assess string, replaced *string) map[string]fwdtest.Handler {
+	return map[string]fwdtest.Handler{
+		"GET /api/data-files": func(*http.Request, []byte) (int, any) {
+			return 200, []map[string]any{{"name": "acl.csv", "nqeName": "acl", "type": "CSV", "networkIds": []string{}}}
+		},
+		"GET /api/data-files/acl.csv": func(*http.Request, []byte) (int, any) { return 200, []byte(stored) },
+		"POST /api/data-files/acl.csv": func(r *http.Request, body []byte) (int, any) {
+			if r.URL.Query().Get("action") == "assess" {
+				return 200, map[string]any{"result": assess}
+			}
+			*replaced = "sent"
+			return 200, map[string]any{"name": "acl.csv", "nqeName": "acl", "type": "CSV", "networkIds": []string{}}
+		},
+	}
+}
+
+func TestEditDataFileUploadFromFilePathPastTheInlineCap(t *testing.T) {
+	big := filepath.Join(t.TempDir(), "big.csv")
+	if err := os.WriteFile(big, []byte("a,b\n"+strings.Repeat("xxxxxxxxxxxxxxxxxxxx,yyyyyyyyyyyyyyyyyyyy\n", 20000)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files := []map[string]any{}
+	in := `{"action":"upload","name":"big.csv","file_type":"CSV","file_path":` + strconv.Quote(big) + `}`
+	r, _ := mustRun(t, "edit-data-file", dataFilesWorld(&files), in)
+	if r.Status != result.OK || r.Changes[0].After.(map[string]any)["rows"] != 20001 {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Changes)
+	}
+	// inline stays capped, and content with file_path is ambiguous
+	if _, _, err := runSkill(t, "edit-data-file", dataFilesWorld(&files), `{"action":"upload","name":"b.csv","file_type":"CSV","content":"`+strings.Repeat("x", 500001)+`"}`); err == nil || !strings.Contains(err.Error(), "file_path") {
+		t.Fatalf("inline cap error should point at file_path: %v", err)
+	}
+	if _, _, err := runSkill(t, "edit-data-file", dataFilesWorld(&files), `{"action":"upload","name":"b.csv","file_type":"CSV","content":"x","file_path":"`+big+`"}`); err == nil {
+		t.Fatal("content and file_path together should be refused")
+	}
+}
+
+func TestEditDataFileReplaceShowsLineCountsAssessesAndWrites(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "new.csv")
+	_ = os.WriteFile(p, []byte("a,b\n1,2\n3,4\n5,6\n"), 0o600)
+	in := `{"action":"replace","name":"acl.csv","file_path":` + strconv.Quote(p) + `}`
+	var sent string
+	r, srv := mustRun(t, "edit-data-file", replaceWorld("a,b\n1,2\n", "SUCCESS", &sent), in)
+	b, a := r.Changes[0].Before.(map[string]any), r.Changes[0].After.(map[string]any)
+	if r.Status != result.OK || r.Mode != result.ModeDryRun || b["lines"] != 2 || a["lines"] != 4 || a["lines_change"] != 2 || sent != "" || writes(srv) != 1 { // the one POST is Forward's read-only assessment
+		t.Fatalf("%s %s before=%v after=%v sent=%q writes=%d", r.Status, r.Finding, b, a, sent, writes(srv))
+	}
+	r, _ = mustRun(t, "edit-data-file", replaceWorld("a,b\n1,2\n", "SUCCESS", &sent), strings.TrimSuffix(in, "}")+`,"apply":true}`)
+	if r.Status != result.OK || !r.Changes[0].Applied || sent != "sent" {
+		t.Fatalf("%s %s sent=%q", r.Status, r.Finding, sent)
+	}
+	sent = ""
+	r, _ = mustRun(t, "edit-data-file", replaceWorld("a,b\n1,2\n", "FAILURE", &sent), strings.TrimSuffix(in, "}")+`,"apply":true}`)
+	if r.Status != result.Failed || sent != "" || !strings.Contains(r.Finding, "does not parse") {
+		t.Fatalf("incompatible content must be refused: %s %s sent=%q", r.Status, r.Finding, sent)
+	}
+	r, _ = mustRun(t, "edit-data-file", replaceWorld("", "SUCCESS", &sent), `{"action":"replace","name":"nope.csv","content":"x"}`)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "no data file named") {
+		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
 }

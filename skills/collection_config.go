@@ -2,6 +2,8 @@ package skills
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -27,6 +29,10 @@ type collectionConfigInput struct {
 	IncludeContent bool `json:"include_content"`
 	// DataConnector names one of the network's data connectors (see detail.data_connectors) to also read its endpoints, status and last test result.
 	DataConnector string `json:"data_connector"`
+	// Collector limits the devices to those pinned to one collector: its id (101291 or C101291 are the same) or "none" for the devices with no pin (they run on the network's default collector).
+	Collector string `json:"collector"`
+	// NamesOnly returns the devices as compact [name, collector id] pairs, in larger pages, so a whole network is read in a few calls.
+	NamesOnly bool `json:"names_only"`
 }
 
 // inspectCollectionConfig states what Forward is told to collect: devices, endpoints, jump servers and proxies. It never reads a
@@ -59,7 +65,47 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			}
 			rows = append(rows, row)
 		}
-		win, wl, ok := window(rows, in.Limit, in.Offset, 50, 500, "devices")
+		// Forward returns the device list in no fixed order, so a page is cut from the list sorted by name: two reads of the same list give the same pages
+		sort.SliceStable(rows, func(i, j int) bool { return rows[i]["name"].(string) < rows[j]["name"].(string) })
+		names := make([]string, len(rows))
+		for i, r := range rows {
+			names[i] = r["name"].(string)
+		}
+		sum := sha256.Sum256([]byte(strings.Join(names, "\n")))
+		detail["device_list_digest"] = hex.EncodeToString(sum[:8])
+		limits = append(limits, "each page re-reads the whole device list and cuts it from the list sorted by name; device_list_digest is a digest of every device name in that read, so pages with the same digest and device_count came from the same list. If they differ, devices were added or removed between the reads")
+		all := len(rows)
+		if in.Collector != "" {
+			want := strings.ToLower(strings.TrimSpace(in.Collector))
+			kept := rows[:0:0]
+			for _, r := range rows {
+				c, _ := r["collector_id"].(string)
+				if (want == "none" && c == "") || (want != "none" && c != "" && collectorKey(c) == collectorKey(want)) {
+					kept = append(kept, r)
+				}
+			}
+			rows = kept
+			detail["devices_matching"] = len(rows)
+			detail["devices_in_list"] = all
+		}
+		var win any
+		var wl []result.Omission
+		ok := true
+		if in.NamesOnly {
+			pairs := make([][]string, 0, len(rows))
+			for _, r := range rows {
+				c, _ := r["collector_id"].(string)
+				pairs = append(pairs, []string{r["name"].(string), c})
+			}
+			var page [][]string
+			page, wl, ok = window(pairs, in.Limit, in.Offset, 5000, 20000, "devices")
+			win = page
+			limits = append(limits, "names_only lists [name, collector id] pairs sorted by name (an empty collector id means no pin: the network's default collector); a page is up to 20,000 devices (default 5,000), offset continues")
+		} else {
+			var page []map[string]any
+			page, wl, ok = window(rows, in.Limit, in.Offset, 50, 500, "devices")
+			win = page
+		}
 		if ok {
 			detail["devices"] = win
 			omitted = append(omitted, wl...)
@@ -644,6 +690,6 @@ func capCertificateFindings(name string, cred *forward.AWSCapCredential, row map
 			out = append(out, fmt.Sprintf("the C2S Access Portal CA of %q expires in %d day(s) (%s): after that every account of the setup fails at once. Renew it in the Forward UI before then", name, days, cred.CertificateAuthorityNotAfter.UTC().Format("2006-01-02")))
 		}
 	}
-	out = append(out, fmt.Sprintf("the client certificate of %q has an expiry that cannot be read (%s): a .p12 is encrypted under a password Forward does not return. The portal's own server certificate is not dated by Forward either; an expired one shows in the collection as CERTIFICATE_CHECK_FAILED (investigate-collection-failure view cloud)", name, orNone(cred.ClientCertificateNotAfterReason)))
+	out = append(out, fmt.Sprintf("the client certificate of %q has an expiry that cannot be read (%s): a .p12 is encrypted under a password Forward does not return. The portal's own server certificate is not dated by Forward either; Forward documents no collection error for an expired portal server certificate; the log line may carry a certificate error such as CERTIFICATE_CHECK_FAILED, which investigate-collection-failure view cloud recognises by pattern, a heuristic and not a documented rule", name, orNone(cred.ClientCertificateNotAfterReason)))
 	return out
 }

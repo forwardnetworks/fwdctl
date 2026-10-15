@@ -77,6 +77,7 @@ var wideReadSkills = map[string]int{
 	"inspect-access":                 12, // view activity adds since, until, method and status
 	"investigate-collection-failure": 9,  // view slow adds compare_to_snapshot_id
 	"inspect-vulnerabilities":        9,  // view devices
+	"inspect-collection":             10, // view config reads a network of tens of thousands of devices: collector (a filter) and names_only (compact pairs)
 }
 
 func inputCount(m Meta) int {

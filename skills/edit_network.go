@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -112,6 +113,11 @@ func finishPlan(ctx context.Context, name string, cx result.Context, plan *netwo
 			result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: plan.limits, NextActions: next})
 	}
 	if err := plan.do(ctx); err != nil {
+		var pe *partialApplyError
+		if errors.As(err, &pe) {
+			ch.Applied = true
+			return result.Build(name, result.Failed, pe.Error(), result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"partial": pe.detail}), Limits: plan.limits, NextActions: next})
+		}
 		return result.Result{}, fmt.Errorf("the change failed, nothing is known to have changed: %w", err)
 	}
 	ch.Applied = true

@@ -8,6 +8,7 @@
     "action": {
       "enum": [
         "upload",
+        "replace",
         "attach",
         "detach",
         "delete"
@@ -43,7 +44,12 @@
     "content": {
       "type": "string",
       "minLength": 1,
-      "description": "upload: the file's text content"
+      "description": "upload/replace: the file's text content, up to 500000 bytes inline (use file_path for a larger file)"
+    },
+    "file_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "upload/replace: a local file to read the content from instead of content, up to 50 MB (Forward's cap)"
     },
     "network_id": {
       "type": "string",

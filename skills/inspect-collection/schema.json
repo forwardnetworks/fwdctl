@@ -42,6 +42,15 @@
     "include_content": {
       "type": "boolean",
       "description": "view config, with data_file: also return the first 2000 characters of the file's stored content, unredacted. Off by default because an uploaded file can hold secrets"
+    },
+    "collector": {
+      "type": "string",
+      "minLength": 1,
+      "description": "view config: only the devices pinned to this collector (its id, 101291 or C101291), or none for the devices with no pin (they run on the network's default collector)"
+    },
+    "names_only": {
+      "type": "boolean",
+      "description": "view config: list the devices as compact [name, collector id] pairs, up to 20,000 per page (default 5,000), sorted by name, so a whole network is read in a few calls"
     }
   }
 }

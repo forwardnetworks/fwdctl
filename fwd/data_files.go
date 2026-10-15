@@ -2,6 +2,7 @@ package fwd
 
 import (
 	"context"
+	"io"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 )
@@ -47,4 +48,22 @@ func (s *Session) DataFilesForNetwork(ctx context.Context, networkID string) ([]
 func (s *Session) DeleteDataFile(ctx context.Context, name string) error {
 	_, err := s.Client.DataFiles.Delete(ctx, name)
 	return err
+}
+
+// ReplaceDataFile replaces an existing data file's content (the file keeps its name, type and attachments).
+func (s *Session) ReplaceDataFile(ctx context.Context, name string, content []byte, headers []string) (*forward.DataFile, error) {
+	f, _, err := s.Client.DataFiles.ReplaceContent(ctx, name, content, headers)
+	return f, err
+}
+
+// AssessDataFileReplacement reports whether content could replace the stored file without breaking queries that read it. Changes nothing.
+func (s *Session) AssessDataFileReplacement(ctx context.Context, name string, content []byte, headers []string) (bool, error) {
+	ok, _, err := s.Client.DataFiles.AssessReplacement(ctx, name, content, headers)
+	return ok, err
+}
+
+// DataFileContent reads up to maxBytes of a stored data file's content into dst; truncated says the file was longer.
+func (s *Session) DataFileContent(ctx context.Context, name string, maxBytes int64, dst io.Writer) (truncated bool, err error) {
+	_, truncated, _, err = s.Client.DataFiles.Content(ctx, name, maxBytes, dst)
+	return truncated, err
 }

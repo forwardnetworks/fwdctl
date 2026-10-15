@@ -71,3 +71,10 @@ func TestNqeDiffWithNothingDifferentExitsZeroAndRefusesAmbiguousKeys(t *testing.
 		t.Errorf("a key column the rows lack must be named: %d %s", code, errs)
 	}
 }
+
+func TestNqeDiffExitZeroKeepsDifferencesOffTheExitStatus(t *testing.T) {
+	code, so, errs := call(t, []string{"nqe", "diff", "--network", "n1", "--before-snapshot", "s1", "--after-snapshot", "s2", "--key", "dev,rule", "--exit-zero"}, "select {dev: 1}", diffRoutes())
+	if code != 0 || !strings.Contains(so, "counts") {
+		t.Fatalf("--exit-zero should exit 0 with the summary, got %d: %s %s", code, so, errs)
+	}
+}

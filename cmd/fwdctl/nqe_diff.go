@@ -20,12 +20,13 @@ import (
 func (a *app) nqeDiff() *cobra.Command {
 	var network, file, before, after, key, out string
 	var max, show int
+	var exitZero bool
 	c := &cobra.Command{
 		Use: "diff", Short: "run an ad-hoc query on two snapshots and report the rows added, removed and changed by key",
 		Long: "Runs the query (--file or stdin) on --before-snapshot and --after-snapshot and compares the rows by the --key columns: which keys were added, which removed, which changed (and which columns). The key columns must\n" +
 			"identify a row uniquely in each snapshot (a repeated key is refused, since the diff would be ambiguous). Counts are exact; the stdout JSON lists up to --show of each kind; --out writes every difference as\n" +
 			"JSON lines {change, key, before, after, changed_columns}. If a result is larger than --max rows the diff is refused rather than reported on a partial read.\n" +
-			"Exit status: 0 no differences, 1 differences found, 64 bad usage or a key that is not unique, 3 error. Runs are asynchronous by default; for a large result run the query alone first (`nqe run --limit 1 --meta`) to see its size.",
+			"Exit status: 0 no differences, 1 differences found (0 with --exit-zero), 64 bad usage or a key that is not unique, 3 error. Runs are asynchronous by default; for a large result run the query alone first (`nqe run --limit 1 --meta`) to see its size.",
 		Example: "  fwdctl nqe diff --network 123 --before-snapshot 111 --after-snapshot 222 --file rules.nqe --key device,ruleId --out changes.jsonl",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -48,6 +49,9 @@ func (a *app) nqeDiff() *cobra.Command {
 			}
 			keys := strings.Split(key, ",")
 			code := diffSnapshots(cmd.Context(), sess, network, string(src), before, after, keys, max, show, out, a.out, a.err)
+			if code == 1 && exitZero {
+				code = 0
+			}
 			if code != 0 {
 				return a.exit(code)
 			}
@@ -62,6 +66,7 @@ func (a *app) nqeDiff() *cobra.Command {
 	f.StringVar(&key, "key", "", "the column(s) that identify a row, comma separated")
 	f.StringVar(&out, "out", "", "write every difference to this file as JSON lines")
 	f.IntVar(&max, "max", 200000, "refuse a result of more rows than this in either snapshot")
+	f.BoolVar(&exitZero, "exit-zero", false, "exit 0 when differences are found (for scripts); errors and bad usage still fail")
 	f.IntVar(&show, "show", 20, "list at most this many of each kind in the summary")
 	return c
 }
