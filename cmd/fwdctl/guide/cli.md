@@ -91,7 +91,7 @@ Flags:
 
 ## fwdctl context schema
 
-real NQE field names (and enum values) matching a term
+real NQE field names (and enum values) matching a term; a record is expanded one level
 
 ```
 fwdctl context schema <term> [flags]
@@ -321,6 +321,37 @@ Flags:
       --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
+## fwdctl nqe explain
+
+Prints the optimized plan Forward builds for a saved library query, as the Query Debug Panel in the NQE Library shows it: a device-parallel query starts `parallel_foreach`, a join that became a lookup shows
+`_lookup(...)`, and `⸢ ⸣` marks expressions found total (cannot raise an error, so a `where` may float up), `⟪ ⟫` marks ONCE cardinality. Read it to see why a query is slow.
+Give --query-id (optionally --commit-id; HEAD otherwise) or --path (a query in your own workspace, as the UI writes it, for example "/Operations/my query"). Raw query text is not explained by Forward: save it
+as a draft first. Internal Forward routes (preview); needs the organization's VIEW_NQE_LIBRARY permission. A query with errors is refused with its diagnostics.
+For the execution time use `fwdctl nqe run --meta`; for slow runs Forward recorded, `fwdctl nqe metrics`.
+
+```
+fwdctl nqe explain [flags]
+```
+
+Examples:
+
+```
+  fwdctl nqe explain --query-id Q_0123456789abcdef0123456789abcdef01234567 --network 123
+  fwdctl nqe explain --path "/Operations/my query" --param threshold=3
+```
+
+Flags:
+
+```
+      --commit-id string    the commit of the saved query (default HEAD)
+      --network string      network id (its newest processed snapshot supplies the schema; optional)
+      --param stringArray   a query parameter NAME=VALUE (repeatable)
+      --params string       a JSON file of query parameters
+      --path string         a query in your own NQE workspace, without the repository, for example "/Operations/my query"
+      --query-id string     a saved library query's id
+      --snapshot string     snapshot id to take the schema from (optional)
+```
+
 ## fwdctl nqe export
 
 Write the entry query and every organization library module it imports, transitively, to a folder tree: one <query name>.nqe per query under the library path
@@ -430,6 +461,7 @@ checked, since that library is per-organization and not sealed into this binary:
 Dead code is warned about, never an error (exit stays 0): an import none of whose names is used (unused-import), a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main
 expression or an export refers to (unused-definition). Lint a `nqe bundle` to find what a whole module tree never uses; an exported definition is never called dead, since
 another module may import it.
+Performance advice is reported as `info` (never an error, exit stays 0): the query will not run device-parallel (perf-device-parallel), a device filter that is not an exact name equality (perf-device-filter), a very large inline query (perf-inline-size). See `fwdctl describe author-nqe-query reference/performance.md`.
 The embedded schema is a release's; an organization on a newer build has fields it lacks (and may have dropped fields it still has). --org reads the organization's live schema
 (GET /api/nqe/schema; needs a login) and checks against that, so a field the organization no longer has is reported as an error, and the result says how many field paths the live schema
 has that the embedded one lacks and the reverse (schema.source, fields_added, fields_removed).
@@ -477,6 +509,31 @@ Flags:
       --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
+## fwdctl nqe metrics
+
+Lists NQE runs Forward recorded with their run duration (execution only, not queue time), slowest first as Forward returns them: task, network, snapshot, saved query id and commit when it was a saved query,
+when it ran. Defaults are Forward's: the last 7 days, runs of at least 10 seconds, at most 100. --min-seconds 0 lists every run. This is a Forward debug feature (organization permission DEBUG_NQE), which most
+logins lack; the error names it. Use it to find which queries are expensive; `fwdctl nqe explain` shows why.
+
+```
+fwdctl nqe metrics [flags]
+```
+
+Examples:
+
+```
+  fwdctl nqe metrics --min-seconds 30 --limit 20
+```
+
+Flags:
+
+```
+      --from string       start of the window, RFC 3339 (default: 7 days ago)
+      --limit int         at most this many runs (default 100)
+      --min-seconds int   only runs of at least this many seconds (0: every run) (default 10)
+      --to string         end of the window, RFC 3339 (default: now)
+```
+
 ## fwdctl nqe pack
 
 Read DIR (as nqe export writes it: <library path>.nqe files, with manifest.json when there is one) and print the edit-nqe-query input that commits the tree in ONE commit:
@@ -510,8 +567,8 @@ Flags:
 ## fwdctl nqe run
 
 Run an NQE query on Forward and print the rows (stdout), with timing and scope on stderr. Every row is fetched, paged for you (up to --max), or with --limit/--offset ONE page.
-A saved library query runs by id at a commit. --async uses Forward's asynchronous execution API, --meta records how the run went. A synchronous call that is cut off by the HTTP
-timeout falls back to the asynchronous API by itself (FORWARD_NQE_MODE=sync turns that off, =async always uses it; FORWARD_NQE_WAIT bounds the wait).
+A saved library query runs by id at a commit. Runs are ASYNCHRONOUS by default (Forward's execution API: a query's duration and size cannot be known beforehand, and a polled execution holds no connection open, so there is no gateway timeout; it costs a few hundred milliseconds on a small query). --sync, or FORWARD_NQE_MODE=sync, runs one synchronous request instead; FORWARD_NQE_MODE=syncfirst is the older sync-then-async-on-timeout; FORWARD_NQE_WAIT bounds the wait.
+--meta records how the run went: the execution key, outcome, Forward's execution time (millis_executing), the time spent queued (queued_millis, measured here) and whether the result came from Forward's cache. A failed run served from the cache says so: repeating the same request cannot succeed until the query text or parameters change (--fresh does that). Over ~100 KB sent inline, save the query and use --query-id.
 Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 error, 64 bad usage.
 
 ```
@@ -530,11 +587,12 @@ Flags:
 
 ```
       --allow-large           write a result of more than 100 MB (by default it is refused before anything is written, so a redirect cannot fill the disk)
-      --async                 run through Forward's asynchronous execution API (the execution key and outcome are in --meta)
+      --async                 (the default) run through Forward's asynchronous execution API (the default; the execution key, outcome and times are in --meta)
       --commit-id string      with --query-id: the library commit to run it at (default: the head)
       --count-by string       print how many rows have each value of this field instead of the rows
       --file string           file with the NQE query (default: stdin)
       --format string         json, jsonl, table or csv (default "json")
+      --fresh                 EXPERIMENTAL: add an always-true filter after the first loop so Forward's result cache sees a new program (a cold timing, or a retry of a cached failure); rows are identical
       --limit int             read one page of at most this many rows instead of every row (0: every row, up to --max)
       --max int               stop after this many rows (stated on stderr when more exist) (default 50000)
       --meta string           write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr
@@ -545,6 +603,7 @@ Flags:
       --query-id string       run a saved query by id instead of a file (a library query: see fwdctl run find-nqe-query)
       --retry-transient int   retry up to N more times (waiting 5s, 10s, ... up to 30s) when Forward or its gateway answers 502, 503 or 504, for a long run that a Forward restart would kill; --meta records attempts and transport_clean
       --snapshot string       snapshot id (default: the latest processed)
+      --sync                  run as one synchronous request instead (faster for a small query; a long one can be cut off by the gateway)
       --timeout duration      how long to wait: the whole synchronous request (response included; the default HTTP limit is 120s), or with --async the execution (default 10m0s)
 ```
 

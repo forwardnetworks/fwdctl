@@ -23,6 +23,11 @@ type NQEMeta struct {
 	RowsProduced    *int64 `json:"rows_produced,omitempty"`
 	// LikelyCached says the wall time was far below the execution time Forward recorded: the result was served from its cache, so the timing is not a cold measurement.
 	LikelyCached bool `json:"likely_cached,omitempty"`
+	// QueuedMillis is measured by this client: the time from submitting the execution to the first status that was no longer waiting (EXECUTING or done). It covers Forward's queue and analysis wait,
+	// to the granularity of the poll (about a second); the wall time minus MillisExecuting minus this is transfer and polling.
+	QueuedMillis *int64 `json:"queued_millis,omitempty"`
+	// Note is advice about this run, for example that a failure came from Forward's cache.
+	Note string `json:"note,omitempty"`
 	// Attempts is how many times the run was tried when --retry-transient allowed more than one; TransportClean is false when a retry was needed (a Forward restart or a gateway failure).
 	Attempts       int               `json:"attempts,omitempty"`
 	TransportClean *bool             `json:"transport_clean,omitempty"`
@@ -79,12 +84,14 @@ func (s *Session) startAndWait(ctx context.Context, networkID string, r NQERun, 
 		timeout = 10 * time.Minute
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
+	submitted := time.Now()
 	ex, _, err := s.Client.NQE.Start(ctx, networkID, r.SnapshotID, forward.NQEExecutionRequest{Query: r.Query, QueryID: r.QueryID, CommitID: r.CommitID, Parameters: r.Parameters})
 	if err != nil {
 		MetaFromError(&meta, err)
 		return ctx, cancel, meta, err
 	}
 	meta.ExecutionKey = ex.ExecutionKey
+	poll := 150 * time.Millisecond
 	for {
 		cur, _, serr := s.Client.NQE.Status(ctx, networkID, meta.ExecutionKey)
 		if serr != nil {
@@ -92,6 +99,10 @@ func (s *Session) startAndWait(ctx context.Context, networkID string, r NQERun, 
 			return ctx, cancel, meta, serr
 		}
 		meta.Status, meta.Outcome, meta.MillisExecuting, meta.RowsProduced = cur.Status, cur.Outcome, cur.MillisExecuting, cur.RowsProduced
+		if st := strings.ToUpper(cur.Status); meta.QueuedMillis == nil && st != "" && st != "QUEUED" && st != "PENDING" && st != "SUBMITTED" {
+			q := time.Since(submitted).Milliseconds()
+			meta.QueuedMillis = &q
+		}
 		switch strings.ToUpper(cur.Status) {
 		case "COMPLETED":
 			if cur.Outcome != "" && !strings.EqualFold(cur.Outcome, "OK") && !strings.EqualFold(cur.Outcome, "SUCCEEDED") {
@@ -116,7 +127,11 @@ func (s *Session) startAndWait(ctx context.Context, networkID string, r NQERun, 
 			err := fmt.Errorf("the execution %s did not finish within %s: %w", meta.ExecutionKey, timeout, ctx.Err())
 			meta.Error = err.Error()
 			return ctx, cancel, meta, err
-		case <-time.After(1 * time.Second):
+		case <-time.After(poll):
+		}
+		// poll quickly at first, so a short query is not charged a whole second, then settle at one second so a long one is easy on the server
+		if poll < time.Second {
+			poll = min(poll*2, time.Second)
 		}
 	}
 }

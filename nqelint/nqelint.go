@@ -66,6 +66,7 @@ type Diagnostic struct {
 	Code     string `json:"code"`
 	Message  string `json:"message"`
 	Fix      string `json:"fix,omitempty"`
+	Hint     string `json:"hint,omitempty"`
 }
 
 // HasErrors reports whether any diagnostic is an error.
@@ -162,3 +163,6 @@ var ErrNoSuchModule = errors.New("no such module")
 
 // Bundle is not available in this build.
 func Bundle(string, BundleSource) (string, []string, error) { return "", nil, ErrNotInThisBuild }
+
+// BustCache is not available in the public build (it needs the query parser).
+func BustCache(string, string) (string, error) { return "", ErrNotInThisBuild }

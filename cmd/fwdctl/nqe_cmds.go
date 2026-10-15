@@ -20,7 +20,7 @@ func (a *app) nqeCmd() *cobra.Command {
 		Long: "NQE (Network Query Engine) tools. Offline, no Forward connection: lint, fmt, lsp, complete, hover, template. Connected: run, bundle, synthesize.\n" +
 			"Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or fwdctl login). Long queries: FORWARD_TIMEOUT, FORWARD_NQE_MODE, FORWARD_NQE_WAIT (fwdctl docs troubleshooting).",
 	})
-	c.AddCommand(a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
+	c.AddCommand(a.nqeExplain(), a.nqeMetrics(), a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
 		a.nqeTemplate(), a.nqeFeatures(), a.nqeRun(), a.nqeBundle(), a.nqeExport(), a.nqePack(), a.nqeSynth())
 	return c
 }
@@ -37,6 +37,7 @@ func (a *app) nqeLint() *cobra.Command {
 			"Dead code is warned about, never an error (exit stays 0): an import none of whose names is used (unused-import), a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main\n" +
 			"expression or an export refers to (unused-definition). Lint a `nqe bundle` to find what a whole module tree never uses; an exported definition is never called dead, since\n" +
 			"another module may import it.\n" +
+			"Performance advice is reported as `info` (never an error, exit stays 0): the query will not run device-parallel (perf-device-parallel), a device filter that is not an exact name equality (perf-device-filter), a very large inline query (perf-inline-size). See `fwdctl describe author-nqe-query reference/performance.md`.\n" +
 			"The embedded schema is a release's; an organization on a newer build has fields it lacks (and may have dropped fields it still has). --org reads the organization's live schema\n" +
 			"(GET /api/nqe/schema; needs a login) and checks against that, so a field the organization no longer has is reported as an error, and the result says how many field paths the live schema\n" +
 			"has that the embedded one lacks and the reverse (schema.source, fields_added, fields_removed).",
@@ -159,8 +160,8 @@ func (a *app) nqeRun() *cobra.Command {
 	c := &cobra.Command{
 		Use: "run", Short: "run a query (a file, stdin or a saved one at a commit) and print every row, or one page",
 		Long: `Run an NQE query on Forward and print the rows (stdout), with timing and scope on stderr. Every row is fetched, paged for you (up to --max), or with --limit/--offset ONE page.
-A saved library query runs by id at a commit. --async uses Forward's asynchronous execution API, --meta records how the run went. A synchronous call that is cut off by the HTTP
-timeout falls back to the asynchronous API by itself (FORWARD_NQE_MODE=sync turns that off, =async always uses it; FORWARD_NQE_WAIT bounds the wait).
+A saved library query runs by id at a commit. Runs are ASYNCHRONOUS by default (Forward's execution API: a query's duration and size cannot be known beforehand, and a polled execution holds no connection open, so there is no gateway timeout; it costs a few hundred milliseconds on a small query). --sync, or FORWARD_NQE_MODE=sync, runs one synchronous request instead; FORWARD_NQE_MODE=syncfirst is the older sync-then-async-on-timeout; FORWARD_NQE_WAIT bounds the wait.
+--meta records how the run went: the execution key, outcome, Forward's execution time (millis_executing), the time spent queued (queued_millis, measured here) and whether the result came from Forward's cache. A failed run served from the cache says so: repeating the same request cannot succeed until the query text or parameters change (--fresh does that). Over ~100 KB sent inline, save the query and use --query-id.
 Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 error, 64 bad usage.`,
 		Example: `  fwdctl nqe run --network 123 --file q.nqe --format table
   fwdctl nqe run --network 123 --query-id Q_abc --commit-id 9f3c --param threshold=10 --meta run.json
@@ -193,7 +194,9 @@ Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 erro
 	f.StringArrayVar(&o.params, "param", nil, "one parameter as NAME=JSON (repeatable; a value that is not JSON is a string), overrides --params")
 	f.IntVar(&o.retryTransient, "retry-transient", 0, "retry up to N more times (waiting 5s, 10s, ... up to 30s) when Forward or its gateway answers 502, 503 or 504, for a long run that a Forward restart would kill; --meta records attempts and transport_clean")
 	f.BoolVar(&o.allowLarge, "allow-large", false, "write a result of more than 100 MB (by default it is refused before anything is written, so a redirect cannot fill the disk)")
-	f.BoolVar(&o.asyncRun, "async", false, "run through Forward's asynchronous execution API (the execution key and outcome are in --meta)")
+	f.BoolVar(&o.asyncRun, "async", false, "(the default) run through Forward's asynchronous execution API (the default; the execution key, outcome and times are in --meta)")
+	f.BoolVar(&o.syncRun, "sync", false, "run as one synchronous request instead (faster for a small query; a long one can be cut off by the gateway)")
+	f.BoolVar(&o.fresh, "fresh", false, "EXPERIMENTAL: add an always-true filter after the first loop so Forward's result cache sees a new program (a cold timing, or a retry of a cached failure); rows are identical")
 	f.StringVar(&o.metaOut, "meta", "", "write a JSON object about the run (mode, execution key, outcome, Forward's execution time, rows, HTTP status and diagnostics on failure) to this file, or - for stderr")
 	f.IntVar(&o.pageOffset, "offset", 0, "read one page: skip this many rows (with --limit; the page, the total and the offset are in --meta)")
 	f.IntVar(&o.pageLimit, "limit", 0, "read one page of at most this many rows instead of every row (0: every row, up to --max)")

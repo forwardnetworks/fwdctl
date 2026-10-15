@@ -67,8 +67,8 @@ Flags win over the environment, the environment over the file.
 To act as another org user without their credential (an administrator Forward allows to impersonate): FORWARD_IMPERSONATE=<user id> with the administrator's login. The session is read-only and every result says it was impersonated.
 For a Forward with a private or self-signed certificate prefer --ca-bundle FILE (or FORWARD_CA_BUNDLE): it trusts only that PEM file and verification stays on. Set FORWARD_INSECURE=true only as a last resort: it turns TLS verification off and every result records it.
 
-Long queries: FORWARD_TIMEOUT=600s raises the per-call HTTP limit (default 120s); a query cut off by it falls back to Forward's asynchronous API
-(FORWARD_NQE_MODE=auto|sync|async, FORWARD_NQE_WAIT=20m). More: fwdctl docs troubleshooting.
+Queries run through Forward's asynchronous execution API by default (a query's duration and size cannot be known beforehand; no gateway timeout). FORWARD_NQE_MODE=sync
+runs one request instead (FORWARD_TIMEOUT=600s raises its HTTP limit), =syncfirst is sync with an async fallback; FORWARD_NQE_WAIT=20m bounds the wait. More: fwdctl docs troubleshooting.
 
 Exit status: 0 ok, 1 failed (a finding), 2 unknown (could not decide: never a pass), 3 error, 64 bad usage or input.`
 
@@ -256,7 +256,7 @@ func (a *app) contextCmd() *cobra.Command {
 	for _, kind := range []string{"nqe", "schema"} {
 		kind := kind
 		k := 3
-		short := map[string]string{"nqe": "NQE worked examples closest to a question", "schema": "real NQE field names (and enum values) matching a term"}[kind]
+		short := map[string]string{"nqe": "NQE worked examples closest to a question", "schema": "real NQE field names (and enum values) matching a term; a record is expanded one level"}[kind]
 		sub := &cobra.Command{
 			Use: kind + " <" + map[string]string{"nqe": "question", "schema": "term"}[kind] + ">", Short: short, Args: cobra.ExactArgs(1),
 			Example: map[string]string{"nqe": "  fwdctl context nqe \"bgp neighbors that are down\" -k 2", "schema": "  fwdctl context schema vrf"}[kind],

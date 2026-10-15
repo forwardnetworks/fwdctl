@@ -46,7 +46,7 @@ func runNQEWith(t *testing.T, routes map[string]fwdtest.Handler, mode string) ([
 
 func TestNQEFallsBackToTheAsynchronousAPIWhenTheSynchronousCallTimesOut(t *testing.T) {
 	var sync, started int
-	rows, err := runNQEWith(t, slowNQERoutes(&sync, &started), "")
+	rows, err := runNQEWith(t, slowNQERoutes(&sync, &started), "syncfirst")
 	if err != nil || len(rows) != 1 || rows[0]["device"] != "r1" || sync != 1 || started != 1 {
 		t.Fatalf("rows=%v err=%v sync=%d async=%d", rows, err, sync, started)
 	}
@@ -72,10 +72,37 @@ func TestASkillsQueryCompletesThroughTheFallback(t *testing.T) {
 		hc := *c.HTTPClient
 		hc.Timeout = 150 * time.Millisecond
 		c.HTTPClient = &hc
+		c.NQEMode = "syncfirst"
 	})
 	// validate-nqe-query runs one query through RunNQE (a single page), the same call the other skills use
 	r, err := skills.Run(context.Background(), "validate-nqe-query", sess, json.RawMessage(`{"network_id":"n1","query":"foreach d in network.devices select {device: d.name}"}`))
 	if err != nil || r.Status == result.Error || started != 1 {
 		t.Fatalf("status=%v err=%v async=%d sync=%d finding=%s", r.Status, err, started, sync, r.Finding)
+	}
+}
+
+// The default is asynchronous: a query is run through the execution API without a synchronous attempt first, because how long it runs and how much it returns cannot be known beforehand. A Forward that
+// does not serve the execution API is read synchronously.
+func TestNQEDefaultsToAsynchronousAndReadsSynchronouslyWhereTheExecutionAPIIsNotServed(t *testing.T) {
+	var sync, started int
+	rows, err := runNQEWith(t, slowNQERoutes(&sync, &started), "")
+	if err != nil || len(rows) != 1 || sync != 0 || started != 1 {
+		t.Fatalf("default mode: rows=%v err=%v sync=%d async=%d", rows, err, sync, started)
+	}
+	sync, started = 0, 0
+	routes := slowNQERoutes(&sync, &started)
+	routes["POST /api/networks/n1/nqe-executions"] = fwdtest.Const(404, map[string]any{"message": "No endpoint POST /api/networks/n1/nqe-executions."})
+	routes[nqePath] = func(*http.Request, []byte) (int, any) {
+		sync++
+		return 200, map[string]any{"items": []any{map[string]any{"device": "r2"}}, "totalNumItems": 1}
+	}
+	rows, err = runNQEWith(t, routes, "")
+	if err != nil || len(rows) != 1 || rows[0]["device"] != "r2" || sync != 1 {
+		t.Fatalf("not served: rows=%v err=%v sync=%d", rows, err, sync)
+	}
+	// async mode never falls back
+	sync = 0
+	if _, err := runNQEWith(t, routes, "async"); err == nil || sync != 0 {
+		t.Fatalf("async mode must not read synchronously: err=%v sync=%d", err, sync)
 	}
 }

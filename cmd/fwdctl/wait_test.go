@@ -155,11 +155,11 @@ func TestNqeRunRetriesAGatewayErrorOnlyWhenAskedAndRecordsTheAttempts(t *testing
 	}
 	meta := t.TempDir() + "/m.json"
 	// not asked: the 502 is the answer
-	if code, _, _ := call(t, []string{"nqe", "run", "--network", "n1", "--format", "json"}, "select {x: 1}", r); code == 0 || calls != 1 {
+	if code, _, _ := call(t, []string{"nqe", "run", "--sync", "--network", "n1", "--format", "json"}, "select {x: 1}", r); code == 0 || calls != 1 {
 		t.Fatalf("without --retry-transient a 502 fails: code %d calls %d", code, calls)
 	}
 	calls = 0
-	code, out, errb := call(t, []string{"nqe", "run", "--network", "n1", "--format", "json", "--retry-transient", "2", "--meta", meta}, "select {x: 1}", r)
+	code, out, errb := call(t, []string{"nqe", "run", "--sync", "--network", "n1", "--format", "json", "--retry-transient", "2", "--meta", meta}, "select {x: 1}", r)
 	if code != 0 || calls != 2 || !strings.Contains(out, `"x": 1`) || !strings.Contains(errb, "retrying in 5s") {
 		t.Fatalf("code %d calls %d out %s err %s", code, calls, out, errb)
 	}

@@ -127,7 +127,8 @@ func TestCollectionConfigListsDataFilesWithAttachmentAndCanPreviewOneSchema(t *t
 	routes := map[string]fwdtest.Handler{
 		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
 		"GET /api/data-files": fwdtest.Const(200, []any{
-			map[string]any{"name": "sites", "nqeName": "sites", "type": "CSV", "description": "site ownership", "networkIds": []string{"n1", "n2"}},
+			map[string]any{"name": "sites", "nqeName": "sites", "type": "CSV", "description": "site ownership", "networkIds": []string{"n1", "n2"},
+				"createdAt": "2026-01-02T03:04:05Z", "createdBy": "alice", "updatedAt": "2026-08-14T01:00:00Z", "updatedBy": "svc-producer", "uploadedAt": "2026-08-14T01:00:00Z", "uploadedBy": "svc-producer"},
 			map[string]any{"name": "empty-one", "nqeName": "emptyOne", "type": "JSON", "networkIds": []string{}, "isEmpty": true},
 		}),
 		"GET /api/data-files/sites/schema":     fwdtest.Const(200, map[string]any{"content": "site,owner\nnyc,ops\n", "inference": map[string]any{"dataFormat": "CSV", "warnings": []string{}, "errors": []string{}, "schema": map[string]any{"type": "List"}}}),
@@ -135,7 +136,7 @@ func TestCollectionConfigListsDataFilesWithAttachmentAndCanPreviewOneSchema(t *t
 	}
 	r, srv := mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1"}`)
 	b := jsonOf(r)
-	for _, want := range []string{`"data_files"`, `"attached_to_this_network":true`, `"nqe_name":"sites"`, `"empty":true`} {
+	for _, want := range []string{`"data_files"`, `"attached_to_this_network":true`, `"nqe_name":"sites"`, `"empty":true`, `"updated_at":"2026-08-14T01:00:00Z"`, `"updated_by":"svc-producer"`, `"created_by":"alice"`, `"uploaded_by":"svc-producer"`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("missing %s in %s", want, b)
 		}

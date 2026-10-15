@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/nqelint"
 )
 
 // cell renders one value for a table or CSV: scalars as they are, nil as empty, anything nested as compact JSON.
@@ -228,7 +229,7 @@ func pickList(result any, name string) (rows []map[string]any, where string, oth
 type nqeRunOpts struct {
 	network, file, snapshot, format, countBy, queryID, commitID, paramsFile, metaOut string
 	max, pageOffset, pageLimit                                                       int
-	asyncRun                                                                         bool
+	asyncRun, syncRun, fresh                                                         bool
 	retryTransient                                                                   int
 	allowLarge                                                                       bool
 	waitMax                                                                          time.Duration
@@ -240,6 +241,10 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 	stdin, stdout, stderr, session := a.in, a.out, a.err, a.session
 	network, file, snapshot, format, countBy, queryID, commitID, paramsFile, metaOut := &o.network, &o.file, &o.snapshot, &o.format, &o.countBy, &o.queryID, &o.commitID, &o.paramsFile, &o.metaOut
 	max, pageOffset, pageLimit, asyncRun, waitMax, paramKV := &o.max, &o.pageOffset, &o.pageLimit, &o.asyncRun, &o.waitMax, o.params
+	// asynchronous is the default: a query's duration and size cannot be known before it runs. --sync (or FORWARD_NQE_MODE=sync or syncfirst) asks for the one-request form.
+	if m := strings.ToLower(os.Getenv("FORWARD_NQE_MODE")); !o.syncRun && m != "sync" && m != "syncfirst" {
+		o.asyncRun = true
+	}
 	if *pageOffset < 0 || *pageLimit < 0 || (*pageOffset > 0 && *pageLimit == 0) {
 		fmt.Fprintln(stderr, "error: --offset needs --limit, and neither may be negative")
 		return usage
@@ -267,6 +272,25 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 		if err != nil || strings.TrimSpace(string(src)) == "" {
 			fmt.Fprintln(stderr, "error: give the query with --file, --query-id or on stdin")
 			return usage
+		}
+	}
+	if *queryID != "" {
+		if p := queryIDProblem(*queryID); p != "" {
+			fmt.Fprintf(stderr, "error: %s\n", p)
+			return usage
+		}
+	} else {
+		if w := inlineSizeWarning(len(src)); w != "" {
+			fmt.Fprintln(stderr, "note: "+w)
+		}
+		if o.fresh {
+			busted, ferr := nqelint.BustCache(string(src), fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano()))
+			if ferr != nil {
+				fmt.Fprintf(stderr, "error: --fresh: %v\n", ferr)
+				return usage
+			}
+			src = []byte(busted)
+			fmt.Fprintln(stderr, "note: --fresh added an always-true filter after the first loop, so Forward's result cache sees a new program; the rows are the same")
 		}
 	}
 	params, perr := nqeParams(*paramsFile, paramKV)
@@ -338,6 +362,10 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 		// means the result came from the cache (measured: a hit took 43.7s against 114.6s recorded; a cold run 165-175s against 115-117s, polling and transfer included)
 		if meta.MillisExecuting != nil && *meta.MillisExecuting > 2000 && time.Since(started).Milliseconds()*10 < *meta.MillisExecuting*9 {
 			meta.LikelyCached = true
+		}
+		if n := cachedFailureNote(meta, time.Since(started)); n != "" {
+			meta.Note = n
+			fmt.Fprintln(stderr, "note: "+n)
 		}
 		b, _ := json.MarshalIndent(struct {
 			fwd.NQEMeta

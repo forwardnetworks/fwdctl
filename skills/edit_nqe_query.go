@@ -35,7 +35,9 @@ type editNQEQueryInput struct {
 	// OfflineCheck says which schema the offline check uses: "embedded" (default, this build's), "org" (the organization's live schema,
 	// the way `nqe lint --org` does) or "skip" (only with changes and typecheck: Forward's own check is then the gate).
 	OfflineCheck string `json:"offline_check"`
-	SnapshotID   string `json:"snapshot_id"`
+	// Features turns NQE feature flags on for the offline check (fwdctl nqe features lists them): fields such as device.securityPolicy exist only behind a flag.
+	Features   []string `json:"features"`
+	SnapshotID string   `json:"snapshot_id"`
 	// DiscardDraft drops the caller's own uncommitted draft at exactly path (nothing else; nothing committed changes).
 	DiscardDraft bool `json:"discard_draft"`
 	// NetworkID is not declared any more (the library is organization-wide); Run drops it, so an older caller that still sends it works.
@@ -64,10 +66,10 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
-	switch in.OfflineCheck {
-	case "", "embedded", "org", "skip":
+	switch {
+	case in.OfflineCheck == "", in.OfflineCheck == "embedded", in.OfflineCheck == "org", in.OfflineCheck == "skip", strings.HasPrefix(in.OfflineCheck, "features:") && len(in.OfflineCheck) > len("features:"):
 	default:
-		return result.Result{}, fmt.Errorf("%w: offline_check is embedded, org or skip", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: offline_check is embedded, org, skip or features:FLAG[,FLAG] (fwdctl nqe features lists the flags)", ErrInvalidInput)
 	}
 	if in.OfflineCheck == "skip" && !(len(in.Changes) > 0 && in.Typecheck) {
 		return result.Result{}, fmt.Errorf("%w: offline_check skip needs changes with typecheck: true, so that Forward's own check is the gate (an unchecked save is never offered)", ErrInvalidInput)
@@ -115,7 +117,11 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		}
 		for _, d := range diags {
 			if d.Severity == "error" {
-				errs = append(errs, map[string]any{"line": d.Line, "column": d.Column, "message": d.Message})
+				e := map[string]any{"line": d.Line, "column": d.Column, "message": d.Message}
+				if d.Hint != "" {
+					e["hint"] = d.Hint
+				}
+				errs = append(errs, e)
 			}
 		}
 		if schemaUsed != "embedded" {
@@ -125,7 +131,8 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 			return result.Build(editNQEQueryName, result.Failed, fmt.Sprintf("The query does not pass the offline check (%d error(s)); it was not saved", len(errs)),
 				result.Deterministic, cx, result.Options{Mode: mode, NextActions: []string{"author-nqe-query"},
 					Evidence: []result.Evidence{result.NewEvidence(result.EvState, "nqelint", nil, map[string]any{"path": in.Path, "errors": errs}, "")},
-					Limits:   []string{"nothing was changed; fix the errors (fwdctl nqe lint shows them with positions) and run again"}})
+					Limits: []string{"nothing was changed; fix the errors (fwdctl nqe lint shows them with positions) and run again",
+						"if an error is `Record does not have field` for a field Forward accepts (device.securityPolicy, device.services, virtual*, a data file under network.extensions), the default offline schema lacks it: run again with offline_check: org (this organization's own schema) or offline_check: features:<FLAG> (fwdctl nqe features lists the NQE feature flags)"}})
 		}
 	}
 	prior, err := s.OrgQuery(ctx, in.Path)
@@ -303,6 +310,16 @@ func lintWithSchema(ctx context.Context, s *fwd.Session, mode, src string) ([]nq
 		}
 		defer nqelint.ResetOrgSchema()
 		return nqelint.Lint(src), "organization's", nil
+	}
+	if flags, ok := strings.CutPrefix(mode, "features:"); ok {
+		features := strings.Split(flags, ",")
+		orgLintMu.Lock()
+		defer orgLintMu.Unlock()
+		if err := nqelint.SetFeatures(features); err != nil {
+			return nil, "", fmt.Errorf("%w: features: %v", ErrInvalidInput, err)
+		}
+		defer nqelint.ResetFeatures()
+		return nqelint.Lint(src), "embedded with features " + strings.Join(features, ","), nil
 	}
 	return nqelint.Lint(src), "embedded", nil
 }

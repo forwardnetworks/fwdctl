@@ -215,3 +215,13 @@ func TestABackdateFromAReprocessedSnapshotStillReachesEverythingCreatedSince(t *
 		t.Errorf("want all 3 snapshots created since old: %s", r.Finding)
 	}
 }
+
+// A snapshot made by an older Forward build can read UNPROCESSED with no processing running after an upgrade. The listing says that is a known cause and what to do, not only the state.
+func TestSnapshotListingExplainsUnprocessedAfterAnUpgrade(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: fwdtest.Snapshots(fwdtest.Snap("s1", "UNPROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"))}
+	r, _ := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1"}`)
+	all := strings.Join(r.Limits, " ")
+	if !strings.Contains(all, "after a Forward upgrade") || !strings.Contains(all, "edit-snapshot") {
+		t.Errorf("limits = %v", r.Limits)
+	}
+}

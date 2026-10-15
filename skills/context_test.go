@@ -59,3 +59,30 @@ func TestContextSchemaFallsBackWhenTheLiveReadFails(t *testing.T) {
 		t.Errorf("source = %q", src)
 	}
 }
+
+// A record-typed match is expanded one level: the field names and types inside it, so an author does not learn that a scope or rulebase has no `name` from a compile error.
+func TestContextSchemaExpandsARecordOneLevel(t *testing.T) {
+	out, err := skills.Context(context.Background(), "schema", "securityPolicy.scopes.rulebases.rules", 3, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kids, _ := out["contains"].(map[string][]map[string]string)
+	rules := kids["network.devices.securityPolicy.scopes.rulebases.rules"]
+	if len(rules) < 3 {
+		t.Fatalf("the rule record should list its fields: %v", out["contains"])
+	}
+	rulebases := kids["network.devices.securityPolicy.scopes.rulebases"]
+	names := map[string]bool{}
+	for _, f := range rulebases {
+		names[f["name"]] = true
+		if f["type"] == "" {
+			t.Errorf("field %v has no type", f)
+		}
+	}
+	if names["name"] {
+		t.Errorf("the schema says a rulebase has no name, but the expansion lists one: %v", rulebases)
+	}
+	if !names["rules"] {
+		t.Errorf("a rulebase holds rules: %v", rulebases)
+	}
+}

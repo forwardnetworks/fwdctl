@@ -42,6 +42,20 @@ func Context(ctx context.Context, topic, term string, k int, sess *fwd.Session) 
 		if len(enums) > 0 {
 			out["enums"] = enums
 		}
+		// a record (or a bag of records) is expanded one level: its field names and types, so a wrong guess such as .name on a scope is not learned from a compile error
+		contains := map[string][]map[string]string{}
+		for _, f := range fields {
+			var kids []map[string]string
+			for _, c := range m.Children(f.Path) {
+				kids = append(kids, map[string]string{"name": c.Name, "type": c.Type})
+			}
+			if len(kids) > 0 {
+				contains[f.Path] = kids
+			}
+		}
+		if len(contains) > 0 {
+			out["contains"] = contains
+		}
 		return out, nil
 	case "nqe":
 		ex, err := knowledge.Search(term, k)
@@ -52,7 +66,7 @@ func Context(ctx context.Context, topic, term string, k int, sess *fwd.Session) 
 			ex = []knowledge.Example{}
 		}
 		return map[string]any{"topic": "nqe", "question": term, "examples": ex,
-			"procedure": "load the author-nqe-query skill for the language cheat sheet and the strict rules"}, nil
+			"procedure": "load the author-nqe-query skill for the language cheat sheet and the strict rules; for a query over many devices also read its reference/performance.md (device-parallel shape, filter early, select scalars): fwdctl describe author-nqe-query reference/performance.md. Switches: nqe lint --features/--org/--experimental, nqe features, nqe run --meta/--fresh, nqe explain, nqe metrics"}, nil
 	}
 	return nil, fmt.Errorf("unknown context topic %q (want nqe or schema)", topic)
 }

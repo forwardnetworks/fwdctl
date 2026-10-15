@@ -103,6 +103,12 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		}
 	}
 	limits = append(limits, advancedLimits(ctx, s, win, byID, all)...)
+	for _, row := range win {
+		if row["state"] == "UNPROCESSED" {
+			limits = append(limits, staleAfterUpgradeLimit)
+			break
+		}
+	}
 	finding := fmt.Sprintf("%d snapshots (%d predicted); the newest processed collected one is %s", len(all), predicted, orNone(latestReadable))
 	if latestReadable == "" {
 		limits = append(limits, "no snapshot is processed and collected, so the other skills have nothing to read by default")
@@ -130,6 +136,9 @@ func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInpu
 	var limits []string
 	if sn.State != "PROCESSED" {
 		limits = append(limits, "the snapshot is "+sn.State+", not PROCESSED, so its metrics are not final")
+	}
+	if sn.State == "UNPROCESSED" {
+		limits = append(limits, staleAfterUpgradeLimit)
 	}
 	if !finalState(sn.State) {
 		p, more := processingDetail(ctx, s, *sn)
@@ -408,3 +417,6 @@ func advancedLimits(ctx context.Context, s *fwd.Session, win []map[string]any, b
 	}
 	return limits
 }
+
+// staleAfterUpgradeLimit is said for a snapshot that reads UNPROCESSED. Measured by another session: after a Forward upgrade, snapshots made by the old build read UNPROCESSED with no processing running until they are reprocessed.
+const staleAfterUpgradeLimit = "UNPROCESSED with nothing processing it is also what snapshots from an older Forward build look like after a Forward upgrade (measured by another session): reprocess the snapshot with edit-snapshot (dry run first) before reading it"

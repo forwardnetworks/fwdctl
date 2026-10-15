@@ -211,3 +211,19 @@ func toStrings(v any) []string {
 	}
 	return out
 }
+
+// A field behind an NQE feature flag (device.securityPolicy) is rejected by the default offline schema although Forward accepts it. The refusal says so and names the two ways out, and `features` turns
+// the flag on for the check.
+func TestEditNQEQueryNamesTheFeatureFlagWayOutAndAcceptsFeatures(t *testing.T) {
+	needCorpora(t)
+	q := "foreach d in network.devices foreach s in d.securityPolicy.scopes select {n: d.name, s: s.name}"
+	r, _ := mustRun(t, "edit-nqe-query", libraryRoutes("", true), `{"path":"/Team/q","source":"`+q+`"}`)
+	all := jsonOf(r)
+	if r.Status != result.Failed || !strings.Contains(all, "offline_check: org") || !strings.Contains(all, "features:") {
+		t.Fatalf("the refusal should name offline_check org and features: %s", all)
+	}
+	r, _ = mustRun(t, "edit-nqe-query", libraryRoutes("", true), `{"path":"/Team/q","source":"foreach d in network.devices foreach s in d.securityPolicy.scopes select {n: d.name}","offline_check":"features:NQE_SECURITY_RULES_FORTIOS"}`)
+	if strings.Contains(r.Finding, "offline check") {
+		t.Errorf("with the feature on the check should pass: %s %s", r.Status, r.Finding)
+	}
+}

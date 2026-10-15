@@ -96,8 +96,8 @@ type Session struct {
 	// ErrOrganizationDeletionRefused to forbid it. fwdctl leaves it nil and (built with -tags fwdctl_cli) deletes directly; a plain build has no direct delete and refuses.
 	OrganizationDeleter OrganizationDeleter
 
-	// NQEMode is how a query runs: "" or "auto" (synchronously; if the HTTP timeout cuts the request off, as an asynchronous execution), "sync" (never falls back) or
-	// "async" (always through the execution API, for networks whose queries are known to be long). NQEWait bounds the wait for an asynchronous execution (default 10 minutes).
+	// NQEMode is how a query runs: "" or "auto" (asynchronously, through the execution API; synchronously only where Forward does not serve it), "async" (never falls back), "sync" (one
+	// request, no execution API) or "syncfirst" (synchronous, asynchronous only if the HTTP timeout cuts it off). NQEWait bounds the wait for an asynchronous execution (default 10 minutes).
 	NQEMode string
 	NQEWait time.Duration
 

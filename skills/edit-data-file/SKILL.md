@@ -61,7 +61,7 @@ One `state` item (upload) or two (attach/detach: before and read-back).
 
 ## Next actions
 
-`inspect-collection` to see the file and, once attached and a snapshot runs, `author-nqe-query` to read `network.extensions.<nqe_name>`.
+`inspect-collection` to see the file (its `nqe_name`, who uploaded it and when) and, once attached and a snapshot runs, `author-nqe-query` to read every row with `foreach r in network.extensions.<nqe_name>.value select r`.
 
 ## Running this skill
 

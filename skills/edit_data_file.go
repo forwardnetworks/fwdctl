@@ -121,6 +121,10 @@ func planDataFileUpload(ctx context.Context, s *fwd.Session, in editDataFileInpu
 	}
 	limits := []string{"a data file is organization-wide: once uploaded, any network can attach it. Content is validated by Forward on upload, not previewed here first (inspect-collection view config with data_file previews an existing file's inferred schema, not content you have not uploaded yet)",
 		"the undo of an upload is action delete on the same name; it is only clean while no network has attached the file"}
+	if !nqeIdentRe.MatchString(nqeName) {
+		limits = append(limits, fmt.Sprintf("nqe_name %q is not a plain NQE identifier (letters, digits and underscores, not starting with a digit), so a query may not be able to write network.extensions.%s; the org's existing files use camelCase. Give nqe_name explicitly, for example %q", nqeName, nqeName, camelIdent(nqeName)))
+	}
+	limits = append(limits, "read the whole file in a query with: foreach r in network.extensions."+nqeName+".value select r (run it with fwdctl nqe run); inspect-collection previews only the first 2000 characters")
 	ch := result.Change{Action: "upload_data_file", Target: "data file " + lower, Before: nil, After: after, Reversible: true, Undo: "delete data file " + lower + " (edit-data-file action delete, confirm " + lower + ")"}
 	if !in.Apply {
 		return result.Build(editDataFileName, result.OK, fmt.Sprintf("Dry run: would upload data file %q (%s, nqe_name %s). Nothing was changed; run again with apply=true", lower, ft, nqeName),
@@ -264,4 +268,27 @@ func planDataFileDelete(ctx context.Context, s *fwd.Session, in editDataFileInpu
 	}
 	return result.Build(editDataFileName, result.OK, fmt.Sprintf("Deleted data file %q from the organization (it was attached to %d network(s))", in.Name, len(file.NetworkIDs)),
 		result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"inspect-collection"}, Evidence: dfEvidence("delete", before)})
+}
+
+var nqeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// camelIdent turns a file-like name into the camelCase identifier the org's existing data files use: "endpoint-lifecycle" is endpointLifecycle.
+func camelIdent(name string) string {
+	parts := regexp.MustCompile(`[^A-Za-z0-9]+`).Split(name, -1)
+	var b strings.Builder
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		if b.Len() == 0 && i == 0 || b.Len() == 0 {
+			b.WriteString(strings.ToLower(p[:1]) + p[1:])
+			continue
+		}
+		b.WriteString(strings.ToUpper(p[:1]) + p[1:])
+	}
+	out := b.String()
+	if out == "" || (out[0] >= '0' && out[0] <= '9') {
+		out = "file" + strings.ToUpper(out[:min(1, len(out))]) + out[min(1, len(out)):]
+	}
+	return out
 }

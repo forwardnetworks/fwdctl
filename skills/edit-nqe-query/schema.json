@@ -62,9 +62,10 @@
       "description": "with changes: have Forward type the changes and every query that imports them (stages drafts, restores them)"
     },
     "offline_check": {
-      "enum": ["embedded", "org", "skip"],
+      "type": "string",
+      "pattern": "^(embedded|org|skip|features:[A-Z0-9_]+(,[A-Z0-9_]+)*)$",
       "default": "embedded",
-      "description": "which schema the offline check uses: embedded (this build's), org (the organization's live schema, like nqe lint --org; for queries using fields newer than this build), or skip (only with changes and typecheck: true, so Forward's own check is the gate)"
+      "description": "which schema the offline check uses: embedded (this build's), org (the organization's live schema, like nqe lint --org; for queries using fields newer than this build), features:FLAG[,FLAG] (this build's schema with those NQE feature flags on, like nqe lint --features; fwdctl nqe features lists them; for fields behind a flag such as device.securityPolicy), or skip (only with changes and typecheck: true, so Forward's own check is the gate)"
     },
     "snapshot_id": {
       "type": "string",

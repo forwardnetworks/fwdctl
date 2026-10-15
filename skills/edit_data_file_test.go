@@ -186,3 +186,21 @@ func TestEditDataFileDeleteNeedsConfirmShowsWhereItIsAttachedAndSaysThereIsNoUnd
 		t.Errorf("a missing file is a refusal: %s", r.Status)
 	}
 }
+
+// A query reads a data file as network.extensions.<nqe_name>, so the name has to be a plain NQE identifier. A name Forward would derive with a hyphen is not one: the dry run says so and suggests the camelCase
+// spelling the org's existing files use.
+func TestEditDataFileWarnsWhenTheNQENameIsNotAnIdentifier(t *testing.T) {
+	files := []map[string]any{}
+	r, _ := mustRun(t, "edit-data-file", dataFilesWorld(&files), `{"action":"upload","name":"endpoint-lifecycle.csv","file_type":"CSV","content":"a,b\n1,2\n"}`)
+	all := strings.Join(r.Limits, " ")
+	if !strings.Contains(all, "not a plain NQE identifier") || !strings.Contains(all, "endpointLifecycle") {
+		t.Errorf("limits = %v", r.Limits)
+	}
+	r, _ = mustRun(t, "edit-data-file", dataFilesWorld(&files), `{"action":"upload","name":"endpoint-lifecycle.csv","nqe_name":"endpointLifecycle","file_type":"CSV","content":"a,b\n1,2\n"}`)
+	if strings.Contains(strings.Join(r.Limits, " "), "not a plain NQE identifier") {
+		t.Errorf("a valid nqe_name should not warn: %v", r.Limits)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "network.extensions.endpointLifecycle.value") {
+		t.Errorf("the limits should show how to read the rows: %v", r.Limits)
+	}
+}

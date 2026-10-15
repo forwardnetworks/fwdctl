@@ -69,7 +69,8 @@ func NewWith(t *testing.T, routes map[string]Handler, adjust func(*fwd.Config)) 
 	s := &Server{routes: routes}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
-	cfg := fwd.Config{BaseURL: s.URL, Username: "k", Password: "s", HTTPClient: s.Client()}
+	// the fake answers the one-request NQE route; a test of the asynchronous default asks for it with adjust (NQEMode "" or "async")
+	cfg := fwd.Config{BaseURL: s.URL, Username: "k", Password: "s", HTTPClient: s.Client(), NQEMode: "sync"}
 	if adjust != nil {
 		adjust(&cfg)
 	}

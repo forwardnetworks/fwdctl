@@ -281,6 +281,12 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			if f.IsEmpty {
 				row["empty"] = true
 			}
+			// who made and last changed the file, and when: how stale a file a producer is meant to refresh is
+			for k, v := range map[string]string{"created_at": f.CreatedAt, "created_by": f.CreatedBy, "updated_at": f.UpdatedAt, "updated_by": f.UpdatedBy, "uploaded_at": f.UploadedAt, "uploaded_by": f.UploadedBy} {
+				if v != "" {
+					row[k] = v
+				}
+			}
 			rows = append(rows, row)
 		}
 		detail["data_files"] = rows
@@ -305,7 +311,7 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 					preview["content_preview"] = "not shown: give include_content:true to read the first 2000 characters of the file (an uploaded file can hold secrets)"
 				} else if len(inf.Content) > 2000 {
 					preview["content_preview"] = inf.Content[:2000] + "..."
-					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is truncated at 2000 of %d characters; it is the file as uploaded, unredacted", in.DataFile, len(inf.Content)))
+					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is truncated at 2000 of %d characters; it is the file as uploaded, unredacted. To read every row: foreach r in network.extensions.%s.value select r (fwdctl nqe run --network %s --file q.nqe; the file must be attached to the network and a snapshot collected since)", in.DataFile, len(inf.Content), nqeNameOf(dfs, in.DataFile), in.NetworkID))
 				} else {
 					preview["content_preview"] = inf.Content
 					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is the file as uploaded, unredacted", in.DataFile))
@@ -607,4 +613,14 @@ func c2sAccounts(accounts []forward.AWSC2SAccountInfo) map[string]any {
 		rows = append(rows, map[string]any{"account_id": a.AccountID, "role": a.AccountRole})
 	}
 	return map[string]any{"count": total, "rows": rows, "rows_shown": len(rows)}
+}
+
+// nqeNameOf is the NQE name of the data file with the given name, for the recipe that reads all its rows.
+func nqeNameOf(files []forward.DataFile, name string) string {
+	for _, f := range files {
+		if f.Name == name {
+			return f.NQEName
+		}
+	}
+	return "<nqe_name>"
 }

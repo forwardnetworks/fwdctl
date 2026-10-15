@@ -58,20 +58,33 @@ func (s *Session) RunNQE(ctx context.Context, networkID string, r NQERun) (NQEOu
 	lim := int32(limit)
 	var items []forward.NQERecord
 	var total int64
+	// The default is asynchronous: how long a query runs, and how much it returns, cannot be known before it runs, and an execution polled to completion holds no connection open (no gateway
+	// stream timeout, no HTTP limit), is cached by Forward, and is easier on the server. It costs a few hundred milliseconds of polling on a small query. FORWARD_NQE_MODE=sync keeps the
+	// one-request form; "syncfirst" is the older behaviour (synchronous, asynchronous only when the HTTP timeout cuts it off). A Forward that does not serve the execution API is read synchronously.
 	mode := strings.ToLower(s.NQEMode)
-	if mode == "async" {
-		items, total, err = s.runNQEPageAsync(ctx, networkID, r, limit)
-	} else {
-		var res *forward.NQEResult
-		res, _, err = s.Client.NQE.Run(ctx, networkID, r.SnapshotID, forward.NQEQueryRequest{
+	runSync := func() ([]forward.NQERecord, int64, error) {
+		res, _, err := s.Client.NQE.Run(ctx, networkID, r.SnapshotID, forward.NQEQueryRequest{
 			Query: r.Query, QueryID: r.QueryID, CommitID: r.CommitID, Parameters: r.Parameters,
 			Options: nqeOptions(&lim, r.Offset),
 		})
-		if err == nil {
-			items, total = res.Items, res.TotalNumItems
-		} else if mode != "sync" && isClientTimeout(err) {
+		if err != nil {
+			return nil, 0, err
+		}
+		return res.Items, res.TotalNumItems, nil
+	}
+	switch mode {
+	case "sync":
+		items, total, err = runSync()
+	case "syncfirst":
+		items, total, err = runSync()
+		if err != nil && isClientTimeout(err) {
 			// the synchronous request was cut off by the HTTP timeout: run it as an asynchronous execution (served from Forward's cache if the first attempt finished meanwhile)
 			items, total, err = s.runNQEPageAsync(ctx, networkID, r, limit)
+		}
+	default: // "", "auto", "async"
+		items, total, err = s.runNQEPageAsync(ctx, networkID, r, limit)
+		if err != nil && mode != "async" && errors.Is(err, forward.ErrEndpointNotServed) {
+			items, total, err = runSync()
 		}
 	}
 	if err != nil {
