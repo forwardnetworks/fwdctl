@@ -616,5 +616,10 @@
     "query": "Set the External ID on a few AWS member accounts and add the newly discovered accounts to the setup",
     "expect": "edit-source",
     "rival": "edit-platform"
+  },
+  {
+    "query": "Disable the PAN-OS external list show command for collection org-wide, then turn it back on later",
+    "expect": "edit-platform",
+    "rival": "edit-source"
   }
 ]

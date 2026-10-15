@@ -842,6 +842,9 @@ func planCollectionSettings(ctx context.Context, s *fwd.Session, in editPlatform
 	if in.Action != "set" {
 		return nil, fmt.Errorf("%w: collection_settings takes action set", ErrInvalidInput)
 	}
+	if in.Name == "organization" && hasDisabledCommandEdit(in.Definition) {
+		return planDisabledCommands(ctx, s, in)
+	}
 	if in.Name == "organization" {
 		var def struct {
 			MaxDeviceAuthNPerSecond     *int `json:"max_device_authn_per_second"`

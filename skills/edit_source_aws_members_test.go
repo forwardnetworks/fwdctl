@@ -130,3 +130,23 @@ func TestNewlyDiscoveredAccountsAreAppendedWithTheSetupsRoleName(t *testing.T) {
 		}
 	}
 }
+
+// Forward lists, for an IAM-user setup, one "newly discovered" entry whose id is the setup's own name (a cloud account row whose id equals its setup id). It is not an AWS account: add_newly_discovered
+// skips anything that is not 12 digits and says so, and accounts_add refuses such an id.
+func TestNewlyDiscoveredEntriesThatAreNotAccountIdsAreSkippedAndSaid(t *testing.T) {
+	w := newMemberWorld()
+	w.newly = []any{map[string]any{"id": "aws-main", "name": "aws-main"}, map[string]any{"id": "444444444444", "name": "four"}}
+	r, _ := mustRun(t, "edit-source", w.routes(), `{"network_id":"n1","object":"cloud_account","action":"update","name":"aws-main","apply":true,"definition":{"add_newly_discovered":true}}`)
+	got := byAccount(w.patched)
+	if r.Status != result.OK || len(w.patched) != 4 || got["444444444444"] == nil || got["aws-main"] != nil {
+		t.Fatalf("only the real account id is added: %v", w.patched)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " ")+jsonOf(r), "not an AWS account id") {
+		t.Errorf("the skipped entry should be said: %s", jsonOf(r))
+	}
+	w = newMemberWorld()
+	w.newly = []any{map[string]any{"id": "aws-main", "name": "aws-main"}}
+	if _, _, err := runSkill(t, "edit-source", w.routes(), `{"network_id":"n1","object":"cloud_account","action":"update","name":"aws-main","apply":true,"definition":{"accounts_add":["aws-main"]}}`); err == nil || w.patched != nil {
+		t.Errorf("accounts_add of a non-account id must be refused: %v", err)
+	}
+}

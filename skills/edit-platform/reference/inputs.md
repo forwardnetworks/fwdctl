@@ -18,6 +18,7 @@ A secret (an S3 secret key, a ServiceNow or Infoblox password, a license key) is
 | `access_labels` | `create` | | `name`, `device_names`, `device_globs` | delete it |
 | `access_labels` | `update` | the label name or id | any of the create fields | update back |
 | `access_labels` | `delete` | the label name or id | | **none**; `confirm` = the name |
+| `collection_settings` | `set` | `organization` | `disable_commands` [{`device_type` e.g. panos_ssh, `command` (a regex matched against the whole lowercased command), `version_start`, `version_end` (default all versions)}] or `enable_commands` [{`device_type`, `command`}], on their own: turns a built-in collection command off or on org-wide, one entry at a time | set back |
 | `collection_settings` | `set` | `organization` | `max_device_authn_per_second`, `max_scan_connections_per_second`, `device_collection_timeout_minutes`, `command_delay_ms`, `per_device_concurrency_boost` | set back |
 | `collection_settings` | `set` | a collector id or name | `concurrency`, `snmp_collection_concurrency` | set back |
 | `saml` | `set` | | `custom_name`, `enabled`, `name`, `entity_id`, `sso_redirect_url`, `verification_cert` (PEM), `disable_authn_request_signing` | set back; `confirm` = `saml`; can lock users out |

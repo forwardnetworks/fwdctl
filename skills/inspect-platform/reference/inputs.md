@@ -6,7 +6,7 @@
 |---|---|---|
 | `credentials` | network | CLI, SNMP and HTTP credentials by id and name (never the password, key or community) |
 | `jump_servers`, `proxies` | network | host, port, user and id |
-| `collectors`, `collection_settings` | organization | each collector, its status, version and last connection, and `networks` (the networks it is attached to: one read per network, first 100 networks; the limits say how many were read); the organization's collection timeouts, retries and rates |
+| `collectors`, `collection_settings` | organization | each collector, its status, version and last connection, and `networks` (the networks it is attached to: one read per network, first 100 networks; the limits say how many were read); the organization's collection timeouts, retries and rates; `collection_settings` also shows the organization's `disabledCommands` (built-in collection commands switched off, by device type and version range; edit with `edit-platform`) |
 | `endpoint_profiles` | organization | every SNMP, CLI and HTTP endpoint profile (header values removed) |
 | `schedules` | network | collection schedules |
 | `cloud_setups` | network | cloud accounts, controller-managed and Mist setups, with regions and collect flags |

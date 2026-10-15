@@ -171,10 +171,19 @@ func planMembers(ctx context.Context, s *fwd.Session, in editSourceInput, a *for
 			want := def.Add
 			if def.AddNewly {
 				want = want[:0:0]
+				var skipped []string
 				for id := range disc {
+					if !accountIDRe.MatchString(id) { // Forward lists an IAM-user setup's own name as one "newly discovered" entry: not an account
+						skipped = append(skipped, id)
+						continue
+					}
 					want = append(want, id)
 				}
 				sort.Strings(want)
+				sort.Strings(skipped)
+				if len(skipped) > 0 {
+					summary["skipped_not_account_ids"] = skipped
+				}
 			}
 			for _, id := range want {
 				if _, member := index[id]; member {
@@ -229,6 +238,7 @@ func planMembers(ctx context.Context, s *fwd.Session, in editSourceInput, a *for
 		return infos, summary, nil
 	}
 
+	var limitsExtra []string
 	disc, err := discovered(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading the newly discovered accounts failed: %w", err)
@@ -237,12 +247,16 @@ func planMembers(ctx context.Context, s *fwd.Session, in editSourceInput, a *for
 	if err != nil {
 		return nil, err
 	}
+	if sk, ok := summary["skipped_not_account_ids"].([]string); ok && len(sk) > 0 {
+		limitsExtra = append(limitsExtra, fmt.Sprintf("these newly discovered entries are not an AWS account id (12 digits) and were skipped: %s. Forward lists an IAM-user setup's own name as one such entry", strings.Join(sk, ", ")))
+	}
 	limits := []string{"the member account list is replaced as a whole on Forward: every other account is resent exactly as it was (role, enabled flag, external id, last error), and the account is read again right before the write so a concurrent change is not lost",
 		"external id values are never shown, logged or returned; the result only says set or cleared per account",
 		"this changes what the next collection will use; it does not start one (edit-source cloud_account test checks the connection, edit-collection collects)"}
 	if len(def.ExternalIDs) > 0 && !valuesRead {
 		limits = append(limits, "the values file was not given in this dry run, so whether each account is set or cleared is not shown; apply needs it")
 	}
+	limits = append(limits, limitsExtra...)
 	before := map[string]any{"members": len(a.AssumeRoleInfos)}
 	return &networkPlan{target: fmt.Sprintf("edit the member accounts of cloud account %q on network %s", in.Name, in.NetworkID), action: "update_cloud_members", before: before, after: summary, reversible: true,
 		undo:   "external ids: set them back with accounts_external_ids (the previous values are not kept here: keep the old values file); added accounts: accounts_enabled false, or remove them in the UI",
