@@ -246,7 +246,12 @@ one that matches nothing is an error. DIR must be empty (or pass --force); --zip
   fwdctl nqe export --query-id Q_abc --out export/ --zip export.zip
   fwdctl nqe export --query-id Q_abc --out export/ --ui-zip for-the-ui.zip   # what the Forward UI imports`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error { return a.exit(nqeExportCmd(a, o)) },
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if p := idsProblem(o.queryID, o.commit); p != "" {
+				return a.fail("%s", p)
+			}
+			return a.exit(nqeExportCmd(a, o))
+		},
 	}
 	f := c.Flags()
 	f.StringVar(&o.queryID, "query-id", "", "the entry query, by id (its library path is read from the head listing)")
@@ -274,7 +279,12 @@ path replaces the entry; an --override or --add-module the bundle never reads is
 		Example: `  fwdctl nqe bundle --path "/Team/Entry" --commit-id 9f3c --out pre.nqe
   fwdctl nqe bundle --query-id Q_abc --override "/Team/Helpers=helpers.nqe" --out post.nqe`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error { return a.exit(nqeBundleCmd(a, o)) },
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if p := idsProblem(o.queryID, o.commit); p != "" {
+				return a.fail("%s", p)
+			}
+			return a.exit(nqeBundleCmd(a, o))
+		},
 	}
 	f := c.Flags()
 	f.StringVar(&o.queryID, "query-id", "", "the entry query, by id")

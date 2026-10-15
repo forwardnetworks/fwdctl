@@ -9,16 +9,41 @@ import (
 	"github.com/forwardnetworks/fwdctl/fwd"
 )
 
-var queryIDShape = regexp.MustCompile(`^(F?Q)_([0-9a-fA-F]+)$`)
+var queryIDShape = regexp.MustCompile(`^(F?Q)_([0-9A-Za-z]+)$`)
 
-// queryIDProblem catches a mistyped query id before any request: a library query id is Q_ (or FQ_ for Forward's library) followed by exactly 40 hex digits, a SHA-1. A value that is not hex at all
-// (a placeholder, an id of another form) is left to Forward to judge.
+// queryIDProblem catches a mistyped query id before any request: a library query id is Q_ (or FQ_ for Forward's library) followed by exactly 40 hex digits, a SHA-1. A value far from 40 characters (a
+// placeholder, an id of another form) is left to Forward to judge.
 func queryIDProblem(id string) string {
 	m := queryIDShape.FindStringSubmatch(strings.TrimSpace(id))
-	if m == nil || len(m[2]) == 40 || len(m[2]) < 30 || len(m[2]) > 50 { // far from 40 digits is a placeholder, not a typo: left to Forward
+	if m == nil || len(m[2]) < 30 || len(m[2]) > 50 {
 		return ""
 	}
-	return fmt.Sprintf("query id %q has %d hex digits after %s_; a library query id has exactly 40", id, len(m[2]), m[1])
+	if len(m[2]) != 40 {
+		return fmt.Sprintf("query id %q has %d hex digits after %s_; a library query id has exactly 40", id, len(m[2]), m[1])
+	}
+	for i, r := range m[2] {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return fmt.Sprintf("query id %q has %q at position %d after %s_, which is not a hex digit", id, string(r), i+1, m[1])
+		}
+	}
+	return ""
+}
+
+// commitIDProblem is the same check for a full commit id (a SHA-1: 40 hex digits). A short prefix is left to Forward.
+func commitIDProblem(id string) string {
+	id = strings.TrimSpace(id)
+	if len(id) < 30 || len(id) > 50 {
+		return ""
+	}
+	if len(id) != 40 {
+		return fmt.Sprintf("commit id %q has %d characters; a full commit id is a SHA-1 of exactly 40 hex digits", id, len(id))
+	}
+	for i, r := range id {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return fmt.Sprintf("commit id %q has %q at position %d, which is not a hex digit", id, string(r), i+1)
+		}
+	}
+	return ""
 }
 
 // cachedFailureNote says so when a failed execution came back much faster than the time Forward recorded for it: Forward caches a failure with its result, so the identical request cannot succeed.
@@ -50,4 +75,14 @@ func estimateTotalBytes(page []map[string]any, total int64) int64 {
 		return estimateRowsBytes(page)
 	}
 	return estimateRowsBytes(page) / int64(len(page)) * total
+}
+
+// idsProblem checks the query id and commit id a command was given, before any request.
+func idsProblem(queryID, commitID string) string {
+	if queryID != "" {
+		if p := queryIDProblem(queryID); p != "" {
+			return p
+		}
+	}
+	return commitIDProblem(commitID)
 }

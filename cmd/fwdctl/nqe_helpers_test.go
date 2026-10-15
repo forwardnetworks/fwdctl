@@ -19,6 +19,15 @@ func TestQueryIDProblemCatchesATypoLocally(t *testing.T) {
 	if p := queryIDProblem("Q_" + strings.Repeat("a", 39)); !strings.Contains(p, "39") || !strings.Contains(p, "40") {
 		t.Errorf("a short id should say how many digits it has and how many it needs: %q", p)
 	}
+	if p := queryIDProblem("Q_" + strings.Repeat("a", 39) + "X"); !strings.Contains(p, "not a hex digit") {
+		t.Errorf("a 40-character id with a non-hex character should say so: %q", p)
+	}
+	if p := commitIDProblem("0123456789abcdef0123456789abcdef0123456"); !strings.Contains(p, "39") {
+		t.Errorf("a short commit id: %q", p)
+	}
+	if p := commitIDProblem("9f3c"); p != "" {
+		t.Errorf("a short prefix is left to Forward: %q", p)
+	}
 	if p := queryIDProblem("Q_abc"); p != "" {
 		t.Errorf("a placeholder that is not hex-length-checkable stays the server's call: %q", p)
 	}
@@ -56,5 +65,15 @@ func TestEstimatedTotalBytesFromAPage(t *testing.T) {
 	}
 	if estimateTotalBytes(nil, 1000) != 0 || estimateTotalBytes(rows, 2) != estimateRowsBytes(rows) {
 		t.Errorf("an empty page has no estimate, and a page that is everything is its own size")
+	}
+}
+
+func TestBundleAndExportCatchAMistypedQueryIDLocally(t *testing.T) {
+	bad := "Q_" + strings.Repeat("a", 39)
+	for _, args := range [][]string{{"nqe", "bundle", "--query-id", bad}, {"nqe", "export", "--query-id", bad, "--out", t.TempDir() + "/x"}} {
+		code, _, errs := call(t, args, "", nil)
+		if code != usage || !strings.Contains(errs, "39") || !strings.Contains(errs, "40") {
+			t.Errorf("%v: %d %s", args[1], code, errs)
+		}
 	}
 }

@@ -275,7 +275,7 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 		}
 	}
 	if *queryID != "" {
-		if p := queryIDProblem(*queryID); p != "" {
+		if p := idsProblem(*queryID, *commitID); p != "" {
 			fmt.Fprintf(stderr, "error: %s\n", p)
 			return usage
 		}
