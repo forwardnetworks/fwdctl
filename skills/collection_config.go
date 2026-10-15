@@ -237,6 +237,7 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 					} else {
 						row["cap_server_url"] = cred.BaseCapServerURL
 						row["cap_ca_set"] = cred.HasCertificateAuthority
+						limits = append(limits, capCertificateFindings(c.Name, cred, row, time.Now())...)
 					}
 				}
 			}
@@ -623,4 +624,26 @@ func nqeNameOf(files []forward.DataFile, name string) string {
 		}
 	}
 	return "<nqe_name>"
+}
+
+// capCertificateFindings shows the CAP setup's CA expiry on its row and says what an expired or soon-expiring CA does: the portal rejects every account at once, which is how a whole AWS collection drops. The
+// client certificate's expiry cannot be read (a .p12 is encrypted under a password Forward never returns), and that is said rather than implied healthy.
+func capCertificateFindings(name string, cred *forward.AWSCapCredential, row map[string]any, now time.Time) []string {
+	var out []string
+	row["cap_ca_count"] = cred.CertificateAuthorityCount
+	switch {
+	case cred.HasCertificateAuthority && cred.CertificateAuthorityCount == 0:
+		out = append(out, fmt.Sprintf("the C2S Access Portal CA of %q is stored but none of it parses as a PEM certificate Forward can load, so the portal's certificate cannot be verified", name))
+	case !cred.CertificateAuthorityNotAfter.IsZero():
+		days := int(cred.CertificateAuthorityNotAfter.Sub(now).Hours() / 24)
+		row["cap_ca_not_after"], row["cap_ca_days_left"] = cred.CertificateAuthorityNotAfter.UTC().Format(time.RFC3339), days
+		switch {
+		case days < 0:
+			out = append(out, fmt.Sprintf("the C2S Access Portal CA of %q EXPIRED %d day(s) ago (%s): Forward cannot verify the portal, so every account of the setup fails at once and the whole AWS collection drops. Renew the CA in the Forward UI, then run the setup test", name, -days, cred.CertificateAuthorityNotAfter.UTC().Format("2006-01-02")))
+		case days <= 30:
+			out = append(out, fmt.Sprintf("the C2S Access Portal CA of %q expires in %d day(s) (%s): after that every account of the setup fails at once. Renew it in the Forward UI before then", name, days, cred.CertificateAuthorityNotAfter.UTC().Format("2006-01-02")))
+		}
+	}
+	out = append(out, fmt.Sprintf("the client certificate of %q has an expiry that cannot be read (%s): a .p12 is encrypted under a password Forward does not return. The portal's own server certificate is not dated by Forward either; an expired one shows in the collection as CERTIFICATE_CHECK_FAILED (investigate-collection-failure view cloud)", name, orNone(cred.ClientCertificateNotAfterReason)))
+	return out
 }

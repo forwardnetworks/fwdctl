@@ -24,7 +24,8 @@
         "neighbors",
         "slow",
         "history",
-        "logs"
+        "logs",
+        "cloud"
       ],
       "default": "summary"
     },

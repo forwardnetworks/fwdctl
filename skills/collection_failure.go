@@ -65,9 +65,9 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	switch in.View {
-	case "", "summary", "triage", "devices", "platforms", "changes", "exceptions", "neighbors", "slow", "history", "logs":
+	case "", "summary", "triage", "devices", "platforms", "changes", "exceptions", "neighbors", "slow", "history", "logs", "cloud":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be summary, triage, devices, platforms, changes, exceptions, neighbors, slow, history or logs", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be summary, triage, devices, platforms, changes, exceptions, neighbors, slow, history, logs or cloud", ErrInvalidInput)
 	}
 	view := in.View
 	if view == "" {
@@ -84,6 +84,7 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		"slow":       {"device", "limit", "offset", "compare_to_snapshot_id"},
 		"history":    {"limit"},
 		"logs":       {"failure", "device", "limit", "offset"},
+		"cloud":      {},
 	}); err != nil {
 		return result.Result{}, err
 	}
@@ -131,6 +132,8 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		return slowCollection(ctx, s, in, cx)
 	case "logs":
 		return deviceLog(ctx, s, in, cx)
+	case "cloud":
+		return cloudCollectionErrors(ctx, s, in, cx)
 	}
 
 	var evidence []result.Evidence

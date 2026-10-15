@@ -119,6 +119,9 @@ func inventoryCloudCoverage(ctx context.Context, s *fwd.Session, in inventoryInp
 			"a reason is what the cloud setup itself records about the account, not a diagnosis: a passing connectivity test that still was not collected says only that. Run the setup's connectivity test (edit-source object cloud_account action test) to refresh it",
 			fmt.Sprintf("uncollected shows at most %d accounts per setup; reasons counts all of them", maxUncollectedShown))
 	}
+	if collected < total {
+		limits = append(limits, "what the collector itself reported failing for these accounts (a portal credentials request, an expired portal certificate, an Azure subscription it cannot see) is in investigate-collection-failure view cloud")
+	}
 	limits = append(limits, "the setups' records are read as they are now; the snapshot is as it was when collected, so an account added or tested since shows its newer state")
 	return result.Build(inventoryName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: next,
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, detail, finding)}})

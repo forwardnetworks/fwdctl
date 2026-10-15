@@ -5,7 +5,7 @@ failed collection is the point) and `view`: `summary` (default) counts failures 
 `collector_task_id`; `triage` is first contact with a network — one call merging `summary`, the slowest devices and the worst-failing platform group, takes no inputs of its own; `devices` names the failed devices and takes `failure` (a category such as
 `credentials`, `network_path`, `device_session`, `unclassified`, `processing`, or a type such as
 `CONNECTION_REFUSED`), `device` (name contains) and `limit`/`offset`; `exceptions` lists the collectors' logged exceptions and takes `device`, `limit`/`offset`; `neighbors` lists unmodelled
-neighbours and takes `limit`/`offset`; `slow` ranks devices by collection time and takes `device`, `limit`, `offset`, `compare_to_snapshot_id`; `history` reads how long each recent collection took and takes `limit` (snapshots, default 10, at most 30); `logs` reads one
+neighbours and takes `limit`/`offset`; `slow` ranks devices by collection time and takes `device`, `limit`, `offset`, `compare_to_snapshot_id`; `history` reads how long each recent collection took and takes `limit` (snapshots, default 10, at most 30); `cloud` scans the snapshot's whole error log for cloud collection failures (a C2S Access Portal credentials request failing for an account, a portal certificate problem, a failed assume-role, an Azure or GCP authentication or subscription error) and rolls them up by class and account, beside the cloud setups' own state; it takes no other input; `logs` reads one
 device's collection log and takes `device` (required), `failure` (here the minimum level TRACE, DEBUG, INFO, WARN (default) or ERROR),
 `limit`, `offset`.
 

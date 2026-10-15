@@ -606,5 +606,10 @@
     "query": "Which devices are past end of support, and how many have no lifecycle information?",
     "expect": "inspect-inventory",
     "rival": "inspect-vulnerabilities"
+  },
+  {
+    "query": "Our AWS cloud collection dropped and the log shows C2S Access Portal credentials request failures with HTTP 400",
+    "expect": "investigate-collection-failure",
+    "rival": "inspect-collection"
   }
 ]
