@@ -16,6 +16,44 @@ Connection flags work on every command that talks to Forward:
 
 Exit status: 0 ok, 1 failed (a finding), 2 unknown (never a pass), 3 error, 64 bad usage or input.
 
+## fwdctl collector
+
+Downloads Forward's collector software with the logged-in credential, so a new collector host needs no browser. Registering the collector (its username and key) and attaching it to a network are separate steps: Settings > Collectors in Forward, then `fwdctl run edit-network` with object collector action assign.
+
+```
+fwdctl collector
+```
+
+Examples:
+
+```
+  fwdctl collector download --out ~/collector
+```
+
+## fwdctl collector download
+
+Streams the collector installer for --type (linux: fwd-unix-VERSION.sh, windows: .exe, osx: .dmg; default linux; headless-linux and headless-windows are the archives for a manual install) from the connected Forward into --out (default the current directory), named as Forward names it. It needs a user login or API token: a collector's own credential is refused (403). An existing file is not overwritten without --force. The last line on stdout is one JSON object: file, bytes, sha256, type, forward_release. Compare the sha256 with the one Forward publishes before you run the package.
+
+```
+fwdctl collector download [--type linux] [--out DIR] [flags]
+```
+
+Examples:
+
+```
+  fwdctl collector download --out ~/collector
+  fwdctl collector download --type windows --out ./dl
+```
+
+Flags:
+
+```
+      --force              overwrite a file of the same name
+      --out string         directory to write the package into (created if missing) (default ".")
+      --timeout duration   give up after this long (default 30m0s)
+      --type string        package: linux (.sh installer), windows (.exe), osx (.dmg), headless-linux (.tar.gz) or headless-windows (.zip) (default "linux")
+```
+
 ## fwdctl context
 
 NQE authoring aids: worked examples closest to a question, or real field names matching a term.
