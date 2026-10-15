@@ -107,3 +107,20 @@ func TestSourceApplyStopsAtTheFirstFailureAndRefusesSecretsInTheFile(t *testing.
 		t.Fatalf("a secret in the file is refused: %d %s", code, errs)
 	}
 }
+
+// An existing credential is "unchanged" without its secret being compared, which is not proof it will authenticate: when the inventory names a secret for a credential that already exists, the
+// summary says so once, in notes.
+func TestSourceApplyNotesOnceThatAnExistingCredentialsSecretWasNotChecked(t *testing.T) {
+	f := &fakeForward{creds: []any{map[string]any{"id": "L-1", "type": "LOGIN", "name": "lab-login"}, map[string]any{"id": "L-2", "type": "LOGIN", "name": "other"}}}
+	spec := `{"network_id":"n1","credentials":[{"name":"lab-login","type":"CLI","username":"a","secret_env":"X"},{"name":"other","type":"CLI","username":"a","secret_env":"X"}]}`
+	_, sum, _ := runInventory(t, f, spec, false)
+	notes, _ := sum["notes"].([]any)
+	if len(notes) != 1 || !strings.Contains(notes[0].(string), "2 existing credential") || !strings.Contains(notes[0].(string), "authenticate") {
+		t.Fatalf("notes = %v", sum["notes"])
+	}
+	items, _ := sum["items"].([]any)
+	first, _ := items[0].(map[string]any)
+	if first["kind"] != "credential" || first["name"] != "lab-login" || first["action"] != "unchanged" {
+		t.Errorf("item shape: %v", first)
+	}
+}

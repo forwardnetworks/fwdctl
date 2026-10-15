@@ -52,7 +52,7 @@ func (a *app) sourceCmd() *cobra.Command {
 			"A secret is never in the file: a credential names the environment variable (secret_env) or the mode-600 file (secret_file) that holds it.\n" +
 			"Order: profiles, credentials, devices, endpoints. Each item is compared by name with what Forward holds: create, update, or unchanged. A dry run (the default) changes nothing. With --apply it stops at the first failure and marks the rest skipped, so a partial run is easy to read; run it again after fixing it, because unchanged items are left alone. " +
 			"Secrets are never compared, so a changed password is not detected (rotate with edit-source). A device's enable credential and collection options are compared with what Forward reports.\n" +
-			"The last line on stdout is JSON: status, mode, counts, items. Exit 0: done; 1: an item failed; 64: bad file; 3: Forward could not be read.",
+			"The last line on stdout is JSON: status, mode, network_id, counts, items (each {kind: profile|credential|device|endpoint, name, action: create|update|unchanged|failed|skipped, note}) and notes. Exit 0: done; 1: an item failed; 64: bad file; 3: Forward could not be read.",
 		Example: "  fwdctl source apply lab.json --network 252606            # dry run: create / update / unchanged per item\n  LAB_PW=... fwdctl source apply lab.json --network 252606 --apply",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -137,7 +137,13 @@ func sourceApply(ctx context.Context, s *fwd.Session, raw []byte, network string
 	for _, r := range e.rows {
 		fmt.Fprintf(stderr, "%-9s %-10s %s%s\n", r.Action, r.Kind, r.Name, map[bool]string{true: "  (" + r.Note + ")", false: ""}[r.Note != ""])
 	}
-	b, _ := json.Marshal(map[string]any{"status": status, "mode": mode, "network_id": spec.NetworkID, "counts": counts, "items": e.rows})
+	out := map[string]any{"status": status, "mode": mode, "network_id": spec.NetworkID, "counts": counts, "items": e.rows}
+	if e.secretsUnchecked > 0 {
+		note := fmt.Sprintf("%d existing credential(s) are unchanged but their stored secrets were not compared with the ones this inventory names: unchanged does not mean it will authenticate, and a wrong password shows up later as a failed collection (rotate with edit-source object credential action update)", e.secretsUnchecked)
+		out["notes"] = []string{note}
+		fmt.Fprintln(stderr, "note: "+note)
+	}
+	b, _ := json.Marshal(out)
 	fmt.Fprintln(stdout, string(b))
 	if status == "failed" {
 		return 1
@@ -151,7 +157,9 @@ type applier struct {
 	net   string
 	apply bool
 	rows  []applyRow
-	halt  bool
+	// secretsUnchecked counts existing credentials whose secret the inventory names but which were not compared
+	secretsUnchecked int
+	halt             bool
 	// current state, by name
 	cliCred, httpCred, snmpCred map[string]string
 	profileID                   map[string]string
@@ -335,6 +343,9 @@ func (e *applier) credential(it map[string]any) {
 	}
 	if _, ok := table[name]; ok {
 		e.add("credential", name, "unchanged", "exists; secrets are never compared")
+		if it["secret_env"] != nil || it["secret_file"] != nil {
+			e.secretsUnchecked++
+		}
 		return
 	}
 	in := map[string]any{"network_id": e.net, "object": "credential", "action": "create"}
