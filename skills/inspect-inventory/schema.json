@@ -23,6 +23,7 @@
         "vrfs",
         "hosts",
         "cloud_accounts",
+        "cloud_coverage",
         "cloud",
         "cloud_routes",
         "cloud_security",

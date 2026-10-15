@@ -561,5 +561,15 @@
     "query": "AWS cloud collection dropped the last two collections, credentials request fails with HTTP 400",
     "expect": "investigate-collection-failure",
     "rival": "inspect-collection"
+  },
+  {
+    "query": "How many of our Azure subscriptions were not collected, and why?",
+    "expect": "inspect-inventory",
+    "rival": "inspect-collection"
+  },
+  {
+    "query": "Is collection healthy on our cloud network? The collector tasks all passed but I think accounts are missing.",
+    "expect": "inspect-collection",
+    "rival": "inspect-inventory"
   }
 ]

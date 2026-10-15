@@ -132,9 +132,10 @@ func TestCollectionStatusRunningSaysTaskElapsedProgressAndARoughEstimateAndCanWa
 func TestCollectionStatusFallsBackToTheNewestSnapshotsResultWhenNoTaskIsInTheWindow(t *testing.T) {
 	routes := func(collected bool) map[string]fwdtest.Handler {
 		return map[string]fwdtest.Handler{
-			tasksPath:                       fwdtest.Const(200, []any{}),
-			"GET /api/snapshots/s9/metrics": fwdtest.Const(200, map[string]any{"numSuccessfulDevices": 12}),
-			nqePath:                         fwdtest.Const(200, map[string]any{"items": []any{map[string]any{"collected": true}, map[string]any{"collected": collected}}, "totalNumItems": 2}),
+			tasksPath:                            fwdtest.Const(200, []any{}),
+			"GET /api/snapshots/s9/metrics":      fwdtest.Const(200, map[string]any{"numSuccessfulDevices": 12}),
+			"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{map[string]any{"type": "AZURE", "name": "azure-prod", "collect": true}}),
+			nqePath:                              fwdtest.Const(200, map[string]any{"items": []any{map[string]any{"collected": true, "setup": "azure-prod"}, map[string]any{"collected": collected, "setup": "azure-prod"}}, "totalNumItems": 2}),
 		}
 	}
 	r := colStatusWithSnapshot(t, "COLLECTION", routes(true))
@@ -144,5 +145,42 @@ func TestCollectionStatusFallsBackToTheNewestSnapshotsResultWhenNoTaskIsInTheWin
 	r = colStatusWithSnapshot(t, "COLLECTION", routes(false))
 	if r.Status != result.Failed || !strings.Contains(r.Finding, "1 of 2 cloud account(s) were not collected") {
 		t.Fatalf("an uncollected cloud account is a failure: %s %s", r.Status, r.Finding)
+	}
+}
+
+// A network with cloud setups is not healthy just because its collector tasks ended well: accounts a snapshot did not collect are part of the verdict whether or not a recent task is in
+// Forward's window. The finding says how many, and the evidence rolls the coverage up by setup. A network with no cloud setup pays nothing for it.
+func TestCollectionStatusCountsUncollectedCloudAccountsEvenWhenRecentTasksSucceeded(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		tasksPath:                            fwdtest.Const(200, []any{task("8", "COMPLETED", "2026-09-29T10:05:00Z")}),
+		"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{map[string]any{"type": "AZURE", "name": "azure-prod", "collect": true}, map[string]any{"type": "AZURE", "name": "azure-test", "collect": true}}),
+		nqePath: fwdtest.Const(200, map[string]any{"totalNumItems": 4, "items": []any{
+			map[string]any{"collected": true, "setup": "azure-prod"}, map[string]any{"collected": false, "setup": "azure-prod"},
+			map[string]any{"collected": false, "setup": "azure-prod"}, map[string]any{"collected": true, "setup": "azure-test"}}}),
+	}
+	r := colStatusWithSnapshot(t, "COLLECTION", routes)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "2 of 4 cloud account(s) were not collected") || strings.Contains(r.Finding, "healthy") {
+		t.Fatalf("recent tasks succeeded but half the cloud accounts were not collected: %s %q", r.Status, r.Finding)
+	}
+	cov, _ := r.Evidence[0].Detail["cloud_coverage"].(map[string]any)
+	setups, _ := cov["by_setup"].([]map[string]any)
+	if cov == nil || cov["accounts"] != 4 || cov["collected"] != 2 || len(setups) != 2 || setups[0]["setup"] != "azure-prod" || setups[0]["not_collected"] != 2 {
+		t.Errorf("cloud_coverage = %v", cov)
+	}
+}
+
+func TestCollectionStatusAskedNothingOfNQEForANetworkWithNoCloudSetup(t *testing.T) {
+	r, srv := mustRun(t, "inspect-collection-status", map[string]fwdtest.Handler{
+		snapsPath:                            fwdtest.Snapshots(fwdtest.Snap("s9", "PROCESSED", "COLLECTION", "2026-09-30T11:00:00.000Z")),
+		tasksPath:                            fwdtest.Const(200, []any{task("8", "COMPLETED", "2026-09-29T10:05:00Z")}),
+		"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{}),
+	}, `{"network_id":"n1"}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "healthy") {
+		t.Errorf("no cloud setup: %s %s", r.Status, r.Finding)
+	}
+	for _, c := range srv.Calls() {
+		if c.Method == "POST" && strings.HasPrefix(c.Path, "/api/nqe") {
+			t.Errorf("an NQE query ran for a network with no cloud setup: %s", c.Path)
+		}
 	}
 }

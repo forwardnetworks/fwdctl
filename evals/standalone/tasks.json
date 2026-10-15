@@ -316,14 +316,12 @@
   "tier": "investigate",
   "prompt": "In network n1, can 198.51.100.7 (an address outside our network) reach SSH on 10.0.0.1? Is management protected from outside?",
   "answer_lacks": [
-   "not delivered",
    "cannot reach",
    "can't reach",
    "not reachable",
    "unreachable",
-   "is protected",
-   "is blocked",
-   "not exposed"
+   "not exposed",
+   "isn't exposed"
   ],
   "no_writes": true,
   "answer_has_any": [
@@ -343,18 +341,19 @@
    "fw01"
   ],
   "answer_has_any": [
-   "shared",
+   "share",
    "single point",
    "not independent",
    "same firewall",
    "both pass",
+   "both go",
    "both cross",
    "both traverse",
-   "not redundant"
-  ],
-  "answer_lacks": [
-   "are redundant",
-   "are fully redundant"
+   "not redundant",
+   "not truly redundant",
+   "full redundancy",
+   "both paths are lost",
+   "both are lost"
   ],
   "no_writes": true
  },

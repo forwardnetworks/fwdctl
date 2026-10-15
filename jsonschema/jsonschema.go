@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 var annotations = map[string]bool{"$schema": true, "$id": true, "title": true, "description": true, "examples": true, "default": true}
@@ -111,7 +112,19 @@ func check(v any, s map[string]any, path string, errs *[]string) error {
 		if req, ok := s["required"].([]any); ok {
 			for _, r := range req {
 				if _, present := x[fmt.Sprint(r)]; !present {
-					add("%s: missing required %q", path, fmt.Sprint(r))
+					msg := fmt.Sprintf("%s: missing required %q", path, fmt.Sprint(r))
+					if props, ok := s["properties"].(map[string]any); ok {
+						if ps, ok := props[fmt.Sprint(r)].(map[string]any); ok {
+							if en, ok := ps["enum"].([]any); ok && len(en) > 0 { // an enumeration names its values: the caller learns the options from the error
+								vals := make([]string, 0, len(en))
+								for _, v := range en {
+									vals = append(vals, fmt.Sprint(v))
+								}
+								msg += " (one of: " + strings.Join(vals, ", ") + ")"
+							}
+						}
+					}
+					add("%s", msg)
 				}
 			}
 		}

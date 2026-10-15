@@ -508,3 +508,16 @@ func TestInspectPlatformCloudSetupsNeverReturnsAnAssumeRoleExternalID(t *testing
 		t.Errorf("the external id leaked: %s", b)
 	}
 }
+
+// A CAP setup with no pinned accounts is not "collect everything": Forward's collection step rejects an empty list before it asks the portal, so the answer says collection is expected to
+// fail (source reading, not run live). The setup and discovery paths treat empty as no filter, which is why it can look fine in the UI.
+func TestCollectionConfigACAPSetupWithNoPinnedAccountsSaysCollectionFails(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection-config", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/cloudAccounts":   fwdtest.Const(200, []any{map[string]any{"type": "AWS", "name": "cap-aws", "collect": true, "awsCapCredentialId": "cap-1"}}),
+	}, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	if strings.Contains(b, "every account the portal returns is collected") || !strings.Contains(strings.ToLower(b), "collection step rejects") {
+		t.Errorf("c2s_accounts is empty but the answer does not say collection fails: %s", b)
+	}
+}

@@ -64,6 +64,17 @@ Check: ask Claude to use the LSP tool (`hover`) on a `.nqe` file with a misspelt
 Builds: linux/amd64, darwin/arm64 (Apple silicon), darwin/amd64 (Intel Mac), windows/amd64. The scripts verify the SHA-256 and print where they installed; they use
 the `gh` CLI when it is logged in. Add `~/.local/bin` to `PATH` if told to.
 
+## On a host with no internet (air-gapped)
+
+`fwdctl update`, the install scripts and `brew` all need GitHub, so on a locked-down host install by hand. Nothing else in fwdctl needs the internet: it talks only to your Forward.
+
+1. **On a connected machine**, from `github.com/forwardnetworks/fwdctl/releases`, download the archive for the host (`fwdctl_vX.Y.Z_linux_amd64.tar.gz`, `..._darwin_arm64.tar.gz`, `..._darwin_amd64.tar.gz`, `..._windows_amd64.zip`) and `SHA256SUMS`.
+2. **Verify the checksum** before moving it (`update` does this for you; by hand it is yours): `sha256sum -c --ignore-missing SHA256SUMS` (macOS: `shasum -a 256 -c SHA256SUMS --ignore-missing`; Windows: compare `Get-FileHash` with the line in SHA256SUMS). Refuse the file if it does not say OK.
+3. **Copy the archive to the host**, extract it, and put `fwdctl` on `PATH` (`~/.local/bin`). `fwdctl --version` should print the release you downloaded.
+4. `export FWDCTL_NO_UPDATE_CHECK=1` so it never tries to reach GitHub (it already skips the check when stderr is not a terminal and for the language server, and gives up quickly on a slow network). Point it at Forward with `fwdctl login --file FILE` or the `FORWARD_*` variables; a private or self-signed certificate authority is `--ca-bundle FILE`.
+5. **The skills need no network either.** `fwdctl install claude` writes every skill from the binary; `fwdctl install lsp` writes the NQE language server plugin. For the Claude Code plugin itself, copy the repository `github.com/forwardnetworks/fwdctl` (a ZIP download or a clone) to the host and add it as a local marketplace with `claude plugin marketplace add PATH` (a local directory marketplace works; adding this particular repository that way has not been tested here).
+6. **To update, repeat 1 to 3.** `fwdctl update --version` needs GitHub.
+
 ## Updating
 
     fwdctl update            # replace this binary with the newest release (checksum verified)

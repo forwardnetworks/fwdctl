@@ -859,7 +859,7 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 		Concurrency     *int64         `json:"concurrency"`
 		// AccountsEnabled turns discovered member accounts (AWS assume-role) on or off by account id; update only
 		AccountsEnabled map[string]bool `json:"accounts_enabled"`
-		// C2SAccounts is a C2S Access Portal (CAP) account's portal account list; update only. A pointer: an empty list (collect every portal account) is not the same as absent.
+		// C2SAccounts is a C2S Access Portal (CAP) account's portal account list; update only. A pointer: an empty list is refused (see the plan) but is not the same as absent) is not the same as absent.
 		C2SAccounts *[]struct {
 			AccountID string `json:"account_id"`
 			Role      string `json:"role"`
@@ -972,6 +972,9 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 				wantC2S = append(wantC2S, forward.AWSC2SAccountInfo{AccountID: x.AccountID, AccountRole: x.Role})
 			}
 		}
+		if def.C2SAccounts != nil && len(wantC2S) == 0 {
+			return nil, fmt.Errorf("%w: c2s_accounts is empty. For a C2S Access Portal setup Forward's collection step requires at least one account and rejects an empty list before it asks the portal, so the AWS snapshot would come back incomplete (read in Forward's source, not run live). The setup test and discovery treat an empty list as no filter, which is why an empty list can look fine in the UI. List the accounts to collect", ErrInvalidInput)
+		}
 		c2sView := func(l []forward.AWSC2SAccountInfo) []map[string]any {
 			out := make([]map[string]any, 0, len(l))
 			for _, x := range l {
@@ -995,7 +998,7 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 			patch.AssumeRoleInfos = &infos
 		}
 		if def.C2SAccounts != nil {
-			patch.AWSC2SAccountInfos = &wantC2S // non-nil even when empty: an empty list is sent and means every portal account
+			patch.AWSC2SAccountInfos = &wantC2S
 		}
 		limits := []string{"an account's errorMsg is Forward's own record of its last attempt; this does not clear it, and the next collection or a test (action test) refreshes it",
 			"this sets what the next collection will use; it does not start one (edit-collection)"}
@@ -1003,7 +1006,21 @@ func planCloudAccount(ctx context.Context, s *fwd.Session, in editSourceInput) (
 			limits = append([]string{"the account list is replaced as a whole: every other account is sent unchanged, with its current enabled flag"}, limits...)
 		}
 		if def.C2SAccounts != nil {
-			limits = append([]string{"c2s_accounts replaces the whole portal account list: list every account that should be collected; an empty list means every account the portal returns (the default for a setup with no list)"}, limits...)
+			have := map[[2]string]bool{}
+			for _, x := range a.AWSC2SAccountInfos {
+				have[[2]string{x.AccountID, x.AccountRole}] = true
+			}
+			var fresh []string
+			for _, w := range wantC2S {
+				if !have[[2]string{w.AccountID, w.AccountRole}] {
+					fresh = append(fresh, "("+w.AccountID+", "+w.AccountRole+")")
+				}
+			}
+			if len(fresh) > 0 {
+				limits = append([]string{"these (account id, role) pairs are not in the account's current list and are not checked against the access portal: " + strings.Join(fresh, ", ") +
+					". A wrong account id or role makes the collection filter match nothing, and AWS then yields no data without an error (a thin snapshot, not a failure); confirm them against the accounts the portal offers (the setup's account discovery in the Forward UI) before applying"}, limits...)
+			}
+			limits = append([]string{"c2s_accounts replaces the whole portal account list: list every account that should be collected (an empty list is refused: Forward's collection step rejects it)"}, limits...)
 		}
 		return &networkPlan{target: fmt.Sprintf("update cloud account %q on network %s", in.Name, in.NetworkID), action: "update_cloud_account", before: before, after: after, reversible: true,
 			undo:   "run update again with the before values (accounts_enabled, c2s_accounts and collect as shown in before)",

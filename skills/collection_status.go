@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -191,6 +192,23 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 			limits = append(limits, "the newest snapshot reports no processing trigger, so whether Forward collected it or it was imported is unknown")
 		}
 	}
+	// Cloud account coverage is part of the verdict whether or not a recent task is in Forward's window: a network can end every collector task well and still have collected only
+	// some of its cloud accounts. Read only for a network that has cloud setups.
+	var coverage map[string]any
+	if newest != nil && fwd.IsReady(newest) && origin == "collection" {
+		cov, note := cloudCoverage(ctx, s, in.NetworkID, string(newest.ID))
+		if note != "" {
+			limits = append(limits, note)
+		}
+		if cov != nil {
+			coverage = cov
+			detail["cloud_coverage"] = cov
+			if nc, _ := cov["not_collected"].(int); nc > 0 {
+				failed = append(failed, fmt.Sprintf("%d of %d cloud account(s) were not collected in the newest snapshot", nc, cov["accounts"]))
+				limits = append(limits, "cloud_coverage rolls the newest snapshot's cloud accounts up by setup; an account that was not collected has no VPCs or instances in it. Some are excluded on purpose, so read inspect-inventory kind cloud_coverage for each one and the reason it can give before treating them all as failures")
+			}
+		}
+	}
 	// No recent collector task (Forward lists only the organization's newest ones): fall back to what the newest collected snapshot recorded, which is how a collection a few
 	// days old is still judged. It is the snapshot's own result, not a current task, and says so.
 	if len(tasks) == 0 && terr == nil && origin == "collection" && newest != nil && fwd.IsReady(newest) {
@@ -199,17 +217,8 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 		} else {
 			signals++
 			snapInfo := map[string]any{"snapshot": string(newest.ID), "created_at": newest.CreatedAt, "devices_collected": m.SuccessfulDevices, "collection_failed": m.FailedDevices, "processing_failed": m.ProcessingFailedDevices}
-			if rows, _, _, qerr := s.RunNQEAll(ctx, in.NetworkID, string(newest.ID), cloudAccountFlags, 5000); qerr == nil && len(rows) > 0 {
-				collected := 0
-				for _, r := range rows {
-					if c, ok := r["collected"].(bool); ok && c {
-						collected++
-					}
-				}
-				snapInfo["cloud_accounts"], snapInfo["cloud_accounts_collected"] = len(rows), collected
-				if collected < len(rows) {
-					failed = append(failed, fmt.Sprintf("%d of %d cloud account(s) were not collected in the newest snapshot", len(rows)-collected, len(rows)))
-				}
+			if coverage != nil {
+				snapInfo["cloud_accounts"], snapInfo["cloud_accounts_collected"] = coverage["accounts"], coverage["collected"]
 			}
 			detail["newest_snapshot_result"] = snapInfo
 			limits = append(limits, "no recent collector task was in Forward's window, so this reads the newest collected snapshot's own result (devices and cloud accounts as that snapshot recorded them), which may be days old")
@@ -333,4 +342,56 @@ func runningFinding(detail map[string]any) string {
 
 // cloudAccountFlags reads each cloud account's collected flag in a snapshot.
 const cloudAccountFlags = `foreach account in network.cloudAccounts
-select { collected: account.collected }`
+select { collected: account.collected, setup: account.cloudSetupId }`
+
+// cloudCoverage reads how many of a network's cloud accounts a snapshot collected, rolled up by cloud setup (the setup's own name: the NQE cloudSetupId is the setup name). It asks Forward
+// for the cloud setups first, a cheap read, and runs the NQE only when there are some, so a network with none pays nothing. It returns nil and a limit when it cannot read.
+func cloudCoverage(ctx context.Context, s *fwd.Session, networkID, snapshotID string) (map[string]any, string) {
+	setups, _, err := s.Client.CloudAccounts.List(ctx, networkID)
+	if err != nil {
+		return nil, "cloud setups could not be listed, so cloud account coverage was not checked: " + err.Error()
+	}
+	if len(setups) == 0 {
+		return nil, ""
+	}
+	rows, nqeTotal, truncated, err := s.RunNQEAll(ctx, networkID, snapshotID, cloudAccountFlags, 5000)
+	if err != nil {
+		return nil, "cloud account coverage could not be read from the snapshot: " + err.Error()
+	}
+	if len(rows) == 0 {
+		return nil, ""
+	}
+	type roll struct{ accounts, collected int }
+	by, order := map[string]*roll{}, []string{}
+	total, collected := 0, 0
+	for _, r := range rows {
+		name, _ := r["setup"].(string)
+		if by[name] == nil {
+			by[name] = &roll{}
+			order = append(order, name)
+		}
+		by[name].accounts++
+		total++
+		if c, ok := r["collected"].(bool); ok && c {
+			by[name].collected++
+			collected++
+		}
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		ni, nj := by[order[i]].accounts-by[order[i]].collected, by[order[j]].accounts-by[order[j]].collected
+		if ni != nj {
+			return ni > nj
+		}
+		return order[i] < order[j]
+	})
+	rolled := make([]map[string]any, 0, len(order))
+	for _, name := range order {
+		r := by[name]
+		rolled = append(rolled, map[string]any{"setup": name, "accounts": r.accounts, "collected": r.collected, "not_collected": r.accounts - r.collected})
+	}
+	note := ""
+	if truncated {
+		note = fmt.Sprintf("cloud account coverage read the first %d of %d cloud accounts, so its counts are low", len(rows), nqeTotal)
+	}
+	return map[string]any{"accounts": total, "collected": collected, "not_collected": total - collected, "by_setup": rolled}, note
+}

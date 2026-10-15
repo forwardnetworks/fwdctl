@@ -105,12 +105,33 @@ Not re-run after the scoring rule changed; the count above applies the rule to t
 - **The misses are early stops**, not wrong steps: connectivity stopped after the path search found the failing hop (2 of 5), vulnerability response after the CVE verdict (2 of 4), what-changed after the config diff (2 of 4), incident triage after snapshots and collection (2 of 4). The playbooks say to stop when the evidence answers the question, so some of this is correct; incident triage skipping performance and policy is the one worth a look.
 - This is one run per case at one model; treat it as a baseline, not a score to tune the playbooks to.
 
-## Standalone eval: grounding, investigation and register tasks, 2026-10-14 (11 new tasks, no skills installed, one run per model)
+## Standalone eval: grounding, investigation and register tasks, 2026-10-14 (15 tasks, both models, with and without skills, 3 runs each)
 
-`python3 evals/standalone/run.py` against the synthetic fake Forward (see README), Sonnet and Haiku, `fwdctl --help` only. Ideas drawn from a review of an external SecOps skill repo's behavioural cases; every fixture and phrase is ours.
+`python3 evals/standalone/run.py --repeat 3` against the synthetic fake Forward (see README) with fwdctl v0.5.104; 15 tasks x 3 runs x 4 configurations = 180 runs, about $8. The tasks' ideas come from a review of an external SecOps skill repo's behavioural cases; every fixture and phrase is ours.
 
-- **Sonnet: 10 of 11 on the first run, 11 of 11 once two checks were fixed.** Both failures were the check, not the model: one forbade any query where the right behaviour is to look at both networks and say it cannot tell which is meant, and one listed phrasings too narrow for a correct "I can't answer, I have no source address" reply. The second check was re-run and passes; the register task's cap was loosened afterwards and not re-run.
-- **Haiku: 9 of 11 after the same fixes.** The two it fails are real: it ran a path search for "can the finance servers reach the internet" without asking which servers (the grounding behaviour the task exists to catch), and it answered "just the names" in 121 words with advice.
-- **What the tasks show.** The investigation tasks (a down BGP peer, a configuration mismatch read from two devices, a snapshot diff, template drift across three devices, a firewall rule behind a dropped port, an exposed management path, two paths through one firewall) all passed on both models from `--help` alone. The tasks that discriminate are the ones about not guessing; the register tasks are soft (length only).
-- **Caveats.** One run per cell, no skills arm yet for these tasks, synthetic fixtures, and substring checks (a bad check looks like a bad model: read the answer first). Three checks were found wrong by an independent review before these numbers were taken, and one more after.
+| Task | Sonnet, no skills | Sonnet, skills | Haiku, no skills | Haiku, skills |
+|---|---|---|---|---|
+| grounding: a device name from earlier in the chat is not evidence | 3/3 | 3/3 | 3/3 | 3/3 |
+| grounding: a user's claimed root cause is checked | 3/3 | 3/3 | 3/3 | 3/3 |
+| grounding: a device that is not there is said not to be | 3/3 | 3/3 | 3/3 | 3/3 |
+| grounding: a colleague's wrong device count is corrected | 3/3 | 3/3 | 3/3 | 3/3 |
+| grounding: no network named, two exist (look at both, do not guess) | 3/3 | 3/3 | 3/3 | 3/3 |
+| grounding: "the finance servers" with no addresses (ask, do not search) | 2/3 | 3/3 | 0/3 | 0/3 |
+| investigate: a down BGP peer | 3/3 | 3/3 | 3/3 | 3/3 |
+| investigate: a session down from a configuration mismatch, read from two devices | 3/3 | 3/3 | 3/3 | 3/3 |
+| investigate: what changed between two snapshots | 3/3 | 3/3 | 3/3 | 3/3 |
+| investigate: template drift across three devices | 3/3 | 3/3 | 3/3 | 3/3 |
+| investigate: a firewall rule behind a dropped port (paths first, then the config) | 3/3 | 3/3 | 3/3 | 3/3 |
+| investigate: an outside address reaching management | 3/3* | 3/3* | 3/3* | 3/3* |
+| investigate: two paths through one firewall are not redundant | 3/3* | 3/3* | 3/3* | 3/3* |
+| register: OSPF area mismatch, brief, in the reader's vocabulary | 2/3 | 3/3 | 3/3 | 3/3 |
+| register: "just the names" (at most 80 words) | 3/3 | 3/3 | 1/3 | 0/3 |
+| **Total** | **43/45** | **45/45** | **40/45** | **39/45** |
+
+\* **Re-graded after the run.** The first scoring failed seven answers that were correct, because the checks forbade phrases that negation reproduces ("management is not protected", "it does not show that management is protected", "neither device blocks it") and listed too few ways to say "they share fw01". The checks were fixed and the saved answers of those two tasks re-scored; no run was repeated. This is the same mistake an independent review had already found in other checks, so read any check that forbids a phrase with suspicion.
+
+- **What discriminates is not guessing.** Everything that needs only reading (down peer, mismatch, diff, drift, a rule behind a drop, an exposed path, a shared device) passed on both models from `--help` alone, with or without skills. Haiku guessed endpoints and ran a path search for "the finance servers" in all 6 runs; Sonnet did in 1 of 3 without skills and 0 of 3 with them.
+- **Skills change the work more than the result.** Sonnet used 151 tool calls with skills against 242 without (about 38% fewer) for the same cost, and went from 43 to 45 of 45; Haiku's totals did not move (40 and 39 of 45) and its cost and calls were the same. One run per cell would not show any of this; three is still small.
+- **Real failures that remain.** Haiku's verbosity on the register task (117 to 170 words for "just the names"; register is a soft check). One Sonnet run without skills gave up on the OSPF task: my canned NQE rows do not follow the columns the model asked for, it noticed and distrusted them: a fixture limitation, not a finding about the model.
+- **Caveats.** Synthetic fixtures and substring checks; one run of the fake per run; the register and endpoint checks are heuristics; no judge model. Grounding and investigate failures would be blockers, register failures are soft.
 

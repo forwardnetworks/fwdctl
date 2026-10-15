@@ -14,6 +14,7 @@
 | `igp_neighbors` | OSPF adjacencies: device, VRF, area, process, role, remote router id and address, local interface, cost, remote device (IS-IS, EIGRP and RIP are not in Forward's model) | `device`, `name` (VRF) |
 | `security_rules_experimental` | per device and scope, largest rule count first: rule and object counts of Forward's **experimental** security rules model (see `reference/kinds.md`) | `device` |
 | `cloud_accounts` | one row per cloud account: name, id, cloud, **collected** (true/false), cloud setup, VPC, subnet and instance counts | `account` |
+| `cloud_coverage` | the coverage roll-up: per cloud setup the accounts, how many were collected, VPC, subnet and instance totals, and for each account that was NOT collected its id and what the setup records about it (an Azure subscription's last connectivity test, an AWS member account's enabled flag and last error, a C2S portal list); counts of each reason; the first 25 uncollected accounts per setup | none |
 | `cloud` | account, cloud, whether the account was collected, VPC name and id, regions, CIDR blocks, subnet and instance counts | `account`, `name` (VPC) |
 | `cloud_subnets` | per VPC: subnet name and id, region, zone, addresses, interface count, route table | `account`, `name` (VPC) |
 | `cloud_instances` | per VPC: instance name and id, type, image, up, interface count, private addresses, tags | `account`, `name` (VPC) |

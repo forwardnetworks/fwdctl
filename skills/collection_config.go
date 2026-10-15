@@ -250,7 +250,7 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 		}
 		detail["cloud_setups"] = rows
 		if capSeen {
-			limits = append(limits, "cap_credential marks an AWS setup collected through a C2S Access Portal credential: it collects the accounts in c2s_accounts, or every account the portal returns when that list is empty; the enabled flags in member_accounts are not used for it (from Forward's source, not confirmed on a live setup), and the credential's client certificate is never shown (the portal URL and whether a CA is set are)")
+			limits = append(limits, "cap_credential marks an AWS setup collected through a C2S Access Portal credential: it collects the accounts in c2s_accounts (an empty list does not mean all: Forward's collection step requires at least one account, so a setup with none fails to collect; the setup test and discovery treat empty as no filter); the enabled flags in member_accounts are not used for it (from Forward's source, not confirmed on a live setup), and the credential's client certificate is never shown (the portal URL and whether a CA is set are)")
 		}
 		if membersSeen {
 			limits = append(limits, "member_accounts (a setup that discovers accounts, AWS assume-role): each account's enabled flag and Forward's last error for it (accounts that are on and erroring come first, then disabled ones, then the rest, so a row cap hides none of them). Forward keeps the last error message, so an error on a disabled account may be old, except on a cap_credential setup, where the enabled flags are not used and an account shown as off may still be requested. The role ARN and external id are not shown. Change the flags with edit-source object cloud_account action update")
@@ -596,10 +596,10 @@ func memberAccounts(infos []forward.AWSAssumeRoleInfo) map[string]any {
 }
 
 // c2sAccounts is a C2S Access Portal setup's account list as the answer shows it: how many accounts it holds and (capped) their ids and roles. An empty list means Forward
-// collects every account the portal returns.
+// is rejected by Forward's collection step (source reading), so it says collection fails.
 func c2sAccounts(accounts []forward.AWSC2SAccountInfo) map[string]any {
 	if len(accounts) == 0 {
-		return map[string]any{"count": 0, "note": "empty: every account the portal returns is collected"}
+		return map[string]any{"count": 0, "note": "empty: Forward's collection step rejects an empty list for a CAP setup (read in its source, not run live), so AWS collection for this setup is expected to fail with an incomplete snapshot; the setup test and account discovery treat empty as no filter and request credentials for every portal account"}
 	}
 	shown, total := result.CapRow(accounts, maxMemberAccountRows)
 	rows := make([]map[string]any, 0, len(shown))

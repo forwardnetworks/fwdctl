@@ -416,7 +416,7 @@ func TestEditSourceCloudAccountUpdateSetsTheCAPPortalAccountList(t *testing.T) {
 	if r.Mode != result.ModeDryRun || writes(srv) != 0 || len(r.Changes) != 1 || !r.Changes[0].Reversible {
 		t.Fatalf("dry run: %s", jsonOf(r))
 	}
-	if !strings.Contains(strings.Join(r.Limits, "|"), "replaces the whole portal account list") {
+	if !strings.Contains(strings.Join(r.Limits, "|"), "replaces the whole portal account list") || strings.Contains(strings.Join(r.Limits, "|"), "collects every account") {
 		t.Errorf("limits do not say the list is replaced: %v", r.Limits)
 	}
 	r, _ = mustRun(t, "edit-source", routes, in+`,"apply":true}`)
@@ -427,16 +427,22 @@ func TestEditSourceCloudAccountUpdateSetsTheCAPPortalAccountList(t *testing.T) {
 	if patched["type"] != "AWS" || len(got) != 1 || got[0].(map[string]any)["accountId"] != "222" || got[0].(map[string]any)["accountRole"] != "r2" {
 		t.Errorf("patch body = %v", patched)
 	}
-	// an empty list is sent as an empty list and means every portal account
+	// an empty list is refused: Forward's collection step requires at least one account for a CAP setup (it throws before any portal call), so the AWS snapshot would come back
+	// incomplete; the setup and discovery paths treat empty as "no filter", the collection path does not
 	patched = nil
-	mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"cap-aws","apply":true,"definition":{"c2s_accounts":[]}}`)
-	if l, ok := patched["awsC2SAccountInfos"].([]any); !ok || len(l) != 0 {
-		t.Errorf("an empty c2s_accounts is sent as an empty list: %v", patched)
+	_, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"cap-aws","apply":true,"definition":{"c2s_accounts":[]}}`)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "empty") || patched != nil {
+		t.Errorf("an empty c2s_accounts is refused and nothing is sent: %v %v", err, patched)
+	}
+	// a pair that is not in the account's current list is not checked against the portal: the limits say a wrong role makes the filter match nothing
+	r, _ = mustRun(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"cap-aws","definition":{"c2s_accounts":[{"account_id":"222","role":"r2"},{"account_id":"333","role":"r9"}]}}`)
+	if !strings.Contains(strings.Join(r.Limits, "|"), "333") || !strings.Contains(strings.Join(r.Limits, "|"), "not checked against the access portal") {
+		t.Errorf("a new pair is not verified, and the limits say so: %v", r.Limits)
 	}
 	// a plain assume-role account has no portal list
 	plain := map[string]any{"name": "plain-aws", "type": "AWS", "collect": true}
 	routes["GET /api/networks/n1/cloudAccounts"] = fwdtest.Const(200, []any{plain})
-	_, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"plain-aws","definition":{"c2s_accounts":[{"account_id":"1","role":"r"}]}}`)
+	_, _, err = runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"cloud_account","action":"update","name":"plain-aws","definition":{"c2s_accounts":[{"account_id":"1","role":"r"}]}}`)
 	if err == nil || !strings.Contains(err.Error(), "not collected through") {
 		t.Errorf("c2s_accounts on a non-CAP account is refused: %v", err)
 	}
