@@ -321,7 +321,11 @@ func TestVulnerabilitiesDevicesViewListsTheAddressableSetInOneCall(t *testing.T)
 	if !strings.Contains(strings.Join(r.Limits, " | "), "per DEVICE, not per address") || !strings.Contains(strings.Join(r.Limits, " | "), "not every addressable device") {
 		t.Errorf("limits %v", r.Limits)
 	}
-	if n := len(srv.Calls()); n != 3 { // the snapshot list, the one device-level call, and the internet node (read to say whether exposure can be computed)
+	seen := map[string]bool{} // distinct requests: a failing read is retried by the session, which is not another call by the skill
+	for _, c := range srv.Calls() {
+		seen[c.Method+" "+c.Path] = true
+	}
+	if n := len(seen); n != 3 { // the snapshot list, the one device-level call, and the internet node (read to say whether exposure can be computed)
 		t.Errorf("one device call, not one per CVE: %d calls", n)
 	}
 }

@@ -85,7 +85,7 @@ func TestConfigDiffDeviceNotChangedIsAnAnswerWithALimit(t *testing.T) {
 	}
 }
 
-func TestRefusedRequestIsRetriedButAServerErrorIsNot(t *testing.T) {
+func TestRefusedRequestIsRetriedOnceAndAServerErrorOnAReadIsRetriedAtMostFourTimes(t *testing.T) {
 	calls := 0
 	flaky := func(*http.Request, []byte) (int, any) {
 		calls++
@@ -100,7 +100,7 @@ func TestRefusedRequestIsRetriedButAServerErrorIsNot(t *testing.T) {
 	}
 	calls = 0
 	boom := func(*http.Request, []byte) (int, any) { calls++; return 500, map[string]any{"message": "boom"} }
-	if _, _, err := runSkill(t, "compare-device-config", map[string]fwdtest.Handler{snapsPath: twoSnaps(), diffFilesPath: boom}, cdIn+`}`); err == nil || calls != 1 {
-		t.Fatalf("a 500 must not be retried: err %v calls %d", err, calls)
+	if _, _, err := runSkill(t, "compare-device-config", map[string]fwdtest.Handler{snapsPath: twoSnaps(), diffFilesPath: boom}, cdIn+`}`); err == nil || calls != 4 {
+		t.Fatalf("a 500 on a read is retried, bounded at 4 attempts, then reported: err %v calls %d", err, calls)
 	}
 }

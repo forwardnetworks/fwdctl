@@ -36,6 +36,8 @@ type Config struct {
 	// NQEMode and NQEWait set the Session fields of the same name (FORWARD_NQE_MODE and FORWARD_NQE_WAIT).
 	NQEMode string
 	NQEWait time.Duration
+	// RetryDelay is the first wait before a retry (default 1s, doubling to 30s); a test sets it small.
+	RetryDelay time.Duration
 	// Insecure turns TLS certificate verification OFF, for self-signed installations. Otherwise the connection is
 	// verified against the system trust store: a certificate is trusted by default or it is not. Insecure is never
 	// the default, and every result records that it was used (see Session.Insecure).
@@ -168,13 +170,18 @@ func NewSession(cfg Config) (*Session, error) {
 		authMode = forward.AuthModeBrowser
 		hc = readOnlyClient(hc)
 	}
+	retryDelay, retryMax := time.Second, 30*time.Second
+	if cfg.RetryDelay > 0 {
+		retryDelay, retryMax = cfg.RetryDelay, 5*cfg.RetryDelay
+	}
 	c, err := forward.NewClient(forward.Config{
 		AuthMode: authMode,
 		BaseURL:  cfg.BaseURL, Username: cfg.Username, Password: cfg.Password, HTTPClient: hc,
 		UserAgent: "fwdctl",
-		// Only a 429 or 503 is retried: the request was turned away before it ran, so repeating it cannot hide a
-		// defect or replay a write. Every other failure comes back on the first attempt.
-		Retry: forward.RetryPolicy{MaxAttempts: 3, Delay: time.Second, MaxDelay: 30 * time.Second, RefusedOnly: true, Jitter: 0.5},
+		// Retried: a 429 or 503 (turned away before it ran), a failure to obtain a connection (dial error, TLS handshake timeout:
+		// not a byte was written, so a write may be repeated), and, for reads only, other transport errors and 5xx. A rate-limit
+		// lockout longer than retryMaxDelay comes back typed (forward.ErrRateLimited) instead of being slept through.
+		Retry: forward.RetryPolicy{MaxAttempts: retryAttempts, Delay: retryDelay, MaxDelay: retryMax, Jitter: 0.5},
 		Hooks: append([]forward.Hook{s.record}, cfg.Hooks...),
 	})
 	if err != nil {
@@ -284,3 +291,5 @@ func NotAcceptable(err error) bool {
 // SetInsecureForTest marks the session insecure without changing its transport, so a test can check that
 // results record it. It is not part of the API a harness should use.
 func (s *Session) SetInsecureForTest() { s.insecure = true }
+
+const retryAttempts = 4
