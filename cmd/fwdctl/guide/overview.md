@@ -27,6 +27,8 @@ Each one is a command you can run now. `--help` on any command or name shows its
     fwdctl nqe run --network <id> --file query.nqe --limit 5 --format table
     fwdctl run edit-alias --help                            # 4. a name that starts edit- changes Forward; read its help first
     fwdctl describe plan-investigation                      # 5. which skill answers which question
+    fwdctl source apply lab.json --network <id>             # 6. onboard devices, credentials and endpoints from one file (dry run)
+    fwdctl collector download --out ~/collector             # 7. get the collector installer for a new host
 
 What to expect from any of them:
 
@@ -45,6 +47,13 @@ With an agent (Claude Code, Codex or Gemini) you ask in plain words and it picks
 | `fwdctl run <skill>` | Run a skill. Inputs are one JSON object on stdin (or `--input FILE`). Prints the result JSON. |
 | `fwdctl list` | Every skill: name, description, input schema. |
 | `fwdctl describe <skill>` | A skill's procedure. `describe <skill> <file>` prints one of its reference files. |
+| `fwdctl which "<question>"` | Which name answers a question in words (offline first guess). |
+| `fwdctl whoami` | Who you are connected as: URL, login, organization, Forward version. Proves the credentials work. |
+| `fwdctl login` | Remember a login (a token file) so every run and agent session uses it. |
+| `fwdctl source apply FILE` | Set up a network's collection sources (profiles, credentials, devices, endpoints) from one JSON inventory. A dry run until `--apply`. See `fwdctl describe edit-source inventory`. |
+| `fwdctl collector download` | Download the collector installer from the connected Forward (`--type linux`, `windows`, `osx`, or the headless archives). Registering and attaching a collector: `fwdctl describe edit-platform collectors`. |
+| `fwdctl wait snapshot` / `wait collector` | Block until a snapshot is processed, or a registered collector shows CONNECTED. |
+| `fwdctl update` | Update fwdctl to the newest release (checksum verified). |
 | `fwdctl nqe lint [FILE]` | Check an NQE query offline: no Forward connection. See `fwdctl docs nqe`. |
 | `fwdctl context nqe <question>` | NQE worked examples nearest a question. |
 | `fwdctl context schema <term>` | Real NQE field names and enum values matching a term. |

@@ -51,3 +51,32 @@ func TestEveryCommandHasADescriptionAndAnExample(t *testing.T) {
 	}
 	check((&app{}).newRoot())
 }
+
+// The overview is the first page of `fwdctl docs`. A command added to the tree but not named there is invisible to a person who starts from the docs, so every visible top-level command must appear
+// in the overview's Commands table.
+func TestEveryTopLevelCommandIsNamedInTheOverviewGuide(t *testing.T) {
+	raw, err := os.ReadFile("guide/overview.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := string(raw)
+	if i := strings.Index(table, "## Commands"); i >= 0 {
+		table = table[i:]
+	} else {
+		t.Fatal("guide/overview.md has no ## Commands table")
+	}
+	root := (&app{}).newRoot()
+	n := 0
+	for _, c := range root.Commands() {
+		if c.Hidden || c.Name() == "help" || c.Name() == "completion" {
+			continue
+		}
+		n++
+		if !strings.Contains(table, "fwdctl "+c.Name()) {
+			t.Errorf("fwdctl %s is not named in the Commands table of guide/overview.md", c.Name())
+		}
+	}
+	if n < 10 {
+		t.Fatalf("checked %d commands; the test would prove nothing", n)
+	}
+}

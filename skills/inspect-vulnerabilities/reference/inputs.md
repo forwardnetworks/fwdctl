@@ -2,7 +2,7 @@
 
 `network_id`, and one of four views:
 
-- nothing else: the **network** view, the CVEs that may affect devices, worst first;
+- nothing else, or `view: cves` (the default): the **network** view, the CVEs that may affect devices, worst first;
 - `cve_id`: one CVE with a verdict per affected device;
 - `device`: one device's CVE findings;
 - `view: devices`: **one row per device** with its `internet_addressable` flag, its CVE count, worst severity, exposed and unsettled CVEs, from one call to Forward. Use it to list which devices are internet addressable (with `internet_addressable: true`) instead of reading CVE after CVE. It rejects `cve_id` and `device`. The finding says how many DEVICES are addressable, not only how many CVEs; `addressable_device_names` holds every one. Only devices with at least one CVE matching the filters are listed (a flagged device with none is not), and `min_severity` is applied to each device's per-severity counts.
