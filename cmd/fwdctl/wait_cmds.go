@@ -220,3 +220,28 @@ func waitForCollector(ctx context.Context, get func(context.Context) (*forward.C
 		sleep(interval)
 	}
 }
+
+// heartbeat writes a line to w every interval until the returned stop function is called, so a run that takes minutes (the first query on a large snapshot can take that long while Forward loads it)
+// visibly stays alive instead of looking hung to a person or to a tool runner that backgrounds quiet commands. Nothing is written for a run shorter than one interval.
+func heartbeat(w io.Writer, interval time.Duration, what string) (stop func()) {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		start := time.Now()
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				fmt.Fprintf(w, "still running after %s: %s (a large snapshot's first query can take minutes while Forward loads it; FORWARD_TIMEOUT and FORWARD_NQE_WAIT bound the wait)\n", time.Since(start).Round(time.Second), what)
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
+	}
+}

@@ -24,6 +24,8 @@
         "hosts",
         "cloud_accounts",
         "cloud_coverage",
+        "endpoints",
+        "lifecycle",
         "cloud",
         "cloud_routes",
         "cloud_security",

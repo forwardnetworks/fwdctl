@@ -85,6 +85,66 @@ func planEndpointProfile(ctx context.Context, s *fwd.Session, in editPlatformInp
 				_ = id
 				return false, len(now), err
 			}}, nil
+	case "update":
+		p := find(in.Name)
+		if p == nil {
+			return nil, fmt.Errorf("%w: no endpoint profile %q (inspect-platform area endpoint_profiles lists them)", ErrInvalidInput, in.Name)
+		}
+		if p.Type != "CLI" {
+			return nil, fmt.Errorf("%w: %s is a %s profile; only CLI profiles are edited here (SNMP profiles are copied by edit-endpoint-profile)", ErrInvalidInput, p.ID, p.Type)
+		}
+		var def struct {
+			CommandSets    []string `json:"command_sets"`
+			CustomCommands []string `json:"custom_commands"`
+		}
+		if err := decodeDefinition(in.Definition, &def, "command_sets (UNIX), custom_commands: each replaces the profile's current list"); err != nil {
+			return nil, err
+		}
+		if def.CommandSets == nil && def.CustomCommands == nil {
+			return nil, fmt.Errorf("%w: update needs command_sets or custom_commands", ErrInvalidInput)
+		}
+		patch := forward.EndpointProfilePatch{}
+		if def.CommandSets != nil {
+			sets := make([]string, 0, len(def.CommandSets))
+			for _, c := range def.CommandSets {
+				u := strings.ToUpper(strings.TrimSpace(c))
+				if u != "UNIX" {
+					return nil, fmt.Errorf("%w: command set %q is not one of UNIX", ErrInvalidInput, c)
+				}
+				sets = append(sets, u)
+			}
+			patch.CommandSets = sets
+		}
+		if def.CustomCommands != nil {
+			patch.CustomCommands = append([]string{}, def.CustomCommands...)
+		}
+		limits := []string{"the change applies to every endpoint that uses this profile, in every network of the organization, from its next collection",
+			"a profile is collected only if all of its commands are in the organization's approved CLI command list"}
+		if len(patch.CustomCommands) > 0 {
+			if a, _, aerr := s.Client.Endpoints.AssessCLICommands(ctx, patch.CustomCommands); aerr != nil {
+				limits = append(limits, "whether the custom commands are approved could not be read: "+aerr.Error())
+			} else if len(a.Unapproved) > 0 {
+				limits = append(limits, fmt.Sprintf("not approved by the organization, so endpoints with this profile will not be collected: %s", strings.Join(a.Unapproved, "; ")))
+			}
+		}
+		before, _ := fwd.Generic(*p)
+		id := string(p.ID)
+		return &networkPlan{target: "update CLI endpoint profile " + id, action: "update_endpoint_profile", before: before, after: map[string]any{"command_sets": patch.CommandSets, "custom_commands": patch.CustomCommands}, reversible: true,
+			undo: "update the profile again with the before command_sets and custom_commands", limits: limits,
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.Endpoints.UpdateProfile(ctx, id, patch)
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				now, err := s.EndpointProfiles(ctx)
+				for _, x := range now {
+					if string(x.ID) == id {
+						ok := (patch.CustomCommands == nil || equalStrings(x.CustomCommands, patch.CustomCommands)) && (patch.CommandSets == nil || equalStrings(x.CommandSets, patch.CommandSets))
+						return ok, map[string]any{"command_sets": x.CommandSets, "custom_commands": x.CustomCommands}, err
+					}
+				}
+				return false, nil, err
+			}}, nil
 	case "delete":
 		p := find(in.Name)
 		if p == nil {
@@ -105,5 +165,17 @@ func planEndpointProfile(ctx context.Context, s *fwd.Session, in editPlatformInp
 				return true, nil, err
 			}}, nil
 	}
-	return nil, fmt.Errorf("%w: endpoint_profiles takes action create or delete", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: endpoint_profiles takes action create, update or delete", ErrInvalidInput)
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

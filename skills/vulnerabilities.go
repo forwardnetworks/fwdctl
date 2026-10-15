@@ -213,7 +213,14 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 		return exposureUnknown("", in, cx, limits), nil
 	}
 	if nilRows > 0 {
-		limits = append(limits, fmt.Sprintf("internet_addressable is null on %d of %d device rows: Forward gave no value, which is not 'no' (%s)", nilRows, len(d.Devices), exposureWhy("", in.adv)))
+		if nilRows == len(d.Devices) {
+			// no device has a value: say which of the known causes applies, not only that the value is missing
+			in.flow = readFlowFacts(ctx, s)
+			limits = append(limits, fmt.Sprintf("internet_addressable is null on all %d device rows: Forward gave no value for any device, which is not 'no' (%s). The causes are, in order: no internet node in the snapshot (inspect-topology kind external; plan-synthetic-device), flow computation disabled (inspect-environment), or advanced reachability not PROCESSED for this snapshot (state %s)",
+				nilRows, exposureWhyFlow("", in.adv, in.flow), advOrNotReported(in.adv)))
+		} else {
+			limits = append(limits, fmt.Sprintf("internet_addressable is null on %d of %d device rows: Forward gave no value, which is not 'no' (%s)", nilRows, len(d.Devices), exposureWhy("", in.adv)))
+		}
 	}
 	if in.InternetAddressable != nil {
 		kept := devs[:0:0]
@@ -470,4 +477,11 @@ func exposureUnknown(code string, in vulnInput, cx result.Context, limits []stri
 		return result.NewError(vulnerabilitiesName, err.Error(), cx)
 	}
 	return r
+}
+
+func advOrNotReported(v string) string {
+	if v == "" {
+		return "not reported"
+	}
+	return v
 }

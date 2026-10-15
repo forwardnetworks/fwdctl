@@ -596,5 +596,15 @@
     "query": "Set the enable password credential on our Arista devices and turn on BGP advertisement collection",
     "expect": "edit-source",
     "rival": "edit-platform"
+  },
+  {
+    "query": "How many of the endpoints using each profile were actually collected, and which failed?",
+    "expect": "inspect-inventory",
+    "rival": "inspect-collection"
+  },
+  {
+    "query": "Which devices are past end of support, and how many have no lifecycle information?",
+    "expect": "inspect-inventory",
+    "rival": "inspect-vulnerabilities"
   }
 ]

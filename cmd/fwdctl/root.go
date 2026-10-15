@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -47,6 +48,9 @@ func (a *app) fail(format string, args ...any) error {
 	fmt.Fprintf(a.err, "error: "+format+"\n", args...)
 	return exitCode(usage)
 }
+
+// heartbeatEvery is how often a long run says it is alive on stderr.
+var heartbeatEvery = 30 * time.Second
 
 const rootLong = `EXPERIMENTAL: a dogfooding project, not an official Forward Networks release or product; unsupported, and it may change without notice.
 
@@ -542,7 +546,9 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 		return fail("%v", err)
 	}
 	warnInsecure(a.err, sess)
+	stop := heartbeat(a.err, heartbeatEvery, "fwdctl run "+name)
 	r, err := skills.Run(context.Background(), name, sess, raw)
+	stop()
 	if errors.Is(err, skills.ErrInvalidInput) || errors.Is(err, skills.ErrUnknown) {
 		// a consumer that parses stdout gets the same envelope as for any other failure, with status error; the plain line still goes to stderr and the exit status stays 64
 		if format == "json" {

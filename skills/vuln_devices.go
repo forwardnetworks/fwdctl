@@ -114,7 +114,12 @@ func vulnDevices(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 	if len(names) > 0 {
 		detail["addressable_device_names"] = names
 	}
-	if unknown > 0 {
+	if unknown > 0 && addressable+notAddressable == 0 {
+		// no device has a value: name the causes and what was read, not only that a value is missing
+		in.flow = readFlowFacts(ctx, s)
+		limits = append(limits, fmt.Sprintf("internet_addressable is null on all %d devices with matching CVEs: Forward gave no value for any device, which is not 'no' (%s). The causes are, in order: no internet node in the snapshot (inspect-topology kind external; plan-synthetic-device), flow computation disabled (inspect-environment), or advanced reachability not PROCESSED for this snapshot (state %s)",
+			unknown, exposureWhyFlow("", in.adv, in.flow), advOrNotReported(in.adv)))
+	} else if unknown > 0 {
 		limits = append(limits, fmt.Sprintf("internet_addressable is unknown on %d of the %d devices with matching CVEs: Forward gave no value, which is not 'no' (%s)", unknown, addressable+notAddressable+unknown, exposureWhy("", in.adv)))
 	}
 	limits = append(limits,

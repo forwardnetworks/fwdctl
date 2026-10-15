@@ -55,6 +55,8 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Drive a synthetic node (internet, intranet, L3 VPN, L2 VPN, adjacent network) from a saved NQE query, or take it off | `edit-synthetic-query` (dry run first) |
 | Add a link Forward missed, or ignore a wrong one, in a snapshot's topology | `edit-link-overrides` (dry run first) |
 | What a device connects to, which sites, tags or aliases exist | `inspect-topology` |
+| How many endpoints of a profile are collected, which endpoints failed, endpoints by profile, how many endpoints are switched off | `inspect-inventory` with kind `endpoints` |
+| End of support, end of life, EoS, EoL, devices past their last support date, OS lifecycle coverage, devices with no lifecycle record | `inspect-inventory` with kind `lifecycle` |
 | How much of a cloud network was collected, which cloud accounts or subscriptions were not collected and why, cloud coverage by setup | `inspect-inventory` with kind `cloud_coverage` |
 | A cloud account shows fewer routes than expected, a VPC route table, cloud routes or next hops | `inspect-inventory` with kind `cloud_routes` (`account` is the cloud account NAME, `name` the VPC; kind `cloud_accounts` lists the accounts) |
 | Compare two networks (a seed and a lab, production and a copy): devices, interfaces, links, cloud routes; there is no cross-network compare | `compare-nqe-results` with `after_network_id` (a saved query run on both networks, rows diffed by `key`, `ignore` for fields that should differ); with no saved query, read the same `inspect-inventory` kind on each network and diff (compare-device-config diffs two snapshots of one network) |

@@ -78,3 +78,39 @@ func TestEditPlatformEndpointProfileRefusesWhatForwardWouldReject(t *testing.T) 
 		t.Errorf("a refused call still created: %v", created)
 	}
 }
+
+// An existing CLI profile's commands can be changed in place (every endpoint using it follows at its next collection); the dry run shows the before and after and how many endpoints of this network use it,
+// and an SNMP or HTTP profile is not edited here.
+func TestEditPlatformEndpointProfileUpdateChangesCLICommandsInPlace(t *testing.T) {
+	cur := map[string]any{"id": "CLI-1", "name": "linux", "type": "CLI", "commandSets": []any{"UNIX"}, "customCommands": []any{"uname -r"}}
+	var patch map[string]any
+	routes := map[string]fwdtest.Handler{
+		"GET /api/endpoint-profiles": func(*http.Request, []byte) (int, any) {
+			return 200, []any{cur, map[string]any{"id": "SNMP-2", "name": "snmp", "type": "SNMP"}}
+		},
+		"PATCH /api/endpoint-profiles/CLI-1": func(_ *http.Request, b []byte) (int, any) {
+			_ = json.Unmarshal(b, &patch)
+			if cc, ok := patch["customCommands"]; ok {
+				cur["customCommands"] = cc
+			}
+			return 200, cur
+		},
+		"POST /api/approved-cli-commands": fwdtest.Const(200, map[string]any{"approved": []any{}, "unapproved": []any{}}),
+	}
+	in := `{"area":"endpoint_profiles","action":"update","name":"linux","definition":{"custom_commands":["uname -r","hostname -f"]}`
+	r, srv := mustRun(t, "edit-platform", routes, in+`}`)
+	if srv.Called("PATCH", "/api/endpoint-profiles/CLI-1") || patch != nil || !r.Changes[0].Reversible {
+		t.Fatalf("dry run wrote or is not reversible: %v", patch)
+	}
+	r, _ = mustRun(t, "edit-platform", routes, in+`,"apply":true}`)
+	cc, _ := patch["customCommands"].([]any)
+	if r.Status != result.OK || len(cc) != 2 || cc[1] != "hostname -f" {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, patch)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"update","name":"snmp","definition":{"custom_commands":["x"]},"apply":true}`); err == nil {
+		t.Errorf("an SNMP profile was edited as a CLI profile")
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"update","name":"linux","definition":{}}`); err == nil {
+		t.Errorf("an update that changes nothing was accepted")
+	}
+}

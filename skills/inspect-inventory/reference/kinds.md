@@ -41,3 +41,11 @@ How much of a cloud network was collected, without paging `cloud_accounts`. It r
 
 A reason is the setup's record, not a diagnosis. "Connectivity test passes; not collected in this snapshot" means the setup shows no problem and the collection still did not produce the account (it was added or discovered after the last collection, or the collection did not reach it): the data cannot tell which. "No connectivity test result" means the subscription has never been tested: run the setup's test (`edit-source`, object `cloud_account`, action `test`) and read again. The setups are read as they are now and the snapshot as it was, so an account tested or added since shows its newer state.
 
+## endpoints
+
+The snapshot's network endpoints (Linux hosts, SNMP and HTTP devices) rolled up by **profile**: how many there are, how many were collected, how many were not and with which result (`collectionFailed`, `processingFailed`), the first 25 not-collected endpoints, and how many configured endpoints are switched off (`collect` off). One read, so a network with thousands of endpoints needs no paging through `inspect-collection` view `config`. `name` limits it to profiles whose name contains the text (case does not matter). The reason an endpoint failed is in `investigate-collection-failure`; a profile whose commands the organization has not approved is not collected (`edit-platform` area `endpoint_profiles` names the unapproved commands). No endpoint in the snapshot is `unknown`, not zero.
+
+## lifecycle
+
+Each device's OS support dates from Forward's lifecycle data (`platform.osSupport`), rolled up: support **ended**, **ending within 12 months**, **later**, and **no record**, by vendor and OS, with the oldest 25 devices past their last support date. A device with no record is its own count and is not "supported". Dates are as of the day it runs. Hardware (component) support dates are not included.
+

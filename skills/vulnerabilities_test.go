@@ -360,3 +360,16 @@ func TestVulnerabilitiesDevicesViewRejectsTheOtherViewsInputs(t *testing.T) {
 		t.Error("an unknown view is refused")
 	}
 }
+
+// When Forward gives no internet_addressable value for ANY device, the limits say that it is all of them and name the causes, rather than only that a value is missing.
+func TestVulnerabilitiesDevicesViewAllNullNamesTheCauses(t *testing.T) {
+	routes := devicesRoutes(
+		devCounts("a", nil, map[string]int{"HIGH": 1}, map[string]int{"VULNERABLE": 1}),
+		devCounts("b", nil, map[string]int{"LOW": 1}, map[string]int{"VULNERABLE": 1}),
+	)
+	r, _ := vuln(t, routes, netIn+`,"view":"devices"}`)
+	all := strings.Join(r.Limits, " ")
+	if !strings.Contains(all, "null on all 2 devices") || !strings.Contains(all, "internet node") || !strings.Contains(all, "flow computation disabled") {
+		t.Errorf("limits = %v", r.Limits)
+	}
+}

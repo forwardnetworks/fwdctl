@@ -454,6 +454,12 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	if in.Kind == "cloud_coverage" {
 		return inventoryCloudCoverage(ctx, s, in, cx, limits)
 	}
+	if in.Kind == "lifecycle" {
+		return inventoryLifecycle(ctx, s, in, cx, limits, time.Now())
+	}
+	if in.Kind == "endpoints" {
+		return inventoryEndpoints(ctx, s, in, cx, limits)
+	}
 	var query string
 	params := map[string]any{}
 	switch in.Kind {
@@ -685,7 +691,7 @@ var kindFilters = map[string][]string{
 	"summary": {}, "security_rules_experimental": {"device", "name", "vendor"}, "devices": {"device", "name", "vendor"}, "interfaces": {"device", "name"}, "vlans": {"device", "name"}, "vrfs": {"device", "name"}, "hosts": {"device", "name"},
 	"routes": {"device", "name"}, "igp_neighbors": {"device", "name"},
 	"cloud": {"account", "name"}, "cloud_routes": {"account", "name"}, "cloud_security": {"account", "name"}, "cloud_gateways": {"account", "name"},
-	"cloud_subnets": {"account", "name"}, "cloud_instances": {"account", "name"}, "cloud_accounts": {"account"}, "cloud_coverage": {},
+	"cloud_subnets": {"account", "name"}, "cloud_instances": {"account", "name"}, "cloud_accounts": {"account"}, "cloud_coverage": {}, "endpoints": {"name"}, "lifecycle": {},
 }
 
 // kindFilterMeaning says what name means for a kind, for the refusal message.

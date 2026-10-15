@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -208,3 +209,27 @@ func TestWaitCollectorReachesConnectedAndSaysSoOnTimeoutOrADeletedCollector(t *t
 		t.Fatalf("code %d %s", code, errs)
 	}
 }
+
+func TestHeartbeatSaysItIsAliveOnlyWhenARunIsLong(t *testing.T) {
+	var b bytes.Buffer
+	stop := heartbeat(&b, time.Hour, "x")
+	stop()
+	if b.Len() != 0 {
+		t.Fatalf("a short run wrote %q", b.String())
+	}
+	var w syncBuf
+	stop = heartbeat(&w, 5*time.Millisecond, "fwdctl run inspect-inventory")
+	time.Sleep(40 * time.Millisecond)
+	stop()
+	if got := w.String(); !strings.Contains(got, "still running after") || !strings.Contains(got, "inspect-inventory") || !strings.Contains(got, "minutes") {
+		t.Fatalf("heartbeat wrote %q", got)
+	}
+}
+
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
+func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
