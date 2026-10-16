@@ -28,6 +28,12 @@ func setupsRoutes(queued *string) map[string]fwdtest.Handler {
 			*queued = r.URL.RawQuery + " " + string(b)
 			return 204, nil
 		},
+		// other controllers still held as classic devices, two of them with the same error: the baseline the migrated controller is compared with
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{
+			map[string]any{"name": "vs1", "host": "h", "testResult": map[string]any{"error": "HOST_NOT_REPORTING_ANY_GUEST", "errorPhase": "SETUP"}},
+			map[string]any{"name": "vs2", "host": "h", "testResult": map[string]any{"error": "HOST_NOT_REPORTING_ANY_GUEST", "errorPhase": "SETUP"}},
+			map[string]any{"name": "sw1", "host": "h", "testResult": map[string]any{"discoveredType": "x"}},
+		}),
 	}
 }
 
@@ -59,6 +65,9 @@ func TestConfigViewReadsControllerSetupsBackWithTheirTestResults(t *testing.T) {
 	ctl := by["ctl"]
 	if ctl["discovered_cli_credential"] != "L1" || ctl["started_at"] != "2026-10-16T09:59:00Z" || fmt.Sprint(ctl["host_ips"]) != "[192.0.2.10]" || ctl["unauthorized_commands"] == nil {
 		t.Errorf("the test's own details are shown: %v", ctl)
+	}
+	if fmt.Sprint(ctl["classic_devices_with_same_error"]) != "2" || !strings.Contains(fmt.Sprint(ctl["meaning"]), "not a migration symptom") {
+		t.Errorf("the classic baseline: %v", ctl)
 	}
 	if rep, _ := ctl["managed_devices_reported"].([]map[string]any); len(rep) != 1 || rep[0]["name"] != "edge1" || !strings.Contains(fmt.Sprint(ctl["meaning"]), "no guests") || !strings.Contains(fmt.Sprint(ctl["meaning"]), "not a login failure") {
 		t.Errorf("the controller's reported devices and what the error means: %v", ctl)

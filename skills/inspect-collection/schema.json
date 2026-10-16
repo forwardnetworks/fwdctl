@@ -14,7 +14,8 @@
         "status",
         "config",
         "migration",
-        "discovery"
+        "discovery",
+        "connectivity"
       ],
       "default": "status"
     },

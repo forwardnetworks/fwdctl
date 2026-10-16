@@ -39,6 +39,8 @@ func inspectCollection(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 		return inspectCollectionMigration(ctx, s, raw)
 	case "discovery":
 		return inspectCollectionDiscovery(ctx, s, raw)
+	case "connectivity":
+		return inspectCollectionConnectivity(ctx, s, raw)
 	}
-	return result.Result{}, fmt.Errorf("%w: view must be status, config, migration or discovery", ErrInvalidInput)
+	return result.Result{}, fmt.Errorf("%w: view must be status, config, migration, discovery or connectivity", ErrInvalidInput)
 }

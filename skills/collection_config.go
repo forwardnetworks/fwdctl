@@ -346,6 +346,17 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 			}
 			rows = append(rows, row)
 		}
+		// a controller whose test found no guests is compared with the classic devices that have the same stored error: if others do too, it is not a symptom of the migration
+		if n := classicWithError(ctx, s, in.NetworkID, "HOST_NOT_REPORTING_ANY_GUEST"); n > 0 {
+			for _, r := range rows {
+				for _, d := range r["devices"].([]map[string]any) {
+					if _, has := d["meaning"]; has {
+						d["classic_devices_with_same_error"] = n
+						d["meaning"] = fmt.Sprint(d["meaning"]) + fmt.Sprintf(". %d classic device(s) of this network still carry the same stored error, so it is the controller's own baseline and not a migration symptom", n)
+					}
+				}
+			}
+		}
 		detail["controller_setups"] = rows
 		limits = append(limits, "controller_setups lists each controller-managed setup with its controllers and managed devices and each device's last saved connectivity test (a result outlives the test that wrote it, so right after a test is queued you may still see the previous one: compare tested_at with when you queued it). A device with no error and no time is not a pass. The collector is the setup's, one for all its devices")
 	}
@@ -783,4 +794,19 @@ func setupTestDetails(d map[string]any, tr *forward.DeviceTestResult) {
 	if tr.Error == "HOST_NOT_REPORTING_ANY_GUEST" {
 		d["meaning"] = "the controller's test found no guests (a setup-phase result, not a login failure); Forward's API does not return the guest list that phase used, so managed_devices_reported is only what the query phase listed"
 	}
+}
+
+// classicWithError counts the classic devices whose stored connectivity test has the error (0 when the read fails: the comparison is then simply not made).
+func classicWithError(ctx context.Context, s *fwd.Session, networkID, errName string) int {
+	sts, err := s.DeviceTestStatuses(ctx, networkID)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, st := range sts {
+		if st.ConnectivityError == errName {
+			n++
+		}
+	}
+	return n
 }
