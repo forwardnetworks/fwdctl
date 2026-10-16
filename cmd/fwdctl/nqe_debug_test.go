@@ -131,3 +131,19 @@ func TestNqeExplainFileDiscardsTheDraftWhenTheExplainFailsAndNamesItWhenTheDisca
 		t.Errorf("--apply without --file: %d %s", code, errs)
 	}
 }
+
+func TestNqeExplainFileSaysUpFrontWhichParametersAreMissing(t *testing.T) {
+	file := t.TempDir() + "/q.nqe"
+	src := "@query\nexport q(Device_Name: String) = foreach d in network.devices where d.name == Device_Name select {n: d.name};"
+	if err := os.WriteFile(file, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var wrote bool
+	r := map[string]fwdtest.Handler{"POST /api/users/current/nqe/changes": func(*http.Request, []byte) (int, any) { wrote = true; return 204, nil }}
+	for _, args := range [][]string{{"nqe", "explain", "--file", file}, {"nqe", "explain", "--file", file, "--apply"}} {
+		code, _, errs := call(t, args, "", r)
+		if code != usage || wrote || !strings.Contains(errs, "Device_Name") || !strings.Contains(errs, "--param") {
+			t.Errorf("%v: missing parameters must be named before any write: code %d wrote %v err %q", args, code, wrote, errs)
+		}
+	}
+}

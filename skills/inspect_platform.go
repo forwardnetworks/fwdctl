@@ -23,6 +23,7 @@ type inspectPlatformInput struct {
 	NetworkID string `json:"network_id"`
 	OrgID     string `json:"org_id"`
 	Area      string `json:"area"`
+	View      string `json:"view"`
 	Name      string `json:"name"`
 	Limit     int    `json:"limit"`
 	Offset    int    `json:"offset"`
@@ -114,7 +115,7 @@ var platformAreas = map[string]platformArea{
 			return nil, nil, err
 		}
 		r, err := rowsOf([]*forward.OrgCollectionSettings{v}, nil)
-		return r, []string{"a field that is absent is unset and Forward uses its default (a device collection timeout of 180 minutes, 2 retries); a collector's own concurrency is in inspect-collection view status"}, err
+		return r, []string{"a field that is absent is unset and Forward uses its default; view effective lists every setting against its default (organization and each collector) and flags the differences"}, err
 	}},
 	"schedules": {true, "collection schedules", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
 		v, _, err := s.Client.CollectionSchedules.List(ctx, n)
@@ -422,7 +423,13 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	var rows []any
 	var limits []string
 	var err error
-	if in.Area == "org_properties" { // needs org_id, which the generic list signature does not carry
+	differ := -1
+	if in.View != "" && (in.View != "effective" || in.Area != "collection_settings") {
+		return result.Result{}, fmt.Errorf("%w: view %q is not offered here; the only view is effective, for area collection_settings", ErrInvalidInput, in.View)
+	}
+	if in.View == "effective" {
+		rows, limits, differ, err = effectiveSettingRows(ctx, s)
+	} else if in.Area == "org_properties" { // needs org_id, which the generic list signature does not carry
 		rows, limits, err = orgPropertyRows(ctx, s, in)
 	} else {
 		rows, limits, err = a.list(ctx, s, in.NetworkID)
@@ -480,6 +487,9 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		return result.NewUnknown(inspectPlatformName, fmt.Sprintf("Offset %d is beyond the %d rows", in.Offset, len(plain)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
 	finding := fmt.Sprintf("%d %s", len(plain), a.what)
+	if differ >= 0 {
+		finding = fmt.Sprintf("%d collection setting rows (organization and collectors); %d setting(s) differ from Forward's default", len(plain), differ)
+	}
 	d := map[string]any{"area": in.Area, "total": len(plain), "offset": in.Offset, "rows": win}
 	return result.Build(inspectPlatformName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: wl, NextActions: []string{"inspect-access", "inspect-collection"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "platform_"+in.Area, nil, d, finding)}})

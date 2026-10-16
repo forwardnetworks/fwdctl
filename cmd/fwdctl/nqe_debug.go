@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 	"github.com/spf13/cobra"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/nqelint"
 )
 
 // nqeExplain prints Forward's optimized plan for a query: the Query Debug Panel's text. It shows whether the query runs device-parallel (the first line starts parallel_foreach), where a lookup replaced a
@@ -104,6 +106,15 @@ func (a *app) explainFile(cmd *cobra.Command, file, draftPath, network, snapshot
 	p, err := nqeParams(paramsFile, params)
 	if err != nil {
 		return a.fail("%v", err)
+	}
+	var missing []string
+	for _, name := range nqelint.QueryParams(string(src)) {
+		if _, ok := p[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return a.fail("the query declares parameters that were not given: %s. Pass --param NAME=VALUE or --params FILE", strings.Join(missing, ", "))
 	}
 	if !apply {
 		fmt.Fprintf(a.err, "dry run: would save %s (%d bytes) as the throwaway draft %s in your NQE workspace, explain it and discard the draft. Add --apply to do it.\n", file, len(src), draftPath)

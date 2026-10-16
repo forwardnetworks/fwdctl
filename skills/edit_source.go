@@ -1304,6 +1304,60 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 				return err
 			},
 			verify: present(def.Name, true)}, nil
+	case "migrate":
+		var def forward.NewControllerManagedSetup
+		if err := decodeDefinition(in.Definition, &def, "name, controllers[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId}], managedDevices[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId, collect}] (list only the devices to move: a subset is a pilot)"); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(def.Name) == "" || len(def.Controllers) == 0 {
+			return nil, fmt.Errorf("%w: migrate needs name and at least one controller", ErrInvalidInput)
+		}
+		if find(def.Name) != nil {
+			return nil, fmt.Errorf("%w: a controller-managed setup named %q already exists; migrate creates the setup", ErrInvalidInput, def.Name)
+		}
+		var noLogin []string
+		for _, m := range def.ManagedDevices {
+			if m.CLICredentialID == "" {
+				noLogin = append(noLogin, m.Name)
+			}
+		}
+		if len(noLogin) > 0 {
+			return nil, fmt.Errorf("%w: managed device(s) %s have no cliCredentialId: a migrated device inherits nothing from the controller or from the classic device it replaces, so without its own login it cannot be collected", ErrInvalidInput, strings.Join(noLogin, ", "))
+		}
+		named := map[string]bool{}
+		for _, c := range def.Controllers {
+			named[strings.ToLower(c.Name)] = true
+		}
+		for _, m := range def.ManagedDevices {
+			named[strings.ToLower(m.Name)] = true
+		}
+		classic, _, cerr := s.Client.ClassicDevices.List(ctx, in.NetworkID)
+		if cerr != nil {
+			return nil, cerr
+		}
+		var gone []map[string]any
+		for _, d := range classic {
+			if named[strings.ToLower(d.Name)] {
+				gone = append(gone, map[string]any{"name": d.Name, "type": d.Type, "host": d.Host, "collector": string(d.CollectorID), "cli_credential": d.CLICredentialID, "cli_credential_2": d.CLICredential2ID, "snmp_credential": d.SNMPCredentialID, "jump_server": d.JumpServerID})
+			}
+		}
+		shown, omitted := result.Cap(gone, 200, "classic devices to delete", "the rest are deleted too; the full list is in the network's classic devices")
+		var lim []string
+		for _, o := range omitted {
+			lim = append(lim, o.Text())
+		}
+		return &networkPlan{target: fmt.Sprintf("migrate into new controller-managed setup %q on network %s, deleting %d classic device(s)", def.Name, in.NetworkID, len(gone)), action: "migrate_controller_setup",
+			before: map[string]any{"classic_devices_to_delete": shown}, after: def, reversible: false, confirm: def.Name,
+			undo: "none: this cannot be undone by update. Recreate the classic devices from the before list (edit-source object classic_device action create), and note their device tags and connectivity test results are gone",
+			limits: append(lim,
+				"Forward deletes, in one transaction with the create, every classic device whose name matches a controller or managed device of this setup (case-insensitive here; Forward may match exactly), with their per-device settings, connectivity test results and device tags; if the create is refused nothing is deleted (read from Forward's source; not exercised on a live Forward)",
+				"a migrated device inherits no login from the controller: each managed device carries its own cliCredentialId, which is checked to be present, not to work. Migrate a small pilot (list a few managed devices) and run a connectivity test before moving the rest",
+				"the route is published by Forward as experimental"),
+			do: func(ctx context.Context) error {
+				_, _, err := s.Client.ControllerManagedSetups.CreateMigratingClassic(ctx, in.NetworkID, def)
+				return err
+			},
+			verify: present(def.Name, true)}, nil
 	case "update":
 		c := find(in.Name)
 		if c == nil {
@@ -1339,7 +1393,7 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 			},
 			verify: present(c.Name, false)}, nil
 	}
-	return nil, fmt.Errorf("%w: controller_setup takes action create, update or delete", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: controller_setup takes action create, migrate, update or delete", ErrInvalidInput)
 }
 
 // planMistSetup manages a Juniper Mist cloud-managed setup. apiKeyId names an existing credential, so no secret is read here.

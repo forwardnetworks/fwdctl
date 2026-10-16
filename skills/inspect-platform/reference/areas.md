@@ -29,6 +29,8 @@ Host, port, user and id. A jump server's password or SSH key, and a proxy's cred
 
 Every endpoint profile of any type, used or not (`inspect-collection` view `config` shows only those endpoints use), and the organization's collection settings: the device collection timeout, retries and their delays, authentication and scan rates, per-device concurrency. An unset field means Forward's default.
 
+`view: effective` (collection_settings only) answers "what is non-default or temporary?": one row per setting for the organization and for each collector (`scope`, `setting`, `value`, `default`, `source` set or default, `differs`), and the finding counts the differing ones. An absent timeout means the default timeout, not none. The defaults are Forward's compiled defaults as carried by the SDK; `commandDelayMs` and the on/off switches are shown only when set, because their defaults are not known here. To put a setting back, `edit-platform` area `collection_settings` sets it to the default value (it cannot clear a field, and it covers only some settings: see its reference); the organization properties that may also govern timeouts need Forward support authority (area `org_properties`).
+
 ## collectors and schedules
 
 Collectors are organization-wide: name, status, connected, version, last connection. Collection schedules belong to a network (times or period, time zone, enabled); Forward does not return the next run. The organization's collection settings are read by `inspect-collection` view `status` and `investigate-collection-failure` view `slow`.

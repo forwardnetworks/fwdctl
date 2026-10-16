@@ -104,6 +104,8 @@ func failureDevices(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		}
 		return str(kept[i]["device"]) < str(kept[j]["device"])
 	})
+	byPlatform, ulimits := explainUnsupported(ctx, s, in.NetworkID, kept)
+	limits = append(limits, ulimits...)
 	// the metrics count every failed device; the model lists only devices Forward built a record for
 	m, merr := s.SnapshotMetrics(ctx, fwd.SnapshotID(cx))
 	want := -1
@@ -126,8 +128,18 @@ func failureDevices(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	if in.Failure != "" || in.Device != "" {
 		finding = fmt.Sprintf("%d of %d failed device(s) match the filter", len(kept), len(rows))
 	}
+	if len(byPlatform) > 0 {
+		finding += "; " + platformsText(byPlatform) + " unsupported device type"
+	}
 	detail := map[string]any{"total_failed": len(rows), "by_type": byType, "by_category": byCategory, "matching": len(kept), "offset": in.Offset}
-	win, wl, ok := window(kept, in.Limit, in.Offset, defaultFailureRows, maxFailureRows, "failed devices")
+	if len(byPlatform) > 0 {
+		detail["by_platform"] = byPlatform
+	}
+	rowsDefault := defaultFailureRows
+	if in.Failure != "" { // a filtered list is read whole by default
+		rowsDefault = maxFailureRows
+	}
+	win, wl, ok := window(kept, in.Limit, in.Offset, rowsDefault, maxFailureRows, "failed devices")
 	if ok {
 		detail["devices"] = win
 		omitted = append(omitted, wl...)
@@ -374,4 +386,23 @@ func collectorExceptions(ctx context.Context, s *fwd.Session, in collectionInput
 	finding := fmt.Sprintf("%d distinct collector exception(s); most frequent: %v (%v time(s))", len(rows), win[0]["message"], win[0]["occurrences"])
 	return result.Build(collectionFailureName, result.Failed, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: wl, NextActions: []string{"inspect-collection", "inspect-device-files"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "collectionExceptions", cx.SnapshotID, map[string]any{"total": ex.Total, "offset": in.Offset, "exceptions": win}, finding)}})
+}
+
+// platformsText says "96 Cisco NXOS" for a count by platform (largest first).
+func platformsText(by map[string]int) string {
+	keys := make([]string, 0, len(by))
+	for k := range by {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if by[keys[i]] != by[keys[j]] {
+			return by[keys[i]] > by[keys[j]]
+		}
+		return keys[i] < keys[j]
+	})
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%d %s", by[k], k))
+	}
+	return strings.Join(parts, ", ")
 }

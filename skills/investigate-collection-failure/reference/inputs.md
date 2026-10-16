@@ -23,6 +23,7 @@ DEBUG_SNAPSHOTS permission and is reported as not read otherwise; when Forward's
 file region for a parser exception, so go on to `inspect-device-files` for the device's raw config.
 The snapshot's metrics count every failed device, but the model lists only devices Forward built a
 record for; when the two differ, the limits say so.
+A device that failed as `UNSUPPORTED_DEVICE_TYPE` (Forward recognised it and cannot collect it, so it fails every collection) gets a `reason`, a `likely` identity from its platform (NX-OS: a Cisco MDS SAN switch; PAN-OS: Panorama or an M-series; F5: BIG-IQ; Brocade: MLXe; Extreme: EXOS; a hint from Forward's explicit detectors, not confirmed per device) and the `discovered_type` its connectivity test recorded. The finding and `by_platform` count them by vendor and OS, the limits say what to do (remove or exclude them, or contact Forward support), and a filtered list (`failure` set) is read whole by default (up to 200 rows).
 
 **view platforms** (takes `failure`, `device`, `limit`, `offset`). Failures rolled up by vendor, OS and OS version against **all** devices of that platform in the snapshot (failed, total, failure rate, error types),
 worst first. A rate near 100% on one OS version while the rest of the vendor is clean points at that version's parser or support, not at credentials or the network. Devices Forward could not identify are

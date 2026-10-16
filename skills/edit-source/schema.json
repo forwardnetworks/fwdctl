@@ -33,7 +33,8 @@
         "update",
         "delete",
         "rotate",
-        "test"
+        "test",
+        "migrate"
       ]
     },
     "name": {

@@ -119,9 +119,24 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 		fmt.Sprintf("%d of %d devices have no connectivity test result yet and could not be classified; a device never tested is not counted", noTest, len(statuses)),
 		"counted devices are collected as classic devices but belong in a controller-managed setup (inspect-collection view config lists the setups; edit-source objects create them): this is a finding, not a collection failure",
 	}
-	detail := map[string]any{"migration": map[string]any{
+	mig := map[string]any{
 		"by_category": byCat, "by_effective_type": byType, "controllers": shown, "devices_counted": counted, "devices_read": len(statuses), "devices_without_test_result": noTest,
-	}}
+	}
+	if counted > 0 {
+		if creds, _, cerr := s.Client.Credentials.ListCLI(ctx, in.NetworkID); cerr != nil {
+			limits = append(limits, fmt.Sprintf("the CLI logins could not be read (%v), so no credential candidates are listed", cerr))
+		} else {
+			var cands []map[string]any
+			for _, c := range creds {
+				if c.AutoAssociate != nil && *c.AutoAssociate {
+					cands = append(cands, map[string]any{"id": c.ID, "name": c.Name, "username": c.Username, "has_enable_password": c.PrivilegedModePasswordID != ""})
+				}
+			}
+			mig["credential_candidates"] = cands
+			limits = append(limits, "credential_candidates are the CLI logins set to auto-associate, which Forward may have tried on these devices; the connectivity test result does not record which login worked, so the working one cannot be inferred. A migrated guest inherits nothing from the controller: give each guest a CLI credential and run a connectivity test on a small pilot before moving the rest")
+		}
+	}
+	detail := map[string]any{"migration": mig}
 	finding := fmt.Sprintf("%d of %d classic devices need to be migrated to a controller-managed setup (ACI %d, SD-WAN %d)", counted, len(statuses), byCat["ACI"], byCat["SD_WAN"])
 	status := result.Failed
 	if counted == 0 {

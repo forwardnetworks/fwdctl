@@ -19,3 +19,5 @@
 | `licensing`, `backups`, `saml` | organization | licenses without the key; backup settings and the last backup; SAML status |
 
 Detail and what each area cannot show: `reference/areas.md` (`fwdctl describe inspect-platform reference/areas.md`).
+
+`view` is optional. `effective` (area `collection_settings` only) lists every collection setting for the organization and each collector with Forward's default, whether it is set, and whether it differs.

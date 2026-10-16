@@ -82,3 +82,30 @@ func TestMigrationViewIsUnknownNotAPassWhenTheTypesCannotBeRead(t *testing.T) {
 		t.Fatalf("an unreadable type list must be unknown, got %s %s", r.Status, r.Finding)
 	}
 }
+
+// testResult does not record which login worked, so the view lists the logins that could have been tried (auto-associate CLI credentials) and says the working one cannot be inferred.
+func TestMigrationViewListsTheCredentialCandidatesAndSaysTheWorkingLoginCannotBeInferred(t *testing.T) {
+	routes := migrationRoutes()
+	routes["GET /api/networks/n1/cli-credentials"] = fwdtest.Const(200, []any{
+		map[string]any{"id": "L1", "name": "ops", "username": "admin", "password": "SECRET-1", "autoAssociate": true},
+		map[string]any{"id": "L2", "name": "lab", "username": "lab", "password": "SECRET-2"},
+	})
+	r, _ := mustRun(t, "inspect-collection", routes, `{"network_id":"n1","view":"migration"}`)
+	b := jsonOf(r)
+	if strings.Contains(b, "SECRET") {
+		t.Fatalf("a secret leaked: %s", b)
+	}
+	var m map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["migration"].(map[string]any); ok {
+			m = v
+		}
+	}
+	cands := m["credential_candidates"].([]map[string]any)
+	if len(cands) != 1 || cands[0]["id"] != "L1" || cands[0]["username"] != "admin" {
+		t.Errorf("only auto-associate logins are candidates: %v", cands)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "cannot be inferred") || !strings.Contains(strings.Join(r.Limits, " "), "connectivity test") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}

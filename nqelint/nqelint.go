@@ -166,3 +166,6 @@ func Bundle(string, BundleSource) (string, []string, error) { return "", nil, Er
 
 // BustCache is not available in the public build (it needs the query parser).
 func BustCache(string, string) (string, error) { return "", ErrNotInThisBuild }
+
+// QueryParams finds nothing in this build.
+func QueryParams(string) []string { return nil }
