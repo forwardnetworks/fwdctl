@@ -52,6 +52,9 @@ A device in the list Forward collects (CLI/SNMP/HTTP devices). `create` needs `n
 
 **Unsetting a field.** `definition.clear` (a single update, or inside a `devices` entry) lists properties to reset to unset: `collectorId` (unpin from a collector: the device then runs on the network's default collector), the credential ids, `jumpServerId`, `note`, `port` and the collection options. Leaving a field out never clears it. `bgpTableType` and `bgpPeerType` count only when `collectBgpAdvertisements` is true in the same change. `cliCredential2Id` must name a PRIVILEGED_MODE (or Avi SHELL) credential and `cliCredential3Id` an EXPERT_MODE one.
 
+
+`test` queues a connectivity test of a small named set of classic devices (`definition.names`, at most 100): it probes each host from its collector, so it is a dry run until `apply`, which needs `confirm` equal to the number of devices. A stored result keeps its old time until the new test replaces it: use `wait_seconds` or compare `tested_at` with the queue time.
+
 ## endpoint
 
 A network endpoint is a host or device Forward collects that is not a classic network device: a Linux host over SSH (type CLI), an SNMP device or an HTTP device. `create` needs `name` and `host`; `credentialId` (a CLI login from `inspect-platform` area `credentials`) and `profileId` (an endpoint profile, for example a CLI profile made with `edit-platform` area `endpoint_profiles`; `inspect-collection` view `config` lists them) are ids. A CLI endpoint takes `protocol` SSH or TELNET and may use a `jumpServerId`. A create is idempotent by name: the same host, credential and profile again is reported as already done; a different definition is refused (use `update`). Collection runs the profile's commands only if the organization approved them.

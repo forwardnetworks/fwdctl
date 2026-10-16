@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -609,6 +611,9 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 			}
 		}
 		return nil
+	}
+	if in.Action == "test" {
+		return planClassicDeviceTest(ctx, s, in, cur)
 	}
 	fields := "name, host, type, port, cliCredentialId, cliCredential2Id (the PRIVILEGED_MODE / enable credential), cliCredential3Id (EXPERT_MODE), httpCredentialId, snmpCredentialId, jumpServerId, collectorId, collect, note, enableSnmpCollection, collectBgpAdvertisements, bgpTableType, bgpPeerType, bgpAndBmpFailureHandling, disableIpv6Collection, fullCollectionLog"
 	switch in.Action {
@@ -1789,6 +1794,143 @@ func waitForSetupTests(ctx context.Context, s *fwd.Session, networkID, setup str
 			}
 		}
 		if found && fresh {
+			return true, rows, nil
+		}
+		if time.Now().After(deadline) {
+			return false, rows, nil
+		}
+		select {
+		case <-ctx.Done():
+			return false, rows, ctx.Err()
+		case <-time.After(setupTestPollEvery):
+		}
+	}
+}
+
+// maxDeviceTestNames is how many classic devices one test call may name (the SDK's cap on a bulk start).
+const maxDeviceTestNames = forward.MaxConnectivityTestDevices
+
+// planClassicDeviceTest queues Forward's connectivity test of a small named set of classic devices. Each test connects to the device's host from its collector (the one it is pinned to, else the network's default),
+// so the dry run lists them and says so; apply needs confirm equal to the number of devices. A name that is not a classic device refuses the whole call; there is no whole-network form. With definition wait_seconds the
+// apply waits for each device's stored result to be newer than the moment the tests were queued and returns them.
+func planClassicDeviceTest(ctx context.Context, s *fwd.Session, in editSourceInput, cur []forward.ClassicDevice) (*networkPlan, error) {
+	var def struct {
+		Names       []string `json:"names"`
+		WaitSeconds int      `json:"wait_seconds"`
+	}
+	if err := decodeDefinition(in.Definition, &def, "names [the classic devices to test, at most 100], wait_seconds (wait up to this many seconds, at most 600, for fresh results)"); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var names []string
+	for _, n := range def.Names {
+		if n = strings.TrimSpace(n); n != "" && !seen[n] {
+			seen[n] = true
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("%w: test takes names, the classic devices to test (a named set, never the whole network)", ErrInvalidInput)
+	}
+	if len(names) > maxDeviceTestNames {
+		return nil, fmt.Errorf("%w: %d devices named; one call tests at most %d: test a smaller set", ErrInvalidInput, len(names), maxDeviceTestNames)
+	}
+	byName := map[string]forward.ClassicDevice{}
+	for _, d := range cur {
+		byName[d.Name] = d
+	}
+	var missing []string
+	rows := make([]map[string]any, 0, len(names))
+	for _, n := range names {
+		d, ok := byName[n]
+		if !ok {
+			missing = append(missing, n)
+			continue
+		}
+		collector := string(d.CollectorID)
+		if collector == "" {
+			collector = "the network's default collector"
+		}
+		rows = append(rows, map[string]any{"name": d.Name, "host": d.Host, "type": d.Type, "collector": collector})
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("%w: not classic devices of this network: %s (Forward would refuse the whole call and queue nothing)", ErrInvalidInput, strings.Join(missing, ", "))
+	}
+	var queuedAt time.Time
+	var waitFn func(context.Context) (bool, any, error)
+	if def.WaitSeconds > 0 {
+		wait := time.Duration(min(def.WaitSeconds, 600)) * time.Second
+		waitFn = func(ctx context.Context) (bool, any, error) {
+			return waitForDeviceTests(ctx, s, in.NetworkID, names, &queuedAt, wait)
+		}
+	}
+	return &networkPlan{target: fmt.Sprintf("queue a connectivity test of %d classic device(s) of network %s: each test connects to the device's host from its collector", len(names), in.NetworkID), action: "test_classic_devices",
+		after: map[string]any{"devices": rows, "devices_tested": len(names)}, reversible: true, confirm: strconv.Itoa(len(names)),
+		undo: "none needed: a test changes no configuration; it replaces each device's stored test result (a running test can be cancelled with Forward's stop)",
+		limits: []string{
+			fmt.Sprintf("this probes each named host from its collector (a login attempt per device): %d named, at most %d per call; apply needs confirm equal to %d", len(names), maxDeviceTestNames, len(names)),
+			"Forward queues one task per device on the device's collector, which runs them within its own concurrency (shared with every network on that collector and with collections); an offline collector does not refuse, the tests wait",
+			"Forward answers as soon as the tests are queued: a stored result keeps its old time until the new test replaces it. With wait_seconds the apply waits for results newer than the queue time; otherwise read them with inspect-collection view connectivity",
+			"needs the TEST_COLLECTION_SOURCES permission",
+		},
+		do: func(ctx context.Context) error {
+			resp, err := s.Client.ConnectivityTests.BulkStart(ctx, in.NetworkID, names)
+			queuedAt = time.Now()
+			if resp != nil && resp.Response != nil {
+				if t, perr := http.ParseTime(resp.Header.Get("Date")); perr == nil {
+					queuedAt = t // the server's clock, which the stored times use
+				}
+			}
+			return err
+		},
+		verify: waitFn,
+		learn: func(got any, ch *result.Change) {
+			if rs, ok := got.([]map[string]any); ok {
+				ch.After = map[string]any{"devices": rows, "devices_tested": len(names), "results": rs}
+			}
+		}}, nil
+}
+
+// waitForDeviceTests polls the named classic devices until each has a stored test that ended after the tests were queued, or the wait runs out.
+func waitForDeviceTests(ctx context.Context, s *fwd.Session, networkID string, names []string, queuedAt *time.Time, wait time.Duration) (bool, any, error) {
+	deadline := time.Now().Add(wait)
+	since := queuedAt.Add(-2 * time.Second)
+	want := map[string]bool{}
+	for _, n := range names {
+		want[n] = true
+	}
+	for {
+		sts, err := s.DeviceTestStatuses(ctx, networkID)
+		if err != nil {
+			return false, nil, err
+		}
+		var rows []map[string]any
+		fresh := true
+		seen := 0
+		for _, st := range sts {
+			if !want[st.Name] {
+				continue
+			}
+			seen++
+			at := firstNonEmpty(st.TestEndTime, st.TestSavedAt)
+			t, perr := time.Parse(time.RFC3339, at)
+			isFresh := perr == nil && t.After(since)
+			if !isFresh {
+				fresh = false
+			}
+			outcome := "no error recorded"
+			switch {
+			case !st.TestResultPresent:
+				outcome = "never tested"
+			case st.ConnectivityError != "":
+				outcome = "failed: " + st.ConnectivityError
+				if st.ErrorPhase != "" {
+					outcome += " (" + st.ErrorPhase + ")"
+				}
+			}
+			rows = append(rows, map[string]any{"name": st.Name, "test": outcome, "tested_at": at, "newer_than_queue_time": isFresh})
+		}
+		if seen == len(names) && fresh {
 			return true, rows, nil
 		}
 		if time.Now().After(deadline) {
