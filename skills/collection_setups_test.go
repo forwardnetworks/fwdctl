@@ -131,3 +131,33 @@ func TestControllerSetupTestWaitsForResultsNewerThanTheQueueTime(t *testing.T) {
 		t.Errorf("stale results after the wait must not be reported as done: %s %s", r2.Status, r2.Finding)
 	}
 }
+
+// A setup has ONE collector for all its controllers and guests: update can move it (collectorId) or drop the pin (clear_collector), on its own or with the guest list, and says which it did.
+func TestControllerSetupUpdateMovesOrClearsTheCollector(t *testing.T) {
+	var patched []string
+	routes := setupsRoutes(new(string))
+	routes["PATCH /api/networks/n1/controller-managed-setups/sdwan"] = func(_ *http.Request, b []byte) (int, any) {
+		patched = append(patched, string(b))
+		return 204, nil
+	}
+	base := `{"network_id":"n1","object":"controller_setup","action":"update","name":"sdwan","definition":`
+	r, _ := mustRun(t, "edit-source", routes, base+`{"collector_id":"C9"}}`)
+	if r.Mode != result.ModeDryRun || len(patched) != 0 || !strings.Contains(jsonOf(r), "C9") || !strings.Contains(jsonOf(r), "C7") {
+		t.Fatalf("dry run shows the old collector (C7) and the new: %s", jsonOf(r))
+	}
+	r, _ = mustRun(t, "edit-source", routes, base+`{"collector_id":"C9"},"apply":true}`)
+	if r.Status != result.OK || len(patched) != 1 || !strings.Contains(patched[0], `"collectorId":"C9"`) || strings.Contains(patched[0], "managedDevices") {
+		t.Errorf("move: %s %v", r.Status, patched)
+	}
+	patched = nil
+	r, _ = mustRun(t, "edit-source", routes, base+`{"clear_collector":true},"apply":true}`)
+	if r.Status != result.OK || len(patched) != 1 || !strings.Contains(patched[0], `"collectorId":null`) {
+		t.Errorf("clear: %s %v", r.Status, patched)
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, base+`{"collector_id":"C9","clear_collector":true}}`); err == nil {
+		t.Errorf("naming both is refused")
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, base+`{}}`); err == nil {
+		t.Errorf("an update that changes nothing is refused")
+	}
+}

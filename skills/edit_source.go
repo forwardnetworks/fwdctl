@@ -1420,18 +1420,35 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 		}
 		var def struct {
 			ManagedDevices []forward.ManagedDevice `json:"managedDevices"`
+			CollectorID    string                  `json:"collector_id"`
+			ClearCollector bool                    `json:"clear_collector"`
 		}
-		if err := decodeDefinition(in.Definition, &def, "managedDevices (REPLACES the managed device list)"); err != nil {
+		if err := decodeDefinition(in.Definition, &def, "managedDevices (REPLACES the managed device list), collector_id (move the whole setup to that collector), clear_collector (unpin it: the network's default collector applies)"); err != nil {
 			return nil, err
 		}
-		if def.ManagedDevices == nil {
-			return nil, fmt.Errorf("%w: update sets managedDevices (the whole list)", ErrInvalidInput)
+		if def.ManagedDevices == nil && def.CollectorID == "" && !def.ClearCollector {
+			return nil, fmt.Errorf("%w: update sets managedDevices (the whole list), collector_id or clear_collector", ErrInvalidInput)
+		}
+		if def.CollectorID != "" && def.ClearCollector {
+			return nil, fmt.Errorf("%w: collector_id and clear_collector cannot both be given", ErrInvalidInput)
+		}
+		patch := forward.ControllerManagedSetupPatch{CollectorID: forward.Identifier(def.CollectorID), ClearCollector: def.ClearCollector}
+		var what []string
+		if def.ManagedDevices != nil {
+			patch.ManagedDevices = &def.ManagedDevices
+			what = append(what, "the managed devices")
+		}
+		if def.CollectorID != "" {
+			what = append(what, "its collector to "+def.CollectorID)
+		}
+		if def.ClearCollector {
+			what = append(what, "its collector (back to the network's default)")
 		}
 		before, _ := fwd.Generic(c)
-		return &networkPlan{target: "replace the managed devices of controller setup " + c.Name, action: "update_controller_setup", before: before, after: def, reversible: true, undo: "update again with the before managed devices",
-			limits: []string{"the list REPLACES the managed devices: restate every device you keep"},
+		return &networkPlan{target: "change " + strings.Join(what, " and ") + " of controller setup " + c.Name, action: "update_controller_setup", before: before, after: patch, reversible: true, undo: "update again with the before values",
+			limits: []string{"managedDevices REPLACES the list: restate every device you keep", "a setup has ONE collector for all its controllers and guests; Forward checks only that the collector belongs to the organization, not that it is assigned to this network, and a collector that does not exist answers 404 that reads like a missing setup"},
 			do: func(ctx context.Context) error {
-				_, _, err := s.Client.ControllerManagedSetups.Patch(ctx, in.NetworkID, c.Name, forward.ControllerManagedSetupPatch{ManagedDevices: &def.ManagedDevices})
+				_, _, err := s.Client.ControllerManagedSetups.Patch(ctx, in.NetworkID, c.Name, patch)
 				return err
 			}}, nil
 	case "delete":
