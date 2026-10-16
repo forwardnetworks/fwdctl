@@ -13,7 +13,8 @@
       "enum": [
         "status",
         "config",
-        "migration"
+        "migration",
+        "discovery"
       ],
       "default": "status"
     },
