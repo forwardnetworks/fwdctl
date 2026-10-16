@@ -147,3 +147,17 @@ func TestNqeExplainFileSaysUpFrontWhichParametersAreMissing(t *testing.T) {
 		}
 	}
 }
+
+// The plan marks a lookup as `_lookup(<collection>, "<field>", <expr>)`; explain says on stderr how many each collection got (stdout stays the plan), so a rewrite that did not produce one is seen without grepping.
+func TestNqeExplainCountsLookupsPerCollection(t *testing.T) {
+	plan := "foreach id#41 in ⸤objectIds#2⸥\n  foreach catalogEntry4\n    in ⸤_lookup(⸢addressObjectsCatalog#1⸣, ⸤\"name\"⸥, ⸤⸤id#41⸥.name⸥)⸥\n  foreach catalogEntry5\n    in ⸤_lookup(dynamicAddressObjectsCatalog, ⸤\"name\"⸥, id#45.name)⸥\n  foreach catalogEntry6\n    in ⸤_lookup(⸢addressObjectsCatalog#1⸣, ⸤\"name\"⸥, id#46.name)⸥\n"
+	r := map[string]fwdtest.Handler{"POST /api/internal/nqe/queries/Q_abc/explain": fwdtest.Const(200, []byte(plan))}
+	code, out, errs := call(t, []string{"nqe", "explain", "--query-id", "Q_abc"}, "", r)
+	if code != 0 || out != plan || !strings.Contains(errs, "addressObjectsCatalog x2") || !strings.Contains(errs, "dynamicAddressObjectsCatalog x1") {
+		t.Fatalf("code %d out %q err %q", code, out, errs)
+	}
+	r = map[string]fwdtest.Handler{"POST /api/internal/nqe/queries/Q_abc/explain": fwdtest.Const(200, []byte("parallel_foreach device in network.devices\n select {}"))}
+	if _, _, errs := call(t, []string{"nqe", "explain", "--query-id", "Q_abc"}, "", r); !strings.Contains(errs, "no _lookup") {
+		t.Errorf("a plan without a lookup says so: %q", errs)
+	}
+}

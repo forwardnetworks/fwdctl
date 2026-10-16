@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,7 +29,7 @@ func (a *app) nqeExplain() *cobra.Command {
 		Long: "Prints the optimized plan Forward builds for a saved library query, as the Query Debug Panel in the NQE Library shows it: a device-parallel query starts `parallel_foreach`, a join that became a lookup shows\n" +
 			"`_lookup(...)`, and `⸢ ⸣` marks expressions found total (cannot raise an error, so a `where` may float up), `⟪ ⟫` marks ONCE cardinality. Read it to see why a query is slow.\n" +
 			"Give --query-id (optionally --commit-id; HEAD otherwise) or --path (a query in your own workspace, as the UI writes it, for example \"/Operations/my query\"). Raw query text is not explained by Forward: save it\n" +
-			"as a draft first, or give --file: it saves the text as a throwaway draft (dry run unless --apply), explains it and discards the draft, naming the path it wrote. Internal Forward routes (preview); needs the organization's VIEW_NQE_LIBRARY permission. A query with errors is refused with its diagnostics.\n" +
+			"as a draft first, or give --file: it saves the text as a throwaway draft (dry run unless --apply), explains it and discards the draft, naming the path it wrote. Internal Forward routes (preview); needs the organization's VIEW_NQE_LIBRARY permission. A query with errors is refused with its diagnostics. After the plan, stderr says how many `_lookup`s each collection got (or that there is none), so a rewrite that did not produce a lookup is seen at once.\n" +
 			"For the execution time use `fwdctl nqe run --meta`; for slow runs Forward recorded, `fwdctl nqe metrics`.",
 		Example: "  fwdctl nqe explain --query-id Q_0123456789abcdef0123456789abcdef01234567 --network 123\n  fwdctl nqe explain --path \"/Operations/my query\" --param threshold=3\n  fwdctl nqe explain --file bundle.nqe --apply",
 		Args:    cobra.NoArgs,
@@ -76,6 +78,7 @@ func (a *app) nqeExplain() *cobra.Command {
 			if len(plan) > 0 && plan[len(plan)-1] != '\n' {
 				fmt.Fprintln(a.out)
 			}
+			fmt.Fprintln(a.err, lookupSummary(plan))
 			return nil
 		},
 	}
@@ -160,7 +163,32 @@ func (a *app) explainFile(cmd *cobra.Command, file, draftPath, network, snapshot
 	if len(plan) > 0 && plan[len(plan)-1] != '\n' {
 		fmt.Fprintln(a.out)
 	}
+	fmt.Fprintln(a.err, lookupSummary(plan))
 	return nil
+}
+
+// lookupRe finds a lookup in a plan: `_lookup(<collection>, "<field>", <expr>)` with Forward's marks (⸢ ⸤) and a #n suffix around the collection name.
+var lookupRe = regexp.MustCompile(`_lookup\(\s*[⸢⸤]*([A-Za-z_][A-Za-z0-9_.]*)`)
+
+// lookupSummary says how many lookups each collection got in a plan, so a rewrite that did not produce one is seen without grepping.
+func lookupSummary(plan string) string {
+	counts := map[string]int{}
+	for _, m := range lookupRe.FindAllStringSubmatch(plan, -1) {
+		counts[m[1]]++
+	}
+	if len(counts) == 0 {
+		return "note: no _lookup in this plan"
+	}
+	names := make([]string, 0, len(counts))
+	for n := range counts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, n := range names {
+		parts = append(parts, fmt.Sprintf("%s x%d", n, counts[n]))
+	}
+	return "note: _lookup per collection: " + strings.Join(parts, ", ")
 }
 
 // nqeMetrics lists the query runs Forward recorded as slow.
