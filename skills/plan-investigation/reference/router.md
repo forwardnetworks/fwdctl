@@ -41,6 +41,8 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Failed as UNSUPPORTED_DEVICE_TYPE (an MDS switch, Panorama, BIG-IQ), failed as INCOMPLETE_SETUP although it has an address, a failure's connectivity test error and who created it | `investigate-collection-failure` (view devices) |
 | Is a command a custom command group's or a built-in, which custom command group holds a command, where does a rejected command come from, remove or disable a custom command group | `inspect-platform` area `custom_command_groups` (`command`); change or disable one with `edit-source` object `custom_command_group` (dry run first) |
 | Start, stop or schedule a discovery (subnet scan, seeded or direct), add what discovery found to collection | `edit-source` object `discovery` (a dry run that says it scans the network; read what it found first with `inspect-collection` view `discovery`) |
+| Which BGP address families does the network run, is EVPN in use, how many run EVPN by OS | `inspect-inventory` kind `bgp_families` (read from config; `name` evpn lists them) |
+| Can Predict model this network, Predict fit or scope, what Predict does not model (EVPN, VPLS, multicast, SR policy), where propagation stops | `verify-change` view `scope` |
 | Move classic entries into a controller-managed setup (migrate SD-WAN or ACI), queue a connectivity test of a controller-managed setup, create or test a controller setup | `edit-source` object `controller_setup` (actions create, migrate, test; dry run first) |
 | "Collect now", cancel a running collection | `edit-collection` (dry run first) |
 | Reprocess a snapshot: it failed to process, or its answers are stale after an upgrade | `edit-snapshot` (action reprocess) (dry run first) |

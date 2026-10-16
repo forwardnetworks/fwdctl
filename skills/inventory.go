@@ -457,6 +457,9 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	if in.Kind == "lifecycle" {
 		return inventoryLifecycle(ctx, s, in, cx, limits, time.Now())
 	}
+	if in.Kind == "bgp_families" {
+		return inventoryBGPFamilies(ctx, s, in, cx, limits)
+	}
 	if in.Kind == "endpoints" {
 		return inventoryEndpoints(ctx, s, in, cx, limits)
 	}
@@ -691,11 +694,11 @@ var kindFilters = map[string][]string{
 	"summary": {}, "security_rules_experimental": {"device", "name", "vendor"}, "devices": {"device", "name", "vendor"}, "interfaces": {"device", "name"}, "vlans": {"device", "name"}, "vrfs": {"device", "name"}, "hosts": {"device", "name"},
 	"routes": {"device", "name"}, "igp_neighbors": {"device", "name"},
 	"cloud": {"account", "name"}, "cloud_routes": {"account", "name"}, "cloud_security": {"account", "name"}, "cloud_gateways": {"account", "name"},
-	"cloud_subnets": {"account", "name"}, "cloud_instances": {"account", "name"}, "cloud_accounts": {"account"}, "cloud_coverage": {}, "endpoints": {"name"}, "lifecycle": {},
+	"cloud_subnets": {"account", "name"}, "cloud_instances": {"account", "name"}, "cloud_accounts": {"account"}, "cloud_coverage": {}, "endpoints": {"name"}, "lifecycle": {}, "bgp_families": {"name"},
 }
 
 // kindFilterMeaning says what name means for a kind, for the refusal message.
-var kindNameMeaning = map[string]string{"devices": "a case-insensitive substring of the device name (device is the exact name)", "routes": "the VRF name", "igp_neighbors": "the VRF name"}
+var kindNameMeaning = map[string]string{"devices": "a case-insensitive substring of the device name (device is the exact name)", "routes": "the VRF name", "igp_neighbors": "the VRF name", "bgp_families": "a BGP address family (evpn matches evpn and l2vpn evpn; ipv4, ipv6, vpnv4, ...)"}
 
 func checkKindFilters(in inventoryInput, raw json.RawMessage) error {
 	allowed, ok := kindFilters[in.Kind]

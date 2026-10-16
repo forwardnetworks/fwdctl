@@ -40,6 +40,7 @@ var verifyChangeViewInputs = map[string][]string{
 	"impact":   {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
 	"describe": {"change_set_id", "device"},
 	"list":     {},
+	"scope":    {},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -52,9 +53,9 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list":
+	case "verify", "impact", "describe", "list", "scope":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact or list", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list or scope", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
@@ -62,6 +63,8 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	switch view {
 	case "list":
 		return listChangeSets(ctx, s, in.NetworkID)
+	case "scope":
+		return predictScope(ctx, s, in.NetworkID, "")
 	case "impact":
 		return analyzeBlastRadius(ctx, s, raw)
 	case "describe":

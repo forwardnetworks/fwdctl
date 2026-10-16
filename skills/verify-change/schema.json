@@ -5,7 +5,7 @@
   "properties": {
     "network_id": { "type": "string", "minLength": 1 },
     "change_set_id": { "type": "string", "minLength": 1 },
-    "view": { "enum": ["verify", "describe", "impact", "verdict", "list"], "default": "verify" },
+    "view": { "enum": ["verify", "describe", "impact", "verdict", "list", "scope"], "default": "verify" },
     "run_predict": { "type": "boolean" },
     "connectivity_timeout_seconds": { "type": "integer", "minimum": 1 },
     "device": { "type": "string", "minLength": 1 },

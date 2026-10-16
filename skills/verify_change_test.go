@@ -285,3 +285,65 @@ func TestVerifyChangeListViewListsTheNetworksChangeSets(t *testing.T) {
 		t.Errorf("list takes no change_set_id")
 	}
 }
+
+// view scope answers "which of this network can Predict model on this release": the license facet, the BGP families in config that Predict does not model (EVPN, VPLS, multicast, BGP-LS, SR policy, flowspec), the platforms on which
+// propagation stops (not in the fully supported list), and whether OSPF is re-propagated (predict_model_ospf). It reads, and judges nothing about a change.
+func TestVerifyChangeScopeViewJoinsLicenseFamiliesPlatformsAndFeatures(t *testing.T) {
+	routes := cfgRoutes(
+		map[string]any{"predict_modeling": true, "predict_model_ospf": false},
+		map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{"predict_model_ospf": false})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	routes[snapsPath] = ready("s1")
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{
+		"router bgp": rowsOf(4,
+			map[string]any{"device": "eos1", "os": "EOS", "model": "7050", "family": "ipv4"},
+			map[string]any{"device": "eos1", "os": "EOS", "model": "7050", "family": "evpn"},
+			map[string]any{"device": "xe1", "os": "IOS_XE", "model": "C9300", "family": "l2vpn vpls"},
+			map[string]any{"device": "xe1", "os": "IOS_XE", "model": "C9300", "family": "ipv4 multicast"}),
+		"group d as g by d.platform.os": rowsOf(3,
+			map[string]any{"os": "EOS", "devices": 2},
+			map[string]any{"os": "IOS_XE", "devices": 1},
+			map[string]any{"os": "MERAKI", "devices": 3}),
+	})
+	r, srv := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
+	b := jsonOf(r)
+	if writes(srv) != 0 || r.Status != result.OK {
+		t.Fatalf("%s %s", r.Status, b)
+	}
+	var d map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["scope"].(map[string]any); ok {
+			d = v
+		}
+	}
+	if d == nil {
+		t.Fatalf("no scope detail: %s", b)
+	}
+	oos := d["out_of_scope_families"].([]map[string]any)
+	got := map[string]string{}
+	for _, x := range oos {
+		got[fmt.Sprint(x["family"])] = fmt.Sprint(x["devices"])
+	}
+	if got["evpn"] != "1" || got["vpls"] != "1" || got["multicast"] != "1" || len(got) != 3 {
+		t.Errorf("out-of-scope families: %v", got)
+	}
+	stops := d["propagation_stops"].([]map[string]any)
+	if len(stops) != 1 || stops[0]["os"] != "MERAKI" || fmt.Sprint(stops[0]["devices"]) != "3" {
+		t.Errorf("an unlisted platform stops propagation: %v", stops)
+	}
+	lic := d["license"].(map[string]any)
+	if lic["predict"] != true {
+		t.Errorf("license: %v", lic)
+	}
+	if d["ospf_repropagated"] != false || d["static_repropagated"] != false {
+		t.Errorf("OSPF is off here and static is never re-propagated on this release: %v", d)
+	}
+	for _, want := range []string{"prediction-scope", "26.9", "read from"} {
+		if !strings.Contains(strings.Join(r.Limits, " "), want) {
+			t.Errorf("limits should mention %q: %v", want, r.Limits)
+		}
+	}
+	if _, _, err := runSkill(t, "verify-change", routes, `{"network_id":"n1","view":"scope","change_set_id":"cs1"}`); err == nil {
+		t.Errorf("scope takes no change_set_id")
+	}
+}

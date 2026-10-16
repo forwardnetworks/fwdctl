@@ -129,6 +129,9 @@ func AnnotateDiagnostics(src string, diags []QueryDiagnostic) []QueryDiagnostic 
 				}
 			}
 		}
+		if strings.HasPrefix(d.Message, "missing 'as'") && (strings.Contains(d.SourceLine, "group ") || strings.HasPrefix(strings.TrimSpace(d.SourceLine), "group")) {
+			d.Hint = "NQE's group clause names both the group and the key: `group <expr> as <name> by <key> as <keyName>`, for example `group i as g by i.name as k`; then g is the list of items and k the key"
+		}
 		if strings.HasPrefix(d.Message, "Invalid module path") {
 			d.Hint = "Forward found no module at the path in source_line (it does not say whether the path is misspelled or the module is out of reach of this query). Check the path against the library (fwdctl nqe export writes the exact paths), and that the running login can read that module; `fwdctl nqe bundle` resolves the same import locally."
 		}

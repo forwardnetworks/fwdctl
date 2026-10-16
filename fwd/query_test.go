@@ -13,3 +13,16 @@ func TestAnnotateDiagnosticsShowsTheImportLineAndSaysWhatInvalidModulePathLeaves
 		t.Errorf("%+v", d)
 	}
 }
+
+// Forward's "missing 'as' at 'by'" on a group clause is correct but does not say what the clause looks like; the diagnostic carries the form.
+func TestAnnotateDiagnosticsGivesTheGroupFormForAMissingAs(t *testing.T) {
+	src := "foreach d in network.devices\ngroup d by d.name as k\nselect {k}"
+	l, c := int32(1), int32(8)
+	d := AnnotateDiagnostics(src, []QueryDiagnostic{{Message: "missing 'as' at 'by'", Line: &l, Column: &c}})
+	if !strings.Contains(d[0].Hint, "group <expr> as <name> by <key> as <keyName>") {
+		t.Errorf("hint %q", d[0].Hint)
+	}
+	if d2 := AnnotateDiagnostics("select {1}", []QueryDiagnostic{{Message: "missing 'as' at 'by'"}}); d2[0].Hint != "" {
+		t.Errorf("no group on the line, no hint: %q", d2[0].Hint)
+	}
+}

@@ -35,6 +35,7 @@
         "cloud_instances",
         "routes",
         "igp_neighbors",
+        "bgp_families",
         "security_rules_experimental"
       ]
     },
