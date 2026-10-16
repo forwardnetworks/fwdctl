@@ -45,6 +45,9 @@ func TestMigrateDryRunListsTheClassicDevicesItWouldDeleteAndWritesNothing(t *tes
 	if strings.Contains(b, "192.0.2.99") {
 		t.Errorf("a device the setup does not name is not removed: %s", b)
 	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "collectorId") {
+		t.Errorf("the deleted devices were pinned to a collector (C2) and the setup names none: the limits must say a setup has one collector: %v", r.Limits)
+	}
 	if !strings.Contains(r.Finding, "2 classic device") {
 		t.Errorf("finding: %s", r.Finding)
 	}

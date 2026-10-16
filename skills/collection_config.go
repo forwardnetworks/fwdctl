@@ -304,6 +304,48 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 		}
 		limits = append(limits, "cloud_setups lists each cloud collection source with its configured regions and the result of its last connectivity TEST (not of the last collection: Forward keeps no per-setup collection outcome here). The regions decide which zones Forward keeps from the cloud's aggregated lists, so a missing instance can be a region that is not listed; collector errors during a collection are in investigate-collection-failure view exceptions, and inspect-inventory kind cloud_accounts shows whether each account was collected. Credentials are never read or shown")
 	}
+	if setups, _, err := s.Client.ControllerManagedSetups.ListWithTestResults(ctx, in.NetworkID); err != nil {
+		limits = append(limits, "the controller-managed setups could not be read: "+err.Error())
+	} else if len(setups) > 0 {
+		read++
+		total += len(setups)
+		rows := make([]map[string]any, 0, len(setups))
+		for _, st := range setups {
+			var devs []map[string]any
+			tests := map[string]int{}
+			add := func(name, role, host, cred string, collect *bool, tr *forward.DeviceTestResult) {
+				d := map[string]any{"name": name, "role": role}
+				if host != "" {
+					d["host"] = host
+				}
+				if role == "managed" {
+					d["cli_credential_set"] = cred != ""
+					d["collect"] = collect == nil || *collect
+				}
+				outcome, at := setupTestOutcome(tr)
+				d["test"] = outcome
+				if at != "" {
+					d["tested_at"] = at
+				}
+				tests[strings.SplitN(outcome, ":", 2)[0]]++
+				devs = append(devs, d)
+			}
+			for _, c := range st.Controllers {
+				add(c.Name, "controller", c.Host, c.CLICredentialID, nil, c.TestResult)
+			}
+			for _, m := range st.ManagedDevices {
+				add(m.Name, "managed", m.Host, m.CLICredentialID, m.Collect, m.TestResult)
+			}
+			shown, nDevs := result.CapRow(devs, 100)
+			row := map[string]any{"name": st.Name, "controllers": len(st.Controllers), "managed_devices": len(st.ManagedDevices), "tests": tests, "devices": shown, "devices_total": nDevs}
+			if c := string(st.CollectorID); c != "" {
+				row["collector_id"] = c
+			}
+			rows = append(rows, row)
+		}
+		detail["controller_setups"] = rows
+		limits = append(limits, "controller_setups lists each controller-managed setup with its controllers and managed devices and each device's last saved connectivity test (a result outlives the test that wrote it, so right after a test is queued you may still see the previous one: compare tested_at with when you queued it). A device with no error and no time is not a pass. The collector is the setup's, one for all its devices")
+	}
 	if dfs, _, err := s.Client.DataFiles.List(ctx); err != nil {
 		limits = append(limits, "the organization's data files could not be read: "+err.Error())
 	} else if len(dfs) > 0 {
@@ -692,4 +734,21 @@ func capCertificateFindings(name string, cred *forward.AWSCapCredential, row map
 	}
 	out = append(out, fmt.Sprintf("the client certificate of %q has an expiry that cannot be read (%s): a .p12 is encrypted under a password Forward does not return. The portal's own server certificate is not dated by Forward either; Forward documents no collection error for an expired portal server certificate; the log line may carry a certificate error such as CERTIFICATE_CHECK_FAILED, which investigate-collection-failure view cloud recognises by pattern, a heuristic and not a documented rule", name, orNone(cred.ClientCertificateNotAfterReason)))
 	return out
+}
+
+// setupTestOutcome says in words what a device's last saved connectivity test shows, and when it ended.
+func setupTestOutcome(tr *forward.DeviceTestResult) (string, string) {
+	switch {
+	case tr == nil:
+		return "never tested", ""
+	case tr.Error != "":
+		o := "failed: " + tr.Error
+		if tr.ErrorPhase != "" {
+			o += " (" + tr.ErrorPhase + ")"
+		}
+		return o, tr.EndTime
+	case tr.EndTime == "":
+		return "no error recorded but no end time: not a pass", ""
+	}
+	return "no error recorded", tr.EndTime
 }

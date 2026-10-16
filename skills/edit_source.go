@@ -1304,6 +1304,20 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 				return err
 			},
 			verify: present(def.Name, true)}, nil
+	case "test":
+		c := find(in.Name)
+		if c == nil {
+			return nil, nil
+		}
+		n := len(c.Controllers) + len(c.ManagedDevices)
+		return &networkPlan{target: fmt.Sprintf("queue a connectivity test of the %d controller(s) and managed device(s) of setup %s", n, c.Name), action: "test_controller_setup",
+			after: map[string]any{"setup": c.Name, "devices_tested": n}, reversible: true, undo: "none needed: a test changes no configuration; it replaces each device's last saved test result",
+			limits: []string{"Forward answers as soon as the tests are queued, not when they finish: read each device's result with inspect-collection-config (view config, controller_setups) and compare its tested_at with when you ran this, because the previous result stays until the new one is saved",
+				"the route is published by Forward as experimental"},
+			do: func(ctx context.Context) error {
+				_, err := s.Client.ControllerManagedSetups.Test(ctx, in.NetworkID, "", forward.ControllerAndManagedDeviceSelection{SetupNames: []string{c.Name}})
+				return err
+			}}, nil
 	case "migrate":
 		var def forward.NewControllerManagedSetup
 		if err := decodeDefinition(in.Definition, &def, "name, controllers[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId}], managedDevices[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId, collect}] (list only the devices to move: a subset is a pilot)"); err != nil {
@@ -1343,6 +1357,15 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 		}
 		shown, omitted := result.Cap(gone, 200, "classic devices to delete", "the rest are deleted too; the full list is in the network's classic devices")
 		var lim []string
+		var pins []string
+		for _, g := range gone {
+			if c := fmt.Sprint(g["collector"]); c != "" && def.CollectorID == "" {
+				pins = append(pins, fmt.Sprintf("%s (%s)", g["name"], c))
+			}
+		}
+		if len(pins) > 0 {
+			lim = append(lim, "these classic devices are pinned to a collector: "+strings.Join(pins, ", ")+". A migrated setup has ONE collector for its controllers and guests (collectorId in the definition) and each device's own pin is dropped; with none given the network's default collector is used")
+		}
 		for _, o := range omitted {
 			lim = append(lim, o.Text())
 		}
@@ -1393,7 +1416,7 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 			},
 			verify: present(c.Name, false)}, nil
 	}
-	return nil, fmt.Errorf("%w: controller_setup takes action create, migrate, update or delete", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: controller_setup takes action create, migrate, test, update or delete", ErrInvalidInput)
 }
 
 // planMistSetup manages a Juniper Mist cloud-managed setup. apiKeyId names an existing credential, so no secret is read here.
