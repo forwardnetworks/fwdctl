@@ -2,7 +2,10 @@ package skills_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/skills"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -11,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
@@ -266,5 +270,30 @@ func TestEditDataFileReplaceShowsLineCountsAssessesAndWrites(t *testing.T) {
 	r, _ = mustRun(t, "edit-data-file", replaceWorld("", "SUCCESS", &sent), `{"action":"replace","name":"nope.csv","content":"x"}`)
 	if r.Status != result.Failed || !strings.Contains(r.Finding, "no data file named") {
 		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+}
+
+// A create is not safe to repeat after a 503 (a proxy may answer it after Forward handled the request), so an applied write is sent once by default;
+// a host that wants the retries sets Config.RetryWrites. Reads stay retried either way.
+func TestAppliedWriteIsSentOnceUnlessRetryWritesIsSet(t *testing.T) {
+	for _, tc := range []struct {
+		retryWrites bool
+		wantCalls   int32
+	}{{false, 1}, {true, 2}} {
+		var posts atomic.Int32
+		routes := map[string]fwdtest.Handler{
+			"GET /api/data-files": func(*http.Request, []byte) (int, any) { return 200, []map[string]any{} },
+			"POST /api/data-files": func(*http.Request, []byte) (int, any) {
+				if posts.Add(1) == 1 {
+					return 503, map[string]any{"message": "unavailable"}
+				}
+				return 201, map[string]any{"name": "s.csv", "nqeName": "s", "type": "CSV", "networkIds": []string{}}
+			},
+		}
+		sess, _ := fwdtest.NewWith(t, routes, func(c *fwd.Config) { c.RetryWrites = tc.retryWrites })
+		_, _ = skills.Run(context.Background(), "edit-data-file", sess, json.RawMessage(`{"action":"upload","name":"s.csv","file_type":"CSV","content":"a\n","apply":true}`))
+		if got := posts.Load(); got != tc.wantCalls {
+			t.Errorf("RetryWrites=%v: the POST was sent %d times, want %d", tc.retryWrites, got, tc.wantCalls)
+		}
 	}
 }

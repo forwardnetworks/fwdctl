@@ -38,6 +38,12 @@ type Config struct {
 	NQEWait time.Duration
 	// RetryDelay is the first wait before a retry (default 1s, doubling to 30s); a test sets it small.
 	RetryDelay time.Duration
+	// RetryAttempts is how many times a call is tried (the first try included): zero means the default (4), one means send every call once.
+	RetryAttempts int
+	// RetryWrites lets an applied write (a skill run with apply) be retried on a 429/503 and on a failure to obtain a connection. Off by default:
+	// a 503 can be answered by a proxy after Forward already handled a create, so repeating it could duplicate the object. Reads are retried
+	// either way, and a write that is idempotent in effect (a device patch, a data file replace) is retried regardless.
+	RetryWrites bool
 	// Insecure turns TLS certificate verification OFF, for self-signed installations. Otherwise the connection is
 	// verified against the system trust store: a certificate is trusted by default or it is not. Insecure is never
 	// the default, and every result records that it was used (see Session.Insecure).
@@ -87,6 +93,9 @@ func truthy(v string) bool {
 // Session is one Forward client plus its operation log.
 type Session struct {
 	Client *forward.Client
+
+	// RetryWrites is Config.RetryWrites: whether skills.Run lets an applied write be retried.
+	RetryWrites bool
 
 	impersonated string // the user id this session acts as (FORWARD_IMPERSONATE), or empty
 
@@ -174,6 +183,11 @@ func NewSession(cfg Config) (*Session, error) {
 	if cfg.RetryDelay > 0 {
 		retryDelay, retryMax = cfg.RetryDelay, 5*cfg.RetryDelay
 	}
+	attempts := retryAttempts
+	if cfg.RetryAttempts > 0 {
+		attempts = cfg.RetryAttempts
+	}
+	s.RetryWrites = cfg.RetryWrites
 	c, err := forward.NewClient(forward.Config{
 		AuthMode: authMode,
 		BaseURL:  cfg.BaseURL, Username: cfg.Username, Password: cfg.Password, HTTPClient: hc,
@@ -181,7 +195,7 @@ func NewSession(cfg Config) (*Session, error) {
 		// Retried: a 429 or 503 (turned away before it ran), a failure to obtain a connection (dial error, TLS handshake timeout:
 		// not a byte was written, so a write may be repeated), and, for reads only, other transport errors and 5xx. A rate-limit
 		// lockout longer than retryMaxDelay comes back typed (forward.ErrRateLimited) instead of being slept through.
-		Retry: forward.RetryPolicy{MaxAttempts: retryAttempts, Delay: retryDelay, MaxDelay: retryMax, Jitter: 0.5},
+		Retry: forward.RetryPolicy{MaxAttempts: attempts, Delay: retryDelay, MaxDelay: retryMax, Jitter: 0.5},
 		Hooks: append([]forward.Hook{s.record}, cfg.Hooks...),
 	})
 	if err != nil {

@@ -17,14 +17,10 @@ import (
 const (
 	maxBulkDevices = 10000
 	bulkChunk      = 2000
-	bulkAttempts   = 4
 )
 
-// bulkWorkers is how many devices are patched at once; bulkRetryBase is the first wait before a retry (doubled each time). Variables so a test can run fast.
-var (
-	bulkWorkers   = 8
-	bulkRetryBase = 500 * time.Millisecond
-)
+// bulkWorkers is how many devices are patched at once. Retries belong to the session's SDK client: the calls below are marked idempotent, so a write cut off mid-flight is repeated too.
+var bulkWorkers = 8
 
 func hasBulkDevices(raw json.RawMessage) bool {
 	var keys map[string]json.RawMessage
@@ -40,22 +36,8 @@ type bulkDeviceEntry struct {
 	name string
 }
 
-// transientDeviceError says a failed write is worth retrying: a gateway or availability status, a TLS or network timeout, a reset connection.
-func transientDeviceError(err error) bool {
-	if err == nil {
-		return false
-	}
-	m := strings.ToLower(err.Error())
-	for _, w := range []string{"tls handshake timeout", "timeout", "connection reset", "eof", "502", "503", "504", "temporarily unavailable", "bad gateway", "service unavailable", "gateway timeout"} {
-		if strings.Contains(m, w) {
-			return true
-		}
-	}
-	return false
-}
-
 // planDevicesBulk changes many classic devices in one call: definition.devices is a list of {name, ...fields} (the fields of a single update). The dry run shows each device's change (only the fields that change)
-// and a count by target collector; the apply patches them a few at a time, retries a transient failure, and reports each device. A name that is not in the list is skipped and named.
+// and a count by target collector; the apply patches them a few at a time, retries a transient failure (the SDK client does), and reports each device. A name that is not in the list is skipped and named.
 func planDevicesBulk(ctx context.Context, s *fwd.Session, in editSourceInput, cur []forward.ClassicDevice) (*networkPlan, error) {
 	if in.Name != "" {
 		return nil, fmt.Errorf("%w: give name (one device) or definition.devices (many), not both", ErrInvalidInput)
@@ -188,7 +170,7 @@ func planDevicesBulk(ctx context.Context, s *fwd.Session, in editSourceInput, cu
 		summary["not_found_names"] = m
 	}
 	limits := []string{
-		fmt.Sprintf("this changes %d device(s) in %d request(s): devices with the same change share one request, which Forward applies as ONE transaction (all of its devices change or none: a bad credential, jump server or collector id fails that request), up to %d names to a request. Only the fields listed are sent (a partial update); a transient failure (a TLS or gateway timeout) retries the whole request up to %d times, which is safe because re-applying a patch changes nothing more; the first_changes list is the first 50 of the %d", len(items), len(batches), bulkChunk, bulkAttempts, len(items)),
+		fmt.Sprintf("this changes %d device(s) in %d request(s): devices with the same change share one request, which Forward applies as ONE transaction (all of its devices change or none: a bad credential, jump server or collector id fails that request), up to %d names to a request. Only the fields listed are sent (a partial update); a transient failure (a TLS or gateway timeout) is retried by the SDK client (up to 4 attempts with backoff, a write cut off mid-flight included: the same patch twice changes nothing more), which is safe because re-applying a patch changes nothing more; the first_changes list is the first 50 of the %d", len(items), len(batches), bulkChunk, len(items)),
 		"a device whose name is not in the list is skipped and named (not_found_names); a device already as asked is left alone. Running it again re-applies only what is not yet as asked",
 		"each change is a collection-source edit: it takes effect at the next collection",
 	}
@@ -197,9 +179,8 @@ func planDevicesBulk(ctx context.Context, s *fwd.Session, in editSourceInput, cu
 		undo: "update them again with the before values (the dry run lists them)", limits: limits,
 		do: func(ctx context.Context) error {
 			type outcome struct {
-				n     int
-				err   error
-				tries int
+				n   int
+				err error
 			}
 			results := make([]outcome, len(batches))
 			var wg sync.WaitGroup
@@ -209,20 +190,9 @@ func planDevicesBulk(ctx context.Context, s *fwd.Session, in editSourceInput, cu
 				go func() {
 					defer wg.Done()
 					for i := range ch {
-						var err error
-						tries := 0
-						for a := 0; a < bulkAttempts; a++ {
-							tries++
-							_, err = s.Client.ClassicDevices.PatchMany(ctx, in.NetworkID, batches[i].names, batches[i].patch)
-							if err == nil || !transientDeviceError(err) {
-								break
-							}
-							select {
-							case <-ctx.Done():
-							case <-time.After(bulkRetryBase << a):
-							}
-						}
-						results[i] = outcome{len(batches[i].names), err, tries}
+						// the same patch applied twice leaves the same devices, so the SDK may repeat it after a failure whose outcome is unknown
+						_, err := s.Client.ClassicDevices.PatchMany(forward.WithIdempotent(ctx), in.NetworkID, batches[i].names, batches[i].patch)
+						results[i] = outcome{len(batches[i].names), err}
 					}
 				}()
 			}
@@ -232,22 +202,23 @@ func planDevicesBulk(ctx context.Context, s *fwd.Session, in editSourceInput, cu
 			close(ch)
 			wg.Wait()
 			var failed []string
-			applied, failedDevices, retried := 0, 0, 0
+			applied, failedDevices := 0, 0
 			for i, r := range results {
-				if r.tries > 1 {
-					retried++
-				}
 				if r.err != nil {
 					failedDevices += r.n
-					failed = append(failed, fmt.Sprintf("request %d (%d devices, starting %s): %v", i+1, r.n, batches[i].names[0], oneLineNote(r.err.Error())))
+					note := oneLineNote(r.err.Error())
+					if d, ok := forward.RateLimitLockout(r.err); ok {
+						note += fmt.Sprintf(" (Forward's API rate limit locked this login out for another %s; every session sharing it is refused until then, so wait and run it again with fewer requests in a minute)", d.Round(time.Second))
+					}
+					failed = append(failed, fmt.Sprintf("request %d (%d devices, starting %s): %s", i+1, r.n, batches[i].names[0], note))
 				} else {
 					applied += r.n
 				}
 			}
 			shownF, _ := result.CapRow(failed, 25)
-			applyDetail = map[string]any{"devices_applied": applied, "devices_failed": failedDevices, "requests": len(batches), "requests_retried": retried, "failed_requests": nonNilStrings(shownF)}
+			applyDetail = map[string]any{"devices_applied": applied, "devices_failed": failedDevices, "requests": len(batches), "failed_requests": nonNilStrings(shownF)}
 			if failedDevices > 0 {
-				return &partialApplyError{msg: fmt.Sprintf("%d of %d devices were NOT changed (their request failed after %d attempts, so none of that request's devices changed); the other %d were applied. Run it again: it retries only the devices not yet as asked", failedDevices, len(items), bulkAttempts, applied), detail: applyDetail}
+				return &partialApplyError{msg: fmt.Sprintf("%d of %d devices were NOT changed (their request failed after the SDK client's retries, so none of that request's devices changed); the other %d were applied. Run it again: it retries only the devices not yet as asked", failedDevices, len(items), applied), detail: applyDetail}
 			}
 			return nil
 		},

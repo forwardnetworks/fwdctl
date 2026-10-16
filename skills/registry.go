@@ -11,6 +11,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 	"github.com/forwardnetworks/fwdctl/knowledge"
 	"sort"
 	"strconv"
@@ -272,6 +273,9 @@ func Run(ctx context.Context, name string, s *fwd.Session, in json.RawMessage) (
 			return result.Result{}, fmt.Errorf("%w: %s", ErrInvalidInput, strings.Join(problems, "; "))
 		}
 	}
+	if !s.RetryWrites && appliesWrite(in) && !idempotentApply(name, in) {
+		ctx = forward.WithoutRetry(ctx) // an applied create could be duplicated by a repeat after a 503 whose first try already ran
+	}
 	r, err := run(ctx, s, in)
 	if err != nil {
 		// A refusal for missing permission or licence reads the same for every skill: what was refused, what it needs, who can resolve it.
@@ -432,4 +436,29 @@ func dropIgnoredInputs(name string, in json.RawMessage) json.RawMessage {
 		return in
 	}
 	return out
+}
+
+// appliesWrite says the input asks a skill to apply (not dry-run) its change.
+func appliesWrite(in json.RawMessage) bool {
+	var ap struct {
+		Apply bool `json:"apply"`
+	}
+	return json.Unmarshal(in, &ap) == nil && ap.Apply
+}
+
+// idempotentApply names the applies whose repeat changes nothing more, so the client may retry them (and they mark their own calls
+// forward.WithIdempotent): the same device patch applied twice, a data file replaced with the same content twice.
+func idempotentApply(name string, in json.RawMessage) bool {
+	var f struct {
+		Action string `json:"action"`
+		Object string `json:"object"`
+	}
+	_ = json.Unmarshal(in, &f)
+	switch name {
+	case "edit-source":
+		return f.Object == "classic_device" && f.Action == "update"
+	case "edit-data-file":
+		return f.Action == "replace"
+	}
+	return false
 }
