@@ -24,3 +24,5 @@ Detail and what each area cannot show: `reference/areas.md` (`fwdctl describe in
 `view` is optional. `effective` (area `collection_settings` only) lists every collection setting for the organization and each collector with Forward's default, whether it is set, and whether it differs.
 
 `command` (area `custom_command_groups` only): keep the groups whose commands contain this text, ignoring case.
+
+`view: effective` with area `custom_command_groups` takes `name`, the classic device, and lists the custom command groups that apply to it.

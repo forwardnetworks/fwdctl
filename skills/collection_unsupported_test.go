@@ -88,3 +88,38 @@ func TestDevicesViewExplainsIncompleteSetupFromTheConnectivityTest(t *testing.T)
 		t.Errorf("a device with no stored test says nothing it does not know: %v", u)
 	}
 }
+
+// For a failed device the devices view says when it last collected successfully: the newest earlier processed snapshot (up to five are read) in which the device completed. A device that never completed in those says so.
+func TestDevicesViewSaysWhenAFailedDeviceLastCollected(t *testing.T) {
+	metrics := map[string]any{"numSuccessfulDevices": 9, "deviceCollectionFailures": map[string]any{"CONNECTION_REFUSED": 1, "AUTHENTICATION_FAILED": 1}}
+	routes := failedRoutes(metrics, nil, nil)
+	routes[snapsPath] = fwdtest.Snapshots(
+		fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-03T00:00:00.000Z"),
+		fwdtest.Snap("old1", "PROCESSED", "COLLECTION", "2026-09-02T00:00:00.000Z"),
+		fwdtest.Snap("old2", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"))
+	base := routes[nqePath]
+	routes[nqePath] = func(r *http.Request, body []byte) (int, any) {
+		if strings.Contains(string(body), "completed(r)") {
+			ok := map[string][]string{"old1": {"edge2"}, "old2": {"edge1", "edge2"}}[r.URL.Query().Get("snapshotId")]
+			items := []map[string]any{}
+			for _, n := range ok {
+				items = append(items, map[string]any{"device": n})
+			}
+			return 200, map[string]any{"items": items, "totalNumItems": len(items)}
+		}
+		return base(r, body)
+	}
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"devices","failure":"network_path"}`)
+	devs := r.Evidence[0].Detail["devices"].([]map[string]any)
+	if len(devs) != 1 || devs[0]["device"] != "edge1" || devs[0]["last_collected_snapshot"] != "old2" {
+		t.Fatalf("edge1 last collected in the older snapshot: %v", devs)
+	}
+	r, _ = collect(t, routes, `{"network_id":"n1","view":"devices","failure":"credentials"}`)
+	devs = r.Evidence[0].Detail["devices"].([]map[string]any)
+	if len(devs) != 1 || devs[0]["last_collected_snapshot"] != "old1" {
+		t.Errorf("edge2 last collected in the newer earlier snapshot: %v", devs)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "earlier processed snapshots") {
+		t.Errorf("the limits say how many earlier snapshots were read: %v", r.Limits)
+	}
+}

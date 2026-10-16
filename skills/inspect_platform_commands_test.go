@@ -39,3 +39,34 @@ func TestPlatformCustomCommandGroupsListAndFindACommand(t *testing.T) {
 		t.Errorf("command belongs to area custom_command_groups")
 	}
 }
+
+// view effective of area custom_command_groups, with name = a device, lists the custom groups that apply to that one device: the group's device types include the device's type and its devices list is empty or matches the name.
+func TestPlatformEffectiveCustomCommandsForOneDevice(t *testing.T) {
+	routes := commandGroupRoutes()
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{
+		map[string]any{"name": "xe-1", "host": "h", "type": "cisco_ios_xe_ssh"},
+		map[string]any{"name": "eos-1", "host": "h", "type": "arista_eos_ssh"},
+		map[string]any{"name": "lab-7", "host": "h", "type": "arista_eos_ssh"},
+	})
+	routes["GET /api/networks/n1/custom-command-groups"] = fwdtest.Const(200, []any{
+		map[string]any{"name": "Macsec", "deviceConnTypes": []string{"cisco_ios_xe_ssh"}, "type": "CLI", "commands": []string{"show mka session"}},
+		map[string]any{"name": "Lab only", "deviceConnTypes": []string{"arista_eos_ssh"}, "type": "CLI", "commands": []string{"show x"}, "devices": []string{"LAB-*"}},
+		map[string]any{"name": "Off", "deviceConnTypes": []string{"cisco_ios_xe_ssh"}, "type": "CLI", "commands": []string{"show y"}, "disabled": true},
+	})
+	for dev, want := range map[string]string{"xe-1": "Macsec", "lab-7": "Lab only", "eos-1": ""} {
+		r, _ := mustRun(t, "inspect-platform", routes, `{"network_id":"n1","area":"custom_command_groups","view":"effective","name":"`+dev+`"}`)
+		b := jsonOf(r)
+		if want != "" && !strings.Contains(b, want) {
+			t.Errorf("%s should get %q: %s", dev, want, b)
+		}
+		if strings.Contains(b, `"name":"Off"`) && !strings.Contains(b, `"applies":false`) {
+			t.Errorf("a disabled group does not apply: %s", b)
+		}
+		if dev == "eos-1" && (strings.Contains(b, "Lab only") || strings.Contains(b, "Macsec")) && !strings.Contains(r.Finding, "0 ") {
+			t.Errorf("eos-1 matches no custom group: %s %s", r.Finding, b)
+		}
+	}
+	if _, _, err := runSkill(t, "inspect-platform", routes, `{"network_id":"n1","area":"custom_command_groups","view":"effective"}`); err == nil {
+		t.Errorf("view effective needs name, the device")
+	}
+}

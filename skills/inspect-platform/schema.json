@@ -8,7 +8,7 @@
       "enum": ["credentials", "jump_servers", "proxies", "collectors", "collection_settings", "endpoint_profiles", "schedules", "cloud_setups", "locations", "tag_definitions", "access_labels", "api_tokens", "webhooks", "integrations", "licensing", "backups", "banners", "certificates", "saml", "organizations", "org_properties", "cve_index", "dashboards", "scorecards", "scorecard_trends", "custom_command_groups"],
       "description": "what to read; the network areas (credentials, jump_servers, proxies, schedules, cloud_setups, locations, tag_definitions, custom_command_groups) need network_id, the others take none"
     },
-    "view": { "type": "string", "enum": ["effective"], "description": "collection_settings only: every setting with Forward's default, set or default, and whether it differs, for the organization and each collector" },
+    "view": { "type": "string", "enum": ["effective"], "description": "collection_settings: every setting with Forward's default, set or default, and whether it differs, for the organization and each collector; custom_command_groups: the groups that apply to the one device named in name" },
     "network_id": { "type": "string", "minLength": 1 },
     "org_id": { "type": "string", "minLength": 1, "description": "org_properties only: the organization to read (default: the organization of network_id, else the only organization this login sees)" },
     "command": { "type": "string", "minLength": 1, "description": "custom_command_groups only: keep the groups whose commands contain this text (ignoring case)" },

@@ -24,7 +24,8 @@
         "rapid7_source",
         "controller_setup",
         "mist_setup",
-        "custom_command_group"
+        "custom_command_group",
+        "discovery"
       ]
     },
     "action": {
@@ -35,7 +36,12 @@
         "delete",
         "rotate",
         "test",
-        "migrate"
+        "migrate",
+        "start",
+        "stop",
+        "add_discovered",
+        "schedule_create",
+        "schedule_delete"
       ]
     },
     "name": {

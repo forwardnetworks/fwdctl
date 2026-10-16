@@ -45,6 +45,87 @@ select {
   collectionIp: device.snapshotInfo.collectionIp
 }`
 
+// completedDevicesQuery lists the devices that completed collection and processing in a snapshot: the check for "when did this device last collect".
+const completedDevicesQuery = `completed(r) =
+  when r is
+    collectionFailed(e) -> false;
+    processingFailed(e) -> false;
+    completed -> true;
+
+foreach device in network.devices
+where completed(device.snapshotInfo.result)
+select { device: device.name }`
+
+// maxLastCollectedSnapshots is how many earlier processed snapshots are read to find when a failed device last collected.
+const maxLastCollectedSnapshots = 5
+
+// addLastCollected sets, on each failed-device row, the newest earlier processed snapshot in which the device completed (up to maxLastCollectedSnapshots are read, newest first). A device that completed in none of them says so, which
+// is not proof it never collected.
+func addLastCollected(ctx context.Context, s *fwd.Session, networkID, currentSnapshot string, kept []map[string]any, limits *[]string) {
+	if len(kept) == 0 || currentSnapshot == "" {
+		return
+	}
+	snaps, err := s.Snapshots(ctx, networkID)
+	if err != nil {
+		*limits = append(*limits, "the earlier snapshots could not be listed ("+err.Error()+"), so when each failed device last collected is not shown")
+		return
+	}
+	var earlier []forward.Snapshot
+	for _, sn := range snaps {
+		if string(sn.ID) != currentSnapshot && fwd.IsReady(&sn) && !sn.IsPredicted && !sn.IsDraft {
+			earlier = append(earlier, sn)
+		}
+	}
+	// only snapshots older than the current one
+	var cur forward.Snapshot
+	for _, sn := range snaps {
+		if string(sn.ID) == currentSnapshot {
+			cur = sn
+		}
+	}
+	older := earlier[:0:0]
+	for _, sn := range earlier {
+		if snapCreated(cur) == "" || snapCreated(sn) < snapCreated(cur) {
+			older = append(older, sn)
+		}
+	}
+	sort.SliceStable(older, func(i, j int) bool { return snapCreated(older[i]) > snapCreated(older[j]) })
+	older, _ = result.CapRow(older, maxLastCollectedSnapshots)
+	if len(older) == 0 {
+		*limits = append(*limits, "there is no earlier processed snapshot, so when each failed device last collected is not shown")
+		return
+	}
+	pending := map[string]map[string]any{}
+	for _, r := range kept {
+		pending[str(r["device"])] = r
+	}
+	read := 0
+	for _, sn := range older {
+		if len(pending) == 0 {
+			break
+		}
+		rows, _, _, qerr := s.RunNQEAll(ctx, networkID, string(sn.ID), completedDevicesQuery, maxModelRows)
+		if qerr != nil {
+			*limits = append(*limits, fmt.Sprintf("snapshot %s could not be read for the last-collected check (%v)", sn.ID, qerr))
+			continue
+		}
+		read++
+		for _, row := range rows {
+			if r, ok := pending[str(row["device"])]; ok {
+				r["last_collected_snapshot"] = string(sn.ID)
+				if at := snapCreated(sn); at != "" {
+					r["last_collected_at"] = at
+				}
+				delete(pending, str(row["device"]))
+			}
+		}
+	}
+	for _, r := range pending {
+		r["last_collected_snapshot"] = nil
+	}
+	*limits = append(*limits, fmt.Sprintf("last_collected_snapshot is the newest of the %d earlier processed snapshots read (at most %d) in which the device completed; null means it did not complete in any of them, which is not proof it never collected", read, maxLastCollectedSnapshots))
+}
+
 // failureType strips the enum prefix NQE prints ("DeviceCollectionError.TIMEOUT" is TIMEOUT).
 func failureType(reason string) string {
 	if i := strings.LastIndexByte(reason, '.'); i >= 0 {
@@ -106,6 +187,7 @@ func failureDevices(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	})
 	byPlatform, ulimits := explainUnsupported(ctx, s, in.NetworkID, kept)
 	limits = append(limits, ulimits...)
+	addLastCollected(ctx, s, in.NetworkID, fwd.SnapshotID(cx), kept, &limits)
 	// the metrics count every failed device; the model lists only devices Forward built a record for
 	m, merr := s.SnapshotMetrics(ctx, fwd.SnapshotID(cx))
 	want := -1

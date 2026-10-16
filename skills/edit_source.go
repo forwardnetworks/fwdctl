@@ -124,8 +124,10 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 		plan, err = planMistSetup(ctx, s, in)
 	case "custom_command_group":
 		plan, err = planCustomCommandGroup(ctx, s, in)
+	case "discovery":
+		plan, err = planDiscovery(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, endpoint, schedule, cloud_account, rapid7_source, controller_setup, mist_setup or custom_command_group", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, endpoint, schedule, cloud_account, rapid7_source, controller_setup, mist_setup, custom_command_group or discovery", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err

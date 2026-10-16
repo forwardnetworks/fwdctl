@@ -456,8 +456,11 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	var limits []string
 	var err error
 	differ := -1
-	if in.View != "" && (in.View != "effective" || in.Area != "collection_settings") {
-		return result.Result{}, fmt.Errorf("%w: view %q is not offered here; the only view is effective, for area collection_settings", ErrInvalidInput, in.View)
+	if in.View != "" && (in.View != "effective" || (in.Area != "collection_settings" && in.Area != "custom_command_groups")) {
+		return result.Result{}, fmt.Errorf("%w: view %q is not offered here; the only view is effective, for area collection_settings (every setting against its default) or custom_command_groups (the groups that apply to one device: name)", ErrInvalidInput, in.View)
+	}
+	if in.View == "effective" && in.Area == "custom_command_groups" {
+		return effectiveCustomCommands(ctx, s, in.NetworkID, in.Name, cx)
 	}
 	if in.View == "effective" {
 		rows, limits, differ, err = effectiveSettingRows(ctx, s)
