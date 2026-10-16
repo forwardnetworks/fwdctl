@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
@@ -1310,13 +1311,35 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 			return nil, nil
 		}
 		n := len(c.Controllers) + len(c.ManagedDevices)
+		var tdef struct {
+			WaitSeconds int `json:"wait_seconds"`
+		}
+		if len(in.Definition) > 0 {
+			if err := decodeDefinition(in.Definition, &tdef, "wait_seconds (wait up to this many seconds, at most 600, for every device to have a result newer than the queue time)"); err != nil {
+				return nil, err
+			}
+		}
+		var queuedAt time.Time
+		var waitFn func(context.Context) (bool, any, error)
+		if tdef.WaitSeconds > 0 {
+			waitFn = func(ctx context.Context) (bool, any, error) {
+				return waitForSetupTests(ctx, s, in.NetworkID, c.Name, &queuedAt, time.Duration(min(tdef.WaitSeconds, 600))*time.Second)
+			}
+		}
 		return &networkPlan{target: fmt.Sprintf("queue a connectivity test of the %d controller(s) and managed device(s) of setup %s", n, c.Name), action: "test_controller_setup",
 			after: map[string]any{"setup": c.Name, "devices_tested": n}, reversible: true, undo: "none needed: a test changes no configuration; it replaces each device's last saved test result",
 			limits: []string{"Forward answers as soon as the tests are queued, not when they finish: read each device's result with inspect-collection-config (view config, controller_setups) and compare its tested_at with when you ran this, because the previous result stays until the new one is saved",
-				"the route is published by Forward as experimental"},
+				"the route is published by Forward as experimental", "with wait_seconds the apply waits for results newer than the queue time and returns them; without it, read them later with inspect-collection-config"},
 			do: func(ctx context.Context) error {
+				queuedAt = time.Now()
 				_, err := s.Client.ControllerManagedSetups.Test(ctx, in.NetworkID, "", forward.ControllerAndManagedDeviceSelection{SetupNames: []string{c.Name}})
 				return err
+			},
+			verify: waitFn,
+			learn: func(got any, ch *result.Change) {
+				if rows, ok := got.([]map[string]any); ok {
+					ch.After = map[string]any{"setup": c.Name, "devices_tested": n, "results": rows}
+				}
 			}}, nil
 	case "migrate":
 		var def forward.NewControllerManagedSetup
@@ -1726,4 +1749,55 @@ func clearableNames() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// setupTestPollEvery is how often waitForSetupTests re-reads the setup.
+var setupTestPollEvery = 3 * time.Second
+
+// waitForSetupTests polls a setup's devices until each has a saved test result that ended after the tests were queued (a result keeps the previous test's time until the new one is saved), or the wait runs out.
+// It returns whether every device has a fresh result, with each device's outcome.
+func waitForSetupTests(ctx context.Context, s *fwd.Session, networkID, setup string, queuedAt *time.Time, wait time.Duration) (bool, any, error) {
+	deadline := time.Now().Add(wait)
+	since := queuedAt.Add(-5 * time.Second) // a little slack for the difference between Forward's clock and this one
+	for {
+		setups, _, err := s.Client.ControllerManagedSetups.ListWithTestResults(ctx, networkID)
+		if err != nil {
+			return false, nil, err
+		}
+		var rows []map[string]any
+		fresh := true
+		found := false
+		for _, st := range setups {
+			if !strings.EqualFold(st.Name, setup) {
+				continue
+			}
+			found = true
+			add := func(name, role string, tr *forward.DeviceTestResult) {
+				outcome, at := setupTestOutcome(tr)
+				t, perr := time.Parse(time.RFC3339, at)
+				isFresh := tr != nil && perr == nil && t.After(since)
+				if !isFresh {
+					fresh = false
+				}
+				rows = append(rows, map[string]any{"name": name, "role": role, "test": outcome, "tested_at": at, "newer_than_queue_time": isFresh})
+			}
+			for _, c := range st.Controllers {
+				add(c.Name, "controller", c.TestResult)
+			}
+			for _, m := range st.ManagedDevices {
+				add(m.Name, "managed", m.TestResult)
+			}
+		}
+		if found && fresh {
+			return true, rows, nil
+		}
+		if time.Now().After(deadline) {
+			return false, rows, nil
+		}
+		select {
+		case <-ctx.Done():
+			return false, rows, ctx.Err()
+		case <-time.After(setupTestPollEvery):
+		}
+	}
 }

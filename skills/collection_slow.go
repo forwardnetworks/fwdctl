@@ -528,8 +528,20 @@ func compareSlow(cur, base *slowSummary, baseID string) *slowComparison {
 		change["implied_parallelism"], change["implied_parallelism_percent"] = cur.parallelism-base.parallelism, pct(cur.parallelism, base.parallelism)
 		summary += fmt.Sprintf(", devices at once %.0f to %.0f (%+.0f%%)", base.parallelism, cur.parallelism, 100*(cur.parallelism-base.parallelism)/base.parallelism)
 	}
-	return &slowComparison{summary: summary, detail: map[string]any{"baseline_snapshot_id": baseID, "baseline": side(base), "current": side(cur), "change": change,
-		"by_device_type": group(cur.byType, base.byType), "by_connection": group(cur.byConn, base.byConn)}}
+	detail := map[string]any{"baseline_snapshot_id": baseID, "baseline": side(base), "current": side(cur), "change": change,
+		"by_device_type": group(cur.byType, base.byType), "by_connection": group(cur.byConn, base.byConn)}
+	// the same device time (within 5%) with a different wall time is the same work dispatched differently: slots were handed out faster or slower, not more or less work done
+	if base.sumMs > 0 && cur.wallMs > 0 && base.wallMs > 0 {
+		sumDiff := math.Abs(float64(cur.sumMs-base.sumMs)) / float64(base.sumMs)
+		wallDiff := math.Abs(float64(cur.wallMs-base.wallMs)) / float64(base.wallMs)
+		if sumDiff <= 0.05 && wallDiff > 0.05 {
+			d := fmt.Sprintf("same work, different dispatch: device time within 5%% (%s against %s) but wall time %s against %s (%+.0f%%)", dur(float64(cur.sumMs)/1000), dur(float64(base.sumMs)/1000),
+				dur(float64(cur.wallMs)/1000), dur(float64(base.wallMs)/1000), 100*float64(cur.wallMs-base.wallMs)/float64(base.wallMs))
+			detail["dispatch"] = d
+			summary += "; " + d
+		}
+	}
+	return &slowComparison{summary: summary, detail: detail}
 }
 
 func slowGroupMap(devs []forward.DeviceCollectionMetrics, label func(forward.DeviceCollectionMetrics) string, filter string) map[string]*slowAgg {

@@ -18,3 +18,10 @@ func ImportPollHooks(every, forHow time.Duration) (restore func()) {
 	importPollEvery, importPollFor = every, forHow
 	return func() { importPollEvery, importPollFor = oe, of }
 }
+
+// SetupTestPollHook shortens the wait for a controller-managed setup's tests to finish.
+func SetupTestPollHook(every time.Duration) (restore func()) {
+	o := setupTestPollEvery
+	setupTestPollEvery = every
+	return func() { setupTestPollEvery = o }
+}

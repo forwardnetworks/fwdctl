@@ -15,6 +15,9 @@ import (
 
 const tailFraction = 0.75
 
+// collectorMaxConcurrency is the largest concurrency Forward accepts for one collector (a range of 1 to 1024, read from Forward's source by a peer session).
+const collectorMaxConcurrency = 1024
+
 // addSlotAnalysis adds to the slow view what answers "would more concurrency or collectors help": the slots the collector held beside the devices actually collecting (idle slots, and where work waited
 // while slots were idle), what holds them at the worst point, the lower bound on the run against the actual, the tail (devices that ran late, by type and connection) and the devices by the collector they
 // are pinned to. It returns a sentence for the finding, or "" when there is nothing to add.
@@ -95,7 +98,14 @@ func addSlotAnalysis(ctx context.Context, s *fwd.Session, in collectionInput, cx
 		default:
 			verdict = fmt.Sprintf("the run took %.1fx its lower bound without idle slots shown: the shortfall is in how devices were started (ramp-up or a long tail), not in the slot count", actual/lower)
 		}
-		stats["what_if"] = map[string]any{"concurrency": concurrency, "device_seconds_total": float64(sm.sumMs) / 1000, "longest_device_seconds": longest, "lower_bound_seconds": lower, "actual_seconds": actual,
+		atMax := concurrency >= collectorMaxConcurrency
+		if atMax {
+			verdict += fmt.Sprintf(". Concurrency is already at the collector maximum of %d, so more slots per collector are impossible: only more collectors could add capacity", collectorMaxConcurrency)
+			if idleWork > 0 {
+				verdict += "; with slots idle while work waited, the limit is how slots are handed out, not the concurrency"
+			}
+		}
+		stats["what_if"] = map[string]any{"at_max_concurrency": atMax, "concurrency": concurrency, "device_seconds_total": float64(sm.sumMs) / 1000, "longest_device_seconds": longest, "lower_bound_seconds": lower, "actual_seconds": actual,
 			"device_time_over_concurrency_seconds": spread, "verdict": verdict}
 		sentence = append(sentence, fmt.Sprintf("lower bound %s (the longer of the longest device and total device time over %d slots) against %s actual", dur(lower), concurrency, dur(actual)))
 	}

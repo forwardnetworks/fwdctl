@@ -54,6 +54,12 @@ func TestEffectiveCollectionSettingsFlagWhatDiffersFromTheDefault(t *testing.T) 
 	if m := find("collector bravo", "concurrency"); m["source"] != "default" || m["differs"] != false {
 		t.Errorf("collector default: %v", m)
 	}
+	if m := find("collector alpha", "concurrency"); fmt.Sprint(m["max"]) != "1024" || fmt.Sprint(m["min"]) != "1" {
+		t.Errorf("the allowed range is shown beside the default: %v", m)
+	}
+	if m := find("organization", "perDeviceSnmpConcurrency"); fmt.Sprint(m["max"]) != "100" {
+		t.Errorf("per-device SNMP concurrency is 1 to 100: %v", m)
+	}
 	for _, want := range []string{"4 setting(s) differ", "absent", "support authority"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("missing %q in %s", want, b)

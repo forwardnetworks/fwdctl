@@ -327,6 +327,9 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 				if at != "" {
 					d["tested_at"] = at
 				}
+				if tr != nil {
+					setupTestDetails(d, tr)
+				}
 				tests[strings.SplitN(outcome, ":", 2)[0]]++
 				devs = append(devs, d)
 			}
@@ -751,4 +754,33 @@ func setupTestOutcome(tr *forward.DeviceTestResult) (string, string) {
 		return "no error recorded but no end time: not a pass", ""
 	}
 	return "no error recorded", tr.EndTime
+}
+
+// setupTestDetails adds what a device's last saved test carries beyond its outcome: when it started, the addresses reached, the commands the account may not run, the credential the test found working and, for a
+// controller, the devices its query phase reported. Forward does not return the guest list its SETUP phase used, which is what HOST_NOT_REPORTING_ANY_GUEST is raised from.
+func setupTestDetails(d map[string]any, tr *forward.DeviceTestResult) {
+	if tr.StartTime != "" {
+		d["started_at"] = tr.StartTime
+	}
+	if len(tr.HostIPs) > 0 {
+		d["host_ips"] = tr.HostIPs
+	}
+	if len(tr.UnauthorizedCommands) > 0 {
+		cmds, n := result.CapRow(tr.UnauthorizedCommands, 10)
+		d["unauthorized_commands"], d["unauthorized_commands_total"] = cmds, n
+	}
+	if tr.DiscoveredCLICredentialID != "" {
+		d["discovered_cli_credential"] = tr.DiscoveredCLICredentialID
+	}
+	if len(tr.ManagedDevices) > 0 {
+		rep := make([]map[string]any, 0, len(tr.ManagedDevices))
+		for _, m := range tr.ManagedDevices {
+			rep = append(rep, map[string]any{"name": m.Name, "address": m.IPAddress})
+		}
+		shown, n := result.CapRow(rep, 10)
+		d["managed_devices_reported"], d["managed_devices_reported_total"] = shown, n
+	}
+	if tr.Error == "HOST_NOT_REPORTING_ANY_GUEST" {
+		d["meaning"] = "the controller's test found no guests (a setup-phase result, not a login failure); Forward's API does not return the guest list that phase used, so managed_devices_reported is only what the query phase listed"
+	}
 }

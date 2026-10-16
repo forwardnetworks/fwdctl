@@ -175,3 +175,50 @@ func TestSlowViewReadsEachCollectorsResourceSeriesAndNamesTheBottleneckSignal(t 
 		t.Errorf("a missing permission is named in a limit: %v", r.Limits)
 	}
 }
+
+// A collector configured at its maximum concurrency (1024) cannot be given more slots, so the verdict says so and that only more collectors could add capacity; with idle slots the limit is how slots are handed out.
+func TestSlowViewSaysWhenTheCollectorIsAtItsMaximumConcurrency(t *testing.T) {
+	routes := slowWhatIfRoutes()
+	routes["GET /api/collector-tasks"] = func(r *http.Request, _ []byte) (int, any) {
+		if r.URL.Query().Get("snapshotId") == "" {
+			return 200, []any{}
+		}
+		return 200, map[string]any{"timestamps": []int64{0, 300_000, 600_000, 900_000, 1_100_000},
+			"queued": []int{0, 3, 3, 3, 2}, "running": []int{8, 8, 8, 8, 8}, "concurrency": []int{1024, 1024, 1024, 1024, 1024}, "succeeded": []int{0, 4, 4, 4, 4},
+			"concurrencyLimits": map[string]any{"global": 1024}}
+	}
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow"}`)
+	w := r.Evidence[0].Detail["stats"].(map[string]any)["what_if"].(map[string]any)
+	v, _ := w["verdict"].(string)
+	if !strings.Contains(v, "at the collector maximum of 1024") || !strings.Contains(v, "only more collectors") {
+		t.Errorf("the cap must be named: %s", v)
+	}
+	if w["at_max_concurrency"] != true {
+		t.Errorf("at_max_concurrency: %v", w)
+	}
+}
+
+// Two collections with the same device time but different wall times are the same work dispatched differently.
+func TestSlowViewCompareSaysSameWorkDifferentDispatch(t *testing.T) {
+	routes := slowProfileRoutes(1_200_000, 300_000)
+	// the baseline ran the same devices for the same times (75 minutes of device time) without the stall, so it finished sooner
+	var bdevs []any
+	for i := 0; i < 5; i++ {
+		bdevs = append(bdevs, map[string]any{"deviceName": "a" + string(rune('0'+i)), "deviceType": "SWITCH", "connTypeDisplayName": "SSH", "collectionStartTime": 0, "collectionDuration": 300_000})
+		bdevs = append(bdevs, map[string]any{"deviceName": "b" + string(rune('0'+i)), "deviceType": "FIREWALL", "connTypeDisplayName": "PAN-OS", "collectionStartTime": 300_000, "collectionDuration": 600_000})
+	}
+	base := fwdtest.Const(200, map[string]any{"snapshotId": "base", "collectionStartTime": 0, "collectionEndTime": 900_000, "metrics": bdevs})
+	cur := routes["GET /api/networks/n1/collection-metrics"]
+	routes["GET /api/networks/n1/collection-metrics"] = func(r *http.Request, b []byte) (int, any) {
+		if r.URL.Query().Get("snapshotId") == "base" {
+			return base(r, b)
+		}
+		return cur(r, b)
+	}
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow","compare_to_snapshot_id":"base"}`)
+	c := r.Evidence[0].Detail["stats"].(map[string]any)["compare"].(map[string]any)
+	d, _ := c["dispatch"].(string)
+	if !strings.Contains(d, "same work, different dispatch") || !strings.Contains(r.Finding, "same work, different dispatch") {
+		t.Errorf("dispatch %q finding %s", d, r.Finding)
+	}
+}

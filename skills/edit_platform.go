@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -837,6 +838,32 @@ func patchShows(patch, got any) bool {
 	return true
 }
 
+// orgRestorable are the organization settings restore_default can clear (send a JSON null, so Forward's default applies and the field reads back unset), by input name, with the wire name and the default shown.
+var orgRestorable = map[string]struct{ wire, def string }{
+	"max_device_authn_per_second":         {"maxDeviceAuthNPerSecond", fmt.Sprint(forward.DefaultMaxDeviceAuthNPerSecond)},
+	"max_command_authz_per_second":        {"maxCommandAuthZPerSecond", fmt.Sprint(forward.DefaultMaxCommandAuthZPerSecond)},
+	"max_scan_connections_per_second":     {"maxScanConnectionsPerSecond", fmt.Sprint(forward.DefaultMaxScanConnectionsPerSecond)},
+	"device_collection_timeout_minutes":   {"deviceCollectionTimeoutMinutes", fmt.Sprint(forward.DefaultDeviceCollectionTimeoutMinutes)},
+	"device_discovery_timeout_minutes":    {"deviceDiscoveryTimeoutMinutes", fmt.Sprint(forward.DefaultDeviceDiscoveryTimeoutMinutes)},
+	"general_job_timeout_minutes":         {"generalJobTimeoutMinutes", fmt.Sprint(forward.DefaultGeneralJobTimeoutMinutes)},
+	"snapshot_collection_timeout_minutes": {"snapshotCollectionTimeoutMinutes", fmt.Sprint(forward.DefaultSnapshotCollectionTimeoutMinutes)},
+	"command_delay_ms":                    {"commandDelayMs", "none (no delay)"},
+	"per_device_concurrency_boost":        {"perDeviceConcurrencyBoost", "0"},
+	"per_device_snmp_concurrency":         {"perDeviceSnmpConcurrency", fmt.Sprint(forward.DefaultPerDeviceSNMPConcurrency)},
+	"collection_retries":                  {"collectionRetries", fmt.Sprint(forward.DefaultCollectionRetries)},
+	"collection_retry_delay_ms":           {"collectionRetryDelayMillis", fmt.Sprint(forward.DefaultCollectionRetryDelayMillis)},
+	"collection_max_retry_delay_ms":       {"collectionMaxRetryDelayMillis", fmt.Sprint(forward.DefaultCollectionMaxRetryDelayMillis)},
+}
+
+func orgRestorableNames() []string {
+	out := make([]string, 0, len(orgRestorable))
+	for k := range orgRestorable {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // planCollectionSettings changes the organization-wide collection limits (name "organization") or one collector's concurrency (name = the collector id).
 func planCollectionSettings(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
 	if in.Action != "set" {
@@ -847,18 +874,43 @@ func planCollectionSettings(ctx context.Context, s *fwd.Session, in editPlatform
 	}
 	if in.Name == "organization" {
 		var def struct {
-			MaxDeviceAuthNPerSecond     *int `json:"max_device_authn_per_second"`
-			MaxScanConnectionsPerSecond *int `json:"max_scan_connections_per_second"`
-			DeviceCollectionTimeoutMins *int `json:"device_collection_timeout_minutes"`
-			CommandDelayMS              *int `json:"command_delay_ms"`
-			PerDeviceConcurrencyBoost   *int `json:"per_device_concurrency_boost"`
+			MaxDeviceAuthNPerSecond     *int     `json:"max_device_authn_per_second"`
+			MaxScanConnectionsPerSecond *int     `json:"max_scan_connections_per_second"`
+			DeviceCollectionTimeoutMins *int     `json:"device_collection_timeout_minutes"`
+			CommandDelayMS              *int     `json:"command_delay_ms"`
+			PerDeviceConcurrencyBoost   *int     `json:"per_device_concurrency_boost"`
+			PerDeviceSNMPConcurrency    *int     `json:"per_device_snmp_concurrency"`
+			CollectionRetries           *int     `json:"collection_retries"`
+			CollectionRetryDelayMS      *int     `json:"collection_retry_delay_ms"`
+			CollectionMaxRetryDelayMS   *int     `json:"collection_max_retry_delay_ms"`
+			RestoreDefault              []string `json:"restore_default"`
 		}
-		if err := decodeDefinition(in.Definition, &def, "max_device_authn_per_second, max_scan_connections_per_second, device_collection_timeout_minutes, command_delay_ms, per_device_concurrency_boost"); err != nil {
+		if err := decodeDefinition(in.Definition, &def, "max_device_authn_per_second, max_scan_connections_per_second, device_collection_timeout_minutes, command_delay_ms, per_device_concurrency_boost, per_device_snmp_concurrency, collection_retries, collection_retry_delay_ms, collection_max_retry_delay_ms, restore_default [names to clear]"); err != nil {
 			return nil, err
 		}
 		patch := forward.OrgCollectionSettingsPatch{MaxDeviceAuthNPerSecond: def.MaxDeviceAuthNPerSecond, MaxScanConnectionsPerSecond: def.MaxScanConnectionsPerSecond,
-			DeviceCollectionTimeoutMins: def.DeviceCollectionTimeoutMins, CommandDelayMS: def.CommandDelayMS, PerDeviceConcurrencyBoost: def.PerDeviceConcurrencyBoost}
-		if m, _ := fwd.Generic(patch); len(m.(map[string]any)) == 0 {
+			DeviceCollectionTimeoutMins: def.DeviceCollectionTimeoutMins, CommandDelayMS: def.CommandDelayMS, PerDeviceConcurrencyBoost: def.PerDeviceConcurrencyBoost,
+			PerDeviceSNMPConcurrency: def.PerDeviceSNMPConcurrency, CollectionRetries: def.CollectionRetries, CollectionRetryDelayMillis: def.CollectionRetryDelayMS,
+			CollectionMaxRetryDelayMillis: def.CollectionMaxRetryDelayMS}
+		setNames := map[string]bool{}
+		if m, _ := fwd.Generic(patch); m != nil {
+			for k := range m.(map[string]any) {
+				setNames[k] = true
+			}
+		}
+		var restoreNotes []string
+		for _, name := range def.RestoreDefault {
+			r, ok := orgRestorable[name]
+			if !ok {
+				return nil, fmt.Errorf("%w: restore_default names a setting to clear; %q is not one of %s", ErrInvalidInput, name, strings.Join(orgRestorableNames(), ", "))
+			}
+			if setNames[r.wire] {
+				return nil, fmt.Errorf("%w: %s is both set and restored to its default", ErrInvalidInput, name)
+			}
+			patch.Clear = append(patch.Clear, r.wire)
+			restoreNotes = append(restoreNotes, fmt.Sprintf("%s is cleared (Forward's default %s applies)", name, r.def))
+		}
+		if len(setNames) == 0 && len(patch.Clear) == 0 {
 			return nil, fmt.Errorf("%w: set must change at least one field", ErrInvalidInput)
 		}
 		cur, _, err := s.Client.Collectors.GetOrganizationSettings(ctx)
@@ -868,7 +920,7 @@ func planCollectionSettings(ctx context.Context, s *fwd.Session, in editPlatform
 		before, _ := fwd.Generic(cur)
 		return &networkPlan{target: "change the organization's collection settings", action: "update_org_collection_settings", before: before, after: patch, reversible: true,
 			undo:   "set again with the before values",
-			limits: []string{"applies to the next collection of every network in the organization; a limit set too low slows or fails collections"},
+			limits: append([]string{"applies to the next collection of every network in the organization; a limit set too low slows or fails collections"}, restoreNotes...),
 			do: func(ctx context.Context) error {
 				_, err := s.Client.Collectors.PatchOrganizationSettings(ctx, patch)
 				return err
