@@ -12,7 +12,8 @@
     "view": {
       "enum": [
         "status",
-        "config"
+        "config",
+        "migration"
       ],
       "default": "status"
     },

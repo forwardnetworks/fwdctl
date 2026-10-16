@@ -311,3 +311,15 @@ func (s *Session) SnapshotLogScan(ctx context.Context, snapshotID, device, level
 	sc.Head, sc.StreamCut = w.head.String(), truncated
 	return sc, nil
 }
+
+// DeviceTestStatuses lists a network's classic devices with their last connectivity test (configured type, discovered type, controllers).
+func (s *Session) DeviceTestStatuses(ctx context.Context, networkID string) ([]forward.SourceTestStatus, error) {
+	l, _, err := s.Client.ClassicDevices.ListTestStatuses(ctx, networkID)
+	return l, err
+}
+
+// DeviceConnTypes lists Forward's device connection types (GET /api/deviceConnTypes?for=ui) with their vendor, source type and related types.
+func (s *Session) DeviceConnTypes(ctx context.Context) ([]forward.ConnTypeInfo, error) {
+	l, _, err := s.Client.ClassicDevices.ConnTypes(ctx)
+	return l, err
+}

@@ -61,7 +61,7 @@ Check: ask Claude to use the LSP tool (`hover`) on a `.nqe` file with a misspelt
     macOS, Linux:  curl -fsSL https://raw.githubusercontent.com/forwardnetworks/fwdctl/main/install.sh | sh
     Windows:       irm https://raw.githubusercontent.com/forwardnetworks/fwdctl/main/install.ps1 | iex
 
-Builds: linux/amd64, darwin/arm64 (Apple silicon), darwin/amd64 (Intel Mac), windows/amd64. The scripts verify the SHA-256 and print where they installed; they use
+Builds: linux/amd64, linux/arm64 (static, runs on musl, e.g. OpenWrt; `fwdctl update` picks it), darwin/arm64 (Apple silicon), darwin/amd64 (Intel Mac), windows/amd64. The scripts verify the SHA-256 and print where they installed; they use
 the `gh` CLI when it is logged in. Add `~/.local/bin` to `PATH` if told to.
 
 ## On a host with no internet (air-gapped)
