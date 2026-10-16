@@ -37,8 +37,9 @@ func inspectCollectionConnectivity(ctx context.Context, s *fwd.Session, raw json
 	}
 	type key struct{ err, phase string }
 	type group struct {
-		names  []string
-		byType map[string]int
+		names    []string
+		byType   map[string]int
+		from, to string // the earliest and latest saved time of the group's tests (ISO strings sort as times)
 	}
 	groups := map[key]*group{}
 	tested, noErr, never := 0, 0, 0
@@ -59,6 +60,14 @@ func inspectCollectionConnectivity(ctx context.Context, s *fwd.Session, raw json
 			groups[k] = g
 		}
 		g.names = append(g.names, st.Name)
+		if at := firstNonEmpty(st.TestSavedAt, st.TestEndTime); at != "" {
+			if g.from == "" || at < g.from {
+				g.from = at
+			}
+			if at > g.to {
+				g.to = at
+			}
+		}
 		typ := st.Type
 		if typ == "" {
 			typ = st.DiscoveredType
@@ -90,12 +99,12 @@ func inspectCollectionConnectivity(ctx context.Context, s *fwd.Session, raw json
 		sort.Strings(g.names)
 		shown, total := result.CapRow(g.names, limit)
 		failed += total
-		rows = append(rows, map[string]any{"error": k.err, "phase": k.phase, "count": total, "by_type": g.byType, "devices": shown, "devices_total": total})
+		rows = append(rows, map[string]any{"error": k.err, "phase": k.phase, "count": total, "by_type": g.byType, "devices": shown, "devices_total": total, "tested_from": g.from, "tested_to": g.to})
 	}
 	limits := []string{
 		"a connectivity test is not a collection: a device can fail its test and never appear in a snapshot's failures (the snapshot views of investigate-collection-failure), or the reverse, so a failed test here is not a failed collection and a clean test is not a collected device",
 		fmt.Sprintf("%d of %d devices have no stored test result and are in no count above", never, len(statuses)),
-		"each error group lists up to limit devices (default 20) with the group's total; the time a result was saved is not read here",
+		"each error group lists up to limit devices (default 20) with the group's total and the range of times its results were saved (tested_from, tested_to)",
 	}
 	detail := map[string]any{"connectivity": map[string]any{"devices_read": len(statuses), "tested": tested, "no_error": noErr, "never_tested": never, "with_error": failed, "by_error": rows}}
 	finding := fmt.Sprintf("%d of %d tested devices have a failed connectivity test (%d clean, %d never tested)", failed, tested, noErr, never)

@@ -68,7 +68,7 @@ func TestDevicesViewExplainsIncompleteSetupFromTheConnectivityTest(t *testing.T)
 		return base(r, body)
 	}
 	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{
-		map[string]any{"name": "down1", "host": "192.0.2.5", "testResult": map[string]any{"error": "PING_FAILED", "errorPhase": "CONNECTION", "discoveredType": "cisco_ios_xe_ssh"}},
+		map[string]any{"name": "down1", "host": "192.0.2.5", "createdBy": "alice", "createdAt": "2026-08-17T10:00:00Z", "testResult": map[string]any{"error": "PING_FAILED", "errorPhase": "CONNECTION", "discoveredType": "cisco_ios_xe_ssh", "savedAt": "2026-10-16T01:00:00Z"}},
 		map[string]any{"name": "untested1", "host": "192.0.2.6"},
 	})
 	r, _ := collect(t, routes, `{"network_id":"n1","view":"devices","failure":"INCOMPLETE_SETUP"}`)
@@ -80,6 +80,9 @@ func TestDevicesViewExplainsIncompleteSetupFromTheConnectivityTest(t *testing.T)
 	d := by["down1"]
 	if d["connectivity_error"] != "PING_FAILED" || d["error_phase"] != "CONNECTION" || !strings.Contains(fmt.Sprint(d["reason"]), "could not be reached") {
 		t.Errorf("an unreachable device: %v", d)
+	}
+	if d["tested_at"] != "2026-10-16T01:00:00Z" || d["created_by"] != "alice" || d["created_at"] != "2026-08-17T10:00:00Z" {
+		t.Errorf("when it was tested and who created it: %v", d)
 	}
 	if u := by["untested1"]; u["connectivity_error"] != nil || strings.Contains(fmt.Sprint(u["reason"]), "reached") {
 		t.Errorf("a device with no stored test says nothing it does not know: %v", u)

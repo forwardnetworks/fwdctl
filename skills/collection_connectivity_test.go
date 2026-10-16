@@ -17,6 +17,9 @@ func connectivityRoutes() map[string]fwdtest.Handler {
 		if errName != "" {
 			tr["error"], tr["errorPhase"] = errName, phase
 		}
+		if errName != "" {
+			tr["savedAt"] = "2026-10-1" + name[len(name)-1:] + "T00:00:00Z"
+		}
 		return map[string]any{"name": name, "host": "h", "type": typ, "testResult": tr}
 	}
 	devs := []any{dev("ok1", "arista_eos_ssh", "", ""), dev("ok2", "arista_eos_ssh", "", ""),
@@ -53,6 +56,9 @@ func TestConnectivityViewCountsTheLastTestResultsByErrorAndPhase(t *testing.T) {
 	}
 	if ty := groups[0]["by_type"].(map[string]int); ty["cisco_ios_xe_ssh"] != 2 || ty["juniper_junos_ssh"] != 1 {
 		t.Errorf("by_type: %v", ty)
+	}
+	if groups[0]["tested_from"] != "2026-10-11T00:00:00Z" || groups[0]["tested_to"] != "2026-10-13T00:00:00Z" {
+		t.Errorf("each group carries the range of its tests' times: %v", groups[0])
 	}
 	if groups[1]["error"] != "CUSTOM_COMMAND_AUTHORIZATION_FAILED" {
 		t.Errorf("second group: %v", groups[1])

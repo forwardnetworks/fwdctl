@@ -121,6 +121,9 @@ func TestNqeCompareWithoutAKeyComparesTheRowsAsASet(t *testing.T) {
 	if code != 1 || !strings.Contains(out, `"added": 1`) || !strings.Contains(out, `"removed": 0`) {
 		t.Errorf("one row added, row order ignored: %d %s", code, out)
 	}
+	if !strings.Contains(out, "no --key") || !strings.Contains(out, "response_bytes") {
+		t.Errorf("without a key the summary says how rows were compared: %s", out)
+	}
 	if code, _, _ := call(t, args, "", compareRoutes(a, []any{map[string]any{"dev": "r2"}, map[string]any{"dev": "r1"}})); code != 0 {
 		t.Errorf("the same rows in another order are identical: %d", code)
 	}

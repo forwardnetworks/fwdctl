@@ -28,17 +28,34 @@ func explainUnsupported(ctx context.Context, s *fwd.Session, networkID string, k
 		return nil, nil
 	}
 	var limits []string
-	type test struct{ typ, errName, phase string }
+	type test struct{ typ, errName, phase, at string }
 	tests := map[string]test{}
 	if sts, err := s.DeviceTestStatuses(ctx, networkID); err != nil {
 		limits = append(limits, fmt.Sprintf("the stored connectivity test results could not be read (%v)", err))
 	} else {
 		for _, st := range sts {
-			t := test{errName: st.ConnectivityError, phase: st.ErrorPhase}
+			t := test{errName: st.ConnectivityError, phase: st.ErrorPhase, at: firstNonEmpty(st.TestSavedAt, st.TestEndTime)}
 			if st.DiscoveredType != "" && st.DiscoveredType != "unknown" {
 				t.typ = st.DiscoveredType
 			}
 			tests[st.Name] = t
+		}
+	}
+	// who created each classic device and when (a device with no attribution reads back empty)
+	if classic, cerr := s.ClassicDevices(ctx, networkID); cerr == nil {
+		made := map[string]struct{ by, at string }{}
+		for _, d := range classic {
+			made[d.Name] = struct{ by, at string }{d.CreatedBy, d.CreatedAt}
+		}
+		for _, r := range kept {
+			if m, ok := made[str(r["device"])]; ok {
+				if m.by != "" {
+					r["created_by"] = m.by
+				}
+				if m.at != "" {
+					r["created_at"] = m.at
+				}
+			}
 		}
 	}
 	by := map[string]int{}
@@ -48,6 +65,9 @@ func explainUnsupported(ctx context.Context, s *fwd.Session, networkID string, k
 		t, tested := tests[name]
 		if tested && t.errName != "" {
 			r["connectivity_error"], r["error_phase"] = t.errName, t.phase
+			if t.at != "" {
+				r["tested_at"] = t.at
+			}
 		}
 		switch str(r["type"]) {
 		case unsupportedType:

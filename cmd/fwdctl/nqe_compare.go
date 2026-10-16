@@ -89,7 +89,7 @@ func (a *app) nqeCompare() *cobra.Command {
 				QueuedMillis    *int64 `json:"queued_millis,omitempty"`
 				WallMillis      int64  `json:"wall_millis"`
 				Rows            int    `json:"rows"`
-				Bytes           int    `json:"bytes"`
+				Bytes           int    `json:"response_bytes"`
 				LikelyCached    bool   `json:"likely_cached,omitempty"`
 				digest          string
 			}
@@ -162,6 +162,10 @@ func (a *app) nqeCompare() *cobra.Command {
 					notes = append(notes, "version "+strings.ToUpper(sd)+" returned different rows on different runs: the comparison used its first run")
 				}
 			}
+			if len(keys) == 0 {
+				notes = append(notes, "no --key: rows were compared as a set. Identical rows match whatever their order; a row whose value changed shows as one removed and one added, not as changed. Name the key columns (--key) to see changes per row")
+			}
+			notes = append(notes, "response_bytes is the size of the rows as compact JSON; a file saved with an indented --format json is larger")
 			summary := map[string]any{"network": network, "snapshot": snapshot, "key": keys, "rows_a": len(rows["a"]), "rows_b": len(rows["b"]), "identical": res.identical, "counts": res.counts,
 				"value_differences_ignoring_array_order": res.lenientChanged, "shape": res.shape, "runs": runs, "cold": cold, "added": nonNil(res.lists["added"]), "removed": nonNil(res.lists["removed"]),
 				"changed": nonNil(res.lists["changed"]), "listing_capped_at": show, "notes": nonNil(notes)}
