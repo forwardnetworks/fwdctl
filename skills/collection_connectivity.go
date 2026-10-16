@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
@@ -94,17 +95,33 @@ func inspectCollectionConnectivity(ctx context.Context, s *fwd.Session, raw json
 	}
 	rows := make([]map[string]any, 0, len(keys))
 	failed := 0
+	sawAuthz := false
 	for _, k := range keys {
 		g := groups[k]
 		sort.Strings(g.names)
 		shown, total := result.CapRow(g.names, limit)
 		failed += total
-		rows = append(rows, map[string]any{"error": k.err, "phase": k.phase, "count": total, "by_type": g.byType, "devices": shown, "devices_total": total, "tested_from": g.from, "tested_to": g.to})
+		var details []map[string]any
+		if strings.Contains(k.err, "AUTHORIZATION") {
+			for i, n := range shown {
+				if i == maxAuthzDetails {
+					break
+				}
+				if d := authzDetail(ctx, s, in.NetworkID, n); d != nil {
+					details = append(details, d)
+				}
+			}
+			sawAuthz = true
+		}
+		rows = append(rows, map[string]any{"error": k.err, "phase": k.phase, "count": total, "by_type": g.byType, "devices": shown, "devices_total": total, "tested_from": g.from, "tested_to": g.to, "device_details": details})
 	}
 	limits := []string{
 		"a connectivity test is not a collection: a device can fail its test and never appear in a snapshot's failures (the snapshot views of investigate-collection-failure), or the reverse, so a failed test here is not a failed collection and a clean test is not a collected device",
 		fmt.Sprintf("%d of %d devices have no stored test result and are in no count above", never, len(statuses)),
 		"each error group lists up to limit devices (default 20) with the group's total and the range of times its results were saved (tested_from, tested_to)",
+	}
+	if sawAuthz {
+		limits = append(limits, authzLimit, fmt.Sprintf("device_details covers the first %d devices of an authorization group", maxAuthzDetails))
 	}
 	detail := map[string]any{"connectivity": map[string]any{"devices_read": len(statuses), "tested": tested, "no_error": noErr, "never_tested": never, "with_error": failed, "by_error": rows}}
 	finding := fmt.Sprintf("%d of %d tested devices have a failed connectivity test (%d clean, %d never tested)", failed, tested, noErr, never)
@@ -117,3 +134,32 @@ func inspectCollectionConnectivity(ctx context.Context, s *fwd.Session, raw json
 		Limits: limits, Evidence: []result.Evidence{result.NewEvidence(result.EvState, "classicDevices", nil, detail, "")},
 	})
 }
+
+// maxAuthzDetails bounds the per-device reads of an authorization failure's stored result.
+const maxAuthzDetails = 20
+
+// authzDetail reads one device's stored test result and returns what an authorization failure needs: the commands the account may not run, the login the test found, the addresses reached and when. It returns nil when the
+// result cannot be read (the caller says so).
+func authzDetail(ctx context.Context, s *fwd.Session, networkID, name string) map[string]any {
+	r, _, err := s.Client.ConnectivityTests.Get(ctx, networkID, name)
+	if err != nil || r == nil {
+		return nil
+	}
+	d := map[string]any{"name": name}
+	if len(r.UnauthorizedCommands) > 0 {
+		cmds, n := result.CapRow(r.UnauthorizedCommands, 10)
+		d["unauthorized_commands"], d["unauthorized_commands_total"] = cmds, n
+	}
+	if r.DiscoveredCLICredentialID != "" {
+		d["discovered_cli_credential"] = r.DiscoveredCLICredentialID
+	}
+	if len(r.HostIPs) > 0 {
+		d["host_ips"] = r.HostIPs
+	}
+	if at := firstNonEmpty(r.SavedAt, r.EndTime); at != "" {
+		d["tested_at"] = at
+	}
+	return d
+}
+
+const authzLimit = "for an authorization failure the stored test result lists the commands the account may not run (unauthorized_commands, when Forward recorded them) and the login the test found; it does not carry the credential that was tried, the privilege level or the command that was rejected first, and this tool knows no API that returns them"

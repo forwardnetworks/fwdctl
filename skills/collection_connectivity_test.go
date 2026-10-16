@@ -26,7 +26,12 @@ func connectivityRoutes() map[string]fwdtest.Handler {
 		dev("p1", "cisco_ios_xe_ssh", "PING_FAILED", "CONNECTION"), dev("p2", "cisco_ios_xe_ssh", "PING_FAILED", "CONNECTION"), dev("p3", "juniper_junos_ssh", "PING_FAILED", "CONNECTION"),
 		dev("a1", "cisco_ios_xe_ssh", "CUSTOM_COMMAND_AUTHORIZATION_FAILED", "AUTHORIZATION"),
 		map[string]any{"name": "never", "host": "h"}}
-	return map[string]fwdtest.Handler{"GET /api/networks/n1/classic-devices": fwdtest.Const(200, devs)}
+	return map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, devs),
+		// the stored result of the authorization failure carries what the status list does not
+		"GET /api/networks/n1/connectivityTests/a1": fwdtest.Const(200, map[string]any{"error": "CUSTOM_COMMAND_AUTHORIZATION_FAILED", "errorPhase": "AUTHORIZATION",
+			"unauthorizedCommands": []string{"show running-config | include x", "show tech"}, "discoveredCliCredentialId": "L9", "hostIps": []string{"192.0.2.9"}, "endTime": "2026-10-16T11:18:00Z"}),
+	}
 }
 
 func TestConnectivityViewCountsTheLastTestResultsByErrorAndPhase(t *testing.T) {
@@ -65,5 +70,29 @@ func TestConnectivityViewCountsTheLastTestResultsByErrorAndPhase(t *testing.T) {
 	}
 	if r.Status != result.Failed || !strings.Contains(strings.Join(r.Limits, " "), "not a failed collection") {
 		t.Errorf("%s %v", r.Status, r.Limits)
+	}
+}
+
+// For an authorization failure the stored result says which commands the account may not run and which login the test found; the view attaches them to the devices it lists, and says what the result does not carry.
+func TestConnectivityViewShowsTheRejectedCommandsOfAnAuthorizationFailure(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection", connectivityRoutes(), `{"network_id":"n1","view":"connectivity"}`)
+	var d map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["connectivity"].(map[string]any); ok {
+			d = v
+		}
+	}
+	var authz map[string]any
+	for _, g := range d["by_error"].([]map[string]any) {
+		if g["error"] == "CUSTOM_COMMAND_AUTHORIZATION_FAILED" {
+			authz = g
+		}
+	}
+	rows, _ := authz["device_details"].([]map[string]any)
+	if len(rows) != 1 || rows[0]["name"] != "a1" || fmt.Sprint(rows[0]["unauthorized_commands"]) != "[show running-config | include x show tech]" || rows[0]["discovered_cli_credential"] != "L9" {
+		t.Fatalf("details: %v", authz)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "privilege level") {
+		t.Errorf("the limits must say what the stored result does not carry (the credential tried, the privilege level): %v", r.Limits)
 	}
 }

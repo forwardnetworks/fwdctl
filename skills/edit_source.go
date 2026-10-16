@@ -1858,7 +1858,13 @@ func planClassicDeviceTest(ctx context.Context, s *fwd.Session, in editSourceInp
 	}
 	var queuedAt time.Time
 	var waitFn func(context.Context) (bool, any, error)
+	before := map[string]string{} // each device's stored error before the retest, to say how many cleared
 	if def.WaitSeconds > 0 {
+		if sts, serr := s.DeviceTestStatuses(ctx, in.NetworkID); serr == nil {
+			for _, st := range sts {
+				before[st.Name] = st.ConnectivityError
+			}
+		}
 		wait := time.Duration(min(def.WaitSeconds, 600)) * time.Second
 		waitFn = func(ctx context.Context) (bool, any, error) {
 			return waitForDeviceTests(ctx, s, in.NetworkID, names, &queuedAt, wait)
@@ -1886,7 +1892,23 @@ func planClassicDeviceTest(ctx context.Context, s *fwd.Session, in editSourceInp
 		verify: waitFn,
 		learn: func(got any, ch *result.Change) {
 			if rs, ok := got.([]map[string]any); ok {
-				ch.After = map[string]any{"devices": rows, "devices_tested": len(names), "results": rs}
+				failedBefore, cleared, stillFailing, newlyFailing := 0, 0, 0, 0
+				for _, r := range rs {
+					was := before[fmt.Sprint(r["name"])]
+					now := !strings.HasPrefix(fmt.Sprint(r["test"]), "failed")
+					switch {
+					case was != "" && now:
+						failedBefore++
+						cleared++
+					case was != "" && !now:
+						failedBefore++
+						stillFailing++
+					case was == "" && !now:
+						newlyFailing++
+					}
+				}
+				summary := fmt.Sprintf("%d of %d that failed before now pass, %d still fail, %d newly fail", cleared, failedBefore, stillFailing, newlyFailing)
+				ch.After = map[string]any{"devices": rows, "devices_tested": len(names), "results": rs, "summary": summary}
 			}
 		}}, nil
 }

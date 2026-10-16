@@ -60,6 +60,7 @@ func explainUnsupported(ctx context.Context, s *fwd.Session, networkID string, k
 	}
 	by := map[string]int{}
 	unsupported, incomplete, unreachable := 0, 0, 0
+	authzRead, sawAuthz := 0, false
 	for _, r := range kept {
 		name := str(r["device"])
 		t, tested := tests[name]
@@ -67,6 +68,17 @@ func explainUnsupported(ctx context.Context, s *fwd.Session, networkID string, k
 			r["connectivity_error"], r["error_phase"] = t.errName, t.phase
 			if t.at != "" {
 				r["tested_at"] = t.at
+			}
+			if strings.Contains(t.errName, "AUTHORIZATION") && authzRead < maxAuthzDetails {
+				authzRead++
+				if d := authzDetail(ctx, s, networkID, name); d != nil {
+					for _, k := range []string{"unauthorized_commands", "unauthorized_commands_total", "discovered_cli_credential"} {
+						if v, ok := d[k]; ok {
+							r[k] = v
+						}
+					}
+				}
+				sawAuthz = true
 			}
 		}
 		switch str(r["type"]) {
@@ -95,6 +107,9 @@ func explainUnsupported(ctx context.Context, s *fwd.Session, networkID string, k
 				r["discovered_type"] = t.typ
 			}
 		}
+	}
+	if sawAuthz {
+		limits = append(limits, authzLimit)
 	}
 	if incomplete > 0 {
 		limits = append(limits, fmt.Sprintf("%d device(s) failed as INCOMPLETE_SETUP (Forward's text: the device type and/or credentials are unknown); %d of them have a stored connectivity test that failed to reach the host (ping or connection), so the cause is reachability, not missing setup. A device with no stored test result is not explained", incomplete, unreachable))

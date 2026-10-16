@@ -17,11 +17,13 @@ func deviceTestRoutes(posted *string, fresh *bool) map[string]fwdtest.Handler {
 	return map[string]fwdtest.Handler{
 		"GET /api/networks/n1/classic-devices": func(*http.Request, []byte) (int, any) {
 			end := "2020-01-01T00:00:00Z"
+			sw1 := map[string]any{"error": "CUSTOM_COMMAND_AUTHORIZATION_FAILED", "errorPhase": "AUTHORIZATION", "endTime": end, "savedAt": end}
 			if *fresh {
 				end = time.Now().Add(time.Second).UTC().Format(time.RFC3339)
+				sw1 = map[string]any{"endTime": end, "savedAt": end, "discoveredType": "cisco_ios_xe_ssh"} // the retest cleared it
 			}
 			return 200, []any{
-				map[string]any{"name": "sw1", "host": "192.0.2.1", "type": "cisco_ios_xe_ssh", "collectorId": "C7", "testResult": map[string]any{"error": "CUSTOM_COMMAND_AUTHORIZATION_FAILED", "errorPhase": "AUTHORIZATION", "endTime": end, "savedAt": end}},
+				map[string]any{"name": "sw1", "host": "192.0.2.1", "type": "cisco_ios_xe_ssh", "collectorId": "C7", "testResult": sw1},
 				map[string]any{"name": "sw2", "host": "192.0.2.2", "type": "cisco_ios_xe_ssh", "testResult": map[string]any{"endTime": end, "savedAt": end, "discoveredType": "cisco_ios_xe_ssh"}},
 				map[string]any{"name": "sw3", "host": "192.0.2.3"},
 			}
@@ -78,6 +80,9 @@ func TestClassicDeviceTestRefusesUnknownNamesAndTooManyAndWaitsForFreshResults(t
 	r, _ := mustRun(t, "edit-source", deviceTestRoutes(&posted, &fresh), `{"network_id":"n1","object":"classic_device","action":"test","apply":true,"confirm":"2","definition":{"names":["sw1","sw2"],"wait_seconds":20}}`)
 	if r.Status != result.OK || !strings.Contains(jsonOf(r), "newer_than_queue_time") {
 		t.Errorf("wait: %s %s", r.Status, jsonOf(r))
+	}
+	if !strings.Contains(jsonOf(r), "1 of 1 that failed before now pass") {
+		t.Errorf("the retest summary says how many failures cleared: %s", jsonOf(r))
 	}
 }
 
