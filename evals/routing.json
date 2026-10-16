@@ -621,5 +621,55 @@
     "query": "Disable the PAN-OS external list show command for collection org-wide, then turn it back on later",
     "expect": "edit-platform",
     "rival": "edit-source"
+  },
+  {
+    "query": "Which devices does Forward say need to be migrated to a controller-managed setup?",
+    "expect": "inspect-collection",
+    "rival": "investigate-collection-failure"
+  },
+  {
+    "query": "What has device discovery found that we have not added to collection yet?",
+    "expect": "inspect-collection",
+    "rival": "inspect-inventory"
+  },
+  {
+    "query": "Which devices fail their connectivity test, and with what error?",
+    "expect": "inspect-collection",
+    "rival": "investigate-collection-failure"
+  },
+  {
+    "query": "Which collection settings differ from Forward's defaults, for the organization and each collector?",
+    "expect": "inspect-platform",
+    "rival": "inspect-collection"
+  },
+  {
+    "query": "Put the collection retry delay back to Forward's default",
+    "expect": "edit-platform",
+    "rival": "inspect-platform"
+  },
+  {
+    "query": "Why is this device marked as an unsupported device type?",
+    "expect": "investigate-collection-failure",
+    "rival": "inspect-collection"
+  },
+  {
+    "query": "Why did these devices fail as INCOMPLETE_SETUP when they have an address?",
+    "expect": "investigate-collection-failure",
+    "rival": "inspect-collection"
+  },
+  {
+    "query": "Move these classic SD-WAN devices into a controller-managed setup",
+    "expect": "edit-source",
+    "rival": "edit-collection"
+  },
+  {
+    "query": "Run a connectivity test on the controller-managed setup I just created",
+    "expect": "edit-source",
+    "rival": "inspect-collection"
+  },
+  {
+    "query": "Does my rewritten NQE query return the same rows as the original on this snapshot?",
+    "expect": "author-nqe-query",
+    "rival": "compare-nqe-results"
   }
 ]
