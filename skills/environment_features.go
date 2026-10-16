@@ -236,7 +236,11 @@ func applyLicense(ctx context.Context, s *fwd.Session, detail map[string]any, bl
 				}
 				row["licensed"] = facets["predict"]
 				if !facets["predict"] {
-					row["licensed_note"] = "the organization property reads on, but license tier " + ts.LicenseTier + " has no Predict facet: change-set calls answer 403 \"Unlicensed operation\" (a license limit, not a role)"
+					if row["state"] == "on" || row["state"] == "automatic" {
+						row["licensed_note"] = "the organization property reads on, but license tier " + ts.LicenseTier + " has no Predict facet: change-set calls answer 403 \"Unlicensed operation\" (a license limit, not a role)"
+					} else {
+						row["licensed_note"] = "off, and also unlicensed: license tier " + ts.LicenseTier + " has no Predict facet, so turning the property on would not make change-set calls work (they answer 403 \"Unlicensed operation\", a license limit, not a role)"
+					}
 				}
 			}
 		}

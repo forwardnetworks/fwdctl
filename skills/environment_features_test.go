@@ -229,7 +229,7 @@ func TestEditAdvancedReachabilityRefusesWhenFlowComputationIsDisabledAndSaysWhat
 // operation" on every change-set call means.
 func TestEnvironmentReportsTheLicenseTierAndMarksUnlicensedFeatures(t *testing.T) {
 	routes := cfgRoutes(
-		map[string]any{"predict_modeling": true},
+		map[string]any{"predict_modeling": true, "predict_model_ospf": false},
 		map[string]any{"predict_modeling": true},
 		map[string]any{"predict_modeling": true},
 		map[string]any{"predict_modeling": true},
@@ -247,6 +247,9 @@ func TestEnvironmentReportsTheLicenseTierAndMarksUnlicensedFeatures(t *testing.T
 	rows, _ := featureRows(t, r)
 	if rows["predict_modeling"]["licensed"] != false || !strings.Contains(fmt.Sprint(rows["predict_modeling"]["licensed_note"]), "Predict") {
 		t.Errorf("predict_modeling reads on but is not licensed: %v", rows["predict_modeling"])
+	}
+	if o := rows["predict_model_ospf"]; o["state"] != "off" || !strings.Contains(fmt.Sprint(o["licensed_note"]), "off, and also unlicensed") || strings.Contains(fmt.Sprint(o["licensed_note"]), "reads on") {
+		t.Errorf("an off row must not say its property reads on: %v", o)
 	}
 	if strings.Contains(strings.Join(r.Limits, " "), "the license tier (a license") {
 		t.Errorf("the limit that says the tier is not returned must go: %v", r.Limits)
