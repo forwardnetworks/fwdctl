@@ -20,7 +20,7 @@ func (a *app) nqeCmd() *cobra.Command {
 		Long: "NQE (Network Query Engine) tools. Offline, no Forward connection: lint, fmt, lsp, complete, hover, template. Connected: run, bundle, synthesize.\n" +
 			"Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or fwdctl login). Long queries: FORWARD_TIMEOUT, FORWARD_NQE_MODE, FORWARD_NQE_WAIT (fwdctl docs troubleshooting).",
 	})
-	c.AddCommand(a.nqeDiff(), a.nqeExplain(), a.nqeMetrics(), a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
+	c.AddCommand(a.nqeDiff(), a.nqeCompare(), a.nqeExplain(), a.nqeMetrics(), a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
 		a.nqeTemplate(), a.nqeFeatures(), a.nqeRun(), a.nqeBundle(), a.nqeExport(), a.nqePack(), a.nqeSynth())
 	return c
 }
@@ -161,7 +161,7 @@ func (a *app) nqeRun() *cobra.Command {
 		Use: "run", Short: "run a query (a file, stdin or a saved one at a commit) and print every row, or one page",
 		Long: `Run an NQE query on Forward and print the rows (stdout), with timing and scope on stderr. Every row is fetched, paged for you (up to --max), or with --limit/--offset ONE page.
 A saved library query runs by id at a commit. Runs are ASYNCHRONOUS by default (Forward's execution API: a query's duration and size cannot be known beforehand, and a polled execution holds no connection open, so there is no gateway timeout; it costs a few hundred milliseconds on a small query). --sync, or FORWARD_NQE_MODE=sync, runs one synchronous request instead; FORWARD_NQE_MODE=syncfirst is the older sync-then-async-on-timeout; FORWARD_NQE_WAIT bounds the wait.
---meta records how the run went: the execution key, outcome, Forward's execution time (millis_executing), the time spent queued (queued_millis, measured here) and whether the result came from Forward's cache. A failed run served from the cache says so: repeating the same request cannot succeed until the query text or parameters change (--fresh does that). Over ~100 KB sent inline, save the query and use --query-id.
+--meta records how the run went: the execution key, outcome, Forward's execution time (millis_executing), the time spent queued (queued_millis, measured here) and whether the result came from Forward's cache, and response_bytes (the bytes of rows the run wrote). A failed run served from the cache says so: repeating the same request cannot succeed until the query text or parameters change (--fresh does that). Over ~100 KB sent inline, save the query and use --query-id.
 Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 error, 64 bad usage.`,
 		Example: `  fwdctl nqe run --network 123 --file q.nqe --format table
   fwdctl nqe run --network 123 --query-id Q_abc --commit-id 9f3c --param threshold=10 --meta run.json

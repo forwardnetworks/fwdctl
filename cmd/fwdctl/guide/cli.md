@@ -300,6 +300,47 @@ Flags:
       --query-id string          the entry query, by id
 ```
 
+## fwdctl nqe compare
+
+Runs version A and version B (each --a/--b FILE, or --a-query-id/--b-query-id with an optional commit) on the same snapshot with the same parameters, and reports: whether the rows are identical (row order is
+ignored, array order inside a row counts), the rows added, removed and changed by --key (without --key, rows are compared as a set), a shape section (columns only in one side, columns whose JSON types differ),
+the number of value differences that remain when array order is ignored, and the timing of every run (execution key, millis executing, queued, wall, rows, bytes, whether Forward served it from cache).
+File queries are made cold: an always-true filter on a unique constant is added so Forward's result cache sees a new program each run (--warm turns that off; a saved query cannot be made cold). Runs alternate
+A,B then B,A for --rounds 2, so a slow first run is not charged to one side. A and B being the same text is refused: nothing would be compared.
+Exit status: 0 identical (with --ignore-array-order: identical apart from array order), 1 they differ, 64 bad usage or a key that is not unique, 3 error. Each run is a real execution and can be slow on a large network.
+
+```
+fwdctl nqe compare [flags]
+```
+
+Examples:
+
+```
+  fwdctl nqe compare --network 123 --snapshot 456 --a old.nqe --b new.nqe --key device,rule --params p.json --out diffs.jsonl
+```
+
+Flags:
+
+```
+      --a string             version A: a query file
+      --a-commit-id string   the commit of saved query A (default HEAD)
+      --a-query-id string    version A: a saved query id
+      --b string             version B: a query file
+      --b-commit-id string   the commit of saved query B (default HEAD)
+      --b-query-id string    version B: a saved query id
+      --ignore-array-order   treat arrays that differ only in element order as equal (and exit 0 then)
+      --key string           the column(s) that identify a row, comma separated (without it rows are compared as a set)
+      --max int              refuse a result of more rows than this (default 200000)
+      --network string       network id
+      --out string           write every difference to this file as JSON lines
+      --param stringArray    a query parameter NAME=VALUE (repeatable)
+      --params string        a JSON file of query parameters (used for both versions)
+      --rounds int           runs of each version; with 2 or more the order alternates (A,B,B,A) so neither side always runs first (default 1)
+      --show int             list at most this many of each kind in the summary (default 20)
+      --snapshot string      snapshot id (default: the newest processed)
+      --warm                 do not add the cache-busting filter to file queries (a cached result then makes a run look fast)
+```
+
 ## fwdctl nqe complete
 
 what could be written at a position (1-based line and column)
@@ -603,7 +644,7 @@ Flags:
 
 Run an NQE query on Forward and print the rows (stdout), with timing and scope on stderr. Every row is fetched, paged for you (up to --max), or with --limit/--offset ONE page.
 A saved library query runs by id at a commit. Runs are ASYNCHRONOUS by default (Forward's execution API: a query's duration and size cannot be known beforehand, and a polled execution holds no connection open, so there is no gateway timeout; it costs a few hundred milliseconds on a small query). --sync, or FORWARD_NQE_MODE=sync, runs one synchronous request instead; FORWARD_NQE_MODE=syncfirst is the older sync-then-async-on-timeout; FORWARD_NQE_WAIT bounds the wait.
---meta records how the run went: the execution key, outcome, Forward's execution time (millis_executing), the time spent queued (queued_millis, measured here) and whether the result came from Forward's cache. A failed run served from the cache says so: repeating the same request cannot succeed until the query text or parameters change (--fresh does that). Over ~100 KB sent inline, save the query and use --query-id.
+--meta records how the run went: the execution key, outcome, Forward's execution time (millis_executing), the time spent queued (queued_millis, measured here) and whether the result came from Forward's cache, and response_bytes (the bytes of rows the run wrote). A failed run served from the cache says so: repeating the same request cannot succeed until the query text or parameters change (--fresh does that). Over ~100 KB sent inline, save the query and use --query-id.
 Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 error, 64 bad usage.
 
 ```

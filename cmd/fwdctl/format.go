@@ -349,6 +349,7 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 		clean := attempts == 1
 		meta.Attempts, meta.TransportClean = attempts, &clean
 	}
+	var renderedBytes int64 // the bytes of rows this run wrote, for the meta file
 	writeMeta := func() {
 		if *metaOut == "" {
 			return
@@ -382,7 +383,8 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 			SnapshotID     string  `json:"snapshot_id"`
 			QueryID        string  `json:"query_id,omitempty"`
 			CommitID       string  `json:"commit_id,omitempty"`
-		}{meta, time.Since(started).Seconds(), len(rows), total, *pageOffset, *pageLimit, snap, *queryID, *commitID}, "", "  ")
+			ResponseBytes  int64   `json:"response_bytes"`
+		}{meta, time.Since(started).Seconds(), len(rows), total, *pageOffset, *pageLimit, snap, *queryID, *commitID, renderedBytes}, "", "  ")
 		if *metaOut == "-" {
 			fmt.Fprintln(stderr, string(b))
 		} else {
@@ -446,8 +448,11 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 		fmt.Fprintf(stderr, "error: this result is about %d MB as text (%d rows), over the %d MB limit, and nothing was written: redirecting it to a file can fill the disk. Narrow the query, page it (--limit/--offset), summarise it (--count-by FIELD), or pass --allow-large and write to a disk with room\n", est>>20, len(rows), maxOutputBytes>>20)
 		return 1
 	}
-	if err := renderRows(stdout, rows, *format); err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
+	cw := &countingWriter{w: stdout}
+	rerr := renderRows(cw, rows, *format)
+	renderedBytes = cw.n
+	if rerr != nil {
+		fmt.Fprintf(stderr, "error: %v\n", rerr)
 		return 3
 	}
 	if len(rows) == 0 {
@@ -517,4 +522,16 @@ func transientGatewayError(err error) bool {
 		return true
 	}
 	return false
+}
+
+// countingWriter counts what is written through it.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
 }
