@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -14,20 +17,30 @@ import (
 // nqeExplain prints Forward's optimized plan for a query: the Query Debug Panel's text. It shows whether the query runs device-parallel (the first line starts parallel_foreach), where a lookup replaced a
 // loop (_lookup), and which expressions the optimizer found total or of ONCE cardinality. Forward explains a SAVED library query (or a draft at a path in your workspace), not raw text.
 func (a *app) nqeExplain() *cobra.Command {
-	var network, queryID, commitID, path, snapshot, paramsFile string
+	var network, queryID, commitID, path, snapshot, paramsFile, file, draftPath string
 	var params []string
+	var apply bool
 	c := &cobra.Command{
 		Use: "explain", Short: "EXPERIMENTAL: Forward's optimized plan for a saved query (the Query Debug Panel's text)",
 		Long: "Prints the optimized plan Forward builds for a saved library query, as the Query Debug Panel in the NQE Library shows it: a device-parallel query starts `parallel_foreach`, a join that became a lookup shows\n" +
 			"`_lookup(...)`, and `⸢ ⸣` marks expressions found total (cannot raise an error, so a `where` may float up), `⟪ ⟫` marks ONCE cardinality. Read it to see why a query is slow.\n" +
 			"Give --query-id (optionally --commit-id; HEAD otherwise) or --path (a query in your own workspace, as the UI writes it, for example \"/Operations/my query\"). Raw query text is not explained by Forward: save it\n" +
-			"as a draft first. Internal Forward routes (preview); needs the organization's VIEW_NQE_LIBRARY permission. A query with errors is refused with its diagnostics.\n" +
+			"as a draft first, or give --file: it saves the text as a throwaway draft (dry run unless --apply), explains it and discards the draft, naming the path it wrote. Internal Forward routes (preview); needs the organization's VIEW_NQE_LIBRARY permission. A query with errors is refused with its diagnostics.\n" +
 			"For the execution time use `fwdctl nqe run --meta`; for slow runs Forward recorded, `fwdctl nqe metrics`.",
-		Example: "  fwdctl nqe explain --query-id Q_0123456789abcdef0123456789abcdef01234567 --network 123\n  fwdctl nqe explain --path \"/Operations/my query\" --param threshold=3",
+		Example: "  fwdctl nqe explain --query-id Q_0123456789abcdef0123456789abcdef01234567 --network 123\n  fwdctl nqe explain --path \"/Operations/my query\" --param threshold=3\n  fwdctl nqe explain --file bundle.nqe --apply",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if file == "" && (apply || draftPath != "") {
+				return a.fail("--apply and --draft-path belong to --file")
+			}
+			if file != "" {
+				if queryID != "" || path != "" {
+					return a.fail("--file explains query text and cannot be combined with --query-id or --path")
+				}
+				return a.explainFile(cmd, file, draftPath, network, snapshot, paramsFile, params, apply)
+			}
 			if (queryID == "") == (path == "") {
-				return a.fail("give --query-id (a saved query) or --path (a query in your workspace), not both")
+				return a.fail("give --query-id (a saved query), --path (a query in your workspace) or --file (query text), exactly one")
 			}
 			if queryID != "" {
 				if p := queryIDProblem(queryID); p != "" {
@@ -72,7 +85,71 @@ func (a *app) nqeExplain() *cobra.Command {
 	f.StringVar(&path, "path", "", "a query in your own NQE workspace, without the repository, for example \"/Operations/my query\"")
 	f.StringVar(&paramsFile, "params", "", "a JSON file of query parameters")
 	f.StringArrayVar(&params, "param", nil, "a query parameter NAME=VALUE (repeatable)")
+	f.StringVar(&file, "file", "", "a file of query text (a bundle works): saved as a throwaway workspace draft, explained, then discarded")
+	f.StringVar(&draftPath, "draft-path", "", "with --file: the draft's path (default /fwdctl-explain-<hash of the text>); an existing draft there is never replaced")
+	f.BoolVar(&apply, "apply", false, "with --file: really write the draft (without it, only say what would be done)")
 	return c
+}
+
+// explainFile explains query text: Forward explains only saved queries, so the text becomes a draft in the caller's own workspace (never committed), is explained by path and the draft is discarded.
+// Without apply nothing is written. The draft path is always reported, including when the discard failed, so it can be removed by hand.
+func (a *app) explainFile(cmd *cobra.Command, file, draftPath, network, snapshot, paramsFile string, params []string, apply bool) error {
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return a.fail("%v", err)
+	}
+	if draftPath == "" {
+		draftPath = fmt.Sprintf("/fwdctl-explain-%x", sha256.Sum256(src))[:len("/fwdctl-explain-")+10]
+	}
+	p, err := nqeParams(paramsFile, params)
+	if err != nil {
+		return a.fail("%v", err)
+	}
+	if !apply {
+		fmt.Fprintf(a.err, "dry run: would save %s (%d bytes) as the throwaway draft %s in your NQE workspace, explain it and discard the draft. Add --apply to do it.\n", file, len(src), draftPath)
+		return nil
+	}
+	sess, err := a.session()
+	if err != nil {
+		return a.fail("%v", err)
+	}
+	if sess.Impersonating() != "" {
+		return a.fail("--file --apply writes a draft in the workspace of the user being impersonated, which a read-only session must not do; run it as your own login")
+	}
+	ctx := cmd.Context()
+	if d, _, derr := sess.Client.NQERepository.GetDraft(ctx, draftPath); derr != nil {
+		fmt.Fprintf(a.err, "error: cannot check for a draft at %s: %v\n", draftPath, derr)
+		return a.exit(3)
+	} else if d != nil {
+		return a.fail("there is already a draft at %s; it is not replaced. Pick another --draft-path or discard it first", draftPath)
+	}
+	if snapshot == "" && network != "" {
+		if s, serr := sess.LatestProcessed(ctx, network); serr == nil && s != nil {
+			snapshot = string(s.ID)
+		}
+	}
+	if _, err := sess.Client.NQERepository.AddQuery(ctx, draftPath, string(src)); err != nil {
+		fmt.Fprintf(a.err, "error: saving the draft at %s: %v (it may exist; trying to discard it)\n", draftPath, err)
+		_, _ = sess.Client.NQERepository.DiscardChange(context.WithoutCancel(ctx), draftPath)
+		return a.exit(3)
+	}
+	plan, _, perr := sess.Client.NQE.ExplainPath(ctx, draftPath, snapshot, p)
+	dctx, stop := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer stop()
+	if _, derr := sess.Client.NQERepository.DiscardChange(dctx, draftPath); derr != nil {
+		fmt.Fprintf(a.err, "warning: the draft at %s could not be discarded (%v); remove it in the NQE Library or with the draft discard call\n", draftPath, derr)
+	} else {
+		fmt.Fprintf(a.err, "wrote the throwaway draft %s and discarded it\n", draftPath)
+	}
+	if perr != nil {
+		fmt.Fprintf(a.err, "error: %v\n", perr)
+		return a.exit(3)
+	}
+	fmt.Fprint(a.out, plan)
+	if len(plan) > 0 && plan[len(plan)-1] != '\n' {
+		fmt.Fprintln(a.out)
+	}
+	return nil
 }
 
 // nqeMetrics lists the query runs Forward recorded as slow.

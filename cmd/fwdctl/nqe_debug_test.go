@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -38,5 +39,95 @@ func TestNqeMetricsListsSlowRunsAndExplainsAMissingPermission(t *testing.T) {
 	denied := map[string]fwdtest.Handler{"GET /api/nqe-run-metrics": fwdtest.Const(403, map[string]any{"message": "Missing permission: OrgOperation.DEBUG_NQE"})}
 	if code, _, errs := call(t, []string{"nqe", "metrics"}, "", denied); code == 0 || !strings.Contains(errs, "DEBUG_NQE") {
 		t.Errorf("a missing permission should be named: %d %s", code, errs)
+	}
+}
+
+// `nqe explain --file` explains query text by saving it as a throwaway draft in the caller's own workspace (Forward explains only saved queries). It is a dry run until --apply, and it always names the draft
+// path it wrote and removes the draft again, so nothing is left in the library.
+func TestNqeExplainFileSavesADraftExplainsItAndDiscardsIt(t *testing.T) {
+	src := "foreach d in network.devices select {n: d.name}"
+	dir := t.TempDir()
+	file := dir + "/q.nqe"
+	if err := os.WriteFile(file, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	var added string
+	r := map[string]fwdtest.Handler{
+		"GET /api/users/current/nqe/changes": func(r *http.Request, _ []byte) (int, any) {
+			calls = append(calls, "get-draft")
+			return 404, map[string]any{"message": "No draft query at " + r.URL.Query().Get("path")}
+		},
+		"POST /api/users/current/nqe/changes": func(r *http.Request, b []byte) (int, any) {
+			calls = append(calls, "add "+r.URL.Query().Get("action"))
+			added = string(b)
+			return 204, nil
+		},
+		"POST /api/internal/users/current/nqe/queries/explain": func(r *http.Request, _ []byte) (int, any) {
+			calls = append(calls, "explain "+r.URL.Query().Get("path"))
+			return 200, []byte("parallel_foreach device in network.devices")
+		},
+		"DELETE /api/users/current/nqe/changes": func(r *http.Request, _ []byte) (int, any) {
+			calls = append(calls, "discard "+r.URL.Query().Get("path"))
+			return 204, nil
+		},
+	}
+	code, out, errs := call(t, []string{"nqe", "explain", "--file", file}, "", r)
+	if code != 0 || len(calls) != 0 || !strings.Contains(errs+out, "dry run") || !strings.Contains(errs+out, "--apply") {
+		t.Fatalf("dry run must write nothing: code %d calls %v out %q err %q", code, calls, out, errs)
+	}
+	code, out, errs = call(t, []string{"nqe", "explain", "--file", file, "--apply"}, "", r)
+	if code != 0 || !strings.Contains(out, "parallel_foreach") {
+		t.Fatalf("apply: code %d out %q err %q", code, out, errs)
+	}
+	if len(calls) != 4 || calls[1] != "add addQuery" || !strings.HasPrefix(calls[2], "explain /fwdctl-explain-") || !strings.HasPrefix(calls[3], "discard /fwdctl-explain-") || !strings.Contains(added, "network.devices") {
+		t.Errorf("calls %v body %s", calls, added)
+	}
+	if !strings.Contains(errs, "/fwdctl-explain-") || !strings.Contains(errs, "discarded") {
+		t.Errorf("the draft path and its removal must be reported: %q", errs)
+	}
+	if code, _, errs := call(t, []string{"nqe", "explain", "--file", file, "--query-id", "Q_abc"}, "", r); code != usage || !strings.Contains(errs, "--file") {
+		t.Errorf("--file with --query-id: %d %s", code, errs)
+	}
+}
+
+func TestNqeExplainFileRefusesToOverwriteAnExistingDraft(t *testing.T) {
+	file := t.TempDir() + "/q.nqe"
+	if err := os.WriteFile(file, []byte("foreach d in network.devices select {n: d.name}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var wrote bool
+	r := map[string]fwdtest.Handler{
+		"GET /api/users/current/nqe/changes":  fwdtest.Const(200, map[string]any{"path": "/x", "sourceCode": "old"}),
+		"POST /api/users/current/nqe/changes": func(*http.Request, []byte) (int, any) { wrote = true; return 204, nil },
+	}
+	code, _, errs := call(t, []string{"nqe", "explain", "--file", file, "--apply", "--draft-path", "/x"}, "", r)
+	if code == 0 || wrote || !strings.Contains(errs, "/x") {
+		t.Errorf("an existing draft must not be replaced: code %d wrote %v err %q", code, wrote, errs)
+	}
+}
+
+func TestNqeExplainFileDiscardsTheDraftWhenTheExplainFailsAndNamesItWhenTheDiscardFails(t *testing.T) {
+	file := t.TempDir() + "/q.nqe"
+	if err := os.WriteFile(file, []byte("foreach d in network.devices select {n: d.name}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var discarded bool
+	r := map[string]fwdtest.Handler{
+		"GET /api/users/current/nqe/changes":                   fwdtest.Const(404, map[string]any{"message": "No draft query"}),
+		"POST /api/users/current/nqe/changes":                  fwdtest.Const(204, nil),
+		"POST /api/internal/users/current/nqe/queries/explain": fwdtest.Const(400, map[string]any{"message": "does not compile"}),
+		"DELETE /api/users/current/nqe/changes":                func(*http.Request, []byte) (int, any) { discarded = true; return 204, nil },
+	}
+	if code, _, _ := call(t, []string{"nqe", "explain", "--file", file, "--apply"}, "", r); code != 3 || !discarded {
+		t.Errorf("a failed explain must still discard the draft: code %d discarded %v", code, discarded)
+	}
+	r["DELETE /api/users/current/nqe/changes"] = fwdtest.Const(500, map[string]any{"message": "boom"})
+	r["POST /api/internal/users/current/nqe/queries/explain"] = fwdtest.Const(200, []byte("plan"))
+	if code, out, errs := call(t, []string{"nqe", "explain", "--file", file, "--apply"}, "", r); code != 0 || !strings.Contains(out, "plan") || !strings.Contains(errs, "could not be discarded") || !strings.Contains(errs, "/fwdctl-explain-") {
+		t.Errorf("a failed discard must name the draft: code %d err %q", code, errs)
+	}
+	if code, _, errs := call(t, []string{"nqe", "explain", "--query-id", "Q_abc", "--apply"}, "", r); code != usage || !strings.Contains(errs, "--file") {
+		t.Errorf("--apply without --file: %d %s", code, errs)
 	}
 }

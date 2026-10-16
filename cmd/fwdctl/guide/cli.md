@@ -357,7 +357,7 @@ Flags:
 Prints the optimized plan Forward builds for a saved library query, as the Query Debug Panel in the NQE Library shows it: a device-parallel query starts `parallel_foreach`, a join that became a lookup shows
 `_lookup(...)`, and `⸢ ⸣` marks expressions found total (cannot raise an error, so a `where` may float up), `⟪ ⟫` marks ONCE cardinality. Read it to see why a query is slow.
 Give --query-id (optionally --commit-id; HEAD otherwise) or --path (a query in your own workspace, as the UI writes it, for example "/Operations/my query"). Raw query text is not explained by Forward: save it
-as a draft first. Internal Forward routes (preview); needs the organization's VIEW_NQE_LIBRARY permission. A query with errors is refused with its diagnostics.
+as a draft first, or give --file: it saves the text as a throwaway draft (dry run unless --apply), explains it and discards the draft, naming the path it wrote. Internal Forward routes (preview); needs the organization's VIEW_NQE_LIBRARY permission. A query with errors is refused with its diagnostics.
 For the execution time use `fwdctl nqe run --meta`; for slow runs Forward recorded, `fwdctl nqe metrics`.
 
 ```
@@ -369,12 +369,16 @@ Examples:
 ```
   fwdctl nqe explain --query-id Q_0123456789abcdef0123456789abcdef01234567 --network 123
   fwdctl nqe explain --path "/Operations/my query" --param threshold=3
+  fwdctl nqe explain --file bundle.nqe --apply
 ```
 
 Flags:
 
 ```
+      --apply               with --file: really write the draft (without it, only say what would be done)
       --commit-id string    the commit of the saved query (default HEAD)
+      --draft-path string   with --file: the draft's path (default /fwdctl-explain-<hash of the text>); an existing draft there is never replaced
+      --file string         a file of query text (a bundle works): saved as a throwaway workspace draft, explained, then discarded
       --network string      network id (its newest processed snapshot supplies the schema; optional)
       --param stringArray   a query parameter NAME=VALUE (repeatable)
       --params string       a JSON file of query parameters
@@ -492,7 +496,7 @@ checked, since that library is per-organization and not sealed into this binary:
 Dead code is warned about, never an error (exit stays 0): an import none of whose names is used (unused-import), a parameter or let nothing reads (unused-param, unused-let) and a definition nothing reachable from the @query, the main
 expression or an export refers to (unused-definition). Lint a `nqe bundle` to find what a whole module tree never uses; an exported definition is never called dead, since
 another module may import it.
-Performance advice is reported as `info` (never an error, exit stays 0): the query will not run device-parallel (perf-device-parallel), a device filter that is not an exact name equality (perf-device-filter), a very large inline query (perf-inline-size). See `fwdctl describe author-nqe-query reference/performance.md`.
+Performance advice is reported as `info` (never an error, exit stays 0): the query will not run device-parallel (perf-device-parallel), a device filter that is not an exact name equality (perf-device-filter), a very large inline query (perf-inline-size), a function called per list element that rebuilds shared group trees (perf-repeated-tree-per-row), a device-level value bound inside a row loop (perf-device-value-in-row-loop). See `fwdctl describe author-nqe-query reference/performance.md`.
 The embedded schema is a release's; an organization on a newer build has fields it lacks (and may have dropped fields it still has). --org reads the organization's live schema
 (GET /api/nqe/schema; needs a login) and checks against that, so a field the organization no longer has is reported as an error, and the result says how many field paths the live schema
 has that the embedded one lacks and the reverse (schema.source, fields_added, fields_removed).
