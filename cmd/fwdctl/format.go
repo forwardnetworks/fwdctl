@@ -384,7 +384,8 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 			QueryID        string  `json:"query_id,omitempty"`
 			CommitID       string  `json:"commit_id,omitempty"`
 			ResponseBytes  int64   `json:"response_bytes"`
-		}{meta, time.Since(started).Seconds(), len(rows), total, *pageOffset, *pageLimit, snap, *queryID, *commitID, renderedBytes}, "", "  ")
+			Hint           string  `json:"hint,omitempty"`
+		}{meta, time.Since(started).Seconds(), len(rows), total, *pageOffset, *pageLimit, snap, *queryID, *commitID, renderedBytes, inlineAnalysisHint(*queryID, meta.QueuedMillis)}, "", "  ")
 		if *metaOut == "-" {
 			fmt.Fprintln(stderr, string(b))
 		} else {
@@ -534,4 +535,12 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n += int64(n)
 	return n, err
+}
+
+// inlineAnalysisHint explains a long queue wait of an inline query: Forward analyses an inline program afresh on every run, while a saved query run by id has its analysis cached by (query, snapshot, parameters).
+func inlineAnalysisHint(queryID string, queuedMillis *int64) string {
+	if queryID != "" || queuedMillis == nil || *queuedMillis < 2000 {
+		return ""
+	}
+	return fmt.Sprintf("queued_millis (%d ms) is mostly Forward analysing this inline query afresh; a saved query run by id (--query-id) has the analysis cached by (query, snapshot, parameters) and avoids that wait", *queuedMillis)
 }

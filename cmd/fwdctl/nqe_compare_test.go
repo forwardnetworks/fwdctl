@@ -144,3 +144,14 @@ func TestNqeRunMetaRecordsTheResponseBytes(t *testing.T) {
 		t.Errorf("response_bytes %d, stdout %d bytes: %s", m.ResponseBytes, len(out), b)
 	}
 }
+
+// queued_millis of an inline query is mostly Forward analysing the program afresh; a saved query run by id has that analysis cached. --meta says so when the queue wait is long and the query was inline.
+func TestInlineAnalysisHintOnlyForALongQueueWaitOfAnInlineQuery(t *testing.T) {
+	long, short := int64(12954), int64(300)
+	if h := inlineAnalysisHint("", &long); !strings.Contains(h, "saved query") || !strings.Contains(h, "--query-id") {
+		t.Errorf("hint %q", h)
+	}
+	if inlineAnalysisHint("", &short) != "" || inlineAnalysisHint("Q_abc", &long) != "" || inlineAnalysisHint("", nil) != "" {
+		t.Errorf("no hint for a short wait, a saved query or no measurement")
+	}
+}
