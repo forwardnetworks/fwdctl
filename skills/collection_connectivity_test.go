@@ -29,6 +29,9 @@ func connectivityRoutes() map[string]fwdtest.Handler {
 	return map[string]fwdtest.Handler{
 		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, devs),
 		// the stored result of the authorization failure carries what the status list does not
+		"GET /api/networks/n1/custom-command-groups": fwdtest.Const(200, []any{
+			map[string]any{"name": "Change Validation MACsec", "deviceConnTypes": []string{"cisco_ios_xe_ssh"}, "type": "CLI", "commands": []string{"Show Running-Config | Include X"}},
+		}),
 		"GET /api/networks/n1/connectivityTests/a1": fwdtest.Const(200, map[string]any{"error": "CUSTOM_COMMAND_AUTHORIZATION_FAILED", "errorPhase": "AUTHORIZATION",
 			"unauthorizedCommands": []string{"show running-config | include x", "show tech"}, "discoveredCliCredentialId": "L9", "hostIps": []string{"192.0.2.9"}, "endTime": "2026-10-16T11:18:00Z"}),
 	}
@@ -91,6 +94,9 @@ func TestConnectivityViewShowsTheRejectedCommandsOfAnAuthorizationFailure(t *tes
 	rows, _ := authz["device_details"].([]map[string]any)
 	if len(rows) != 1 || rows[0]["name"] != "a1" || fmt.Sprint(rows[0]["unauthorized_commands"]) != "[show running-config | include x show tech]" || rows[0]["discovered_cli_credential"] != "L9" {
 		t.Fatalf("details: %v", authz)
+	}
+	if fmt.Sprint(rows[0]["defined_by_custom_group"]) != "[Change Validation MACsec]" || !strings.Contains(fmt.Sprint(rows[0]["meaning"]), "custom command defined by") || !strings.Contains(fmt.Sprint(rows[0]["meaning"]), "not a Forward default") {
+		t.Errorf("an unauthorized command that a custom group holds is named as such: %v", rows[0])
 	}
 	if !strings.Contains(strings.Join(r.Limits, " "), "privilege level") {
 		t.Errorf("the limits must say what the stored result does not carry (the credential tried, the privilege level): %v", r.Limits)

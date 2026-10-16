@@ -96,6 +96,7 @@ func inspectCollectionConnectivity(ctx context.Context, s *fwd.Session, raw json
 	rows := make([]map[string]any, 0, len(keys))
 	failed := 0
 	sawAuthz := false
+	var groupIdx map[string][]string
 	for _, k := range keys {
 		g := groups[k]
 		sort.Strings(g.names)
@@ -103,11 +104,14 @@ func inspectCollectionConnectivity(ctx context.Context, s *fwd.Session, raw json
 		failed += total
 		var details []map[string]any
 		if strings.Contains(k.err, "AUTHORIZATION") {
+			if groupIdx == nil {
+				groupIdx = customCommandIndex(ctx, s, in.NetworkID)
+			}
 			for i, n := range shown {
 				if i == maxAuthzDetails {
 					break
 				}
-				if d := authzDetail(ctx, s, in.NetworkID, n); d != nil {
+				if d := authzDetail(ctx, s, in.NetworkID, n, groupIdx); d != nil {
 					details = append(details, d)
 				}
 			}
@@ -140,7 +144,7 @@ const maxAuthzDetails = 20
 
 // authzDetail reads one device's stored test result and returns what an authorization failure needs: the commands the account may not run, the login the test found, the addresses reached and when. It returns nil when the
 // result cannot be read (the caller says so).
-func authzDetail(ctx context.Context, s *fwd.Session, networkID, name string) map[string]any {
+func authzDetail(ctx context.Context, s *fwd.Session, networkID, name string, groups map[string][]string) map[string]any {
 	r, _, err := s.Client.ConnectivityTests.Get(ctx, networkID, name)
 	if err != nil || r == nil {
 		return nil
@@ -149,6 +153,22 @@ func authzDetail(ctx context.Context, s *fwd.Session, networkID, name string) ma
 	if len(r.UnauthorizedCommands) > 0 {
 		cmds, n := result.CapRow(r.UnauthorizedCommands, 10)
 		d["unauthorized_commands"], d["unauthorized_commands_total"] = cmds, n
+	}
+	// an unauthorized command that a custom command group holds is the network's own command, not a Forward default
+	held := map[string]bool{}
+	for _, c := range r.UnauthorizedCommands {
+		for _, g := range groups[strings.ToLower(strings.TrimSpace(c))] {
+			held[g] = true
+		}
+	}
+	if len(held) > 0 {
+		names := make([]string, 0, len(held))
+		for g := range held {
+			names = append(names, g)
+		}
+		sort.Strings(names)
+		d["defined_by_custom_group"] = names
+		d["meaning"] = "an unauthorized command is a custom command defined by " + strings.Join(names, ", ") + " (a custom command group of this network), not a Forward default: authorize the account for it on the device or in the AAA system, or disable or remove that group (edit-source object custom_command_group)"
 	}
 	if r.DiscoveredCLICredentialID != "" {
 		d["discovered_cli_credential"] = r.DiscoveredCLICredentialID
@@ -160,6 +180,22 @@ func authzDetail(ctx context.Context, s *fwd.Session, networkID, name string) ma
 		d["tested_at"] = at
 	}
 	return d
+}
+
+// customCommandIndex maps each lowercased command of the network's custom command groups to the groups that hold it (nil when the groups cannot be read: the explanation is then simply not made).
+func customCommandIndex(ctx context.Context, s *fwd.Session, networkID string) map[string][]string {
+	groups, _, err := s.Client.CustomCommandGroups.List(ctx, networkID)
+	if err != nil {
+		return nil
+	}
+	idx := map[string][]string{}
+	for _, g := range groups {
+		for _, c := range g.Commands {
+			k := strings.ToLower(strings.TrimSpace(c))
+			idx[k] = append(idx[k], g.Name)
+		}
+	}
+	return idx
 }
 
 const authzLimit = "for an authorization failure the stored test result lists the commands the account may not run (unauthorized_commands, when Forward recorded them) and the login the test found; it does not carry the credential that was tried, the privilege level or the command that was rejected first, and this tool knows no API that returns them"

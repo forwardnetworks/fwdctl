@@ -10,6 +10,7 @@
 | `endpoint_profiles` | organization | every SNMP, CLI and HTTP endpoint profile (header values removed) |
 | `schedules` | network | collection schedules |
 | `cloud_setups` | network | cloud accounts, controller-managed and Mist setups, with regions and collect flags |
+| `custom_command_groups` | network | the custom command and OID groups of the network; `command` keeps the groups holding a command |
 | `locations`, `tag_definitions` | network | locations, and the device tags defined on the network |
 | `access_labels`, `api_tokens` | organization | device access labels; this login's own API tokens (names and dates) |
 | `webhooks`, `banners`, `certificates`, `organizations`, `cve_index` | organization | as named; a webhook with its last test result; `banners` also reads the system announcement and the critical states |
@@ -21,3 +22,5 @@
 Detail and what each area cannot show: `reference/areas.md` (`fwdctl describe inspect-platform reference/areas.md`).
 
 `view` is optional. `effective` (area `collection_settings` only) lists every collection setting for the organization and each collector with Forward's default, whether it is set, and whether it differs.
+
+`command` (area `custom_command_groups` only): keep the groups whose commands contain this text, ignoring case.

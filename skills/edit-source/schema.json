@@ -23,7 +23,8 @@
         "cloud_account",
         "rapid7_source",
         "controller_setup",
-        "mist_setup"
+        "mist_setup",
+        "custom_command_group"
       ]
     },
     "action": {

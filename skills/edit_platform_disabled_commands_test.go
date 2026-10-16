@@ -46,7 +46,7 @@ func TestDisablingACommandAddsOneEntryAndResendsTheRestUnchanged(t *testing.T) {
 		t.Fatalf("dry run wrote: %v", w.patched)
 	}
 	all := strings.Join(r.Limits, " ")
-	for _, want := range []string{"organization", "external-list", "COMMAND_DISABLED", "26.8.3"} {
+	for _, want := range []string{"organization", "external-list", "COMMAND_DISABLED", "26.8.3", "custom command group"} {
 		if !strings.Contains(strings.ToLower(all), strings.ToLower(want)) {
 			t.Errorf("the dry run should mention %q: %v", want, r.Limits)
 		}

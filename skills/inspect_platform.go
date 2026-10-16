@@ -27,6 +27,7 @@ type inspectPlatformInput struct {
 	Name      string `json:"name"`
 	Limit     int    `json:"limit"`
 	Offset    int    `json:"offset"`
+	Command   string `json:"command"`
 }
 
 // platformArea is one thing an administrator sets up or looks after. list reads it; network says whether it belongs to a network (true) or to the organization (false). A secret an
@@ -149,6 +150,37 @@ var platformAreas = map[string]platformArea{
 		v, _, err := s.Client.Locations.List(ctx, n)
 		r, err := rowsOf(v, err)
 		return r, nil, err
+	}},
+	"custom_command_groups": {true, "custom command groups (the commands and OIDs a network adds to a device type's collection)", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
+		v, _, err := s.Client.CustomCommandGroups.List(ctx, n)
+		if err != nil {
+			return nil, nil, err
+		}
+		rows := make([]any, 0, len(v))
+		for _, g := range v {
+			row := map[string]any{"name": g.Name, "type": g.Type, "device_types": g.DeviceConnTypes, "disabled": g.Disabled}
+			if len(g.Devices) == 0 {
+				row["devices"] = "every device of those types"
+			} else {
+				row["devices"] = g.Devices
+			}
+			if g.Type == "SNMP" || len(g.OIDs) > 0 {
+				oids := make([]map[string]string, 0, len(g.OIDs))
+				for _, o := range g.OIDs {
+					oids = append(oids, map[string]string{"name": o.Name, "oid": o.OID})
+				}
+				row["oids"] = oids
+			} else {
+				cmds, n := result.CapRow(g.Commands, 100)
+				row["commands"], row["commands_total"] = cmds, n
+			}
+			rows = append(rows, row)
+		}
+		return rows, []string{
+			"a custom command group is a command a network adds to a device type's collection: it is not a Forward built-in, and it is removed or disabled here (edit-source object custom_command_group), not with the org-wide disable_commands",
+			"a group's commands are checked against Forward's allowed and banned patterns when it is saved, not against the approved-CLI-commands list (that governs endpoint profiles); a device login that cannot run one fails the connectivity test as CUSTOM_COMMAND_AUTHORIZATION_FAILED",
+			"the org-wide disabled-commands setting can also skip a group's command, silently, but only in an interactive CLI session on a device whose software version the collector could read (read from Forward's source by a peer session, not exercised on a live Forward)",
+			"built-in commands are not listed here: this reads only what the network added"}, nil
 	}},
 	"tag_definitions": {true, "device tags defined on the network", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
 		v, _, err := s.Client.DeviceTags.List(ctx, n, "")
@@ -457,6 +489,24 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	redacted := 0
 	for _, r := range rows {
 		redacted += fwd.RedactSecrets(r)
+	}
+	if in.Command != "" {
+		if in.Area != "custom_command_groups" {
+			return result.Result{}, fmt.Errorf("%w: command belongs to area custom_command_groups", ErrInvalidInput)
+		}
+		kept := rows[:0:0]
+		for _, r := range rows {
+			if m, ok := r.(map[string]any); ok {
+				cmds, _ := m["commands"].([]string)
+				for _, c := range cmds {
+					if strings.Contains(strings.ToLower(c), strings.ToLower(in.Command)) {
+						kept = append(kept, r)
+						break
+					}
+				}
+			}
+		}
+		rows = kept
 	}
 	if in.Name != "" {
 		kept := rows[:0:0]

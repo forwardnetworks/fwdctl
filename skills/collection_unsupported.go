@@ -61,6 +61,7 @@ func explainUnsupported(ctx context.Context, s *fwd.Session, networkID string, k
 	by := map[string]int{}
 	unsupported, incomplete, unreachable := 0, 0, 0
 	authzRead, sawAuthz := 0, false
+	var groupIdx map[string][]string
 	for _, r := range kept {
 		name := str(r["device"])
 		t, tested := tests[name]
@@ -71,8 +72,11 @@ func explainUnsupported(ctx context.Context, s *fwd.Session, networkID string, k
 			}
 			if strings.Contains(t.errName, "AUTHORIZATION") && authzRead < maxAuthzDetails {
 				authzRead++
-				if d := authzDetail(ctx, s, networkID, name); d != nil {
-					for _, k := range []string{"unauthorized_commands", "unauthorized_commands_total", "discovered_cli_credential"} {
+				if groupIdx == nil {
+					groupIdx = customCommandIndex(ctx, s, networkID)
+				}
+				if d := authzDetail(ctx, s, networkID, name, groupIdx); d != nil {
+					for _, k := range []string{"unauthorized_commands", "unauthorized_commands_total", "discovered_cli_credential", "defined_by_custom_group", "meaning"} {
 						if v, ok := d[k]; ok {
 							r[k] = v
 						}

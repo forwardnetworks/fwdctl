@@ -22,3 +22,5 @@
 Detail, including the SNMP v3 secret file format: `reference/objects.md`.
 
 `classic_device` action `test` takes `definition: {"names": [...], "wait_seconds": N}` (no `name`): it queues Forward's connectivity test of the named classic devices, at most 100 per call, never the whole network. Each test connects to the device's host from its collector, so the dry run lists the devices with their collectors; apply needs `confirm` equal to the number of devices named. A name that is not a classic device refuses the whole call. `wait_seconds` (at most 600) waits for each stored result to be newer than the queue time and returns them with a one-line summary of how many that failed before now pass; otherwise read them with `inspect-collection` view `connectivity`. Needs the TEST_COLLECTION_SOURCES permission.
+
+| `custom_command_group` | `create`, `update`, `delete` | create: `name`, `deviceConnTypes`, `commands` or `oids`, `devices`, `disabled`; update: any of them (partial); delete: `name`, `confirm` = the name | none | delete it; update back; recreate from the before values |

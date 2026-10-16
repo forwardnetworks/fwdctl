@@ -11,6 +11,7 @@
 - cloud_account
 - rapid7_source
 - controller_setup
+- custom_command_group
 - mist_setup
 
 ## The secret file
@@ -81,3 +82,6 @@ A controller-managed setup: controllers Forward logs in to, and the managed devi
 
 ## mist_setup
 A Juniper Mist setup. `region` is one of `GLOBAL_01`-`GLOBAL_05`, `EMEA_01`-`EMEA_04`, `APAC_01`-`APAC_03`; `apiKeyId` names an existing credential. Create and delete only (the API has no update): to change one, delete and create. Neither tests the key; run a collection and read `inspect-collection`.
+
+## custom_command_group
+A network's custom command group: the CLI commands (or SNMP OIDs) it adds to a device type's collection. It is NOT a Forward built-in, and the org-wide `edit-platform` `disable_commands` is not how it is stopped (that can skip its commands only silently and only in interactive CLI sessions). `create` takes `definition` `{name, deviceConnTypes, commands | oids, devices, disabled}` (exactly one of commands and oids; empty `devices` = every device of the types; names unique ignoring case) and is checked with Forward's own validation first, so a command the device type refuses is named in the dry run and nothing is sent. `update` (name = the group) is partial: only the fields given change, `commands`/`oids` replace the whole list, and `disabled: true` stops a group without deleting it. `delete` needs `confirm` equal to the name. Undo: delete the created group; update back; recreate a deleted group from the before values. List the groups and find which one holds a command with `inspect-platform` area `custom_command_groups` (`command`). Needs EDIT_CUSTOM_COLLECTION_GROUPS (read: VIEW_CUSTOM_COLLECTION_GROUPS).
