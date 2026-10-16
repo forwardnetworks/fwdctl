@@ -198,3 +198,21 @@ func TestValidateChecksUnsavedSyntheticRowsWhenAKindIsGiven(t *testing.T) {
 		}
 	}
 }
+
+// A hint (the form of a clause) is said in the finding, from Forward's diagnostic when it has one, else from the offline parser's syntax error, so it is not buried in the diagnostics.
+func TestValidateNQEFindingCarriesTheGroupFormHint(t *testing.T) {
+	for name, q := range map[string]string{
+		"forward's missing as": "foreach d in network.devices\ngroup d by d.name as k\nselect {k}",
+		"offline only":         "foreach d in network.devices group d as g by d.name select {d: d.name}",
+	} {
+		body := map[string]any{"completionType": "FAILED", "errors": []any{map[string]any{"message": "missing 'as' at 'by'", "line": 1, "column": 8}}}
+		if name == "offline only" {
+			body = map[string]any{"completionType": "FAILED", "errors": []any{map[string]any{"message": "something Forward says differently", "line": 0, "column": 0}}}
+		}
+		in, _ := json.Marshal(map[string]any{"network_id": "n1", "query": q})
+		r, _ := mustRun(t, "validate-nqe-query", map[string]fwdtest.Handler{snapsPath: ready("s1"), nqePath: fwdtest.Const(400, body)}, string(in))
+		if !strings.Contains(r.Finding, "group <expr> as <name> by <key> as <keyName>") {
+			t.Errorf("%s: finding %q", name, r.Finding)
+		}
+	}
+}

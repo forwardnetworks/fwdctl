@@ -54,7 +54,15 @@ func normalizeBGPFamily(raw string) (family, vrf string) {
 			words = append(words, f[i])
 		}
 	}
-	return strings.Join(words, " "), vrf
+	family = strings.Join(words, " ")
+	// EOS and IOS-XE write a bare ipv4 for IPv4 unicast, and EOS writes evpn for l2vpn evpn: fold them so the same family counts as one across OSes
+	switch family {
+	case "ipv4", "ipv6", "vpnv4", "vpnv6":
+		family += " unicast"
+	case "evpn":
+		family = "l2vpn evpn"
+	}
+	return family, vrf
 }
 
 func isEVPNFamily(family string) bool { return strings.Contains(family, "evpn") }

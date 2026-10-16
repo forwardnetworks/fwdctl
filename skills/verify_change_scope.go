@@ -10,9 +10,11 @@ import (
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
-// predictFullPlatforms are the platforms on which Predict does full routing re-synthesis (prediction-scope.md, "Supported Platforms", 26.9 and 26.10): matched as substrings of the lowercased OS name. Any other platform is in the model, but its routing
-// table stays as collected and routes do not propagate through it.
-var predictFullPlatforms = []string{"ios", "nxos", "nx-os", "nx_os", "asa", "junos", "eos", "forti", "pan"}
+// predictFullPlatforms are Forward's OS names for the platforms on which Predict does full routing re-synthesis (prediction-scope.md, "Supported Platforms", 26.9 and 26.10: Cisco IOS, IOS-XE, IOS-XR, NX-OS and ACI, ASA, Juniper
+// Junos and SRX, Arista EOS, Fortinet, Palo Alto PAN-OS). An exact match on the uppercased OS name: any other platform is in the model, but its routing table stays as collected and routes do not propagate through it.
+var predictFullPlatforms = map[string]bool{
+	"IOS": true, "IOS_XE": true, "IOS_XR": true, "NXOS": true, "ACI": true, "ASA": true, "JUNOS": true, "SRX": true, "ARISTA_EOS": true, "EOS": true, "FORTINET": true, "PAN_OS": true,
+}
 
 // predictOutOfScopeFamilies are the BGP families the 26.9 table says Predict does not model: a normalized config family containing the marker belongs to the class.
 var predictOutOfScopeFamilies = []struct{ class, marker string }{
@@ -87,14 +89,7 @@ func predictScope(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 		limits = append(limits, "the device count by OS could not be read ("+oerr.Error()+"), so the platforms that stop propagation are not shown")
 	} else {
 		for _, r := range osRows {
-			os := strings.ToLower(str(r["os"]))
-			full := false
-			for _, p := range predictFullPlatforms {
-				if strings.Contains(os, p) {
-					full = true
-				}
-			}
-			if !full {
+			if !predictFullPlatforms[strings.ToUpper(strings.TrimSpace(str(r["os"])))] {
 				n, _ := num(r["devices"])
 				stops = append(stops, map[string]any{"os": str(r["os"]), "devices": n})
 			}
@@ -105,7 +100,7 @@ func predictScope(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 
 	var notes []string
 	if lic["predict"] == false {
-		notes = append(notes, "the license has no Predict facet")
+		notes = append(notes, "the license (tier "+fmt.Sprint(lic["tier"])+") has no Predict facet, so change sets cannot be used")
 	}
 	for _, o := range oos {
 		notes = append(notes, fmt.Sprintf("%v on %v device(s) is not modelled", o["family"], o["devices"]))
@@ -124,10 +119,14 @@ func predictScope(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 	}
 	notes = append(notes, "static routes are not re-propagated")
 	finding := "Predict fit: " + strings.Join(notes, "; ")
+	status := result.OK
+	if lic["predict"] == false {
+		status = result.Failed // Predict cannot be used on this license whatever the network looks like
+	}
 	limits = append(limits,
 		"the scope is prediction-scope.md of the 26.9 and 26.10 documentation (read from the documentation by a peer session, not verified on a live Forward): BGP unicast IPv4/IPv6, VPNv4/VPNv6 and BGP-LU are re-propagated; EVPN, VPLS, multicast/MVPN, BGP-LS, SR policy and flowspec are not; OSPF, static, SD-WAN, IS-IS, EIGRP and RIP are not re-propagated on 26.9. Master's platform-support page adds BGP rows for Meraki MX, AWS Transit Gateway and VeloCloud Edge and turns predict_model_ospf on by default",
-		"full routing re-synthesis is documented for Cisco IOS, IOS-XE, IOS-XR, NX-OS, ASA, Juniper Junos and SRX, Arista EOS, Fortinet and Palo Alto PAN-OS; any other platform stays as collected and propagation stops at it. The platform match is by OS name and may misplace an unusual OS name",
+		"full routing re-synthesis is documented for Cisco IOS, IOS-XE, IOS-XR, NX-OS, ASA, Juniper Junos and SRX, Arista EOS, Fortinet and Palo Alto PAN-OS; any other platform stays as collected and propagation stops at it. The platform match is an exact match on Forward's OS name (IOS, IOS_XE, IOS_XR, NXOS, ACI, ASA, JUNOS, SRX, ARISTA_EOS, FORTINET, PAN_OS); an OS name not in that list is reported as a propagation stop, including OTHER and UNKNOWN",
 		"BGP families are read from device config (see inspect-inventory kind bgp_families): EOS, IOS, IOS-XE and NX-OS shapes only; Junos, IOS-XR and FortiOS are not read, so their out-of-scope families, if any, are missing here")
-	return result.Build(verifyChangeName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-inventory", "edit-change-set"},
+	return result.Build(verifyChangeName, status, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-inventory", "edit-change-set"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "predictScope", cx.SnapshotID, map[string]any{"view": "scope", "scope": d}, finding)}})
 }

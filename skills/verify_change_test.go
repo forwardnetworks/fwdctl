@@ -301,8 +301,9 @@ func TestVerifyChangeScopeViewJoinsLicenseFamiliesPlatformsAndFeatures(t *testin
 			map[string]any{"device": "xe1", "os": "IOS_XE", "model": "C9300", "family": "l2vpn vpls"},
 			map[string]any{"device": "xe1", "os": "IOS_XE", "model": "C9300", "family": "ipv4 multicast"}),
 		"group d as g by d.platform.os": rowsOf(3,
-			map[string]any{"os": "EOS", "devices": 2},
+			map[string]any{"os": "ARISTA_EOS", "devices": 2},
 			map[string]any{"os": "IOS_XE", "devices": 1},
+			map[string]any{"os": "SRX", "devices": 4},
 			map[string]any{"os": "MERAKI", "devices": 3}),
 	})
 	r, srv := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
@@ -345,5 +346,16 @@ func TestVerifyChangeScopeViewJoinsLicenseFamiliesPlatformsAndFeatures(t *testin
 	}
 	if _, _, err := runSkill(t, "verify-change", routes, `{"network_id":"n1","view":"scope","change_set_id":"cs1"}`); err == nil {
 		t.Errorf("scope takes no change_set_id")
+	}
+}
+
+func TestScopeStatusIsFailedWhenTheLicenseHasNoPredictAndLeadsWithTheLicense(t *testing.T) {
+	routes := cfgRoutes(map[string]any{"predict_modeling": true}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NS", "licenseStatus": "ACTIVE"})
+	routes[snapsPath] = ready("s1")
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{})
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
+	if r.Status != result.Failed || !strings.HasPrefix(r.Finding, "Predict fit: the license (tier NS) has no Predict facet") {
+		t.Errorf("%s %s", r.Status, r.Finding)
 	}
 }

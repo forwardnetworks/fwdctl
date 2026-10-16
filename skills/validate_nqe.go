@@ -85,6 +85,25 @@ func validateNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 				break
 			}
 		}
+		// a hint (the form of a clause, the module path) is said in the finding, not only buried in the diagnostics: Forward's own, else the offline parser's for a syntax error
+		hint := ""
+		for _, d := range diags {
+			if d.Hint != "" {
+				hint = d.Hint
+				break
+			}
+		}
+		if hint == "" {
+			for _, d := range nqelint.Lint(in.Query) {
+				if d.Severity == "error" && d.Hint != "" {
+					hint = d.Hint
+					break
+				}
+			}
+		}
+		if hint != "" {
+			where += ". " + hint
+		}
 		return result.Build(validateNQEName, result.Failed, "The query does not compile: "+reason+where,
 			result.Deterministic, cx, result.Options{Evidence: []result.Evidence{
 				result.NewEvidence(result.EvNQE, "runNqeQuery", sid, detail, fmt.Sprintf("%d diagnostic(s)", len(diags)))}})

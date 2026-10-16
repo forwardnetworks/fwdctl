@@ -46,7 +46,7 @@ func TestBGPFamiliesCountsDevicesByFamilyAndOSFromConfig(t *testing.T) {
 	for _, x := range rows {
 		got[fmt.Sprint(x["family"])+"|"+fmt.Sprint(x["os"])] = fmt.Sprint(x["devices"])
 	}
-	if got["evpn|EOS"] != "2" || got["l2vpn evpn|IOS_XE"] != "1" || got["ipv4|IOS_XE"] != "1" || got["ipv4|EOS"] != "1" {
+	if got["l2vpn evpn|EOS"] != "2" || got["l2vpn evpn|IOS_XE"] != "1" || got["ipv4 unicast|IOS_XE"] != "1" || got["ipv4 unicast|EOS"] != "1" {
 		t.Errorf("counts: %v", got)
 	}
 	if d["evpn_devices"] != 3 {
