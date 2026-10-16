@@ -2,6 +2,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "view": { "enum": ["networks", "workspaces"], "default": "networks", "description": "workspaces: only the change workspaces (networks with a parent), each with its creator, created time, retention and snapshot counts by trigger for the page asked for" },
     "name": { "type": "string", "minLength": 1 },
     "limit": { "type": "integer", "minimum": 1 },
     "offset": { "type": "integer", "minimum": 0 }

@@ -102,6 +102,7 @@ func inspectEnvironment(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		block, flimits := featuresBlock(s.OrgConfig(ctx))
 		detail["features"] = block
 		limits = append(limits, flimits...)
+		limits = append(limits, applyLicense(ctx, s, detail, block)...)
 	}
 	if read == 0 {
 		return result.NewUnknown(environmentName, "Nothing about the Forward environment could be read", cx, limits, result.Options{})

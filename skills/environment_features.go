@@ -1,6 +1,8 @@
 package skills
 
 import (
+	"context"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -189,7 +191,61 @@ func featuresBlock(c fwd.OrgConfig) (map[string]any, []string) {
 	}
 	limits = append(limits,
 		"features are read from Forward's organization configuration API: it says what is set now for this organization and the deployment default, not who set a value, when, or why",
-		"not returned by any API: network-level overrides of disable_flow_computation and advanced_reachability_analysis, per-user toggles, and the license tier (a license without path analysis also disables flow computation); a feature that reads on here can still be off for one network",
+		"not returned by any API: network-level overrides of disable_flow_computation and advanced_reachability_analysis, and per-user toggles; a feature that reads on here can still be off for one network or unlicensed (see license)",
 		"a property marked reprocess_to_apply changes existing snapshots only after they are reprocessed; a changed value does not say which snapshots were computed under the old one")
 	return block, limits
+}
+
+// licenseFacets reads a license tier's letters as its facets: N network, S security, P predict (a peer session read Forward's LicenseTier: NS has no Predict, only NP and NSP do). A tier whose letters are not these is reported as is, with no facet claimed.
+func licenseFacets(tier string) (map[string]bool, bool) {
+	t := strings.ToUpper(strings.TrimSpace(tier))
+	if t == "" || strings.Trim(t, "NSP") != "" {
+		return nil, false
+	}
+	return map[string]bool{"network": strings.Contains(t, "N"), "security": strings.Contains(t, "S"), "predict": strings.Contains(t, "P")}, true
+}
+
+// applyLicense adds the license (tier, status, facets, whether it can write) to the environment and marks the Predict features unlicensed when the tier lacks the facet, even though their organization property reads on. It
+// returns the limits.
+func applyLicense(ctx context.Context, s *fwd.Session, detail map[string]any, block map[string]any) []string {
+	ts, _, err := s.Client.Licensing.TierAndStatus(ctx)
+	if err != nil || ts == nil {
+		reason := "unreadable"
+		if err != nil {
+			reason = err.Error()
+		}
+		return []string{"the license tier and status could not be read (" + reason + "), so which features are licensed is not known"}
+	}
+	lic := map[string]any{"tier": ts.LicenseTier, "status": ts.LicenseStatus}
+	var limits []string
+	switch ts.LicenseStatus {
+	case "ACTIVE", "EXEMPT", "SOFTWARE_CENTRAL":
+		lic["can_write"] = true
+	default:
+		lic["can_write"] = false
+		lic["note"] = "writes need a license status of ACTIVE, EXEMPT or SOFTWARE_CENTRAL; this one is " + ts.LicenseStatus
+	}
+	facets, known := licenseFacets(ts.LicenseTier)
+	if known {
+		lic["facets"] = facets
+		if rows, ok := block["rows"].([]any); ok {
+			for _, r := range rows {
+				row, _ := r.(map[string]any)
+				if row == nil || !strings.HasPrefix(fmt.Sprint(row["property"]), "predict_") {
+					continue
+				}
+				row["licensed"] = facets["predict"]
+				if !facets["predict"] {
+					row["licensed_note"] = "the organization property reads on, but license tier " + ts.LicenseTier + " has no Predict facet: change-set calls answer 403 \"Unlicensed operation\" (a license limit, not a role)"
+				}
+			}
+		}
+	} else if ts.LicenseTier != "" {
+		limits = append(limits, "license tier "+ts.LicenseTier+" is not one whose letters (N network, S security, P predict) are known here, so no facet is claimed")
+	} else {
+		limits = append(limits, "the license tier is empty: the organization is unlicensed, and a licensed operation will be refused")
+	}
+	limits = append(limits, "the license tier and status are Forward's (GET /api/licenses?view=status); reading the tier's letters as facets (N network, S security, P predict) is from a peer session's reading of Forward's source, not confirmed on a live Forward")
+	detail["license"] = lic
+	return limits
 }

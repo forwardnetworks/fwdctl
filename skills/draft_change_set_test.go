@@ -123,3 +123,33 @@ func TestDraftChangeSetStagesFirewallRulesAndReadsTheRuleDiffBack(t *testing.T) 
 		}
 	}
 }
+
+// The dry run does the cheap checks the apply would fail on: an unlicensed organization is a licence limit (unknown, not ok), and a device that is not in the base snapshot is refused by name. commands may be one string of CLI
+// text or an array of lines.
+func TestDraftChangeSetDryRunChecksTheLicenceAndTheDevicesExist(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes["GET "+csRoot] = fwdtest.Const(403, map[string]any{"message": "Unlicensed operation: NetworkOperation.MANAGE_CHANGE_SETS"})
+	r, srv := mustRun(t, "edit-change-set", routes, dcIn+`}`)
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "licence limit") || writes(srv) != 0 {
+		t.Fatalf("an unlicensed org must not get an ok dry run: %s %s %v", r.Status, r.Finding, r.Limits)
+	}
+	routes = dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes[nqePath] = func(_ *http.Request, b []byte) (int, any) {
+		if strings.Contains(string(b), `== \"r1\"`) {
+			return 200, map[string]any{"items": []any{map[string]any{"name": "r1"}}, "totalNumItems": 1}
+		}
+		return 200, map[string]any{"items": []any{}, "totalNumItems": 0}
+	}
+	if _, _, err := runSkill(t, "edit-change-set", routes, `{"network_id":"n1","name":"x","devices":[{"device":"nope","commands":"interface lo99"}]}`); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Errorf("a device that is not in the snapshot must be named: %v", err)
+	}
+	if r, _ := mustRun(t, "edit-change-set", routes, dcIn+`}`); r.Status != result.OK {
+		t.Errorf("an existing device passes: %s %s", r.Status, r.Finding)
+	}
+	arr := `{"network_id":"n1","name":"add lo","devices":[{"device":"r1","commands":["interface lo9"," ip address 9.9.9.9 255.255.255.255"]}],"apply":true}`
+	stagedBody = ""
+	r, _ = mustRun(t, "edit-change-set", routes, arr)
+	if r.Status != result.OK || !strings.Contains(stagedBody, "interface lo9") {
+		t.Errorf("an array of lines is joined with newlines: %s %s staged %q", r.Status, r.Finding, stagedBody)
+	}
+}

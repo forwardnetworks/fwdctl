@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -19,6 +20,32 @@ func init() { Register(draftChangeSetName, draftChangeSet) }
 type draftDevice struct {
 	Device   string `json:"device"`
 	Commands string `json:"commands"`
+}
+
+// UnmarshalJSON accepts commands as one string of CLI text or as an array of lines (joined with newlines).
+func (d *draftDevice) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Device   string          `json:"device"`
+		Commands json.RawMessage `json:"commands"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	d.Device = raw.Device
+	if len(raw.Commands) == 0 {
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(raw.Commands, &text); err == nil {
+		d.Commands = text
+		return nil
+	}
+	var lines []string
+	if err := json.Unmarshal(raw.Commands, &lines); err != nil {
+		return fmt.Errorf("commands is a string of CLI text (lines separated by newlines) or an array of lines")
+	}
+	d.Commands = strings.Join(lines, "\n")
+	return nil
 }
 
 type draftAdvert struct {
@@ -113,7 +140,20 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	cx = fwd.Context(in.NetworkID, sn)
 	base := string(sn.ID)
-	if list, err := s.ChangeSets(ctx, in.NetworkID); err == nil {
+	list, lerr := s.ChangeSets(ctx, in.NetworkID)
+	if lerr != nil {
+		// the cheapest call that the licence and the role gate: an unlicensed organization or a login without the permission is answered here, not by an ok dry run
+		if r, ok := denialResult(draftChangeSetName, lerr, cx, "listing the network's change sets (the check before creating one)"); ok {
+			return r, nil
+		}
+	}
+	var limits []string
+	if missing, checked := missingSnapshotDevices(ctx, s, in.NetworkID, base, devicesOf(touched)); len(missing) > 0 {
+		return result.Result{}, fmt.Errorf("%w: not in snapshot %s: %s (a change set can only edit devices of its base snapshot)", ErrInvalidInput, base, strings.Join(missing, ", "))
+	} else if !checked {
+		limits = append(limits, "whether the named devices exist in the base snapshot could not be checked")
+	}
+	if lerr == nil {
 		for _, c := range list {
 			if c.Name == in.Name && string(c.SnapshotID) == base {
 				return result.NewUnknown(draftChangeSetName, fmt.Sprintf("A change set named %q on snapshot %s already exists (id %s); nothing was created", in.Name, base, c.ID), cx,
@@ -141,7 +181,7 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	if !in.Apply {
 		return result.Build(draftChangeSetName, result.OK, fmt.Sprintf("Dry run: would create change set %q on snapshot %s editing %d device(s), validate the commands and stage them. Nothing reaches a device; nothing was created. Run again with apply=true (and run=true to also predict it)", in.Name, base, len(devices)),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Evidence: ev(result.ModeDryRun, nil), NextActions: []string{"verify-change"},
-				Limits: []string{"the commands are not validated until the draft exists, so this dry run cannot say they parse"}})
+				Limits: append(limits, "the commands are not validated until the draft exists, so this dry run cannot say they parse", "the licence and the permission to list change sets were checked, and the named devices were looked up in the base snapshot; the staging itself is not tried")})
 	}
 	cs, err := s.CreateChangeSet(ctx, in.NetworkID, in.Name, in.Description, base)
 	if err != nil {
@@ -205,7 +245,6 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			return rollback(fmt.Sprintf("staging the firewall rule change (%s) for %s failed: %v", f.Op, f.Device, ferr), map[string]any{"device": f.Device})
 		}
 	}
-	var limits []string
 	extra := map[string]any{"change_set_id": csID}
 	if len(in.Firewall) > 0 {
 		diffs := map[string]any{}
@@ -239,4 +278,34 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	return result.Build(draftChangeSetName, result.OK, finding, result.Deterministic, cx,
 		result.Options{Mode: result.ModeApplied, Changes: changes, Evidence: ev(result.ModeApplied, extra), Limits: limits, NextActions: []string{"verify-change"}})
+}
+
+func devicesOf(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for d := range set {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// maxDeviceExistenceChecks bounds the per-device lookups of a change set's devices in its base snapshot (each is a keyed lookup by exact name).
+const maxDeviceExistenceChecks = 20
+
+// missingSnapshotDevices returns the devices not found in the snapshot, by an exact-name lookup each. checked is false when the lookups could not be made (or there were too many): then nothing is claimed.
+func missingSnapshotDevices(ctx context.Context, s *fwd.Session, networkID, snapshotID string, names []string) (missing []string, checked bool) {
+	if len(names) == 0 || len(names) > maxDeviceExistenceChecks {
+		return nil, false
+	}
+	for _, n := range names {
+		q := fmt.Sprintf("foreach device in network.devices where device.name == %q select {name: device.name}", n)
+		rows, _, _, err := s.RunNQEAll(ctx, networkID, snapshotID, q, 2)
+		if err != nil {
+			return nil, false
+		}
+		if len(rows) == 0 {
+			missing = append(missing, n)
+		}
+	}
+	return missing, true
 }

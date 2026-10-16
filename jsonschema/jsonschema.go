@@ -61,7 +61,11 @@ func check(v any, s map[string]any, path string, errs *[]string) error {
 			}
 		}
 		if !match {
-			add("%s: expected %v, got %T", path, want, v)
+			words := make([]string, 0, len(want))
+			for _, w := range want {
+				words = append(words, withArticle(w))
+			}
+			add("%s: expected %s, got %s", path, strings.Join(words, " or "), withArticle(jsonTypeOf(v)))
 			return nil
 		}
 	}
@@ -171,4 +175,31 @@ func typeIs(v any, t string) bool {
 		return ok && f == float64(int64(f))
 	}
 	return false
+}
+
+// jsonTypeOf names a decoded JSON value's type in JSON terms.
+func jsonTypeOf(v any) string {
+	switch v.(type) {
+	case nil:
+		return "null"
+	case bool:
+		return "boolean"
+	case float64:
+		return "number"
+	case string:
+		return "string"
+	case []any:
+		return "array"
+	case map[string]any:
+		return "object"
+	}
+	return fmt.Sprintf("%T", v)
+}
+
+// withArticle puts "a" or "an" before a type name ("an array", "a string").
+func withArticle(t string) string {
+	if t != "" && strings.ContainsRune("aeiou", rune(t[0])) {
+		return "an " + t
+	}
+	return "a " + t
 }

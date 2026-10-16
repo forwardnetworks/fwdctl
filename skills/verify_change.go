@@ -39,6 +39,7 @@ var verifyChangeViewInputs = map[string][]string{
 	"verify":   {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "expectations"},
 	"impact":   {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
 	"describe": {"change_set_id", "device"},
+	"list":     {},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -51,14 +52,16 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe":
+	case "verify", "impact", "describe", "list":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe or impact", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact or list", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
 	}
 	switch view {
+	case "list":
+		return listChangeSets(ctx, s, in.NetworkID)
 	case "impact":
 		return analyzeBlastRadius(ctx, s, raw)
 	case "describe":
@@ -198,4 +201,29 @@ func dedupe(in []string) []string {
 		}
 	}
 	return out
+}
+
+// listChangeSets is view list: the change sets a network holds. None is an answer (Predict was never used here, or its change sets were deleted); an unlicensed organization is a licence limit, not an empty list.
+func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (result.Result, error) {
+	cx := result.Context{NetworkID: networkID, State: "current"}
+	list, err := s.ChangeSets(ctx, networkID)
+	if err != nil {
+		if r, ok := denialResult(verifyChangeName, err, cx, "listing the network's change sets"); ok {
+			return r, nil
+		}
+		return result.Result{}, err
+	}
+	rows := make([]map[string]any, 0, len(list))
+	for _, c := range list {
+		rows = append(rows, map[string]any{"id": string(c.ID), "name": c.Name, "description": c.Description, "base_snapshot_id": string(c.SnapshotID), "tags": c.Tags, "devices_edited": len(c.DeviceToChanges)})
+	}
+	shown, omitted := result.Cap(rows, 100, "change sets", "describe one with view describe")
+	limits := []string{"this lists the change sets Forward holds now; a deleted change set is gone, so none here does not prove Predict was never used",
+		"a change set's predicted snapshot and checks are read with view describe (change_set_id)"}
+	finding := fmt.Sprintf("%d change set(s) on network %s", len(rows), networkID)
+	if len(rows) == 0 {
+		finding = fmt.Sprintf("No change set on network %s", networkID)
+	}
+	return result.Build(verifyChangeName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"edit-change-set"},
+		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "listChangeSets", nil, map[string]any{"view": "list", "total": len(rows), "change_sets": shown}, finding)}})
 }

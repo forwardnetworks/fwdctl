@@ -48,3 +48,5 @@ The envelope in `schema/skill-result.schema.json`.
 Give the inputs as one JSON object on stdin: `echo '{}' | fwdctl run inspect-networks`. It needs the
 `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
 (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+
+`view: workspaces` lists only the change workspaces (networks with a parent): creator, created time, retention days and expiry, and, for the page asked for (`limit`, default 25, with `offset`), how many snapshots each holds by trigger (IMPORT, COLLECTION and so on) and the device count of its newest. It answers "what are the pre/post workspaces of this customer" in one call instead of a snapshot list per network.

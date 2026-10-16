@@ -36,8 +36,11 @@
             "minLength": 1
           },
           "commands": {
-            "type": "string",
-            "minLength": 1
+            "type": ["string", "array"],
+            "minLength": 1,
+            "minItems": 1,
+            "items": { "type": "string" },
+            "description": "the CLI text to stage: one string (lines separated by newlines) or an array of lines, joined with newlines"
           }
         }
       }

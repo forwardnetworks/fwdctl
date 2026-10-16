@@ -18,7 +18,7 @@ the intended outcome holds and whether anything regressed.
 
 ## Views
 
-`view` picks the question; an input that belongs to another view is rejected by name. `verify` (the default; `verdict` is the same view) judges a change; `impact` measures how far it reaches; `describe` reads a change set that has not been run.
+`view` picks the question; an input that belongs to another view is rejected by name. `verify` (the default; `verdict` is the same view) judges a change; `impact` measures how far it reaches; `list` lists the network's change sets (id, name, base snapshot, devices edited; none is an answer, an unlicensed organization is a licence limit, not an empty list); `describe` reads a change set that has not been run.
 
 ## Inputs
 

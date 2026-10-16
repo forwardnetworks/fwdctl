@@ -532,7 +532,11 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 		return fail("%v", err)
 	}
 	var obj map[string]any
-	if json.Unmarshal(raw, &obj) != nil || obj == nil {
+	if uerr := json.Unmarshal(raw, &obj); uerr != nil || obj == nil {
+		var se *json.SyntaxError
+		if errors.As(uerr, &se) {
+			return fail("inputs are not valid JSON: %v (at byte %d; a raw newline or tab inside a string must be written \\n or \\t)", se, se.Offset)
+		}
 		return fail("inputs must be a JSON object")
 	}
 	if !validFormat(format) || format == "jsonl" {

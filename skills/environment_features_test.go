@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -221,5 +222,43 @@ func TestEditAdvancedReachabilityRefusesWhenFlowComputationIsDisabledAndSaysWhat
 	r, _ = mustRun(t, "edit-advanced-reachability", unread, `{"network_id":"n1","snapshot_id":"s1"}`)
 	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, "|"), "whether flow computation is enabled is UNKNOWN") {
 		t.Errorf("%s %v", r.Status, r.Limits)
+	}
+}
+
+// The license tier IS returned (GET /api/licenses?view=status). A tier without the Predict facet makes the Predict features "licensed: no" even when their organization property reads on, which is what a 403 "Unlicensed
+// operation" on every change-set call means.
+func TestEnvironmentReportsTheLicenseTierAndMarksUnlicensedFeatures(t *testing.T) {
+	routes := cfgRoutes(
+		map[string]any{"predict_modeling": true},
+		map[string]any{"predict_modeling": true},
+		map[string]any{"predict_modeling": true},
+		map[string]any{"predict_modeling": true},
+		map[string]any{"predict_modeling": true})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NS", "licenseStatus": "ACTIVE"})
+	r, _ := mustRun(t, "inspect-environment", routes, `{}`)
+	lic, ok := r.Evidence[0].Detail["license"].(map[string]any)
+	if !ok || lic["tier"] != "NS" || lic["status"] != "ACTIVE" {
+		t.Fatalf("license: %v", r.Evidence[0].Detail["license"])
+	}
+	facets := lic["facets"].(map[string]bool)
+	if !facets["network"] || !facets["security"] || facets["predict"] {
+		t.Errorf("NS has the network and security facets, not Predict: %v", facets)
+	}
+	rows, _ := featureRows(t, r)
+	if rows["predict_modeling"]["licensed"] != false || !strings.Contains(fmt.Sprint(rows["predict_modeling"]["licensed_note"]), "Predict") {
+		t.Errorf("predict_modeling reads on but is not licensed: %v", rows["predict_modeling"])
+	}
+	if strings.Contains(strings.Join(r.Limits, " "), "the license tier (a license") {
+		t.Errorf("the limit that says the tier is not returned must go: %v", r.Limits)
+	}
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "EXPIRED"})
+	r, _ = mustRun(t, "inspect-environment", routes, `{}`)
+	lic = r.Evidence[0].Detail["license"].(map[string]any)
+	if lic["can_write"] != false || !strings.Contains(fmt.Sprint(lic["note"]), "ACTIVE") {
+		t.Errorf("only ACTIVE, EXEMPT or SOFTWARE_CENTRAL licenses can write: %v", lic)
+	}
+	rows, _ = featureRows(t, r)
+	if rows["predict_modeling"]["licensed"] != true {
+		t.Errorf("NSP includes Predict: %v", rows["predict_modeling"])
 	}
 }

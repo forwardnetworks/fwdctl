@@ -55,3 +55,39 @@ func TestListNetworksNoMatchIsUnknownNotNoNetworks(t *testing.T) {
 		t.Errorf("an empty account must be unknown, got %s", r.Status)
 	}
 }
+
+// view workspaces summarises the change workspaces (networks with a parent): who made each, when, its retention, and how many snapshots it holds by trigger, for the page asked for (the snapshot reads are bounded by limit).
+func TestListNetworksWorkspacesViewSummarisesEachWorkspace(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		networksPath: fwdtest.Const(200, []any{
+			map[string]any{"id": "10", "name": "prod", "orgId": "1"},
+			map[string]any{"id": "11", "name": "ws-a", "orgId": "1", "parentId": "10", "creator": "alice", "createdAt": "2026-09-01T00:00:00Z", "retentionDays": 14, "secondsToExpiry": 86400},
+			map[string]any{"id": "12", "name": "ws-b", "orgId": "1", "parentId": "10", "creator": "bob", "createdAt": "2026-09-02T00:00:00Z"},
+		}),
+		"GET /api/networks/11/snapshots": fwdtest.Snapshots(
+			func() map[string]any {
+				s := fwdtest.Snap("a1", "PROCESSED", "IMPORT", "2026-09-01T01:00:00.000Z")
+				s["processingTrigger"] = "IMPORT"
+				s["totalDevices"] = 5
+				return s
+			}(),
+			func() map[string]any {
+				s := fwdtest.Snap("a2", "PROCESSED", "COLLECTION", "2026-09-01T02:00:00.000Z")
+				s["processingTrigger"] = "COLLECTION"
+				s["totalDevices"] = 5
+				return s
+			}()),
+		"GET /api/networks/12/snapshots": fwdtest.Snapshots(),
+	}
+	r, srv := mustRun(t, "inspect-networks", routes, `{"view":"workspaces"}`)
+	b := jsonOf(r)
+	if writes(srv) != 0 || strings.Contains(b, `"name":"prod"`) || !strings.Contains(b, "ws-a") || !strings.Contains(b, "alice") || !strings.Contains(b, `"retention_days":14`) {
+		t.Fatalf("%s", b)
+	}
+	if !strings.Contains(b, `"IMPORT":1`) || !strings.Contains(b, `"COLLECTION":1`) || !strings.Contains(b, `"snapshots":2`) {
+		t.Errorf("snapshot counts by trigger: %s", b)
+	}
+	if !strings.Contains(r.Finding, "2 workspace") {
+		t.Errorf("finding: %s", r.Finding)
+	}
+}

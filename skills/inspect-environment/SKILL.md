@@ -17,7 +17,7 @@ Account-level context for every other skill: what build and organization these r
 
 ## Inputs
 
-None are required. Optional: `include_features` (default true; false skips the five reads of the organization configuration that build the `features` table) and `include_properties` (true to add the organization properties that differ from the defaults, first 50 by name, each with an explanation of what it does and which skill behaviour it changes where this skill holds one: [reference/properties.md](reference/properties.md)). See `schema.json`.
+None are required. The result also carries `license`: the tier, the status, whether it can write (only ACTIVE, EXEMPT or SOFTWARE_CENTRAL can) and its facets (network, security, predict, read from the tier's letters N, S, P by a peer's reading of Forward's source). A Predict feature whose organization property reads on but whose tier has no Predict facet is marked `licensed: false`. Optional: `include_features` (default true; false skips the five reads of the organization configuration that build the `features` table) and `include_properties` (true to add the organization properties that differ from the defaults, first 50 by name, each with an explanation of what it does and which skill behaviour it changes where this skill holds one: [reference/properties.md](reference/properties.md)). See `schema.json`.
 
 ## Features
 

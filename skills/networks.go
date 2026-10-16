@@ -16,6 +16,7 @@ const networksName = "inspect-networks"
 func init() { Register(networksName, listNetworks) }
 
 type networksInput struct {
+	View   string `json:"view"`
 	Name   string `json:"name"`
 	Limit  int    `json:"limit"`
 	Offset int    `json:"offset"`
@@ -37,6 +38,10 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		in.Limit = defaultNetworksLimit
 	}
 	in.Limit = min(in.Limit, maxNetworksLimit)
+	if in.View != "" && in.View != "networks" && in.View != "workspaces" {
+		return result.Result{}, fmt.Errorf("%w: view is networks (the default) or workspaces", ErrInvalidInput)
+	}
+	onlyWorkspaces := in.View == "workspaces"
 	cx := result.Context{Scope: "account", State: "current"}
 	nets, err := s.Networks(ctx)
 	if err != nil {
@@ -50,6 +55,9 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 			continue
 		}
 		ws := string(n.ParentID) != ""
+		if onlyWorkspaces && !ws {
+			continue
+		}
 		if ws {
 			workspaces++
 		}
@@ -65,6 +73,12 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		}
 		if n.Note != "" {
 			row["note"] = oneLineNote(n.Note)
+		}
+		if ws && n.RetentionDays != nil {
+			row["retention_days"] = *n.RetentionDays
+		}
+		if ws && n.SecondsToExpiry != nil {
+			row["seconds_to_expiry"] = *n.SecondsToExpiry
 		}
 		rows = append(rows, row)
 	}
@@ -91,8 +105,36 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	if workspaces > 0 {
 		limits = append(limits, fmt.Sprintf("%d of them are workspaces (copies of another network made for a change); use the parent network's id for questions about the real network", workspaces))
 	}
-	detail := map[string]any{"total": total, "offset": in.Offset, "returned": end - in.Offset, "networks": rows[in.Offset:end]}
-	return result.Build(networksName, result.OK, fmt.Sprintf("%d network(s) returned (%d match)", end-in.Offset, total), result.Deterministic, cx,
+	page := rows[in.Offset:end]
+	finding := fmt.Sprintf("%d network(s) returned (%d match)", end-in.Offset, total)
+	if onlyWorkspaces {
+		// one snapshot list per workspace on the page, so the reads are bounded by limit
+		for _, row := range page {
+			snaps, serr := s.Snapshots(ctx, row["id"].(string))
+			if serr != nil {
+				row["snapshots_error"] = serr.Error()
+				continue
+			}
+			byTrigger := map[string]int{}
+			latestDevices := 0
+			latest := ""
+			for _, sn := range snaps {
+				trig := sn.ProcessingTrigger
+				if trig == "" {
+					trig = "(none)"
+				}
+				byTrigger[trig]++
+				if at := snapCreated(sn); at >= latest {
+					latest, latestDevices = at, sn.TotalDevices
+				}
+			}
+			row["snapshots"], row["snapshots_by_trigger"], row["devices_in_latest_snapshot"] = len(snaps), byTrigger, latestDevices
+		}
+		limits = append(limits, "snapshot counts by trigger and the device count of the newest snapshot are read per workspace for this page only (limit and offset page them); retention and expiry are Forward's")
+		finding = fmt.Sprintf("%d workspace(s) returned (%d match)", end-in.Offset, total)
+	}
+	detail := map[string]any{"total": total, "offset": in.Offset, "returned": end - in.Offset, "networks": page}
+	return result.Build(networksName, result.OK, finding, result.Deterministic, cx,
 		result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"inspect-inventory", "investigate-collection-failure", "inspect-vulnerabilities"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "listNetworks", nil, detail, fmt.Sprintf("%d networks", total))}})
 }

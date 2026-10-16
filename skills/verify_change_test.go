@@ -257,3 +257,31 @@ func TestVerifyChangeManyRegressionsAreAllCountedButOnlyTheWorstAreCited(t *test
 		t.Errorf("cited %d, limits %v", cited, r.Limits)
 	}
 }
+
+// view list answers "has this network used Predict": the change sets it holds (id, name, base snapshot, how many devices they edit), an empty list as a real answer (none), and an unlicensed organization as a licence limit.
+func TestVerifyChangeListViewListsTheNetworksChangeSets(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, map[string]any{"changeSets": []any{
+			map[string]any{"id": "cs1", "name": "add loopback", "networkId": "n1", "snapshotId": "s1", "deviceToChanges": map[string]any{"r1": []any{}, "r2": []any{}}},
+			map[string]any{"id": "cs2", "name": "remove acl", "networkId": "n1", "snapshotId": "s2"},
+		}}),
+	}
+	r, srv := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
+	b := jsonOf(r)
+	if writes(srv) != 0 || r.Status != result.OK || !strings.Contains(r.Finding, "2 change set") || !strings.Contains(b, "add loopback") || !strings.Contains(b, `"devices_edited":2`) {
+		t.Fatalf("%s %s %s", r.Status, r.Finding, b)
+	}
+	routes["GET /api/networks/n1/change-sets"] = fwdtest.Const(200, map[string]any{"changeSets": []any{}})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "No change set") {
+		t.Errorf("none is an answer: %s %s", r.Status, r.Finding)
+	}
+	routes["GET /api/networks/n1/change-sets"] = fwdtest.Const(403, map[string]any{"message": "Unlicensed operation: NetworkOperation.MANAGE_CHANGE_SETS"})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "licence limit") {
+		t.Errorf("an unlicensed org: %s %v", r.Status, r.Limits)
+	}
+	if _, _, err := runSkill(t, "verify-change", routes, `{"network_id":"n1","view":"list","change_set_id":"cs1"}`); err == nil {
+		t.Errorf("list takes no change_set_id")
+	}
+}

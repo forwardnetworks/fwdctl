@@ -52,3 +52,19 @@ func TestMissingRequiredEnumPropertyListsItsValues(t *testing.T) {
 		t.Errorf("plain required: %v", errs)
 	}
 }
+
+// A type error names the JSON types in words a person can act on: "expected a string, got an array", not Go's "[string]" and "[]interface {}".
+func TestTypeErrorsNameJSONTypes(t *testing.T) {
+	e, err := Validate([]byte(sch), []byte(`{"network_id":["a","b"]}`))
+	if err != nil || len(e) != 1 || !strings.Contains(e[0], "expected a string, got an array") {
+		t.Fatalf("%v %v", e, err)
+	}
+	e, _ = Validate([]byte(sch), []byte(`{"network_id":"n","protocol":{"x":1}}`))
+	if len(e) != 1 || !strings.Contains(e[0], "expected a string or an integer, got an object") {
+		t.Errorf("%v", e)
+	}
+	e, _ = Validate([]byte(sch), []byte(`{"network_id":"n","max":"3"}`))
+	if len(e) != 1 || !strings.Contains(e[0], "expected an integer, got a string") {
+		t.Errorf("%v", e)
+	}
+}

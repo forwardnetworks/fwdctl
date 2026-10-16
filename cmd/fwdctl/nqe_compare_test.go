@@ -155,3 +155,15 @@ func TestInlineAnalysisHintOnlyForALongQueueWaitOfAnInlineQuery(t *testing.T) {
 		t.Errorf("no hint for a short wait, a saved query or no measurement")
 	}
 }
+
+// Inputs that are not valid JSON say so with where the parse failed (a raw newline inside a string, say), instead of "inputs must be a JSON object".
+func TestRunReportsAJSONParseErrorWithItsOffset(t *testing.T) {
+	code, _, errs := call(t, []string{"run", "inspect-networks"}, "{\"a\": \"line1\nline2\"}", nil)
+	if code != usage || !strings.Contains(errs, "not valid JSON") || !strings.Contains(errs, "byte") {
+		t.Errorf("%d %q", code, errs)
+	}
+	code, _, errs = call(t, []string{"run", "inspect-networks"}, `[1]`, nil)
+	if code != usage || !strings.Contains(errs, "must be a JSON object") {
+		t.Errorf("a non-object: %d %q", code, errs)
+	}
+}
