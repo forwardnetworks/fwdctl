@@ -108,6 +108,26 @@ func analyzeBlastRadius(ctx context.Context, s *fwd.Session, raw json.RawMessage
 	}
 	next = append(next, "verify-change")
 
+	// routing: the BGP neighbor sessions and the route and next-hop counts, which the difference areas above do not count
+	var edited map[string]bool
+	if in.ChangeSetID != "" {
+		if cs, cerr := s.ChangeSet(ctx, in.NetworkID, in.ChangeSetID); cerr == nil && cs != nil {
+			edited = map[string]bool{}
+			for d := range cs.DeviceToChanges {
+				edited[d] = true
+			}
+		}
+	}
+	rev, rlim, routingChanged := routingDelta(ctx, s, in.NetworkID, rc.BeforeID, afterID, in.Device, edited)
+	evidence = append(evidence, rev...)
+	limits = append(limits, rlim...)
+	if len(rev) > 0 {
+		measured = true
+		if routingChanged {
+			touched = append(touched, "routing (BGP sessions or route counts)")
+		}
+	}
+
 	if !measured {
 		return result.NewUnknown(blastRadiusName, "No comparison completed, so the extent of the change is unknown", cx, limits, result.Options{})
 	}
@@ -115,12 +135,16 @@ func analyzeBlastRadius(ctx context.Context, s *fwd.Session, raw json.RawMessage
 	if len(touched) > 0 {
 		parts = append(parts, "differs in "+strings.Join(touched, ", "))
 	}
+
 	if conn.Settled && conn.Compared && (conn.NewlyIsolated > 0 || conn.NewlyConnected > 0) {
 		parts = append(parts, fmt.Sprintf("%d subnet pair(s) lost connectivity, %d gained", conn.NewlyIsolated, conn.NewlyConnected))
 	}
 	finding := "No observable difference between the snapshots"
 	if len(parts) > 0 {
 		finding = strings.Join(parts, "; ")
+	}
+	if len(rev) == 0 {
+		finding += " (routing was not compared)"
 	}
 	if len(evidence) == 0 {
 		evidence = append(evidence, result.NewEvidence(result.EvPredict, "getDiffCount", sid,

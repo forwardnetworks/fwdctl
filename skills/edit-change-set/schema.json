@@ -1,8 +1,7 @@
 {
   "type": "object",
   "required": [
-    "network_id",
-    "name"
+    "network_id"
   ],
   "additionalProperties": false,
   "properties": {
@@ -26,8 +25,7 @@
       "items": {
         "type": "object",
         "required": [
-          "device",
-          "commands"
+          "device"
         ],
         "additionalProperties": false,
         "properties": {
@@ -45,7 +43,12 @@
             "items": {
               "type": "string"
             },
-            "description": "the CLI text to stage: one string (lines separated by newlines) or an array of lines, joined with newlines"
+            "description": "the CLI text to stage on top of the collected configuration: one string (lines separated by newlines) or an array of lines, joined with newlines. Give exactly one of commands or config"
+          },
+          "config": {
+            "type": "string",
+            "minLength": 1,
+            "description": "the WHOLE replacement configuration of the device (the \"config file\" option; at most 2 MB; stored unchecked, not validated). Give exactly one of commands or config"
           }
         }
       }
@@ -127,7 +130,7 @@
     },
     "firewall_rules": {
       "type": "array",
-      "description": "firewall rule changes to stage: {op: add|remove, device, scope_id (default LOCAL), rulebase_id (default PRIMARY), predecessor (add: the rule to go after), rule_id (remove), rule (add: name, action, enabled, sourceZones, destinationZones, sourceAddresses, destinationAddresses, sourceUsers, applications, services)}",
+      "description": "firewall rule changes to stage: {op: add|remove|edit|move|discard, device, scope_id (default LOCAL), rulebase_id (default PRIMARY), predecessor (add: the rule to go after; move: after this rule, empty = first), rule_id (remove, edit, move, discard), rule (add, edit: the rule's WHOLE definition: name, action, enabled, sourceZones, destinationZones, sourceAddresses, destinationAddresses, sourceUsers, applications, services)}; discard drops a rule's staged add, edit, move or removal",
       "items": {
         "type": "object",
         "required": [
@@ -135,6 +138,44 @@
           "device"
         ]
       }
+    },
+    "change_set_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "an EXISTING change set to act on with lifecycle (instead of creating one)"
+    },
+    "lifecycle": {
+      "type": "object",
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "rename",
+            "duplicate",
+            "delete",
+            "discard_device",
+            "restore_commit"
+          ],
+          "description": "rename: lifecycle.name and/or description; duplicate: copy it (lifecycle.name optional); delete: confirm = the change set id; discard_device: throw away that device's uncommitted edits (lifecycle.device); restore_commit: make an earlier version current (lifecycle.commit_id)"
+        },
+        "name": {
+          "type": "string"
+        },
+        "device": {
+          "type": "string"
+        },
+        "commit_id": {
+          "type": "string"
+        }
+      },
+      "description": "needs change_set_id; does not combine with devices, bgp_advertisements, firewall_rules, snapshot_id or run"
+    },
+    "confirm": {
+      "type": "string",
+      "description": "lifecycle delete: the change set id again"
     }
   }
 }

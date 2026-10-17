@@ -114,3 +114,48 @@ func TestEditPlatformEndpointProfileUpdateChangesCLICommandsInPlace(t *testing.T
 		t.Errorf("an update that changes nothing was accepted")
 	}
 }
+
+// SNMP and HTTP endpoint profiles are created and updated here too, from the fields Forward documents (detector OID and patterns, name detector, custom OIDs, timeout; HTTP: https, auth, headers, detector URI, endpoints).
+func TestEditPlatformEndpointProfileCreatesAndUpdatesSNMPAndHTTPProfiles(t *testing.T) {
+	var created []map[string]any
+	routes := profileRoutes(&created, []any{map[string]any{"id": "SNMP-3", "name": "entity", "type": "SNMP", "detectorOid": "1.3.6.1.2.1.1.2.0", "detectorPatterns": []any{"x"}}})
+	routes["POST /api/endpoint-profiles"] = func(r *http.Request, body []byte) (int, any) {
+		var b map[string]any
+		_ = json.Unmarshal(body, &b)
+		created = append(created, b)
+		b["id"] = r.URL.Query().Get("type") + "-9"
+		return 201, b
+	}
+	var patched []byte
+	routes["PATCH /api/endpoint-profiles/SNMP-3"] = func(_ *http.Request, body []byte) (int, any) {
+		patched = body
+		return 200, map[string]any{"id": "SNMP-3", "name": "entity", "type": "SNMP", "detectorOid": "1.3.6.1.2.1.1.2.0", "detectorPatterns": []any{"x"}, "customOids": []any{map[string]any{"name": "model", "oid": "1.3.6.1.2.1.47.1.1.1.1.13"}}}
+	}
+	snmp := `{"area":"endpoint_profiles","action":"create","definition":{"name":"entity-mib","type":"SNMP","detector_oid":"1.3.6.1.2.1.1.1.0","detector_patterns":["Acme.*"],"name_detector_oid":"1.3.6.1.2.1.1.5.0","name_detector_patterns":["(.*)"],"custom_oids":[{"name":"model","oid":"1.3.6.1.2.1.47.1.1.1.1.13"}],"response_timeout_sec":10}`
+	r, _ := mustRun(t, "edit-platform", routes, snmp+`}`)
+	if len(created) != 0 || r.Mode != result.ModeDryRun || !strings.Contains(r.Finding, "SNMP") {
+		t.Fatalf("dry run: %v %s", created, r.Finding)
+	}
+	r, _ = mustRun(t, "edit-platform", routes, snmp+`,"apply":true}`)
+	if r.Status != result.OK || len(created) != 1 || created[0]["type"] != "SNMP" || created[0]["detectorOid"] != "1.3.6.1.2.1.1.1.0" || created[0]["customOids"] == nil {
+		t.Fatalf("snmp create: %s %s %v", r.Status, r.Finding, created)
+	}
+	created = nil
+	http := `{"area":"endpoint_profiles","action":"create","definition":{"name":"inventory-api","type":"HTTP","https":true,"auth_type":"BASIC_AUTH","detector_uri":"/api/version","detector_patterns":["ok"],"endpoints":[{"name":"devices","path":"/api/devices"}]},"apply":true}`
+	r, _ = mustRun(t, "edit-platform", routes, http)
+	if r.Status != result.OK || len(created) != 1 || created[0]["type"] != "HTTP" || created[0]["authType"] != "BASIC_AUTH" || created[0]["https"] != true {
+		t.Fatalf("http create: %s %s %v", r.Status, r.Finding, created)
+	}
+	// an HTTP profile without an endpoint, and a type that is not CLI, SNMP or HTTP, are refused
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"create","definition":{"name":"bad","type":"HTTP","https":true,"auth_type":"NONE"}}`); err == nil {
+		t.Errorf("an HTTP profile needs an endpoint")
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"create","definition":{"name":"bad","type":"FTP"}}`); err == nil {
+		t.Errorf("an unknown type is refused")
+	}
+	// update an SNMP profile: the given fields replace the current ones
+	r, _ = mustRun(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"update","name":"SNMP-3","definition":{"custom_oids":[{"name":"model","oid":"1.3.6.1.2.1.47.1.1.1.1.13"}]},"apply":true}`)
+	if r.Status != result.OK || !strings.Contains(string(patched), "customOids") || strings.Contains(string(patched), "detectorOid") {
+		t.Fatalf("snmp update: %s %s %s", r.Status, r.Finding, patched)
+	}
+}

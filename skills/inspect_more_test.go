@@ -522,3 +522,16 @@ func TestCollectionConfigACAPSetupWithNoPinnedAccountsSaysCollectionFails(t *tes
 		t.Errorf("c2s_accounts is empty but the answer does not say collection fails: %s", b)
 	}
 }
+
+// The approved CLI command list is shown even when no endpoint of the network uses a profile yet (a new CLI profile still needs to know what the organization lets it run).
+func TestCollectionConfigShowsTheApprovedCLICommandListWithNoEndpoints(t *testing.T) {
+	routes := cliProfileRoutes(fwdtest.Const(200, map[string]any{"approved": []string{}, "unapproved": []string{}}))
+	routes["GET /api/networks/n1/endpoints"] = fwdtest.Const(200, []any{})
+	routes["GET /api/networks/n1/devices"] = fwdtest.Const(200, []any{})
+	routes["GET /api/approved-cli-commands"] = fwdtest.Const(200, map[string]any{"commands": []any{"show version", "hostname"}, "uploadedAt": "2026-01-01T00:00:00Z"})
+	r, _ := mustRun(t, "inspect-collection-config", routes, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	if !strings.Contains(b, "approved_cli_commands") || !strings.Contains(b, "show version") || !strings.Contains(b, `"custom_list_uploaded":true`) {
+		t.Errorf("approved list: %s", b)
+	}
+}

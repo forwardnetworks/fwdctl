@@ -21,6 +21,8 @@ func init() { Register(draftChangeSetName, draftChangeSet) }
 type draftDevice struct {
 	Device   string `json:"device"`
 	Commands string `json:"commands"`
+	// Config is the device's WHOLE replacement configuration (the "config file" option), instead of Commands; exactly one of the two.
+	Config string `json:"config"`
 }
 
 // UnmarshalJSON accepts commands as one string of CLI text or as an array of lines (joined with newlines).
@@ -28,11 +30,12 @@ func (d *draftDevice) UnmarshalJSON(b []byte) error {
 	var raw struct {
 		Device   string          `json:"device"`
 		Commands json.RawMessage `json:"commands"`
+		Config   string          `json:"config"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
-	d.Device = raw.Device
+	d.Device, d.Config = raw.Device, raw.Config
 	if len(raw.Commands) == 0 {
 		return nil
 	}
@@ -76,7 +79,18 @@ type draftFirewallRule struct {
 	Rule        *forward.SecurityRuleDefinition `json:"rule"`
 }
 
+// draftLifecycle works on an EXISTING change set (change_set_id): rename or describe it, copy it, delete it, throw away one device's uncommitted edits, or restore an earlier version.
+type draftLifecycle struct {
+	Op       string `json:"op"`
+	Name     string `json:"name"`
+	Device   string `json:"device"`
+	CommitID string `json:"commit_id"`
+}
+
 type draftChangeSetInput struct {
+	ChangeSetID string              `json:"change_set_id"`
+	Lifecycle   *draftLifecycle     `json:"lifecycle"`
+	Confirm     string              `json:"confirm"`
 	NetworkID   string              `json:"network_id"`
 	SnapshotID  string              `json:"snapshot_id"`
 	Name        string              `json:"name"`
@@ -97,6 +111,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
+	if in.Lifecycle != nil || in.ChangeSetID != "" {
+		return changeSetLifecycle(ctx, s, in)
+	}
 	if strings.TrimSpace(in.Name) == "" {
 		return result.Result{}, fmt.Errorf("%w: name is required", ErrInvalidInput)
 	}
@@ -104,9 +121,14 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		return result.Result{}, fmt.Errorf("%w: give devices (with commands), bgp_advertisements or firewall_rules", ErrInvalidInput)
 	}
 	touched := map[string]bool{}
+	cfgDevices := false
 	for i, d := range in.Devices {
-		if strings.TrimSpace(d.Device) == "" || strings.TrimSpace(d.Commands) == "" {
-			return result.Result{}, fmt.Errorf("%w: devices[%d] needs device and commands", ErrInvalidInput, i)
+		hasCmd, hasCfg := strings.TrimSpace(d.Commands) != "", strings.TrimSpace(d.Config) != ""
+		if strings.TrimSpace(d.Device) == "" || hasCmd == hasCfg {
+			return result.Result{}, fmt.Errorf("%w: devices[%d] needs device and exactly one of commands (CLI to apply on top of the collected config) or config (the whole replacement configuration)", ErrInvalidInput, i)
+		}
+		if hasCfg {
+			cfgDevices = true
 		}
 		touched[d.Device] = true
 	}
@@ -141,10 +163,12 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] needs device", ErrInvalidInput, i)
 		case f.Op == "add" && (f.Rule == nil || strings.TrimSpace(f.Rule.Name) == "" || f.Rule.Action == ""):
 			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] (add) needs rule with name and action", ErrInvalidInput, i)
-		case f.Op == "remove" && f.RuleID == "":
-			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] (remove) needs rule_id (the rule's id, from inspect-device-files or a security rules diff)", ErrInvalidInput, i)
-		case f.Op != "add" && f.Op != "remove":
-			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d].op must be add or remove", ErrInvalidInput, i)
+		case (f.Op == "remove" || f.Op == "move" || f.Op == "discard" || f.Op == "edit") && f.RuleID == "":
+			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] (%s) needs rule_id (the rule's id, from inspect-device-files or a security rules diff)", ErrInvalidInput, i, f.Op)
+		case f.Op == "edit" && (f.Rule == nil || strings.TrimSpace(f.Rule.Name) == "" || f.Rule.Action == ""):
+			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] (edit) needs rule: the rule's WHOLE new definition, with name and action", ErrInvalidInput, i)
+		case f.Op != "add" && f.Op != "remove" && f.Op != "edit" && f.Op != "move" && f.Op != "discard":
+			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d].op must be add, remove, edit, move or discard", ErrInvalidInput, i)
 		}
 		touched[f.Device] = true
 	}
@@ -204,6 +228,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		limits = append(limits, "modify and withdraw need received-advertisement collection on the device (collectBgpAdvertisements on, BGP table type BOTH or ADJ_RIB_IN covering the peer): without it the route is left unchanged in the predicted snapshot and no warning is shown, so a prediction can look like it did nothing; preflight (verify-change view preflight) counts the devices that collect it. A key that matches no received advertisement is ignored when the change set runs",
 			"a withdraw models the loss of a peer OUTSIDE the snapshot (an ISP); a peer that is itself a collected device needs no withdrawal")
 	}
+	if cfgDevices {
+		limits = append(limits, "a device given config has its WHOLE running configuration replaced (send the complete configuration, at most 2 MB); Forward stores the text unchecked, so it is not validated here, and whether Predict can model the result depends on the device type, which Forward finds out when it runs")
+	}
 	if cliShutdown {
 		limits = append(limits, "a CLI `neighbor ... shutdown` (or `no neighbor`) removes the BGP session from the predicted snapshot, but the routes learned from it stay in the prediction (they are seeded from the collected received routes), so a de-peering what-if shows no impact; model the loss of a peer outside the snapshot with a bgp_advertisements withdraw")
 	}
@@ -235,6 +262,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			result.Options{Mode: result.ModeApplied, Changes: changes, Evidence: ev(result.ModeApplied, detail), Limits: limits, NextActions: []string{"verify-change"}})
 	}
 	for _, d := range in.Devices {
+		if d.Config != "" {
+			continue // a whole configuration is stored as given and not validated by Forward
+		}
 		errs, verr := s.ValidateCommands(ctx, in.NetworkID, csID, d.Device, d.Commands)
 		if verr != nil {
 			return rollback(fmt.Sprintf("the commands for %s could not be validated: %v", d.Device, verr), map[string]any{"device": d.Device})
@@ -248,6 +278,12 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 	}
 	for _, d := range in.Devices {
+		if d.Config != "" {
+			if _, err := s.Client.Predict.SaveDeviceConfig(ctx, in.NetworkID, csID, d.Device, d.Config); err != nil {
+				return rollback(fmt.Sprintf("saving the configuration of %s failed: %v", d.Device, err), map[string]any{"device": d.Device})
+			}
+			continue
+		}
 		if err := s.StageCommands(ctx, in.NetworkID, csID, d.Device, d.Commands); err != nil {
 			return rollback(fmt.Sprintf("staging the commands for %s failed: %v", d.Device, err), map[string]any{"device": d.Device})
 		}
@@ -283,9 +319,16 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	for _, f := range in.Firewall {
 		scope, rb := firstNonEmpty(f.ScopeID, forward.FirewallScopeLocal), firstNonEmpty(f.RulebaseID, forward.FirewallRulebasePrimary)
 		var ferr error
-		if f.Op == "add" {
+		switch f.Op {
+		case "add":
 			_, ferr = s.Client.Predict.AddSecurityRule(ctx, in.NetworkID, csID, f.Device, scope, rb, forward.NewSecurityRule{Predecessor: f.Predecessor, Definition: *f.Rule})
-		} else {
+		case "edit":
+			_, ferr = s.Client.Predict.EditSecurityRule(ctx, in.NetworkID, csID, f.Device, scope, rb, f.RuleID, *f.Rule)
+		case "move":
+			_, ferr = s.Client.Predict.MoveSecurityRule(ctx, in.NetworkID, csID, f.Device, scope, rb, f.RuleID, f.Predecessor)
+		case "discard":
+			_, ferr = s.Client.Predict.DiscardSecurityRuleChange(ctx, in.NetworkID, csID, f.Device, scope, rb, f.RuleID)
+		default:
 			_, ferr = s.Client.Predict.RemoveSecurityRule(ctx, in.NetworkID, csID, f.Device, scope, rb, f.RuleID)
 		}
 		if ferr != nil {

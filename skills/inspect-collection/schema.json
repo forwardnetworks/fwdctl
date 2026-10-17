@@ -51,7 +51,7 @@
     },
     "include_content": {
       "type": "boolean",
-      "description": "view config, with data_file: also return the first 2000 characters of the file's stored content, unredacted. Off by default because an uploaded file can hold secrets"
+      "description": "view config, with data_file: also return the file's whole stored content (up to 200,000 characters), unredacted. Off by default because an uploaded file can hold secrets"
     },
     "collector": {
       "type": "string",

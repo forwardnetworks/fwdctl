@@ -191,3 +191,43 @@ func TestBlastRadiusADeviceWithNoChangedRulesIsALimitNotAFact(t *testing.T) {
 		t.Errorf("limits do not say the device was not looked up: %v", r.Limits)
 	}
 }
+
+// The routing area compares BGP neighbor sessions and route and next-hop counts per device and VRF between the two snapshots (the difference areas count neither). A removed session and a route-count drop on a device the
+// change set did not edit are reported, the second flagged as possible baseline drift; give device for its per-prefix changes.
+func TestBlastRadiusRoutingAreaReportsSessionsRouteCountsAndBaselineDrift(t *testing.T) {
+	f := changeFix{}
+	routes := f.routes()
+	routes["GET /api/networks/n1/change-sets/cs1"] = fwdtest.Const(200, map[string]any{"id": "cs1", "name": "cs", "snapshotId": "b1", "deviceToChanges": map[string]any{"edge1": map[string]any{}}})
+	answers := func(snap string) map[string]fwdtest.Handler {
+		after := snap == "a1"
+		counts := []map[string]any{
+			{"device": "edge1", "vrf": "default", "ipv4": 100, "ipv4NextHops": 120, "ipv6": 10, "ipv6NextHops": 10},
+			{"device": "core1", "vrf": "default", "ipv4": 500, "ipv4NextHops": 900, "ipv6": 0, "ipv6NextHops": 0},
+		}
+		nbrs := []map[string]any{{"device": "edge1", "vrf": "default", "peer": "192.0.2.1", "state": "ESTABLISHED"}}
+		if after {
+			counts[1]["ipv4"], counts[1]["ipv4NextHops"] = 480, 860 // core1 is not edited: baseline drift or propagation
+			nbrs = nil                                              // the session is gone
+		}
+		return map[string]fwdtest.Handler{"ipv4NextHops": rowsOf(len(counts), counts...), "sessionState": rowsOf(len(nbrs), nbrs...),
+			"nextHops: foreach hop": rowsOf(1, map[string]any{"vrf": "default", "prefix": "0.0.0.0/0", "nextHops": func() []any {
+				if after {
+					return []any{}
+				}
+				return []any{"192.0.2.1"}
+			}()})}
+	}
+	routes[nqePath] = func(r *http.Request, b []byte) (int, any) {
+		return invNQE(answers(r.URL.Query().Get("snapshotId")))(r, b)
+	}
+	r, _ := mustRun(t, "analyze-blast-radius", routes, csInput+`,"device":"edge1"}`)
+	b := jsonOf(r)
+	for _, want := range []string{"session removed", "192.0.2.1", `"devices_with_route_changes":1`, "core1", "devices_with_route_changes_not_edited_by_the_change_set", "baseline drift", "next hops changed"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q in %s", want, b)
+		}
+	}
+	if !strings.Contains(r.Finding, "routing") || strings.Contains(r.Finding, "No observable difference") {
+		t.Errorf("a routing change is part of the finding: %q", r.Finding)
+	}
+}

@@ -25,7 +25,7 @@ type collectionConfigInput struct {
 	// DataFile names one of the org's data files (see detail.data_files) to also read its inferred NQE schema and a content preview.
 	// A read, not a write: Forward's inference needs no credential and stores nothing.
 	DataFile string `json:"data_file"`
-	// IncludeContent also returns the first 2000 characters of that data file's stored content. Off by default: an uploaded file can hold anything, secrets included.
+	// IncludeContent also returns that data file's whole stored content (up to 200,000 characters). Off by default: an uploaded file can hold anything, secrets included.
 	IncludeContent bool `json:"include_content"`
 	// DataConnector names one of the network's data connectors (see detail.data_connectors) to also read its endpoints, status and last test result.
 	DataConnector string `json:"data_connector"`
@@ -411,13 +411,19 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 					preview["schema"] = json.RawMessage(inf.Inference.Schema)
 				}
 				if !in.IncludeContent {
-					preview["content_preview"] = "not shown: give include_content:true to read the first 2000 characters of the file (an uploaded file can hold secrets)"
-				} else if len(inf.Content) > 2000 {
-					preview["content_preview"] = inf.Content[:2000] + "..."
-					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is truncated at 2000 of %d characters; it is the file as uploaded, unredacted. To read every row: foreach r in network.extensions.%s.value select r (fwdctl nqe run --network %s --file q.nqe; the file must be attached to the network and a snapshot collected since)", in.DataFile, len(inf.Content), nqeNameOf(dfs, in.DataFile), in.NetworkID))
+					preview["content"] = "not shown: give include_content:true to read the whole file (up to 200,000 characters) (an uploaded file can hold secrets)"
 				} else {
-					preview["content_preview"] = inf.Content
-					limits = append(limits, fmt.Sprintf("data_file %q: the content preview is the file as uploaded, unredacted", in.DataFile))
+					// the whole file as uploaded (so it can be backed up before edit-data-file replaces it), up to a cap
+					const contentCap = 200000
+					content, truncated := inf.Content, false
+					if len(content) > contentCap {
+						content, truncated = content[:contentCap], true
+					}
+					preview["content"], preview["content_chars"] = content, len(inf.Content)
+					if truncated {
+						limits = append(limits, fmt.Sprintf("data_file %q: content is cut at %d of %d characters; to read every row: foreach r in network.extensions.%s.value select r (fwdctl nqe run --network %s --file q.nqe; the file must be attached to the network and a snapshot collected since)", in.DataFile, contentCap, len(inf.Content), nqeNameOf(dfs, in.DataFile), in.NetworkID))
+					}
+					limits = append(limits, fmt.Sprintf("data_file %q: content is the file as uploaded, unredacted (an uploaded file can hold secrets); save it before a replace, Forward keeps no copy", in.DataFile))
 				}
 				detail["data_file_schema"] = preview
 				if len(inf.Inference.Errors) > 0 {
@@ -495,7 +501,8 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 	}
 	if total == 0 {
 		return result.NewUnknown(collectionConfigName, "No collection targets are configured for this network", cx,
-			append(limits, "nothing to collect is configured through these routes; devices may arrive by snapshot upload or a cloud setup instead"), result.Options{})
+			append(limits, "nothing to collect is configured through these routes; devices may arrive by snapshot upload or a cloud setup instead", "the organization-wide items that were read (data files, the approved CLI command list) are in the evidence"),
+			result.Options{Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "inspectCollectionConfig", nil, detail, "organization-wide items read while the network has no collection targets")}})
 	}
 	finding := fmt.Sprintf("%v devices, %v endpoints, %d jump servers, %d proxies configured", detail["device_count"], detail["endpoint_count"], lenAny(detail["jump_servers"]), lenAny(detail["proxies"]))
 	if cs := lenAny(detail["cloud_setups"]); cs > 0 {
@@ -524,7 +531,8 @@ func endpointProfiles(ctx context.Context, s *fwd.Session, eps []forward.Endpoin
 		}
 	}
 	if len(eps) == 0 {
-		return nil
+		// no endpoint uses a profile yet, but a new CLI profile still needs to know what the organization lets it run
+		return approvedCLIList(ctx, s, detail, []string{"no endpoint in this network uses a profile yet; the organization's approved CLI command list is shown for a CLI profile you are about to create (edit-platform area endpoint_profiles)"})
 	}
 	profiles, _, err := s.Client.Endpoints.ListProfiles(ctx, "")
 	if err != nil {
@@ -583,7 +591,7 @@ func endpointProfiles(ctx context.Context, s *fwd.Session, eps []forward.Endpoin
 		if ap, _, aerr := s.Client.Endpoints.ApprovedCLICommands(ctx); aerr != nil {
 			limits = append(limits, "CLI profile commands run only if the organization approved them; the approved list could not be read: "+aerr.Error())
 		} else if ap != nil {
-			detail["approved_cli_commands"] = map[string]any{"count": len(ap.Commands), "custom_list_uploaded": ap.SignedAt != "" || ap.UploadedAt != ""}
+			detail["approved_cli_commands"] = approvedCLIRow(ap)
 			limits = append(limits, "CLI profile commands run only if the organization approved them (Forward's approved-command list, patterns not matched here): a profile is collected only if ALL its commands (custom, detector, name detector) match the approved patterns; if any one fails, the whole endpoint is excluded from collection. The signed-upload route needs a Forward-signed file, so a custom list cannot be self-authored")
 		}
 	}
@@ -809,4 +817,22 @@ func classicWithError(ctx context.Context, s *fwd.Session, networkID, errName st
 		}
 	}
 	return n
+}
+
+// approvedCLIRow is the organization's approved CLI command list: how many, whether the organization uploaded its own signed list, and the commands (capped; Forward's patterns are not matched here).
+func approvedCLIRow(ap *forward.ApprovedCLICommands) map[string]any {
+	cmds, total := result.CapRow(ap.Commands, 200)
+	return map[string]any{"count": total, "custom_list_uploaded": ap.SignedAt != "" || ap.UploadedAt != "", "uploaded_at": nilIfEmpty(ap.UploadedAt), "commands": cmds, "commands_shown": len(cmds)}
+}
+
+// approvedCLIList adds the approved list to the detail for a network whose endpoints use no profile.
+func approvedCLIList(ctx context.Context, s *fwd.Session, detail map[string]any, limits []string) []string {
+	ap, _, err := s.Client.Endpoints.ApprovedCLICommands(ctx)
+	if err != nil {
+		return append(limits, "the organization's approved CLI command list could not be read: "+err.Error())
+	}
+	if ap != nil {
+		detail["approved_cli_commands"] = approvedCLIRow(ap)
+	}
+	return limits
 }

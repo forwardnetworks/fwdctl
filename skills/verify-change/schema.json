@@ -28,7 +28,7 @@
       "x-values": {
         "verify": "judge a change: did it work and break nothing (before and after snapshots, or a change set) (default)",
         "describe": "what a change set edits, whether it was predicted, which of its checks got worse",
-        "impact": "how far a change reaches, measured; judges nothing",
+        "impact": "how far a change reaches, measured: difference areas, subnet connectivity, BGP sessions and route and next-hop counts (device adds per-prefix changes); judges nothing",
         "verdict": "the same as verify",
         "list": "the change sets this network holds (none is an answer; an unlicensed organization is a licence limit)",
         "scope": "what of this network Predict can model on this release: license facet, every predict flag, out-of-scope BGP families, platforms where propagation stops",

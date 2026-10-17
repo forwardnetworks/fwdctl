@@ -133,7 +133,7 @@ func planDataFileUpload(ctx context.Context, s *fwd.Session, in editDataFileInpu
 	if !nqeIdentRe.MatchString(nqeName) {
 		limits = append(limits, fmt.Sprintf("nqe_name %q is not a plain NQE identifier (letters, digits and underscores, not starting with a digit), so a query may not be able to write network.extensions.%s; the org's existing files use camelCase. Give nqe_name explicitly, for example %q", nqeName, nqeName, camelIdent(nqeName)))
 	}
-	limits = append(limits, "read the whole file in a query with: foreach r in network.extensions."+nqeName+".value select r (run it with fwdctl nqe run); inspect-collection previews only the first 2000 characters")
+	limits = append(limits, "read the whole file in a query with: foreach r in network.extensions."+nqeName+".value select r (run it with fwdctl nqe run); or inspect-collection view config with data_file and include_content returns the whole file (up to 200,000 characters)")
 	ch := result.Change{Action: "upload_data_file", Target: "data file " + lower, Before: nil, After: after, Reversible: true, Undo: "delete data file " + lower + " (edit-data-file action delete, confirm " + lower + ")"}
 	if !in.Apply {
 		return result.Build(editDataFileName, result.OK, fmt.Sprintf("Dry run: would upload data file %q (%s, nqe_name %s). Nothing was changed; run again with apply=true", lower, ft, nqeName),
@@ -257,7 +257,7 @@ func planDataFileDelete(ctx context.Context, s *fwd.Session, in editDataFileInpu
 	}
 	before := map[string]any{"name": file.Name, "nqe_name": file.NQEName, "type": file.Type, "attached_to_networks": len(file.NetworkIDs), "network_ids": file.NetworkIDs, "content_md5": file.ContentMD5Hex}
 	limits := []string{"deleting removes the file from the whole organization and from every network that carries it: a query reading network.extensions." + file.NQEName + " sees no such field from each network's NEXT snapshot onward (a query that requires it fails to compile there)",
-		"Forward keeps the content nowhere else: there is no undo. Read it first if it may be needed again (inspect-collection view config with data_file and include_content shows only the first 2000 characters; Forward's UI downloads all of it)"}
+		"Forward keeps the content nowhere else: there is no undo. Read it first if it may be needed again (inspect-collection view config with data_file and include_content returns the whole file, up to 200,000 characters, to save before the replace)"}
 	ch := result.Change{Action: "delete_data_file", Target: "data file " + file.Name, Before: before, After: nil, Reversible: false, Undo: "none: the content is not kept; upload the file again from your own copy (edit-data-file action upload)"}
 	if !in.Apply {
 		return result.Build(editDataFileName, result.OK, fmt.Sprintf("Dry run: would delete data file %q, attached to %d network(s). Nothing was changed; run again with apply=true and confirm=%q", file.Name, len(file.NetworkIDs), file.Name),

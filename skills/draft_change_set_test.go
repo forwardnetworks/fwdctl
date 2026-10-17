@@ -197,3 +197,109 @@ func TestDraftChangeSetBGPActionsAndTheShutdownWarning(t *testing.T) {
 		t.Errorf("a neighbor shutdown warns: %v", r.Limits)
 	}
 }
+
+// A device can take a whole configuration instead of commands (the "config file" option); a firewall rule can be edited, moved or have its staged change discarded.
+func TestDraftChangeSetStagesAWholeConfigAndEditsMovesAndDiscardsFirewallRules(t *testing.T) {
+	var saved, edited, moved, discarded string
+	const fw = "/api/networks/n1/change-sets/cs1/devices/fw1/scopes/LOCAL/rulebases/PRIMARY/security-rules/"
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                           ready("s1"),
+		"GET /api/networks/n1/change-sets":  fwdtest.Const(200, []any{}),
+		"POST /api/networks/n1/change-sets": fwdtest.Const(200, map[string]any{"id": "cs1", "name": "cfg", "snapshotId": "s1"}),
+		"PUT /api/networks/n1/change-sets/cs1/draft/devices/r1/config": func(_ *http.Request, b []byte) (int, any) { saved = string(b); return 204, nil },
+		"PATCH " + fw + "rule1": func(_ *http.Request, b []byte) (int, any) {
+			if strings.Contains(string(b), "predecessor") {
+				moved = string(b)
+			} else {
+				edited = string(b)
+			}
+			return 204, nil
+		},
+		"POST " + fw + "rule2": func(r *http.Request, _ []byte) (int, any) { discarded = r.URL.RawQuery; return 204, nil },
+		"GET /api/networks/n1/change-sets/cs1/devices/fw1/security-rules-diff": fwdtest.Const(200, map[string]any{"rulebases": []any{}, "entries": []any{}}),
+	}
+	in := `{"network_id":"n1","name":"cfg","devices":[{"device":"r1","config":"hostname r1\ninterface lo0\n"}],"firewall_rules":[` +
+		`{"op":"edit","device":"fw1","rule_id":"rule1","rule":{"name":"allow-web","action":"ALLOW","enabled":true}},` +
+		`{"op":"move","device":"fw1","rule_id":"rule1","predecessor":"r0"},` +
+		`{"op":"discard","device":"fw1","rule_id":"rule2"}]`
+	r, srv := mustRun(t, "edit-change-set", routes, in+`}`)
+	if r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(strings.Join(r.Limits, " "), "not validated") {
+		t.Fatalf("dry run: %s %v", r.Mode, r.Limits)
+	}
+	r, _ = mustRun(t, "edit-change-set", routes, in+`,"apply":true}`)
+	if r.Status != result.OK || !strings.Contains(saved, "interface lo0") || !strings.Contains(edited, "allow-web") || !strings.Contains(moved, "r0") || !strings.Contains(discarded, "discardChanges") {
+		t.Fatalf("apply: %s saved=%q edited=%q moved=%q discarded=%q %s", r.Status, saved, edited, moved, discarded, r.Finding)
+	}
+	for _, bad := range []string{
+		`"devices":[{"device":"r1","commands":"x","config":"y"}]`, // not both
+		`"devices":[{"device":"r1"}]`,                             // neither
+		`"firewall_rules":[{"op":"edit","device":"fw1","rule_id":"a"}]`,
+		`"firewall_rules":[{"op":"move","device":"fw1","predecessor":"a"}]`,
+		`"firewall_rules":[{"op":"discard","device":"fw1"}]`,
+	} {
+		if _, _, err := runSkill(t, "edit-change-set", routes, `{"network_id":"n1","name":"x",`+bad+`}`); err == nil {
+			t.Errorf("%s must be refused", bad)
+		}
+	}
+}
+
+// lifecycle works on an existing change set: rename or describe it, copy it, delete it (confirmed by its id), throw away one device's uncommitted edits, or restore an earlier version. Each has a dry run.
+func TestDraftChangeSetLifecycleOnAnExistingChangeSet(t *testing.T) {
+	var patched, dup string
+	deleted, restored, discarded := false, false, false
+	const cs = "/api/networks/n1/change-sets/cs9"
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, []any{map[string]any{"id": "cs9", "name": "old name", "snapshotId": "s1"}}),
+		"PATCH " + cs: func(_ *http.Request, b []byte) (int, any) {
+			patched = string(b)
+			return 200, map[string]any{"id": "cs9", "name": "new name"}
+		},
+		"POST " + cs: func(r *http.Request, b []byte) (int, any) {
+			dup = r.URL.RawQuery + string(b)
+			return 200, map[string]any{"id": "cs10", "name": "copy"}
+		},
+		"DELETE " + cs:                       func(*http.Request, []byte) (int, any) { deleted = true; return 204, nil },
+		"DELETE " + cs + "/draft/devices/r1": func(*http.Request, []byte) (int, any) { discarded = true; return 204, nil },
+		"POST " + cs + "/commits/c3":         func(*http.Request, []byte) (int, any) { restored = true; return 200, map[string]any{"commitId": "c4"} },
+	}
+	run := func(extra string) result.Result {
+		r, _ := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","change_set_id":"cs9",`+extra+`}`)
+		return r
+	}
+	// dry runs change nothing and name the change set
+	for _, l := range []string{`"lifecycle":{"op":"rename","name":"new name"}`, `"lifecycle":{"op":"duplicate","name":"copy"}`, `"lifecycle":{"op":"delete"}`, `"lifecycle":{"op":"discard_device","device":"r1"}`, `"lifecycle":{"op":"restore_commit","commit_id":"c3"}`} {
+		if r := run(l); r.Mode != result.ModeDryRun || !strings.Contains(jsonOf(r), "cs9") {
+			t.Fatalf("dry run %s: %s", l, jsonOf(r))
+		}
+	}
+	if patched != "" || dup != "" || deleted || restored || discarded {
+		t.Fatalf("a dry run wrote")
+	}
+	if r := run(`"lifecycle":{"op":"rename","name":"new name"},"apply":true`); r.Status != result.OK || !strings.Contains(patched, "new name") {
+		t.Errorf("rename: %s %s", r.Status, patched)
+	}
+	if r := run(`"lifecycle":{"op":"duplicate","name":"copy"},"apply":true`); r.Status != result.OK || !strings.Contains(dup, "duplicate") || !strings.Contains(jsonOf(r), "cs10") {
+		t.Errorf("duplicate: %s %s", r.Status, dup)
+	}
+	if r := run(`"lifecycle":{"op":"discard_device","device":"r1"},"apply":true`); r.Status != result.OK || !discarded {
+		t.Errorf("discard_device: %s", r.Status)
+	}
+	if r := run(`"lifecycle":{"op":"restore_commit","commit_id":"c3"},"apply":true`); r.Status != result.OK || !restored {
+		t.Errorf("restore_commit: %s", r.Status)
+	}
+	// delete needs confirm = the change set id
+	if r := run(`"lifecycle":{"op":"delete"},"apply":true`); r.Status == result.OK || deleted {
+		t.Errorf("delete without confirm must refuse: %s", r.Status)
+	}
+	if r := run(`"lifecycle":{"op":"delete"},"apply":true,"confirm":"cs9"`); r.Status != result.OK || !deleted {
+		t.Errorf("delete: %s", r.Status)
+	}
+	// lifecycle does not combine with staging content
+	if _, _, err := runSkill(t, "edit-change-set", routes, `{"network_id":"n1","change_set_id":"cs9","name":"x","lifecycle":{"op":"delete"},"devices":[{"device":"r1","commands":"x"}]}`); err == nil {
+		t.Errorf("lifecycle and devices together must be refused")
+	}
+	// an unknown change set
+	if r, _ := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","change_set_id":"nope","lifecycle":{"op":"delete"}}`); r.Status == result.OK {
+		t.Errorf("an unknown change set is not ok: %s", r.Status)
+	}
+}
