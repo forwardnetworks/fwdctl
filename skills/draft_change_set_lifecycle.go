@@ -112,7 +112,7 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			return m, e
 		}
 	}
-	limits := []string{"nothing here reaches a device; a change set only feeds Predict", "predicted snapshots a change set already made are not touched and cannot be deleted by these skills"}
+	limits := []string{"nothing here reaches a device; a change set only feeds Predict", "predicted snapshots a change set already made are not touched here; edit-snapshot action delete removes one (Forward decides whether it allows it)"}
 	need := op == "delete"
 	if !in.Apply {
 		msg := fmt.Sprintf("Dry run: would %s change set %s (%s). Nothing was changed; run again with apply=true", verb, id, cs.Name)

@@ -509,3 +509,22 @@ func TestVerifyChangePathsViewRanksFirewallAndLoadBalancerPaths(t *testing.T) {
 		t.Errorf("unlicensed: %s %v", r.Status, r.Limits)
 	}
 }
+
+// view list gives each change set's predicted snapshots (id and state, newest first) so a caller can go from a change set's name to the snapshot it produced without describing every set; a set whose predictions could not be read says so.
+func TestVerifyChangeListViewCarriesEachChangeSetsPredictedSnapshots(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, map[string]any{"changeSets": []any{
+			map[string]any{"id": "cs1", "name": "CHG-1", "snapshotId": "s1"},
+			map[string]any{"id": "cs2", "name": "CHG-2", "snapshotId": "s1"},
+		}}),
+		"GET /api/networks/n1/change-sets/cs1/predicted-snapshots": fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{
+			map[string]any{"id": "p1", "state": "PROCESSED", "createdAt": "2026-10-01T00:00:00.000Z"},
+			map[string]any{"id": "p2", "state": "PROCESSED", "createdAt": "2026-10-02T00:00:00.000Z"}}}),
+		"GET /api/networks/n1/change-sets/cs2/predicted-snapshots": fwdtest.Const(500, map[string]any{"message": "boom"}),
+	}
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || !strings.Contains(b, `"id":"p2"`) || strings.Index(b, `"id":"p2"`) > strings.Index(b, `"id":"p1"`) || !strings.Contains(b, "predictions_unreadable") {
+		t.Fatalf("predicted snapshots: %s %s", r.Status, b)
+	}
+}

@@ -213,6 +213,9 @@ func dedupe(in []string) []string {
 }
 
 // listChangeSets is view list: the change sets a network holds. None is an answer (Predict was never used here, or its change sets were deleted); an unlicensed organization is a licence limit, not an empty list.
+// maxListPredictions bounds the per-change-set reads view list makes for predicted snapshots.
+const maxListPredictions = 50
+
 func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (result.Result, error) {
 	cx := result.Context{NetworkID: networkID, State: "current"}
 	list, err := s.ChangeSets(ctx, networkID)
@@ -223,12 +226,25 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 		return result.Result{}, err
 	}
 	rows := make([]map[string]any, 0, len(list))
-	for _, c := range list {
-		rows = append(rows, map[string]any{"id": string(c.ID), "name": c.Name, "description": c.Description, "base_snapshot_id": string(c.SnapshotID), "tags": c.Tags, "devices_edited": len(c.DeviceToChanges)})
+	for i, c := range list {
+		row := map[string]any{"id": string(c.ID), "name": c.Name, "description": c.Description, "base_snapshot_id": string(c.SnapshotID), "tags": c.Tags, "devices_edited": len(c.DeviceToChanges)}
+		if i < maxListPredictions { // one read per change set, so only the first ones carry their predicted snapshots
+			if ps, perr := s.PredictedSnapshots(ctx, networkID, string(c.ID)); perr != nil {
+				row["predictions_unreadable"] = perr.Error()
+			} else {
+				sort.SliceStable(ps, func(a, b int) bool { return ps[a].CreatedAt > ps[b].CreatedAt })
+				preds := make([]map[string]any, 0, len(ps))
+				for _, p := range ps {
+					preds = append(preds, map[string]any{"id": string(p.ID), "state": p.State, "created_at": nilIfEmpty(p.CreatedAt)})
+				}
+				row["predicted_snapshots"] = preds
+			}
+		}
+		rows = append(rows, row)
 	}
 	shown, omitted := result.Cap(rows, 100, "change sets", "describe one with view describe")
 	limits := []string{"this lists the change sets Forward holds now; a deleted change set is gone, so none here does not prove Predict was never used",
-		"a change set's predicted snapshot and checks are read with view describe (change_set_id)"}
+		fmt.Sprintf("predicted_snapshots (newest first) are read for the first %d change sets only; a change set's checks are read with view describe (change_set_id)", maxListPredictions)}
 	finding := fmt.Sprintf("%d change set(s) on network %s", len(rows), networkID)
 	if len(rows) == 0 {
 		finding = fmt.Sprintf("No change set on network %s", networkID)
