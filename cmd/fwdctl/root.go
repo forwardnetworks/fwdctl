@@ -33,6 +33,7 @@ type app struct {
 // connOptions are the connection flags every command accepts; applyConnectionOptions turns them (and the saved login) into the environment a session reads.
 type connOptions struct {
 	url, username, passwordFile, tokenFile, configFile string
+	supportTokenFile                                   string // a second login, for changes that need Forward-support authority (edit-org-property org_id)
 	insecure                                           bool
 	caBundle                                           string
 }
@@ -122,6 +123,7 @@ func (a *app) newRoot() *cobra.Command {
 	pf.StringVar(&a.conn.username, "username", "", "login name or API token access key (overrides FORWARD_USERNAME)")
 	pf.StringVar(&a.conn.passwordFile, "password-file", "", "file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)")
 	pf.StringVar(&a.conn.tokenFile, "token-file", "", "a token file: URL, username and password on three lines, mode 600")
+	pf.StringVar(&a.conn.supportTokenFile, "support-token-file", "", "a second token file (same format) for a Forward-support login: used only by changes that need support authority, such as edit-org-property with org_id; the main login is used for everything else")
 	pf.StringVar(&a.conn.configFile, "config", "", "connection config file (default ~/.config/fwdctl/config.json)")
 	pf.StringVar(&a.conn.caBundle, "ca-bundle", "", "PEM file of the certificate authorities to trust for Forward's certificate, for a private or self-signed CA (overrides FORWARD_CA_BUNDLE; verification stays on; not with --insecure)")
 	pf.BoolVar(&a.conn.insecure, "insecure", false, "do NOT verify the TLS certificate (a self-signed Forward; every result records it)")

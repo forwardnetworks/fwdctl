@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
+	"github.com/forwardnetworks/fwdctl/knowledge"
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
@@ -165,5 +166,29 @@ func TestPlatformBannersOnPremHasNoAnnouncementAndThatIsNotAFailure(t *testing.T
 	all := fmtAny(r)
 	if r.Status != result.OK || !strings.Contains(all, "LOW_STORAGE") || !strings.Contains(strings.Join(r.Limits, " "), "no system announcement") {
 		t.Errorf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}
+
+// A property row says what the release's source default is and who may change it, so "ospf is off" comes with "the release default is false, and on SaaS only Forward support can turn it on". A property the release does not define says so.
+func TestPlatformOrgPropertiesCarryTheReleaseDefaultAndWhoCanChangeIt(t *testing.T) {
+	if len(knowledge.OrgPropertyNames()) == 0 {
+		t.Skip("the property table is not in this build")
+	}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/version": fwdtest.Const(200, map[string]any{"build": "1.0.0-test", "release": "26.9.4-02", "version": "26.9"}),
+		"GET /api/orgs/o1/config": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("filter") == "CONFIGURED" {
+				return 200, map[string]any{}
+			}
+			return 200, map[string]any{"predict_model_ospf": false}
+		},
+		"GET /api/global-config": fwdtest.Const(200, map[string]any{"predict_model_ospf": false}),
+	}
+	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"org_properties","org_id":"o1","name":"predict_model_ospf"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"release_default":"false"`, `"default_release":"26.9"`, "on-premises", "Forward support"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
 	}
 }

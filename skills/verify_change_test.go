@@ -321,6 +321,10 @@ func TestVerifyChangeScopeViewJoinsLicenseFamiliesPlatformsAndFeatures(t *testin
 	if d == nil {
 		t.Fatalf("no scope detail: %s", b)
 	}
+	// 26.9 has no predict_model_isis: the scope says it does not exist, not that it is unreadable
+	if !strings.Contains(b, "does not exist in release 26.9") {
+		t.Errorf("an absent flag says so: %s", b)
+	}
 	oos := d["out_of_scope_families"].([]map[string]any)
 	got := map[string]string{}
 	for _, x := range oos {

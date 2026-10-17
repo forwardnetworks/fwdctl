@@ -32,6 +32,9 @@ type OrgProp struct {
 // OrgPropertyInfo has nothing in this build: the property table is in the release binaries only.
 func OrgPropertyInfo(string) (*OrgProp, bool) { return nil, false }
 
+// OrgPropertyDefault knows nothing in this build.
+func OrgPropertyDefault(string, string) (string, bool, bool) { return "", false, false }
+
 // OrgPropertyNames lists none.
 func OrgPropertyNames() []string { return nil }
 

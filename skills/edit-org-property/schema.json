@@ -7,6 +7,10 @@
       "minLength": 1,
       "description": "the organization property (omit to list what is configurable, with value, risk and who may change it)"
     },
+    "org_id": {
+      "type": "string",
+      "description": "Change ANOTHER organization through the Forward-support routes (a support login only; the dry run names the target; apply needs confirm \"<property> <org_id>\"). Omit for the login's own organization"
+    },
     "value": {
       "type": "string",
       "minLength": 1,

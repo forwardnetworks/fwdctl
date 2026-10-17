@@ -36,3 +36,29 @@ func TestTheCABundlePathExpandsALeadingTilde(t *testing.T) {
 		t.Fatalf("%v %q", err, os.Getenv("FORWARD_CA_BUNDLE"))
 	}
 }
+
+// A second token file is the Forward-support login: --support-token-file (or FORWARD_SUPPORT_TOKEN_FILE, or support_token_file in the config) fills FORWARD_SUPPORT_*, and leaves the main login alone.
+func TestTheSupportTokenFileFillsTheSupportLoginOnly(t *testing.T) {
+	dir := t.TempDir()
+	tok := filepath.Join(dir, "support.token")
+	if err := os.WriteFile(tok, []byte("https://support.example\nsupport-user\nsupport-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"FORWARD_URL", "FORWARD_USERNAME", "FORWARD_PASSWORD", "FORWARD_SUPPORT_URL", "FORWARD_SUPPORT_USERNAME", "FORWARD_SUPPORT_PASSWORD", "FORWARD_SUPPORT_TOKEN_FILE"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("FORWARD_URL", "https://main.example")
+	cfg := filepath.Join(dir, "none.json")
+	if err := os.WriteFile(cfg, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyConnectionOptions(connOptions{configFile: cfg, supportTokenFile: tok}); err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("FORWARD_SUPPORT_USERNAME") != "support-user" || os.Getenv("FORWARD_SUPPORT_PASSWORD") != "support-secret" || os.Getenv("FORWARD_SUPPORT_URL") != "https://support.example" {
+		t.Errorf("support login not set: %q", os.Getenv("FORWARD_SUPPORT_USERNAME"))
+	}
+	if os.Getenv("FORWARD_USERNAME") != "" || os.Getenv("FORWARD_URL") != "https://main.example" {
+		t.Errorf("the main login must be untouched: %q %q", os.Getenv("FORWARD_USERNAME"), os.Getenv("FORWARD_URL"))
+	}
+}

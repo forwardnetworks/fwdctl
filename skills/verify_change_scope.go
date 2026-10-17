@@ -9,6 +9,7 @@ import (
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/knowledge"
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
@@ -49,14 +50,8 @@ type scopeResult struct {
 	bgpDevs  map[string]bool // the devices that run BGP in config (any family found)
 }
 
-// predictFlagDefaults are the defaults of the Predict modelling flags by release (OrgProperty.java on the release branches, read by a peer session, not verified here): used only when the flag cannot be read from the tenant.
-var predictFlagDefaults = map[string]map[string]bool{
-	"26.9":  {"predict_model_bgp": true, "predict_model_ospf": false, "predict_model_config": false, "predict_model_cross_protocol": false, "predict_model_omp": false, "predict_model_ext_adv": true},
-	"26.10": {"predict_model_bgp": true, "predict_model_ospf": false, "predict_model_config": false, "predict_model_cross_protocol": true, "predict_model_isis": false, "predict_model_omp": false, "predict_model_ext_adv": true},
-}
-
 // predictFlagOrder is the order the flags are reported in.
-var predictFlagOrder = []string{"predict_modeling", "predict_model_bgp", "predict_model_ospf", "predict_model_config", "predict_model_cross_protocol", "predict_model_isis", "predict_model_omp", "predict_model_ext_adv"}
+var predictFlagOrder = []string{"predict_modeling", "predict_model_bgp", "predict_model_ospf", "predict_model_config", "predict_model_cross_protocol", "predict_model_isis", "predict_model_omp", "predict_model_ext_adv", "firewall_predict"}
 
 // releaseOf takes "26.9" from a Forward version or release string such as "26.9.4-02".
 func releaseOf(v string) string {
@@ -107,15 +102,16 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 		d["version"] = firstNonEmpty(v.Release, v.Version)
 	}
 	d["release"] = release
-	defaults := predictFlagDefaults[release]
 	flagRows := []map[string]any{}
 	flagVal := map[string]any{}
 	for _, name := range predictFlagOrder {
 		row := map[string]any{"property": name}
 		if v, ok := cfg.Effective[name]; ok {
 			row["value"], row["source"] = v == "true", "read from the tenant"
-		} else if dv, ok := defaults[name]; ok {
-			row["value"], row["source"] = dv, "default for release "+release+", not read from the tenant"
+		} else if dv, defined, ok := knowledge.OrgPropertyDefault(name, release); ok && !defined {
+			row["value"], row["source"] = nil, "this property does not exist in release "+release+" (so it is neither on nor settable)"
+		} else if ok {
+			row["value"], row["source"] = dv == "true", "default for release "+release+", not read from the tenant"
 		} else {
 			row["value"], row["source"] = nil, "not readable here, and no default is held for this release"
 		}
@@ -191,6 +187,9 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 	if d["static_repropagated"] == false {
 		notes = append(notes, "static and connected changes are not re-propagated")
 	}
+	if flagVal["predict_model_cross_protocol"] == false {
+		notes = append(notes, "redistribution into BGP is not re-propagated")
+	}
 	finding := "Predict fit: " + strings.Join(notes, "; ")
 	status := result.OK
 	if lic["predict"] == false {
@@ -200,6 +199,6 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 		"the scope is prediction-scope.md of the 26.9 and 26.10 documentation (read from the documentation by a peer session, not verified on a live Forward): BGP unicast IPv4/IPv6, VPNv4/VPNv6 and BGP-LU are re-propagated; EVPN, VPLS, multicast/MVPN, BGP-LS, SR policy and flowspec are not; OSPF, static, SD-WAN, IS-IS, EIGRP and RIP are not re-propagated on 26.9. Master's platform-support page adds BGP rows for Meraki MX, AWS Transit Gateway and VeloCloud Edge and turns predict_model_ospf on by default",
 		"full routing re-synthesis is documented for Cisco IOS, IOS-XE, IOS-XR, NX-OS, ASA, Juniper Junos and SRX, Arista EOS, Fortinet and Palo Alto PAN-OS; any other platform stays as collected and propagation stops at it. The platform match is an exact match on Forward's OS name (IOS, IOS_XE, IOS_XR, NXOS, ACI, ASA, JUNOS, SRX, ARISTA_EOS, FORTINET, PAN_OS); an OS name not in that list is reported as a propagation stop, including OTHER and UNKNOWN",
 		"BGP families are read from device config (see inspect-inventory kind bgp_families): EOS, IOS, IOS-XE and NX-OS shapes only; Junos, IOS-XR and FortiOS are not read, so their out-of-scope families, if any, are missing here")
-	limits = append(limits, "the flag defaults by release (26.9 and 26.10) are Forward's OrgProperty.java on the release branches, read by a peer session, not verified on a live Forward; a value read from the tenant is the effective organization property")
+	limits = append(limits, "the flag defaults by release are Forward's OrgProperty.java on release/26.9.0-18, release/26.10.0-02 and master (read from source, not run on a live Forward; sealed in the release binary); a value read from the tenant is the effective organization property. These flags are on-premises-settable only: on SaaS Forward staff set them")
 	return scopeResult{detail: d, limits: limits, status: status, finding: finding, cx: cx, snap: snap, bgpDevs: bgpDevs}, nil
 }

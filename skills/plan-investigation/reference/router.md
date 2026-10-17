@@ -54,7 +54,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Create or disable a user, make someone org admin, give a user or group a role on a network, define an access group | `edit-access` (dry run first) |
 | Upload a dataset (CSV/JSON/XML/YAML/TEXT) for NQE to join, or attach/detach one on a network | `edit-data-file` (dry run first) |
 | Add, update, delete or test a per-network HTTP data connector | `edit-data-connector` (dry run first) |
-| Change an organization-wide Forward setting (a property), or list what is configurable and how risky each is | `edit-org-property` (dry run first) |
+| Change an organization-wide Forward setting (a property, a feature flag such as turning on OSPF modeling for Predict), on this org or on another with org_id and a support login, or list what is configurable and how risky each is | `edit-org-property` (dry run first) |
 | Try an extra OID, or a different profile, on an endpoint (create an SNMP profile as a copy plus OIDs, repoint endpoints, delete the copy) | `edit-endpoint-profile` (dry run first) |
 | Model a leased line or provider L2 circuit between two edge ports (a WAN circuit) | `edit-wan-circuit` (dry run first) |
 | Where should the internet attach or egress, why a trace dead-ends at the edge, which default route points at an unowned next hop or upstream | `inspect-edge` (`view: exits`, the default) |

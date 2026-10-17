@@ -8,6 +8,7 @@ import (
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/knowledge"
 )
 
 // orgPropertyRows is the org_properties area of inspect-platform: every property the appserver defines for one organization, with its effective value and where that value comes
@@ -37,9 +38,19 @@ func orgPropertyRows(ctx context.Context, s *fwd.Session, in inspectPlatformInpu
 	} else {
 		lim = append(lim, fmt.Sprintf("global overrides were not read (%v), so a property not set on the organization is reported as global_or_compiled_default", gerr))
 	}
+	release := ""
+	if v, _, verr := s.Client.Version.Get(ctx); verr == nil && v != nil {
+		release = releaseOf(firstNonEmpty(v.Release, v.Version))
+	}
 	for _, p := range cat.Properties {
 		name := string(p.Name)
 		m := map[string]any{"row": "property", "name": name, "effective": p.Value, "kind": string(p.Kind)}
+		if info, ok := knowledge.OrgPropertyInfo(name); ok {
+			m["who_can_change"] = whoCanChange(info.Admin)
+			if dv, defined, known := knowledge.OrgPropertyDefault(name, release); known && defined {
+				m["release_default"], m["default_release"] = dv, release
+			}
+		}
 		switch {
 		case p.Configured:
 			m["source"], m["org_value"] = "org", p.ConfiguredValue
@@ -66,6 +77,7 @@ func orgPropertyRows(ctx context.Context, s *fwd.Session, in inspectPlatformInpu
 	if cat.DefaultsErr != nil {
 		lim = append(lim, fmt.Sprintf("deployment defaults were not read (%v), so deployment_default is absent", cat.DefaultsErr))
 	}
+	lim = append(lim, "release_default and who_can_change come from Forward's OrgProperty.java on the release branches (read from source, not run on a live Forward); a property whose who_can_change is Forward support, or on-premises only on a SaaS tenant, is set by Forward support (PUT /api/orgs/{orgId}/config/{property}), not by an organization administrator")
 	lim = append(lim, "organization "+orgID+": effective and org-set values were read from Forward; the compiled default is not exposed by any route, so for a property with source compiled_default the effective value is that default",
 		"to compare two organizations or clusters, run this once on each and compare the rows by name (and the appserver_build row); this call reads one organization of one Forward")
 	return rows, lim, nil

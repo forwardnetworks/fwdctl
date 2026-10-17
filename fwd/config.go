@@ -83,3 +83,61 @@ func (s *Session) ClearOrgProperty(ctx context.Context, name string) error {
 	_, err := s.Client.Properties.ClearCurrent(ctx, forward.OrgProperty(strings.ToLower(name)))
 	return err
 }
+
+// OrgConfigFor reads another organization's configuration through the Forward-support routes (GET /api/orgs/{id}/config) plus the deployment defaults. Effective and Configured are
+// required: a login without support permission gets a 403 there and Effective stays nil with the reason in Errs. It never writes and never touches global-config.
+func (s *Session) OrgConfigFor(ctx context.Context, orgID string) OrgConfig {
+	c := OrgConfig{Errs: map[string]string{}}
+	if p, _, err := s.Client.Properties.Organization(ctx, orgID, forward.PropertyFilterOff); err != nil {
+		c.Errs["effective"] = err.Error()
+		return c
+	} else {
+		c.Effective = propertyStrings(p)
+	}
+	if p, _, err := s.Client.Properties.Organization(ctx, orgID, forward.PropertyFilterConfigured); err != nil {
+		c.Errs["configured"] = err.Error()
+	} else {
+		c.Configured = propertyStrings(p)
+	}
+	if p, _, err := s.Client.Properties.Global(ctx, forward.PropertyFilterOff); err != nil {
+		c.Errs["global"] = err.Error()
+	} else {
+		c.Global = propertyStrings(p)
+	}
+	return c
+}
+
+// OrgName is the name of the organization with this id, from the organization list ("" when the login cannot list it or the id is not there).
+func (s *Session) OrgName(ctx context.Context, orgID string) string {
+	orgs, _, err := s.Client.Organizations.List(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, o := range orgs {
+		if string(o.ID) == orgID {
+			return o.Name
+		}
+	}
+	return ""
+}
+
+// SetOrgPropertyFor sets an override on another organization (PUT /api/orgs/{id}/config/{property}; needs Forward support permission).
+func (s *Session) SetOrgPropertyFor(ctx context.Context, orgID, name, value string) error {
+	_, _, err := s.Client.Properties.SetOrganization(ctx, orgID, forward.OrgProperty(strings.ToLower(name)), value)
+	return err
+}
+
+// ClearOrgPropertyFor removes another organization's override (DELETE /api/orgs/{id}/config/{property}).
+func (s *Session) ClearOrgPropertyFor(ctx context.Context, orgID, name string) error {
+	_, err := s.Client.Properties.ClearOrganization(ctx, orgID, forward.OrgProperty(strings.ToLower(name)))
+	return err
+}
+
+// EffectiveOrgConfigFor reads another organization's effective values (one request).
+func (s *Session) EffectiveOrgConfigFor(ctx context.Context, orgID string) (map[string]string, error) {
+	p, _, err := s.Client.Properties.Organization(ctx, orgID, forward.PropertyFilterOff)
+	if err != nil {
+		return nil, err
+	}
+	return propertyStrings(p), nil
+}

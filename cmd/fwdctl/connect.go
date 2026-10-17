@@ -20,6 +20,8 @@ type connFile struct {
 	PasswordFile string `json:"password_file"`
 	// TokenFile is a file of three lines: the Forward URL, the username (or an API token's access key) and the password (or its secret).
 	TokenFile string `json:"token_file"`
+	// SupportTokenFile is a second token file for a Forward-support login (FORWARD_SUPPORT_TOKEN_FILE, --support-token-file): only changes that need support authority use it.
+	SupportTokenFile string `json:"support_token_file"`
 	Insecure  bool   `json:"insecure"`
 	// CABundle is the path of a PEM file of certificate authorities to trust for Forward's certificate.
 	CABundle string `json:"ca_bundle"`
@@ -109,6 +111,22 @@ func applyConnectionOptions(o connOptions) error {
 		if passFile == "" && c.PasswordFile == "" && os.Getenv("FORWARD_PASSWORD") == "" {
 			os.Setenv("FORWARD_PASSWORD", tp)
 		}
+	}
+	sup := o.supportTokenFile
+	if sup == "" {
+		sup = os.Getenv("FORWARD_SUPPORT_TOKEN_FILE")
+	}
+	if sup == "" {
+		sup = c.SupportTokenFile
+	}
+	if sup != "" {
+		su, sn, sp, err := readTokenFile(sup)
+		if err != nil {
+			return fmt.Errorf("support login: %v", err)
+		}
+		os.Setenv("FORWARD_SUPPORT_URL", su)
+		os.Setenv("FORWARD_SUPPORT_USERNAME", sn)
+		os.Setenv("FORWARD_SUPPORT_PASSWORD", sp)
 	}
 	set := func(env, flagVal, fileVal string) {
 		switch {

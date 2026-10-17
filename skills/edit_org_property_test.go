@@ -127,3 +127,58 @@ func TestUnclassifiedOrgPropertyNeedsConfirmToo(t *testing.T) {
 		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
 }
+
+// With org_id the property is read and written on THAT organization through the support routes (/api/orgs/{id}/config), never the login's own and never global-config. The dry run names the target (id and name),
+// apply needs confirm = "<property> <org_id>", and a login without support authority is refused with the reason.
+func TestEditOrgPropertyOnAnotherOrganization(t *testing.T) {
+	if len(knowledge.OrgPropertyNames()) == 0 {
+		t.Skip("the property table is not in this build")
+	}
+	var puts []string
+	ospf := false
+	routes := map[string]fwdtest.Handler{
+		"GET /api/version":    fwdtest.Const(200, map[string]any{"version": "26.9.4", "release": "26.9.4-02", "build": "b"}),
+		"GET /api/admin/orgs": fwdtest.Const(200, []any{map[string]any{"id": "1707", "name": "Example Org"}, map[string]any{"id": "1", "name": "Forward Networks"}}),
+		"GET /api/orgs/1707/config": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("filter") == "CONFIGURED" {
+				return 200, map[string]any{}
+			}
+			return 200, map[string]any{"predict_model_ospf": ospf}
+		},
+		"GET /api/global-config": fwdtest.Const(200, map[string]any{"predict_model_ospf": false}),
+		"PUT /api/orgs/1707/config/predict_model_ospf": func(r *http.Request, _ []byte) (int, any) {
+			puts = append(puts, r.URL.Query().Get("value"))
+			ospf = true
+			return 200, map[string]any{"predict_model_ospf": true}
+		},
+		"GET /api/config": func(*http.Request, []byte) (int, any) {
+			t.Errorf("the login's own organization must not be read")
+			return 200, map[string]any{}
+		},
+	}
+	in := func(extra string) string {
+		return `{"org_id":"1707","property":"predict_model_ospf","value":"true"` + extra + `}`
+	}
+	r, _ := mustRun(t, "edit-org-property", routes, in(""))
+	b := jsonOf(r)
+	if r.Mode != result.ModeDryRun || len(puts) != 0 || !strings.Contains(b, "1707") || !strings.Contains(b, "Example Org") || !strings.Contains(b, "PREDICT_MODEL_OSPF") {
+		t.Fatalf("dry run: %s %v %s", r.Mode, puts, b)
+	}
+	r, _ = mustRun(t, "edit-org-property", routes, in(`,"apply":true`))
+	if r.Status == result.OK || len(puts) != 0 {
+		t.Fatalf("apply without confirm must refuse: %s %v", r.Status, puts)
+	}
+	r, _ = mustRun(t, "edit-org-property", routes, in(`,"apply":true,"confirm":"predict_model_ospf 1707"`))
+	if r.Status != result.OK || len(puts) != 1 || puts[0] != "true" || !strings.Contains(r.Finding, "Example Org") {
+		t.Fatalf("apply: %s %v %s", r.Status, puts, r.Finding)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "main login") {
+		t.Errorf("the result says which login made the change: %v", r.Limits)
+	}
+	// an organization the login cannot administer
+	routes["GET /api/orgs/1707/config"] = fwdtest.Const(403, map[string]any{"message": "no"})
+	r, _ = mustRun(t, "edit-org-property", routes, in(""))
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "support") {
+		t.Errorf("403: %s %v", r.Status, r.Limits)
+	}
+}

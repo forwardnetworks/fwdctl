@@ -43,7 +43,16 @@ func main() {
 		if requestTimeout > 0 {
 			cfg.Timeout = requestTimeout
 		}
-		return fwd.NewSession(cfg)
+		sess, err := fwd.NewSession(cfg)
+		if err != nil {
+			return nil, err
+		}
+		if sc, ok := fwd.SupportConfigFromEnv(cfg); ok {
+			if sup, serr := fwd.NewSession(sc); serr == nil {
+				sess.Support = sup
+			}
+		}
+		return sess, nil
 	}}
 	code := a.execute(os.Args[1:])
 	updateNotice(a.top, os.Stderr)

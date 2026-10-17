@@ -20,6 +20,8 @@ func init() { Register(editOrgPropertyName, editOrgProperty) }
 type editOrgPropertyInput struct {
 	// Property is the organization property to change; omit it to list what is configurable and its current value.
 	Property string `json:"property"`
+	// OrgID targets another organization through the Forward-support routes (/api/orgs/{id}/config): the dry run names it, apply needs confirm "<property> <org_id>". Empty is the login's own organization.
+	OrgID string `json:"org_id"`
 	Value    string `json:"value"`
 	// Clear removes the organization's override so the deployment default applies again.
 	Clear bool `json:"clear"`
@@ -47,7 +49,31 @@ func editOrgProperty(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	cx := result.Context{Scope: "account", State: "current"}
-	cfg := s.OrgConfig(ctx)
+	in.OrgID = strings.TrimSpace(in.OrgID)
+	var cfg fwd.OrgConfig
+	sup, viaSupport := s.SupportOrSelf()
+	login := "the main login"
+	if viaSupport {
+		login = "the support login (--support-token-file)"
+	}
+	target := "the login's own organization"
+	if in.OrgID != "" {
+		if in.ReprocessSnapshotID != "" {
+			return result.Result{}, fmt.Errorf("%w: a reprocess window runs on the login's own organization; do not combine it with org_id", ErrInvalidInput)
+		}
+		cfg = sup.OrgConfigFor(ctx, in.OrgID)
+		if cfg.Effective == nil {
+			return result.NewUnknown(editOrgPropertyName, "Organization "+in.OrgID+"'s properties could not be read", cx,
+				[]string{"the read of /api/orgs/" + in.OrgID + "/config failed: " + cfg.Errs["effective"] + "; org_id needs a Forward-support login (give a second token with --support-token-file or FORWARD_SUPPORT_TOKEN_FILE; this run used "+login+") and an organization it can administer (a 403 means it lacks support permission, a 404 that the id is not an organization); nothing was changed and the login's own organization was not touched"},
+				result.Options{NextActions: []string{"inspect-platform"}})
+		}
+		target = "organization " + in.OrgID
+		if n := sup.OrgName(ctx, in.OrgID); n != "" {
+			target += " (" + n + ")"
+		}
+	} else {
+		cfg = s.OrgConfig(ctx)
+	}
 	if cfg.Effective == nil {
 		return result.NewUnknown(editOrgPropertyName, "The organization's properties could not be read", cx,
 			[]string{"the effective configuration read failed: " + cfg.Errs["effective"] + "; nothing was changed"}, result.Options{NextActions: []string{"inspect-environment"}})
@@ -65,7 +91,10 @@ func editOrgProperty(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		mode = result.ModeApplied
 	}
 	evd := func(extra map[string]any) []result.Evidence {
-		d := map[string]any{"property": strings.ToUpper(name), "mode": mode}
+		d := map[string]any{"property": strings.ToUpper(name), "mode": mode, "target": target}
+		if in.OrgID != "" {
+			d["org_id"] = in.OrgID
+		}
 		for k, v := range extra {
 			d[k] = v
 		}
@@ -137,11 +166,17 @@ func editOrgProperty(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	if !known {
 		limits = append(limits, "this build holds no definition of the property (it may be newer than the table): its kind, allowed values and who may change it were not checked")
 	}
-	if known && admin == "ON_PREMISES" {
+	if known && admin == "ON_PREMISES" && in.OrgID == "" {
 		limits = append(limits, "organization administrators may change it only on an on-premises Forward: on SaaS Forward refuses (403)")
 	}
-	needConfirm := risk == "dangerous" || risk == "unclassified"
-	confirmed := strings.EqualFold(strings.TrimSpace(in.Confirm), name)
+	needConfirm := risk == "dangerous" || risk == "unclassified" || in.OrgID != "" // another organization is always confirmed
+	confirmWant := strings.ToUpper(name)
+	if in.OrgID != "" {
+		confirmWant += " " + in.OrgID
+		undo += " (give org_id " + in.OrgID + " too)"
+		limits = append(limits, "this changes "+target+" through the Forward-support route using "+login+", not the login's own organization; global-config is never touched")
+	}
+	confirmed := strings.EqualFold(strings.Join(strings.Fields(in.Confirm), " "), confirmWant)
 	ch := result.Change{Action: map[bool]string{true: "clear_org_property", false: "set_org_property"}[in.Clear], Target: "organization property " + strings.ToUpper(name),
 		Before: before, After: after, Reversible: true, Undo: undo}
 	facts["needs_confirm"] = needConfirm
@@ -152,28 +187,39 @@ func editOrgProperty(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		return result.Result{}, fmt.Errorf("%w: network_id and window_minutes belong to a window (reprocess_snapshot_id)", ErrInvalidInput)
 	}
 	if !in.Apply {
-		msg := fmt.Sprintf("Dry run: would %s %s (risk %s). Nothing was changed; run again with apply=true", map[bool]string{true: "clear the override of", false: "set"}[in.Clear], strings.ToUpper(name), risk)
+		msg := fmt.Sprintf("Dry run: would %s %s on %s (risk %s). Nothing was changed; run again with apply=true", map[bool]string{true: "clear the override of", false: "set"}[in.Clear], strings.ToUpper(name), target, risk)
 		if needConfirm {
-			msg += fmt.Sprintf(" and confirm=%q (a %s property needs it)", strings.ToUpper(name), risk)
+			msg += fmt.Sprintf(" and confirm=%q", confirmWant)
 		}
 		return result.Build(editOrgPropertyName, result.OK, msg+". Undo: "+undo, result.Deterministic, cx,
 			result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, Evidence: evd(facts), NextActions: []string{"inspect-environment", "inspect-snapshots"}})
 	}
 	if needConfirm && !confirmed {
-		return result.Build(editOrgPropertyName, result.Failed, fmt.Sprintf("Refused, nothing was changed: %s is classified %s (%s); apply needs confirm=%q", strings.ToUpper(name), risk, reason, strings.ToUpper(name)),
+		return result.Build(editOrgPropertyName, result.Failed, fmt.Sprintf("Refused, nothing was changed: %s is classified %s (%s); apply needs confirm=%q (target: %s)", strings.ToUpper(name), risk, reason, confirmWant, target),
 			result.Deterministic, cx, result.Options{Mode: mode, Limits: limits, Evidence: evd(facts)})
 	}
 	var err error
-	if in.Clear {
+	switch {
+	case in.OrgID != "" && in.Clear:
+		err = sup.ClearOrgPropertyFor(ctx, in.OrgID, name)
+	case in.OrgID != "":
+		err = sup.SetOrgPropertyFor(ctx, in.OrgID, name, in.Value)
+	case in.Clear:
 		err = s.ClearOrgProperty(ctx, name)
-	} else {
+	default:
 		err = s.SetOrgProperty(ctx, name, in.Value)
 	}
 	if err != nil {
 		return result.Result{}, fmt.Errorf("the change failed, nothing is known to have changed (a 403 means this login lacks the organization-settings permission, or the property is not changeable by an organization administrator here): %w", err)
 	}
 	ch.Applied = true
-	now, rerr := s.EffectiveOrgConfig(ctx)
+	var now map[string]string
+	var rerr error
+	if in.OrgID != "" {
+		now, rerr = sup.EffectiveOrgConfigFor(ctx, in.OrgID)
+	} else {
+		now, rerr = s.EffectiveOrgConfig(ctx)
+	}
 	if rerr != nil {
 		return result.Result{}, fmt.Errorf("the change was sent but reading the configuration back failed, so it is not proven: %w", rerr)
 	}
@@ -185,7 +231,7 @@ func editOrgProperty(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		return result.Build(editOrgPropertyName, result.Failed, fmt.Sprintf("Forward accepted the change but %s reads %q, not %q. Undo: %s", strings.ToUpper(name), got, want, undo),
 			result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, Evidence: evd(facts)})
 	}
-	return result.Build(editOrgPropertyName, result.OK, fmt.Sprintf("Applied: %s is now %q (organization-wide). Undo: %s", strings.ToUpper(name), now[name], undo), result.Deterministic, cx,
+	return result.Build(editOrgPropertyName, result.OK, fmt.Sprintf("Applied: %s is now %q on %s (organization-wide). Undo: %s", strings.ToUpper(name), now[name], target, undo), result.Deterministic, cx,
 		result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, Evidence: evd(facts), NextActions: []string{"inspect-environment", "inspect-snapshots"}})
 }
 

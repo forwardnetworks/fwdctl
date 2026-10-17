@@ -82,6 +82,21 @@ func ConfigFromEnv() Config {
 	return c
 }
 
+// SupportConfigFromEnv is the second login for changes that need Forward-support authority (FORWARD_SUPPORT_USERNAME and FORWARD_SUPPORT_PASSWORD, with FORWARD_SUPPORT_URL defaulting to the main
+// login's URL). ok is false when no support login is configured. It copies the main login's connection settings (TLS, timeout) so only the credential differs.
+func SupportConfigFromEnv(main Config) (Config, bool) {
+	u, p := strings.TrimSpace(os.Getenv("FORWARD_SUPPORT_USERNAME")), os.Getenv("FORWARD_SUPPORT_PASSWORD")
+	if u == "" || p == "" {
+		return Config{}, false
+	}
+	c := main
+	c.Username, c.Password, c.ImpersonateUserID = u, p, ""
+	if base := strings.TrimSpace(os.Getenv("FORWARD_SUPPORT_URL")); base != "" {
+		c.BaseURL = base
+	}
+	return c, true
+}
+
 func truthy(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "1", "true", "yes", "on":
@@ -96,6 +111,9 @@ type Session struct {
 
 	// RetryWrites is Config.RetryWrites: whether skills.Run lets an applied write be retried.
 	RetryWrites bool
+
+	// Support is an optional second session on a Forward-support login; SupportOrSelf returns it, else this session.
+	Support *Session
 
 	impersonated string // the user id this session acts as (FORWARD_IMPERSONATE), or empty
 
@@ -128,6 +146,14 @@ var ErrOrganizationDeletionRefused = errors.New("organization deletion is not al
 
 // ErrDeletionRefused is what a NetworkDeleter returns to say the host does not allow deleting networks; skills report it as a refusal, not an error.
 var ErrDeletionRefused = errors.New("network deletion is not allowed by the host running this skill")
+
+// SupportOrSelf is the session for a change that needs Forward-support authority: the support login when one is configured, else the main login (which may itself be a support login). viaSupport says which.
+func (s *Session) SupportOrSelf() (sess *Session, viaSupport bool) {
+	if s.Support != nil {
+		return s.Support, true
+	}
+	return s, false
+}
 
 // Insecure reports whether TLS verification is off for this session.
 func (s *Session) Insecure() bool { return s.insecure }
