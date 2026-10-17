@@ -70,7 +70,7 @@ Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl 
 | `plan-vulnerability-response` | playbook | Sequences the skills that respond to a CVE: who is affected, exposure, fix scope. |
 | `plan-what-changed` | playbook | Sequences the skills that answer what changed and when. |
 | `validate-nqe-query` | read | Checks that an NQE query compiles and runs against a snapshot and reports diagnostics or rows. |
-| `verify-change` | read | Judges a change and Predict fit: verify, describe, impact, list, scope, preflight. |
+| `verify-change` | read | Judges a change and Predict fit: verify, describe, impact, list, scope, preflight, paths. |
 
 <!-- skill-index:end -->
 

@@ -1,7 +1,9 @@
 package skills_test
 
 import (
+	"encoding/base64"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -454,5 +456,56 @@ func TestPreflightJoinsTheDemoChecklist(t *testing.T) {
 	}
 	if !strings.HasPrefix(r.Finding, "Predict preflight:") {
 		t.Errorf("finding %q", r.Finding)
+	}
+}
+
+// view paths is the GUI's "view interesting paths": for a snapshot (or a change set's predicted snapshot) it ranks the paths that go through firewalls or load balancers, and says what they pass through. It
+// sorts by score itself (Forward joins its slices unordered), decodes each path query, and for a snapshot without advanced reachability it says so and names the skill that starts it.
+func TestVerifyChangePathsViewRanksFirewallAndLoadBalancerPaths(t *testing.T) {
+	enc := func(q string) string { return "/n1/s1/paths/" + base64.RawURLEncoding.EncodeToString([]byte(q)) }
+	routes := map[string]fwdtest.Handler{
+		snapsPath: ready("s1"),
+		"GET /api/networks/n1/interesting-path-queries": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("snapshotId") != "s1" {
+				t.Errorf("snapshotId: %v", r.URL.Query())
+			}
+			switch r.URL.Query().Get("type") {
+			case "FIREWALL":
+				return 200, map[string]any{"interestingPathQueries": []any{
+					map[string]any{"id": "a", "score": 7, "searchPath": enc(`{"srcIp":"10.0.0.1"}`), "samplePathGroup": map[string]any{"tags": []any{"IN_ACL"}, "numHops": 3, "flowType": "VALID"}},
+					map[string]any{"id": "b", "score": 31, "searchPath": enc(`{"srcIp":"10.0.0.2"}`), "samplePathGroup": map[string]any{"tags": []any{"XLATE_DNAT", "IN_ACL"}, "numHops": 5, "flowType": "VALID"}},
+				}, "duration": 1200}
+			case "LOADBALANCER":
+				return 200, map[string]any{"interestingPathQueries": []any{}}
+			}
+			t.Errorf("unexpected type %q", r.URL.Query().Get("type"))
+			return 400, nil
+		},
+	}
+	r, srv := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"paths","connectivity_timeout_seconds":30}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || writes(srv) != 0 {
+		t.Fatalf("%s %s", r.Status, b)
+	}
+	// the higher score first, with its tags, hops and the decoded path query
+	i31, i7 := strings.Index(b, `"score":31`), strings.Index(b, `"score":7`)
+	if i31 < 0 || i7 < 0 || i31 > i7 || !strings.Contains(b, "XLATE_DNAT") || !strings.Contains(b, "10.0.0.2") || !strings.Contains(b, `"loadbalancer"`) {
+		t.Errorf("ranking or content: %s", b)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "sampled") {
+		t.Errorf("the result says the paths are sampled, not exhaustive: %v", r.Limits)
+	}
+
+	// a snapshot without advanced reachability: unknown, naming the way to start it
+	routes["GET /api/networks/n1/interesting-path-queries"] = fwdtest.Const(400, map[string]any{"message": "Advanced reachability NOT_TRIGGERED for snapshot s1."})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"paths"}`)
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.NextActions, " "), "edit-advanced-reachability") {
+		t.Errorf("not processed: %s %v", r.Status, r.NextActions)
+	}
+	// an unlicensed network
+	routes["GET /api/networks/n1/interesting-path-queries"] = fwdtest.Const(403, map[string]any{"message": "unlicensed-operation"})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"paths"}`)
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "licen") {
+		t.Errorf("unlicensed: %s %v", r.Status, r.Limits)
 	}
 }

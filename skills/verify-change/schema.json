@@ -21,7 +21,8 @@
         "verdict",
         "list",
         "scope",
-        "preflight"
+        "preflight",
+        "paths"
       ],
       "default": "verify",
       "x-values": {
@@ -31,7 +32,8 @@
         "verdict": "the same as verify",
         "list": "the change sets this network holds (none is an answer; an unlicensed organization is a licence limit)",
         "scope": "what of this network Predict can model on this release: license facet, every predict flag, out-of-scope BGP families, platforms where propagation stops",
-        "preflight": "the Predict demo checklist: scope plus release, base snapshot age, existing change sets and BGP advertisement collection"
+        "preflight": "the Predict demo checklist: scope plus release, base snapshot age, existing change sets and BGP advertisement collection",
+        "paths": "the GUI's interesting paths: sampled paths through firewalls and load balancers, ranked by score with their stages and path query; on a snapshot (after_snapshot_id) or a change set's predicted snapshot"
       }
     },
     "run_predict": {

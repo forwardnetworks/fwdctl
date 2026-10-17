@@ -22,7 +22,7 @@ type editOrgPropertyInput struct {
 	Property string `json:"property"`
 	// OrgID targets another organization through the Forward-support routes (/api/orgs/{id}/config): the dry run names it, apply needs confirm "<property> <org_id>". Empty is the login's own organization.
 	OrgID string `json:"org_id"`
-	Value    string `json:"value"`
+	Value string `json:"value"`
 	// Clear removes the organization's override so the deployment default applies again.
 	Clear bool `json:"clear"`
 	// Confirm must equal the property name to apply a property classified dangerous or not classified at all.
@@ -64,7 +64,7 @@ func editOrgProperty(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		cfg = sup.OrgConfigFor(ctx, in.OrgID)
 		if cfg.Effective == nil {
 			return result.NewUnknown(editOrgPropertyName, "Organization "+in.OrgID+"'s properties could not be read", cx,
-				[]string{"the read of /api/orgs/" + in.OrgID + "/config failed: " + cfg.Errs["effective"] + "; org_id needs a Forward-support login (give a second token with --support-token-file or FORWARD_SUPPORT_TOKEN_FILE; this run used "+login+") and an organization it can administer (a 403 means it lacks support permission, a 404 that the id is not an organization); nothing was changed and the login's own organization was not touched"},
+				[]string{"the read of /api/orgs/" + in.OrgID + "/config failed: " + cfg.Errs["effective"] + "; org_id needs a Forward-support login (give a second token with --support-token-file or FORWARD_SUPPORT_TOKEN_FILE; this run used " + login + ") and an organization it can administer (a 403 means it lacks support permission, a 404 that the id is not an organization); nothing was changed and the login's own organization was not touched"},
 				result.Options{NextActions: []string{"inspect-platform"}})
 		}
 		target = "organization " + in.OrgID

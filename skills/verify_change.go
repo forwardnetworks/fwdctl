@@ -42,6 +42,7 @@ var verifyChangeViewInputs = map[string][]string{
 	"list":      {},
 	"scope":     {},
 	"preflight": {},
+	"paths":     {"change_set_id", "after_snapshot_id", "connectivity_timeout_seconds"},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -54,9 +55,9 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list", "scope", "preflight":
+	case "verify", "impact", "describe", "list", "scope", "preflight", "paths":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope or preflight", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight or paths", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
@@ -68,6 +69,8 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return predictScope(ctx, s, in.NetworkID, "")
 	case "preflight":
 		return predictPreflight(ctx, s, in.NetworkID)
+	case "paths":
+		return interestingPaths(ctx, s, raw)
 	case "impact":
 		return analyzeBlastRadius(ctx, s, raw)
 	case "describe":

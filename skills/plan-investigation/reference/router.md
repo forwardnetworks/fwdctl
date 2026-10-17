@@ -43,6 +43,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Start, stop or schedule a discovery (subnet scan, seeded or direct), add what discovery found to collection | `edit-source` object `discovery` (a dry run that says it scans the network; read what it found first with `inspect-collection` view `discovery`) |
 | Which BGP address families does the network run, is EVPN in use, how many run EVPN by OS | `inspect-inventory` kind `bgp_families` (read from config; `name` evpn lists them) |
 | Is this network ready for a Predict demo or a first change set (preflight checklist), can Predict model this network, Predict fit or scope, what Predict does not model (EVPN, VPLS, multicast, SR policy), where propagation stops | `verify-change` view `preflight` (the checklist) or `scope` |
+| What can be seen through the firewalls and load balancers, the interesting or highest-scoring paths (the GUI's "view interesting paths"), before and after a change | `verify-change` view `paths` |
 | Move classic entries into a controller-managed setup (migrate SD-WAN or ACI), queue a connectivity test of a controller-managed setup, create or test a controller setup | `edit-source` object `controller_setup` (actions create, migrate, test; dry run first) |
 | "Collect now", cancel a running collection | `edit-collection` (dry run first) |
 | Reprocess a snapshot: it failed to process, or its answers are stale after an upgrade | `edit-snapshot` (action reprocess) (dry run first) |
