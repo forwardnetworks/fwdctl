@@ -318,3 +318,17 @@ func TestDraftChangeSetRefusesABaseSnapshotThatIsNotProcessed(t *testing.T) {
 		}
 	}
 }
+
+// With run requested, a result that has no predicted snapshot id says so in the finding itself (not only in a limit), and names where to read it later: a prediction that takes longer than the wait finishes afterwards, and a first result that
+// reads like success would be trusted.
+func TestDraftChangeSetRunWithoutAPredictedSnapshotSaysItIsNotPredictedYet(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes["GET "+csRoot+"/cs7/predicted-snapshots"] = fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{}})
+	r, _ := mustRun(t, "edit-change-set", routes, dcIn+`,"apply":true,"run":true}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "NOT predicted yet") || !strings.Contains(r.Finding, "predicted_snapshots") {
+		t.Fatalf("finding: %s %s", r.Status, r.Finding)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "did not finish") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}

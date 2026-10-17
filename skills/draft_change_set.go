@@ -365,9 +365,14 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	finding := fmt.Sprintf("Created change set %q (id %s) on snapshot %s editing %d device(s); commands validated and staged, nothing reached a device", in.Name, csID, base, len(devices))
 	if in.Run {
 		p, err := s.PredictedSnapshot(ctx, in.NetworkID, csID, true)
-		if err != nil {
-			limits = append(limits, "the change set was created and staged but the prediction did not finish: "+err.Error())
-		} else if p != nil {
+		if err != nil || p == nil {
+			why := "no predicted snapshot was returned"
+			if err != nil {
+				why = err.Error()
+			}
+			limits = append(limits, "the change set was created and staged but the prediction did not finish: "+why)
+			finding += "; NOT predicted yet: the prediction may still be running (a long one finishes after this call returns), so read its snapshot later with verify-change view list (predicted_snapshots) or view describe before trusting any result"
+		} else {
 			extra["predicted_snapshot_id"] = string(p.ID)
 			changes = append(changes, result.Change{Action: "run_prediction", Target: "change set " + csID, After: string(p.ID), Applied: true, Reversible: false})
 			finding += fmt.Sprintf("; predicted as snapshot %s", p.ID)
