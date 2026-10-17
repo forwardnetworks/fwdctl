@@ -77,8 +77,10 @@ func inspectJobs(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resu
 		}
 		rows := completedJobRows(jobs, in.NetworkID, in.Match)
 		return buildJobsResult(inspectJobsName, cx, "completed", rows, 0, len(jobs), in.Limit, in.Offset, 0)
+	case "scheduler":
+		return schedulerView(ctx, s, cx, in.Match, in.Limit, in.Offset)
 	default:
-		return result.Result{}, fmt.Errorf("%w: state must be \"active\" or \"completed\", got %q", ErrInvalidInput, in.State)
+		return result.Result{}, fmt.Errorf("%w: state must be \"active\", \"completed\" or \"scheduler\", got %q", ErrInvalidInput, in.State)
 	}
 }
 

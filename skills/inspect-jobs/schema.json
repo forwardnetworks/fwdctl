@@ -4,8 +4,8 @@
   "properties": {
     "state": {
       "type": "string",
-      "enum": ["active", "completed"],
-      "description": "active (default) or completed"
+      "enum": ["active", "completed", "scheduler"],
+      "description": "active (default), completed, or scheduler (system administrators only: the scheduler's tasks per organization, job type, worker class REGULAR or LARGE and status, a point-in-time view)"
     },
     "network_id": {
       "type": "string",

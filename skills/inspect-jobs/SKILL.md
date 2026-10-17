@@ -24,7 +24,7 @@ layer even if the worker thread computing it has not stopped -- it is tracked he
 
 ## Inputs
 
-- `state`: `active` (default) or `completed`.
+- `state`: `active` (default), `completed`, or `scheduler`: the job scheduler's point-in-time debug view, for system administrators only, grouped per organization id, job type, worker class (`REGULAR` or `LARGE`, the class a task needs) and task status (`INITIALIZED`, `QUEUED`, `RUNNING`), so a slow Predict can be told from a queue behind other work. It is a snapshot of now, not a history of transitions, and it does not carry the per-organization worker cap (backend configuration, no route). `match` narrows by organization id or job type.
 - `network_id`: narrow to one network (a string of digits); omit for every network the login can see jobs for.
 - `older_than_minutes`: the threshold for `likely_stuck` on active rows (default 20). It only flags; it never filters a row out.
 - `match`: a substring of the job type or organization name. `limit`, `offset`: page the rows (default 50, at most 200).
