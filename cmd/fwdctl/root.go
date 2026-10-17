@@ -65,7 +65,7 @@ answers, and an example; "fwdctl which \"<question>\"" finds the name for a ques
 "echo '{}' | fwdctl run inspect-networks" lists the networks you can see.
 
 Credentials (environment): FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (an API token's access key and secret work).
-Or flags: --url URL --username NAME --password-file FILE [--ca-bundle FILE | --insecure] [--config FILE]; or a saved login (fwdctl login), or a file
+Or flags: --url URL --username NAME --password-file FILE [--ca-bundle FILE | --insecure] [--config FILE]; or a saved login (fwdctl login; with several Forwards, name each one: fwdctl login --profile NAME --file TOKENFILE, then fwdctl --profile NAME ...), or a file
 ~/.config/fwdctl/config.json {"url", "username", "password_file", "ca_bundle"} (the password is read from that file, which must be mode 600).
 Flags win over the environment, the environment over the file.
 To act as another org user without their credential (an administrator Forward allows to impersonate): FORWARD_IMPERSONATE=<user id> with the administrator's login. The session is read-only and every result says it was impersonated.
@@ -126,7 +126,7 @@ func (a *app) newRoot() *cobra.Command {
 	pf.StringVar(&a.conn.passwordFile, "password-file", "", "file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)")
 	pf.StringVar(&a.conn.tokenFile, "token-file", "", "a token file: URL, username and password on three lines, mode 600")
 	pf.StringVar(&a.conn.supportTokenFile, "support-token-file", "", "a second token file (same format) for a Forward-support login: used only by changes that need support authority, such as edit-org-property with org_id; the main login is used for everything else")
-	pf.StringVar(&a.conn.profile, "profile", "", "use a named saved connection (fwdctl login --profile NAME --file TOKENFILE), so switching between tenants is a name on every command and `fwdctl: ... against URL as LOGIN` on stderr shows which one ran")
+	pf.StringVar(&a.conn.profile, "profile", "", "use a named saved connection (fwdctl login --profile NAME --file TOKENFILE), so switching between tenants is a name on every command (and each run prints the Forward and login it used on stderr)")
 	pf.StringVar(&a.conn.configFile, "config", "", "connection config file (default ~/.config/fwdctl/config.json)")
 	pf.StringVar(&a.conn.caBundle, "ca-bundle", "", "PEM file of the certificate authorities to trust for Forward's certificate, for a private or self-signed CA (overrides FORWARD_CA_BUNDLE; verification stays on; not with --insecure)")
 	pf.BoolVar(&a.conn.insecure, "insecure", false, "do NOT verify the TLS certificate (a self-signed Forward; every result records it)")

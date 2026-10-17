@@ -5,15 +5,15 @@ Generated from the command tree (`fwdctl <command> --help` shows the same for on
 Connection flags work on every command that talks to Forward:
 
 ```
-      --ca-bundle string                           PEM file of the certificate authorities to trust for Forward's certificate, for a private or self-signed CA (overrides FORWARD_CA_BUNDLE; verification stays on; not with --insecure)
-      --config string                              connection config file (default ~/.config/fwdctl/config.json)
-      --insecure                                   do NOT verify the TLS certificate (a self-signed Forward; every result records it)
-      --password-file string                       file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)
-      --profile fwdctl: ... against URL as LOGIN   use a named saved connection (fwdctl login --profile NAME --file TOKENFILE), so switching between tenants is a name on every command and fwdctl: ... against URL as LOGIN on stderr shows which one ran
-      --support-token-file string                  a second token file (same format) for a Forward-support login: used only by changes that need support authority, such as edit-org-property with org_id; the main login is used for everything else
-      --token-file string                          a token file: URL, username and password on three lines, mode 600
-      --url string                                 Forward URL (overrides FORWARD_URL)
-      --username string                            login name or API token access key (overrides FORWARD_USERNAME)
+      --ca-bundle string            PEM file of the certificate authorities to trust for Forward's certificate, for a private or self-signed CA (overrides FORWARD_CA_BUNDLE; verification stays on; not with --insecure)
+      --config string               connection config file (default ~/.config/fwdctl/config.json)
+      --insecure                    do NOT verify the TLS certificate (a self-signed Forward; every result records it)
+      --password-file string        file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)
+      --profile string              use a named saved connection (fwdctl login --profile NAME --file TOKENFILE), so switching between tenants is a name on every command (and each run prints the Forward and login it used on stderr)
+      --support-token-file string   a second token file (same format) for a Forward-support login: used only by changes that need support authority, such as edit-org-property with org_id; the main login is used for everything else
+      --token-file string           a token file: URL, username and password on three lines, mode 600
+      --url string                  Forward URL (overrides FORWARD_URL)
+      --username string             login name or API token access key (overrides FORWARD_USERNAME)
 ```
 
 Exit status: 0 ok, 1 failed (a finding), 2 unknown (never a pass), 3 error, 64 bad usage or input.

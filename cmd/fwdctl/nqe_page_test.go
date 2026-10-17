@@ -75,3 +75,22 @@ func TestNQERunPagesJoinIntoTheFullResultSyncAndAsync(t *testing.T) {
 		t.Errorf("--offset without --limit is a usage error, got %d", code)
 	}
 }
+
+// An execution that completes with an outcome other than OK says why: Forward's own message when it sent one, and when it sent none (a USER_ERROR often arrives bare) a pointer to the offline lint and to narrowing the devices,
+// instead of only "completed with outcome USER_ERROR".
+func TestNQERunSaysWhyAnExecutionEndedWithAUserError(t *testing.T) {
+	routes := pagedRoutes()
+	for _, tc := range []struct {
+		body map[string]any
+		want string
+	}{
+		{map[string]any{"status": "COMPLETED", "outcome": "USER_ERROR", "error": map[string]any{"message": "no such field zzz"}}, "no such field zzz"},
+		{map[string]any{"status": "COMPLETED", "outcome": "USER_ERROR"}, "gave no message"},
+	} {
+		routes["GET /api/networks/n1/nqe-executions/X_1"] = fwdtest.Const(200, tc.body)
+		code, _, errb := call(t, []string{"nqe", "run", "--network", "n1", "--snapshot", "s1", "--async", "--format", "jsonl"}, "foreach d in network.devices select {n: d.name}", routes)
+		if code == 0 || !strings.Contains(errb, "USER_ERROR") || !strings.Contains(errb, tc.want) {
+			t.Errorf("want %q: code %d stderr %q", tc.want, code, errb)
+		}
+	}
+}

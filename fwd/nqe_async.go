@@ -108,10 +108,14 @@ func (s *Session) startAndWait(ctx context.Context, networkID string, r NQERun, 
 		switch strings.ToUpper(cur.Status) {
 		case "COMPLETED":
 			if cur.Outcome != "" && !strings.EqualFold(cur.Outcome, "OK") && !strings.EqualFold(cur.Outcome, "SUCCEEDED") {
-				if cur.Error != nil {
+				why := ""
+				if cur.Error != nil && strings.TrimSpace(cur.Error.Message) != "" {
 					meta.Diagnostics = append(meta.Diagnostics, QueryDiagnostic{Message: cur.Error.Message})
+					why = ": " + strings.TrimSpace(cur.Error.Message)
+				} else if strings.EqualFold(cur.Outcome, "USER_ERROR") {
+					why = ": Forward gave no message; check the query offline (`fwdctl nqe lint FILE`) and try it on fewer devices (filter by platform first), since a field a device type lacks can end an execution this way"
 				}
-				err := fmt.Errorf("the execution %s completed with outcome %s", meta.ExecutionKey, cur.Outcome)
+				err := fmt.Errorf("the execution %s completed with outcome %s%s", meta.ExecutionKey, cur.Outcome, why)
 				meta.Error = err.Error()
 				return ctx, cancel, meta, err
 			}
