@@ -159,3 +159,31 @@ func TestEditPlatformEndpointProfileCreatesAndUpdatesSNMPAndHTTPProfiles(t *test
 		t.Fatalf("snmp update: %s %s %s", r.Status, r.Finding, patched)
 	}
 }
+
+// create takes the profile name at the top level (where update and delete take it) as well as in the definition; a name in both must agree.
+func TestEditPlatformEndpointProfileCreateAcceptsATopLevelName(t *testing.T) {
+	var created []map[string]any
+	routes := profileRoutes(&created, []any{})
+	routes["POST /api/endpoint-profiles"] = func(r *http.Request, body []byte) (int, any) {
+		var b map[string]any
+		_ = json.Unmarshal(body, &b)
+		created = append(created, b)
+		b["id"] = r.URL.Query().Get("type") + "-9"
+		return 201, b
+	}
+	r, _ := mustRun(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"create","name":"entity-mib","definition":{"type":"SNMP","detector_oid":"1.3.6.1.2.1.1.1.0","detector_patterns":["Acme.*"]},"apply":true}`)
+	if r.Status != result.OK || len(created) != 1 || created[0]["name"] != "entity-mib" {
+		t.Fatalf("top-level name: %s %s %v", r.Status, r.Finding, created)
+	}
+	created = nil
+	r, _ = mustRun(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"create","name":"cli-x","definition":{"command_sets":["UNIX"]},"apply":true}`)
+	if r.Status != result.OK || len(created) != 1 || created[0]["name"] != "cli-x" {
+		t.Fatalf("cli top-level name: %s %s %v", r.Status, r.Finding, created)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"create","name":"a","definition":{"name":"b","type":"SNMP"}}`); err == nil || !strings.Contains(err.Error(), "agree") {
+		t.Errorf("two different names must be refused: %v", err)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"endpoint_profiles","action":"create","definition":{"type":"SNMP"}}`); err == nil || !strings.Contains(err.Error(), "name") {
+		t.Errorf("no name must say where to put it: %v", err)
+	}
+}

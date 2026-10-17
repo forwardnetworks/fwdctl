@@ -5,7 +5,7 @@
   "properties": {
     "area": { "type": "string", "enum": ["banners", "webhooks", "certificates", "access_labels", "backups", "integrations", "collection_settings", "saml", "api_tokens", "licensing", "organizations", "cve_index", "collectors", "endpoint_profiles"] },
     "action": { "type": "string", "enum": ["create", "update", "delete", "add", "apply", "cancel", "set", "apply", "rename", "enable", "disable", "upload", "settings", "s3_storage", "trigger", "register"] },
-    "name": { "type": "string", "minLength": 1, "description": "the banner id, webhook name, certificate name, access label or backup id to change; for integrations servicenow or infoblox; for collection_settings organization or a collector id or name; for api_tokens the token name; for organizations the organization name or id" },
+    "name": { "type": "string", "minLength": 1, "description": "the banner id, webhook name, certificate name, access label or backup id to change; endpoint_profiles: the profile id or name to update or delete (create takes the new name here or in definition.name); for integrations servicenow or infoblox; for collection_settings organization or a collector id or name; for api_tokens the token name; for organizations the organization name or id" },
     "secret_file": { "type": "string", "minLength": 1, "description": "path of a file (mode 600) holding the one secret the action needs" },
     "secret_env": { "type": "string", "minLength": 1, "description": "name of an environment variable holding the secret (instead of secret_file)" },
     "definition": { "type": "object", "description": "the body for the area and action; see Input details in `fwdctl run NAME --help`" },

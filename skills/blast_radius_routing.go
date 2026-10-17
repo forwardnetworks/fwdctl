@@ -95,7 +95,9 @@ func routingDelta(ctx context.Context, s *fwd.Session, networkID, beforeID, afte
 			nrows = append(nrows, map[string]any{"device": p[0], "vrf": p[1], "peer": p[2], "change": "session added", "state_after": st})
 		}
 	}
-	sort.Slice(nrows, func(i, j int) bool { return key(nrows[i], "device", "vrf", "peer") < key(nrows[j], "device", "vrf", "peer") })
+	sort.Slice(nrows, func(i, j int) bool {
+		return key(nrows[i], "device", "vrf", "peer") < key(nrows[j], "device", "vrf", "peer")
+	})
 
 	// route and next-hop counts per device and VRF
 	type counts struct{ v4, v4h, v6, v6h int64 }
@@ -146,7 +148,7 @@ func routingDelta(ctx context.Context, s *fwd.Session, networkID, beforeID, afte
 	d := map[string]any{
 		"bgp_neighbor_changes": shownN, "bgp_neighbor_changes_total": totalN,
 		"device_vrfs_with_route_changes": shownC, "device_vrfs_with_route_changes_total": totalC, "devices_with_route_changes": len(devs),
-		"totals_before_after": map[string]any{"ipv4_routes": [2]int64{totB.v4, totA.v4}, "ipv4_next_hops": [2]int64{totB.v4h, totA.v4h}, "ipv6_routes": [2]int64{totB.v6, totA.v6}, "ipv6_next_hops": [2]int64{totB.v6h, totA.v6h}},
+		"totals_before_after":  map[string]any{"ipv4_routes": [2]int64{totB.v4, totA.v4}, "ipv4_next_hops": [2]int64{totB.v4h, totA.v4h}, "ipv6_routes": [2]int64{totB.v6, totA.v6}, "ipv6_next_hops": [2]int64{totB.v6h, totA.v6h}},
 		"device_vrfs_compared": len(bm), "bgp_sessions_compared": len(nbm),
 	}
 	if edited != nil {

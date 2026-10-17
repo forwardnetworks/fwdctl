@@ -27,6 +27,13 @@ func planEndpointProfile(ctx context.Context, s *fwd.Session, in editPlatformInp
 		}
 		return nil
 	}
+	if in.Action == "create" {
+		def, err := withProfileName(in.Definition, in.Name)
+		if err != nil {
+			return nil, err
+		}
+		in.Definition = def
+	}
 	if plan, handled, err := planRichEndpointProfile(ctx, s, in, profiles, find); handled {
 		return plan, err
 	}
@@ -45,7 +52,7 @@ func planEndpointProfile(ctx context.Context, s *fwd.Session, in editPlatformInp
 			return nil, fmt.Errorf("%w: type is CLI, SNMP or HTTP", ErrInvalidInput)
 		}
 		if def.Name == nil || strings.TrimSpace(*def.Name) == "" || len(def.CommandSets)+len(def.CustomCommands) == 0 {
-			return nil, fmt.Errorf("%w: create needs name and command_sets or custom_commands", ErrInvalidInput)
+			return nil, fmt.Errorf("%w: create needs a name (top-level name, or definition.name) and command_sets or custom_commands", ErrInvalidInput)
 		}
 		sets := make([]string, 0, len(def.CommandSets))
 		for _, c := range def.CommandSets {
@@ -226,7 +233,7 @@ func planRichEndpointProfile(ctx context.Context, s *fwd.Session, in editPlatfor
 			return nil, true, err
 		}
 		if def.Name == nil || strings.TrimSpace(*def.Name) == "" {
-			return nil, true, fmt.Errorf("%w: create needs name", ErrInvalidInput)
+			return nil, true, fmt.Errorf("%w: create needs a name (top-level name, or definition.name)", ErrInvalidInput)
 		}
 		name := strings.TrimSpace(*def.Name)
 		if find(name) != nil {
@@ -327,4 +334,27 @@ func planRichEndpointProfile(ctx context.Context, s *fwd.Session, in editPlatfor
 			}}, true, nil
 	}
 	return nil, false, nil
+}
+
+// withProfileName puts the top-level name into a create definition (update and delete take the name at the top level, so create accepts it there too). A name in both must agree.
+func withProfileName(def json.RawMessage, name string) (json.RawMessage, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return def, nil
+	}
+	m := map[string]json.RawMessage{}
+	if len(def) > 0 {
+		if err := json.Unmarshal(def, &m); err != nil {
+			return def, nil // decodeDefinition reports the malformed definition
+		}
+	}
+	if raw, ok := m["name"]; ok {
+		var inner string
+		if json.Unmarshal(raw, &inner) == nil && strings.TrimSpace(inner) != "" && !strings.EqualFold(strings.TrimSpace(inner), name) {
+			return nil, fmt.Errorf("%w: name %q and definition.name %q must agree (give one)", ErrInvalidInput, name, inner)
+		}
+	}
+	b, _ := json.Marshal(name)
+	m["name"] = b
+	return json.Marshal(m)
 }
