@@ -153,3 +153,47 @@ func TestDraftChangeSetDryRunChecksTheLicenceAndTheDevicesExist(t *testing.T) {
 		t.Errorf("an array of lines is joined with newlines: %s %s staged %q", r.Status, r.Finding, stagedBody)
 	}
 }
+
+// A BGP advertisement has an action: inject (default) or modify stage it, withdraw stages the loss of a received one (the way to model losing a peer outside the snapshot), restore drops what is staged for the key. A withdraw
+// needs only the key (device, vrf, external_peer, prefix); inject and modify need next_hop. The CLI `neighbor ... shutdown` keeps the routes learned from that peer, so staging one warns.
+func TestDraftChangeSetBGPActionsAndTheShutdownWarning(t *testing.T) {
+	var actions []string
+	bgpRoute := func(r *http.Request, b []byte) (int, any) {
+		actions = append(actions, r.URL.Query().Get("action")+" "+string(b))
+		return 204, nil
+	}
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes["POST "+csRoot+"/cs7/draft/devices/r1/bgp-advertisements"] = bgpRoute
+	routes[nqePath] = func(*http.Request, []byte) (int, any) {
+		return 200, map[string]any{"items": []any{map[string]any{"name": "r1"}}, "totalNumItems": 1}
+	}
+	in := func(adv string, extra string) string {
+		return `{"network_id":"n1","name":"depeer","bgp_advertisements":[` + adv + `]` + extra + `}`
+	}
+	wd := `{"action":"withdraw","device":"r1","vrf":"default","external_peer":"192.0.2.1","prefix":"203.0.113.0/24"}`
+	r, srv := mustRun(t, "edit-change-set", routes, in(wd, ""))
+	if r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(strings.Join(r.Limits, " "), "received-advertisement collection") {
+		t.Fatalf("dry run: %s %v", r.Mode, r.Limits)
+	}
+	r, _ = mustRun(t, "edit-change-set", routes, in(wd, `,"apply":true`))
+	if r.Status != result.OK || len(actions) != 1 || !strings.HasPrefix(actions[0], "bulkRemove ") || !strings.Contains(actions[0], `"externalPeer":"192.0.2.1"`) {
+		t.Errorf("withdraw: %s %v", r.Status, actions)
+	}
+	actions = nil
+	rs := `{"action":"restore","device":"r1","vrf":"default","external_peer":"192.0.2.1","prefix":"203.0.113.0/24"}`
+	mustRun(t, "edit-change-set", routes, in(rs, `,"apply":true`))
+	if len(actions) != 1 || !strings.HasPrefix(actions[0], "bulkRestore ") {
+		t.Errorf("restore: %v", actions)
+	}
+	if _, _, err := runSkill(t, "edit-change-set", routes, in(`{"device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24"}`, "")); err == nil {
+		t.Errorf("an inject needs next_hop")
+	}
+	if _, _, err := runSkill(t, "edit-change-set", routes, in(`{"action":"bounce","device":"r1","external_peer":"x","prefix":"p"}`, "")); err == nil {
+		t.Errorf("an unknown action is refused")
+	}
+	cli := `{"network_id":"n1","name":"shut","devices":[{"device":"r1","commands":"router bgp 65000\n neighbor 192.0.2.1 shutdown"}]}`
+	r, _ = mustRun(t, "edit-change-set", dcRoutes(map[string]any{"commandErrors": []any{}}), cli)
+	if !strings.Contains(strings.Join(r.Limits, " "), "routes learned from it stay in the prediction") || !strings.Contains(strings.Join(r.Limits, " "), "withdraw") {
+		t.Errorf("a neighbor shutdown warns: %v", r.Limits)
+	}
+}

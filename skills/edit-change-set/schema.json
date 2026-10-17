@@ -36,10 +36,15 @@
             "minLength": 1
           },
           "commands": {
-            "type": ["string", "array"],
+            "type": [
+              "string",
+              "array"
+            ],
             "minLength": 1,
             "minItems": 1,
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "the CLI text to stage: one string (lines separated by newlines) or an array of lines, joined with newlines"
           }
         }
@@ -52,11 +57,20 @@
         "required": [
           "device",
           "external_peer",
-          "prefix",
-          "next_hop"
+          "prefix"
         ],
         "additionalProperties": false,
         "properties": {
+          "action": {
+            "enum": [
+              "inject",
+              "modify",
+              "withdraw",
+              "restore"
+            ],
+            "default": "inject",
+            "description": "inject or modify: stage an advertisement (next_hop required); withdraw: stage the loss of a received one (device, vrf, external_peer, prefix only); restore: drop what is staged for the key. type is the peer type (EBGP or IBGP), not the action"
+          },
           "device": {
             "type": "string",
             "minLength": 1

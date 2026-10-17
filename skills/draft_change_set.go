@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -49,6 +50,8 @@ func (d *draftDevice) UnmarshalJSON(b []byte) error {
 }
 
 type draftAdvert struct {
+	// Action is inject (the default) or modify: stage an advertisement; withdraw: stage the loss of a received one; restore: drop what is staged for the key. Type below is the PEER type (EBGP or IBGP), not the action.
+	Action       string   `json:"action"`
 	Device       string   `json:"device"`
 	VRF          string   `json:"vrf"`
 	ExternalPeer string   `json:"external_peer"`
@@ -107,11 +110,30 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 		touched[d.Device] = true
 	}
+	bgpWarn := false
 	for i, a := range in.BGP {
-		if a.Device == "" || a.Prefix == "" || a.ExternalPeer == "" || a.NextHop == "" {
-			return result.Result{}, fmt.Errorf("%w: bgp_advertisements[%d] needs device, external_peer, prefix and next_hop", ErrInvalidInput, i)
+		switch a.Action {
+		case "", "inject", "modify":
+			if a.Device == "" || a.Prefix == "" || a.ExternalPeer == "" || a.NextHop == "" {
+				return result.Result{}, fmt.Errorf("%w: bgp_advertisements[%d] (%s) needs device, external_peer, prefix and next_hop", ErrInvalidInput, i, firstNonEmpty(a.Action, "inject"))
+			}
+		case "withdraw", "restore":
+			if a.Device == "" || a.Prefix == "" || a.ExternalPeer == "" {
+				return result.Result{}, fmt.Errorf("%w: bgp_advertisements[%d] (%s) needs device, external_peer and prefix (and vrf when not default)", ErrInvalidInput, i, a.Action)
+			}
+		default:
+			return result.Result{}, fmt.Errorf("%w: bgp_advertisements[%d].action is inject, modify, withdraw or restore", ErrInvalidInput, i)
+		}
+		if a.Action == "modify" || a.Action == "withdraw" {
+			bgpWarn = true
 		}
 		touched[a.Device] = true
+	}
+	cliShutdown := false
+	for _, d := range in.Devices {
+		if neighborShutdown.MatchString(d.Commands) {
+			cliShutdown = true
+		}
 	}
 	for i, f := range in.Firewall {
 		switch {
@@ -178,6 +200,13 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 		return []result.Evidence{result.NewEvidence(result.EvPredict, "draftChangeSet", cx.SnapshotID, d, "")}
 	}
+	if bgpWarn {
+		limits = append(limits, "modify and withdraw need received-advertisement collection on the device (collectBgpAdvertisements on, BGP table type BOTH or ADJ_RIB_IN covering the peer): without it the route is left unchanged in the predicted snapshot and no warning is shown, so a prediction can look like it did nothing; preflight (verify-change view preflight) counts the devices that collect it. A key that matches no received advertisement is ignored when the change set runs",
+			"a withdraw models the loss of a peer OUTSIDE the snapshot (an ISP); a peer that is itself a collected device needs no withdrawal")
+	}
+	if cliShutdown {
+		limits = append(limits, "a CLI `neighbor ... shutdown` (or `no neighbor`) removes the BGP session from the predicted snapshot, but the routes learned from it stay in the prediction (they are seeded from the collected received routes), so a de-peering what-if shows no impact; model the loss of a peer outside the snapshot with a bgp_advertisements withdraw")
+	}
 	if !in.Apply {
 		return result.Build(draftChangeSetName, result.OK, fmt.Sprintf("Dry run: would create change set %q on snapshot %s editing %d device(s), validate the commands and stage them. Nothing reaches a device; nothing was created. Run again with apply=true (and run=true to also predict it)", in.Name, base, len(devices)),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Evidence: ev(result.ModeDryRun, nil), NextActions: []string{"verify-change"},
@@ -224,13 +253,31 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 	}
 	byDev := map[string][]forward.BGPAdvertisement{}
+	keysDev := map[string]map[string][]forward.BGPAdvertisementKey{} // action -> device -> keys
 	for _, a := range in.BGP {
+		if a.Action == "withdraw" || a.Action == "restore" {
+			if keysDev[a.Action] == nil {
+				keysDev[a.Action] = map[string][]forward.BGPAdvertisementKey{}
+			}
+			keysDev[a.Action][a.Device] = append(keysDev[a.Action][a.Device], forward.BGPAdvertisementKey{VRF: firstNonEmpty(a.VRF, "default"), ExternalPeer: a.ExternalPeer, Prefix: a.Prefix})
+			continue
+		}
 		byDev[a.Device] = append(byDev[a.Device], forward.BGPAdvertisement{Device: a.Device, VRF: a.VRF, ExternalPeer: a.ExternalPeer, Prefix: a.Prefix, NextHop: a.NextHop,
 			Type: a.Type, Origin: a.Origin, LocalPref: a.LocalPref, ASPath: a.ASPath, MED: a.MED, Communities: a.Communities})
 	}
 	for dev, ads := range byDev {
 		if err := s.StageBGPAdvertisements(ctx, in.NetworkID, csID, dev, ads); err != nil {
 			return rollback(fmt.Sprintf("staging the BGP advertisements for %s failed: %v", dev, err), map[string]any{"device": dev})
+		}
+	}
+	for dev, keys := range keysDev["withdraw"] {
+		if _, err := s.Client.Predict.WithdrawBGPAdvertisements(ctx, in.NetworkID, csID, dev, keys); err != nil {
+			return rollback(fmt.Sprintf("staging the BGP withdrawals for %s failed: %v", dev, err), map[string]any{"device": dev})
+		}
+	}
+	for dev, keys := range keysDev["restore"] {
+		if _, err := s.Client.Predict.RestoreBGPAdvertisements(ctx, in.NetworkID, csID, dev, keys); err != nil {
+			return rollback(fmt.Sprintf("restoring the BGP advertisements for %s failed: %v", dev, err), map[string]any{"device": dev})
 		}
 	}
 	for _, f := range in.Firewall {
@@ -279,6 +326,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	return result.Build(draftChangeSetName, result.OK, finding, result.Deterministic, cx,
 		result.Options{Mode: result.ModeApplied, Changes: changes, Evidence: ev(result.ModeApplied, extra), Limits: limits, NextActions: []string{"verify-change"}})
 }
+
+// neighborShutdown matches a BGP neighbor shut down or removed in CLI text (IOS, EOS, NX-OS style).
+var neighborShutdown = regexp.MustCompile(`(?im)^\s*(neighbor\s+\S+\s+shutdown\b|no\s+neighbor\b)`)
 
 func devicesOf(set map[string]bool) []string {
 	out := make([]string, 0, len(set))
