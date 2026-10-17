@@ -132,7 +132,7 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 		touched[d.Device] = true
 	}
-	bgpWarn := false
+	bgpWarn, injectWarn := false, false
 	for i, a := range in.BGP {
 		switch a.Action {
 		case "", "inject", "modify":
@@ -148,6 +148,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 		if a.Action == "modify" || a.Action == "withdraw" {
 			bgpWarn = true
+		}
+		if a.Action == "" || a.Action == "inject" || a.Action == "modify" {
+			injectWarn = true
 		}
 		touched[a.Device] = true
 	}
@@ -234,6 +237,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	if cfgDevices {
 		limits = append(limits, "a device given config has its WHOLE running configuration replaced (send the complete configuration, at most 2 MB); Forward stores the text unchecked, so it is not validated here, and whether Predict can model the result depends on the device type, which Forward finds out when it runs")
+	}
+	if injectWarn {
+		limits = append(limits, "inject and modify are not confirmed to take effect: on one daily build an injected prefix (EBGP and IBGP) finished with status ok and appeared on no device, and a modify left route counts unchanged. Check the predicted snapshot (verify-change impact, or an NQE read of the prefix) before relying on one, and confirm the inbound policy permits the prefix")
 	}
 	if cliShutdown {
 		limits = append(limits, "a CLI `neighbor ... shutdown` (or `no neighbor`) removes the BGP session from the predicted snapshot, but the routes learned from it stay in the prediction (they are seeded from the collected received routes), so a de-peering what-if shows no impact; model the loss of a peer outside the snapshot with a bgp_advertisements withdraw")

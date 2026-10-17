@@ -5,7 +5,7 @@
     "state": {
       "type": "string",
       "enum": ["active", "completed", "scheduler"],
-      "description": "active (default), completed, or scheduler (system administrators only: the scheduler's tasks per organization, job type, worker class REGULAR or LARGE and status, a point-in-time view)"
+      "description": "active (default), completed, or scheduler (needs ADMINISTER_SYSTEM: the scheduler's tasks per organization, job type, worker class REGULAR or LARGE and status, a point-in-time view)"
     },
     "network_id": {
       "type": "string",

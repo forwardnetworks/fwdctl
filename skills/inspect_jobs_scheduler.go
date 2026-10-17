@@ -10,7 +10,7 @@ import (
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
-// schedulerView is inspect-jobs state scheduler: the job scheduler's debug view (system administrators only), grouped to one row per organization, worker type, job type, worker class (REGULAR or LARGE) and task status
+// schedulerView is inspect-jobs state scheduler: the job scheduler's debug view (needs ADMINISTER_SYSTEM: a system administrator, and on some deployments an organization administrator), grouped to one row per organization, worker type, job type, worker class (REGULAR or LARGE) and task status
 // (INITIALIZED, QUEUED, RUNNING). It answers "is this organization's Predict running or waiting, and in which worker class". It is a point-in-time dump with no stability promise, not a history of transitions, and it
 // does not carry the per-organization worker cap (that is backend configuration with no route).
 func schedulerView(ctx context.Context, s *fwd.Session, cx result.Context, match string, limit, offset int) (result.Result, error) {
@@ -18,7 +18,7 @@ func schedulerView(ctx context.Context, s *fwd.Session, cx result.Context, match
 	if err != nil {
 		reason := "GET /api/debug/jobs failed: " + err.Error()
 		if fwd.Status(err) == 403 {
-			reason = "Forward refused the scheduler view (403): it needs ADMINISTER_SYSTEM, a system administrator login; " + err.Error()
+			reason = "Forward refused the scheduler view (403): it needs ADMINISTER_SYSTEM (a system administrator; on some deployments an organization administrator has it); " + err.Error()
 		}
 		return result.NewUnknown(inspectJobsName, "The scheduler's jobs could not be read", cx, []string{reason + "; nothing is known about the queue"}, result.Options{})
 	}
@@ -75,7 +75,7 @@ func schedulerView(ctx context.Context, s *fwd.Session, cx result.Context, match
 	finding := fmt.Sprintf("%d scheduler group(s): %d task(s) waiting, %d running", len(rows), queued, running)
 	d := map[string]any{"state": "scheduler", "groups_total": len(rows), "tasks_waiting": queued, "tasks_running": running, "groups": win}
 	limits := []string{
-		"this is the scheduler's point-in-time debug view (system administrators only): a snapshot of now, not a history of queue transitions, with no stability promise",
+		"this is the scheduler's point-in-time debug view (it needs ADMINISTER_SYSTEM): a snapshot of now, not a history of queue transitions, with no stability promise",
 		"it carries no per-organization worker cap: maxRegularComputeWorkerPerOrg and the large-class cap are backend configuration with no route, so they can only be read from the deployment's own settings",
 		"worker_class is the class a task needs (REGULAR or LARGE); a QUEUED task has no worker yet",
 	}
