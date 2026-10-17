@@ -332,3 +332,12 @@ func TestDraftChangeSetRunWithoutAPredictedSnapshotSaysItIsNotPredictedYet(t *te
 		t.Errorf("limits: %v", r.Limits)
 	}
 }
+
+// A firewall rule's address, user, application and service fields are objects ({"subnets": [...]}; {} is any), not lists. Giving a list used to end in an opaque "cannot unmarshal array into ... AddressSpecification"; the error now says what shape each field takes.
+func TestDraftChangeSetFirewallRuleListInAnObjectFieldSaysTheShape(t *testing.T) {
+	in := `{"network_id":"n1","name":"x","firewall_rules":[{"op":"add","device":"fw1","rule":{"name":"deny","action":"DENY","enabled":true,"sourceAddresses":["10.0.0.0/8"]}}]}`
+	_, _, err := runSkill(t, "edit-change-set", map[string]fwdtest.Handler{snapsPath: ready("s1")}, in)
+	if err == nil || !strings.Contains(err.Error(), `{"subnets":["8.8.8.8/32"]}`) || !strings.Contains(err.Error(), "{} means any") {
+		t.Fatalf("the error should show the shape: %v", err)
+	}
+}

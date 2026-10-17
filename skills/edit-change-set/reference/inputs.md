@@ -13,3 +13,16 @@ The dry run does the cheap checks the apply would fail on: an organization whose
 
 `change_set_id` with `lifecycle` acts on an EXISTING change set instead of creating one, and does not combine with devices, bgp_advertisements, firewall_rules, snapshot_id or run: `{op: rename, name}` (and/or `description`), `{op: duplicate, name}`, `{op: delete}` (needs `confirm` = the change set id; there is no undo, duplicate first to keep a copy), `{op: discard_device, device}` (throws away that device's uncommitted edits) and `{op: restore_commit, commit_id}` (makes an earlier version current; the earlier versions stay in the history). Each has a dry run. Predicted snapshots a change set already made are never touched.
 
+A full firewall rule (the shapes matter: address, user, application and service fields are objects, not lists; `{}` means any; `sourceZones` and `destinationZones` are plain lists, empty meaning any; `action` is `DENY`, `DROP` or `PERMIT` in upper case; omit `predecessor` to put the rule at the top; a list where an object belongs fails with a message naming the shape):
+
+```json
+{"network_id": "123", "name": "block dns to 8.8.8.8", "apply": true, "run": true,
+ "firewall_rules": [{"op": "add", "device": "fw1",
+   "rule": {"name": "block-8-8-8-8", "description": "test", "enabled": true, "action": "DENY",
+            "sourceZones": ["trust"], "destinationZones": ["untrust"],
+            "sourceAddresses": {}, "destinationAddresses": {"subnets": ["8.8.8.8/32"]},
+            "sourceUsers": {}, "applications": {}, "services": {}}}]}
+```
+
+Read the effect from the rule diff the result carries (`firewall_rules_diff`) and the checks (a firewall rule compliance check moves by the violations the rule creates), not only from a path search on the predicted snapshot: a path search shows a flow the rule blocks only if that flow crosses the firewall, and `verify-change` view `paths` needs advanced reachability on the base (`edit-advanced-reachability`).
+

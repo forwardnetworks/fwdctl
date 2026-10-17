@@ -109,6 +109,9 @@ type draftChangeSetInput struct {
 func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
 	var in draftChangeSetInput
 	if err := json.Unmarshal(raw, &in); err != nil {
+		if strings.Contains(err.Error(), "Specification") {
+			return result.Result{}, fmt.Errorf("%w: %v. In a firewall rule the address, user, application and service fields are OBJECTS, not lists: sourceAddresses and destinationAddresses {\"subnets\":[\"8.8.8.8/32\"]} (objects and groups by id; {} means any), sourceUsers, applications and services objects too ({} means any); sourceZones and destinationZones are plain lists (empty means any); action is DENY, DROP or PERMIT", ErrInvalidInput, err)
+		}
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	if in.Lifecycle != nil || in.ChangeSetID != "" {
