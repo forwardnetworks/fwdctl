@@ -64,3 +64,11 @@ func TestReprocessRefusesASnapshotThatIsProcessingAndAMissingOne(t *testing.T) {
 		t.Fatalf("%s", r.Status)
 	}
 }
+
+// Forward can keep reporting PROCESSED for a few seconds after a reprocess starts (its own answer says PROCESSING). The result says so, so a wait started at once is not trusted on that first reading.
+func TestReprocessApplyWarnsWhenTheSnapshotStillReadsProcessed(t *testing.T) {
+	r, _ := mustRun(t, "edit-snapshot-reprocess", reprocessRoutes("PROCESSED"), `{"network_id":"n1","snapshot_id":"s1","apply":true}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "still reports PROCESSED") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}

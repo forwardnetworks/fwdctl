@@ -122,7 +122,7 @@ func waitForSnapshot(ctx context.Context, get func(context.Context) (*forward.Sn
 				return emit("ok", sn.State, adv, waitReached)
 			}
 		}
-		if elapsed+interval > timeout {
+		if elapsed >= timeout {
 			state, adv := "", ""
 			if sn != nil {
 				state, adv = sn.State, sn.AdvancedReachabilityState
@@ -130,7 +130,7 @@ func waitForSnapshot(ctx context.Context, get func(context.Context) (*forward.Sn
 			fmt.Fprintf(stderr, "timed out after %s; the work may still be running: run the wait again\n", elapsed.Round(time.Second))
 			return emit("timed_out", state, adv, waitTimedOut)
 		}
-		sleep(interval)
+		sleep(min(interval, timeout-elapsed)) // never past the timeout, but always the time that is left
 	}
 }
 
@@ -210,14 +210,14 @@ func waitForCollector(ctx context.Context, get func(context.Context) (*forward.C
 			last = c
 			fmt.Fprintf(stderr, "%s collector %s: %s\n", elapsed.Round(time.Second), name, c.ConnectionStatus)
 		}
-		if elapsed+interval > timeout {
+		if elapsed >= timeout {
 			if last != nil && last.ConnectionStatus == "NEVER_CONNECTED" {
 				fmt.Fprintf(stderr, "the collector never authenticated: check the container's log and that TOKEN is the registration key verbatim (already username:password)\n")
 			}
 			fmt.Fprintf(stderr, "timed out after %s: run the wait again\n", elapsed.Round(time.Second))
 			return emit("timed_out", last, waitTimedOut)
 		}
-		sleep(interval)
+		sleep(min(interval, timeout-elapsed))
 	}
 }
 

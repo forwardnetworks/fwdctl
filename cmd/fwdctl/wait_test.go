@@ -233,3 +233,15 @@ type syncBuf struct {
 
 func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
 func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
+
+// A timeout shorter than the poll interval still waits: it sleeps the time that is left, polls once more, and only then times out (it used to give up before the first sleep, in 0 seconds).
+func TestWaitWithATimeoutShorterThanTheIntervalStillWaitsTheTimeout(t *testing.T) {
+	code, out, _ := runWait(t, []any{snap("PROCESSING", ""), snap("PROCESSED", "")}, "PROCESSED", "", 30*time.Second)
+	if code != waitReached || !strings.Contains(out, `"waited_seconds":30`) {
+		t.Errorf("the snapshot finished inside the timeout: %d %s", code, out)
+	}
+	code, out, _ = runWait(t, []any{snap("PROCESSING", "")}, "PROCESSED", "", 30*time.Second)
+	if code != waitTimedOut || !strings.Contains(out, `"waited_seconds":30`) {
+		t.Errorf("still processing: waits the 30 seconds, then times out: %d %s", code, out)
+	}
+}

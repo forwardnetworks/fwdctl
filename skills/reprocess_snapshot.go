@@ -75,6 +75,9 @@ func reprocessSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 		after = tr.State
 		ch.After = tr.State
 	}
+	if now, nerr := s.Snapshot(ctx, in.NetworkID, in.SnapshotID); nerr == nil && now != nil && now.State == "PROCESSED" {
+		limits = append(limits, "Forward still reports PROCESSED for this snapshot right after the start (its own answer said "+after+"): the state can lag a few seconds, so re-read it (inspect-snapshots) before trusting a wait or a PROCESSED reading")
+	}
 	return result.Build(reprocessSnapshotName, result.OK, fmt.Sprintf("Started reprocessing snapshot %s (%s -> %s)", in.SnapshotID, sn.State, after),
 		result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"state_after": after}), Limits: limits, NextActions: next})
 }
