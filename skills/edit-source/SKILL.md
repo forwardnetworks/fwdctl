@@ -1,10 +1,10 @@
 ---
 name: edit-source
-description: Adds devices to the collection list (pin to a collector), logins, jump servers, proxies; secrets from a file. Dry run unless apply: true. Use when onboarding devices.
+description: Changes what is collected: devices, logins, jump servers, controller setups, command groups, discovery; tests devices. Dry run unless apply: true. Use when onboarding or fixing sources.
 compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
-  summary: "device logins, jump servers"
+  summary: "sources: devices, logins, discovery"
   maturity: "1"
   class: write
   effect: "network"

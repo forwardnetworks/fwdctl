@@ -26,7 +26,21 @@
         "mist_setup",
         "custom_command_group",
         "discovery"
-      ]
+      ],
+      "x-values": {
+        "credential": "a CLI, SNMP or HTTP login (secrets from a file)",
+        "jump_server": "a jump server",
+        "proxy": "a proxy server",
+        "classic_device": "a device in the collection list: add, update, delete, or test its connectivity",
+        "endpoint": "an endpoint (a Linux host or other source) and the profile it uses",
+        "schedule": "a collection schedule",
+        "cloud_account": "a cloud account: add, rotate, test, delete",
+        "rapid7_source": "a Rapid7 vulnerability source",
+        "controller_setup": "a controller-managed setup (SD-WAN, ACI): create, migrate classic devices into it, test it, move its collector",
+        "mist_setup": "a Juniper Mist cloud setup",
+        "custom_command_group": "commands (or OIDs) a network adds to a device type's collection: create, update, disable, delete",
+        "discovery": "device discovery: start or stop a scan (it probes the network), add what it found, schedule it"
+      }
     },
     "action": {
       "type": "string",

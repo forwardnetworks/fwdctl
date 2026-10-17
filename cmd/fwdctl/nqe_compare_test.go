@@ -167,3 +167,28 @@ func TestRunReportsAJSONParseErrorWithItsOffset(t *testing.T) {
 		t.Errorf("a non-object: %d %q", code, errs)
 	}
 }
+
+// `fwdctl run NAME --help` is the first thing an agent reads: for a name with views it says what each view answers, from the schema (one source), not from a description that has to keep up.
+func TestRunHelpListsWhatEachViewAnswers(t *testing.T) {
+	code, out, _ := call(t, []string{"run", "inspect-collection", "--help"}, "", nil)
+	if code != 0 {
+		t.Fatalf("code %d", code)
+	}
+	for _, want := range []string{"`view` values", "`status`:", "`discovery`:", "`connectivity`:", "`migration`:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in the help:\n%s", want, out)
+		}
+	}
+}
+
+// Help is the first move: the root help and the agents' rules both say to read --help before running anything, in the order `fwdctl --help`, `fwdctl run`, `fwdctl run NAME --help`.
+func TestHelpIsTheFirstMoveInTheRootHelpAndTheAgentRules(t *testing.T) {
+	_, out, _ := call(t, []string{"--help"}, "", nil)
+	i := strings.Index(out, "Start here")
+	if i < 0 || !strings.Contains(out[i:i+700], "run NAME --help") || !strings.Contains(out[i:i+700], "what each view") {
+		t.Errorf("the root help must start with the help-first path: %s", out)
+	}
+	if !strings.Contains(agentsRules[:1200], "Read --help first") {
+		t.Errorf("the agent rules must put --help first: %.900s", agentsRules)
+	}
+}

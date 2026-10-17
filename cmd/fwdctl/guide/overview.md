@@ -16,7 +16,7 @@ prints a warning and every result records it.
 
 ## Getting started: five examples
 
-Each one is a command you can run now. `--help` on any command or name shows its inputs and an example, so you rarely need more than this page.
+Each one is a command you can run now. **Read `--help` first:** `fwdctl --help`, then `fwdctl run` (every name and what it answers), then `fwdctl run NAME --help` (its inputs, what each view, kind or object answers, and an example), so you rarely need more than this page.
 
     fwdctl whoami                                           # who you are connected as: URL, login, organization, Forward version
     echo '{}' | fwdctl run inspect-networks                 # 1. which networks can I see, and their ids

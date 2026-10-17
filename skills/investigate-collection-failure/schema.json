@@ -27,7 +27,20 @@
         "logs",
         "cloud"
       ],
-      "default": "summary"
+      "default": "summary",
+      "x-values": {
+        "summary": "failure counts by cause (default)",
+        "triage": "first contact: the summary plus the slowest devices",
+        "devices": "which devices failed and why, with the last successful collection, connectivity error and explanation",
+        "platforms": "failures by vendor, OS and OS version against all devices of that platform",
+        "changes": "new, recovered and still-failing devices against the previous snapshot",
+        "exceptions": "collector exceptions and the devices they hit",
+        "neighbors": "neighbours seen but not modelled",
+        "slow": "per-device collection time, slowest commands, collectors, slots held against device time",
+        "history": "how long recent collections took",
+        "logs": "one device's collection log",
+        "cloud": "cloud collection failures by account and region"
+      }
     },
     "collector_task_id": {
       "type": "string",

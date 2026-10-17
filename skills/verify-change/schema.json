@@ -1,30 +1,98 @@
 {
   "type": "object",
-  "required": ["network_id"],
+  "required": [
+    "network_id"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "change_set_id": { "type": "string", "minLength": 1 },
-    "view": { "enum": ["verify", "describe", "impact", "verdict", "list", "scope", "preflight"], "default": "verify" },
-    "run_predict": { "type": "boolean" },
-    "connectivity_timeout_seconds": { "type": "integer", "minimum": 1 },
-    "device": { "type": "string", "minLength": 1 },
-    "before_snapshot_id": { "type": "string", "minLength": 1 },
-    "after_snapshot_id": { "type": "string", "minLength": 1 },
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "change_set_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "view": {
+      "enum": [
+        "verify",
+        "describe",
+        "impact",
+        "verdict",
+        "list",
+        "scope",
+        "preflight"
+      ],
+      "default": "verify",
+      "x-values": {
+        "verify": "judge a change: did it work and break nothing (before and after snapshots, or a change set) (default)",
+        "describe": "what a change set edits, whether it was predicted, which of its checks got worse",
+        "impact": "how far a change reaches, measured; judges nothing",
+        "verdict": "the same as verify",
+        "list": "the change sets this network holds (none is an answer; an unlicensed organization is a licence limit)",
+        "scope": "what of this network Predict can model on this release: license facet, every predict flag, out-of-scope BGP families, platforms where propagation stops",
+        "preflight": "the Predict demo checklist: scope plus release, base snapshot age, existing change sets and BGP advertisement collection"
+      }
+    },
+    "run_predict": {
+      "type": "boolean"
+    },
+    "connectivity_timeout_seconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1
+    },
+    "before_snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "after_snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "expectations": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["dst_ip", "expect"],
+        "required": [
+          "dst_ip",
+          "expect"
+        ],
         "additionalProperties": false,
         "properties": {
-          "src_ip": { "type": "string", "minLength": 1 },
-          "from": { "type": "string", "minLength": 1 },
-          "dst_ip": { "type": "string", "minLength": 1 },
-          "protocol": { "type": ["string", "integer"] },
-          "src_port": { "type": "string" },
-          "dst_port": { "type": "string" },
-          "expect": { "enum": ["delivered", "blocked"] }
+          "src_ip": {
+            "type": "string",
+            "minLength": 1
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dst_ip": {
+            "type": "string",
+            "minLength": 1
+          },
+          "protocol": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          },
+          "src_port": {
+            "type": "string"
+          },
+          "dst_port": {
+            "type": "string"
+          },
+          "expect": {
+            "enum": [
+              "delivered",
+              "blocked"
+            ]
+          }
         }
       }
     }

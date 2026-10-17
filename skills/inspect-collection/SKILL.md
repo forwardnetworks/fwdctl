@@ -1,10 +1,10 @@
 ---
 name: inspect-collection
-description: Reports on collection without diagnosis: view status (running, task outcomes, collector, failed devices) or view config (what is collected). Use when asked if collection runs or is healthy.
+description: Reads collection state without diagnosing: running, what is collected, devices to migrate, discovery, connectivity tests. Use when asked if collection is healthy.
 compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
-  summary: "collection state and config"
+  summary: "collection state, config, discovery"
   maturity: "3"
   tools: "collector tasks, collections, collectors, classic devices, endpoints, jump servers, proxies"
 ---

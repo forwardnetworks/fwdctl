@@ -1,16 +1,55 @@
 {
   "type": "object",
-  "required": ["network_id"],
+  "required": [
+    "network_id"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "snapshot_id": { "type": "string", "minLength": 1 },
-    "cve_id": { "type": "string", "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$" },
-    "device": { "type": "string", "minLength": 1 },
-    "min_severity": { "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
-    "known_exploited_only": { "type": "boolean" },
-    "internet_addressable": { "type": "boolean" },
-    "limit": { "type": "integer", "minimum": 1 },
-    "view": { "enum": ["cves", "devices"], "default": "cves", "description": "devices: one row per device with its internet_addressable flag and CVE counts, in one call" }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cve_id": {
+      "type": "string",
+      "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$"
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1
+    },
+    "min_severity": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "known_exploited_only": {
+      "type": "boolean"
+    },
+    "internet_addressable": {
+      "type": "boolean"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "view": {
+      "enum": [
+        "cves",
+        "devices"
+      ],
+      "default": "cves",
+      "description": "devices: one row per device with its internet_addressable flag and CVE counts, in one call",
+      "x-values": {
+        "cves": "the CVEs that expose the network, or the devices one CVE affects",
+        "devices": "the CVEs that affect a device"
+      }
+    }
   }
 }

@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-var annotations = map[string]bool{"$schema": true, "$id": true, "title": true, "description": true, "examples": true, "default": true}
+var annotations = map[string]bool{"$schema": true, "$id": true, "title": true, "description": true, "examples": true, "default": true, "x-values": true}
 
 // Validate returns the violations of instance against schema; empty means valid. A schema that uses an
 // unsupported keyword returns an error.

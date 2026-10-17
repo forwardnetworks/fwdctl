@@ -1,15 +1,63 @@
 {
   "type": "object",
-  "required": ["network_id", "view"],
+  "required": [
+    "network_id",
+    "view"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "view": { "enum": ["unhealthy_devices", "unhealthy_interfaces", "devices", "interfaces", "device_history", "interface_history"] },
-    "metric": { "enum": ["CPU", "MEMORY", "UTILIZATION", "PACKET_LOSS", "ERROR"] },
-    "direction": { "enum": ["INGRESS", "EGRESS"] },
-    "days": { "type": "integer", "minimum": 1 },
-    "device": { "type": "string", "minLength": 1 },
-    "interface": { "type": "string", "minLength": 1 },
-    "limit": { "type": "integer", "minimum": 1 }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "view": {
+      "enum": [
+        "unhealthy_devices",
+        "unhealthy_interfaces",
+        "devices",
+        "interfaces",
+        "device_history",
+        "interface_history"
+      ],
+      "x-values": {
+        "unhealthy_devices": "devices over a health threshold, worst first",
+        "unhealthy_interfaces": "interfaces with loss, errors or high utilization",
+        "devices": "device health: CPU, memory",
+        "interfaces": "interface utilization and errors",
+        "device_history": "a device's metric trend",
+        "interface_history": "an interface's metric trend"
+      }
+    },
+    "metric": {
+      "enum": [
+        "CPU",
+        "MEMORY",
+        "UTILIZATION",
+        "PACKET_LOSS",
+        "ERROR"
+      ]
+    },
+    "direction": {
+      "enum": [
+        "INGRESS",
+        "EGRESS"
+      ]
+    },
+    "days": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1
+    },
+    "interface": {
+      "type": "string",
+      "minLength": 1
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    }
   }
 }

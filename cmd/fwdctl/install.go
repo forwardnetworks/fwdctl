@@ -31,6 +31,8 @@ type schemaProp struct {
 	Pattern     string `json:"pattern"`
 	Description string `json:"description"`
 	Default     any    `json:"default"`
+	// XValues is the one-line meaning of each value of an enum (the schema annotation x-values), shown under the table.
+	XValues map[string]string `json:"x-values"`
 }
 
 // inputTable renders a skill's input schema as a markdown table.
@@ -87,6 +89,21 @@ func inputTable(schema json.RawMessage) string {
 			note += fmt.Sprintf("(default %v)", p.Default)
 		}
 		fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", n, t, yes, note)
+	}
+	// what each value of a view, kind or object answers: the one place it is written, so the help never trails the code
+	for _, n := range names {
+		p := s.Properties[n]
+		if len(p.XValues) == 0 || len(p.Enum) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "\n`%s` values:\n\n", n)
+		for _, v := range p.Enum {
+			if text := p.XValues[fmt.Sprint(v)]; text != "" {
+				fmt.Fprintf(&b, "- `%v`: %s\n", v, text)
+			} else {
+				fmt.Fprintf(&b, "- `%v`\n", v)
+			}
+		}
 	}
 	return b.String()
 }
@@ -191,7 +208,7 @@ Run one with ` + "`echo '<json inputs>' | fwdctl run <skill>`" + ` (needs ` + "`
 
 **How to work**
 
-0. **Not sure which skill?** ` + "`fwdctl which \"<question>\"`" + ` ranks the router table offline and names the skill or playbook.
+0. **Read --help first.** Before running anything: ` + "`fwdctl --help`" + `, then ` + "`fwdctl run`" + ` (every name and what it answers), then ` + "`fwdctl run <name> --help`" + ` (its inputs, what each view, kind or object answers, an example). Not sure which name? ` + "`fwdctl which \"<question>\"`" + ` ranks the router table offline.
 1. **Start with a playbook when the question is a task.** ` + "`fwdctl describe plan-investigation`" + ` maps the question to a playbook (troubleshooting, security, change, audit, health) or to one skill. Follow the playbook's order and stop when the evidence answers the question.
 2. **Read the result, not just the answer.** ` + "`status`" + ` is ok, failed, unknown or error: **unknown is never a pass**. Read ` + "`limits`" + ` (what was not measured), ` + "`omitted`" + ` (lists that were cut: say when you compare answers) and ` + "`context`" + ` (which snapshot and when) before you rely on it, and say them. ` + "`next_actions`" + ` names the skill that usually follows.
 3. **Never improvise a write.** An ` + "`edit-*`" + ` skill is a dry run until its input has ` + "`apply: true`" + `. Show the exact change and its undo, and apply only after approval. ` + "`fwdctl describe plan-safe-write`" + ` has the protocol.

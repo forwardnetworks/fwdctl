@@ -68,3 +68,14 @@ func TestTypeErrorsNameJSONTypes(t *testing.T) {
 		t.Errorf("%v", e)
 	}
 }
+
+// x-values is an annotation: the one-line meaning of each value of an enum, shown by `fwdctl run NAME --help`. The validator accepts it and does not check against it.
+func TestXValuesIsAnAnnotation(t *testing.T) {
+	s := `{"type":"object","properties":{"view":{"enum":["a","b"],"x-values":{"a":"first","b":"second"}}}}`
+	if e, err := Validate([]byte(s), []byte(`{"view":"a"}`)); err != nil || len(e) != 0 {
+		t.Errorf("%v %v", e, err)
+	}
+	if e, _ := Validate([]byte(s), []byte(`{"view":"c"}`)); len(e) == 0 {
+		t.Errorf("an enum value outside the list is still refused")
+	}
+}

@@ -1,6 +1,6 @@
 ---
 name: inspect-platform
-description: Reads how Forward is set up, secrets removed: credentials, jump servers, collectors, cloud setups, webhooks, licensing, SAML. Use when asked what is configured.
+description: Reads how Forward is set up, secrets removed: credentials, collectors, endpoint profiles, command groups, settings vs defaults, licensing, SAML. Use when asked what is configured.
 compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "access"

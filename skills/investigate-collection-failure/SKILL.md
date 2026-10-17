@@ -1,10 +1,10 @@
 ---
 name: investigate-collection-failure
-description: Finds why Forward could not collect or model devices, grouping failures by credentials, network path, device session and processing. Use when a snapshot is incomplete or devices are missing.
+description: Finds why Forward could not collect or model devices: causes, platforms, changes, slow collections, logs. Use when a snapshot is incomplete, devices are missing or collection is slow.
 compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
-  summary: "why not collected"
+  summary: "why not collected, why slow"
   maturity: "3"
   tools: "snapshots, collect"
 ---

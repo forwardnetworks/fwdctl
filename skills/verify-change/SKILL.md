@@ -1,10 +1,10 @@
 ---
 name: verify-change
-description: Judges a change: view verify (worked? broke nothing?), describe (what a change set edits), impact (how far it reaches). Use when asked if a change is safe or what a change set does.
+description: Judges a change and Predict fit: verify, describe, impact, list, scope, preflight. Use when asked if a change is safe, what a change set does, or if Predict suits this network.
 compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "change"
-  summary: "verify, describe, size a change"
+  summary: "verify, scope, preflight a change"
   maturity: "3"
   tools: "snapshots, changes, paths"
 ---

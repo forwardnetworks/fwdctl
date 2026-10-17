@@ -12,7 +12,14 @@
         "activity"
       ],
       "default": "me",
-      "description": "me (what this login may do), explain (why an operation was refused), users, groups, activity (Forward's audit log: who called which route, when)"
+      "description": "me (what this login may do), explain (why an operation was refused), users, groups, activity (Forward's audit log: who called which route, when)",
+      "x-values": {
+        "me": "this login's roles and what they allow",
+        "explain": "why an operation was refused and which role holds it",
+        "users": "users",
+        "groups": "access groups",
+        "activity": "the audit log"
+      }
     },
     "network_id": {
       "type": "string",

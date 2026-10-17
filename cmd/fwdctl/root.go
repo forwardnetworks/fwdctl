@@ -57,8 +57,9 @@ const rootLong = `EXPERIMENTAL: a dogfooding project, not an official Forward Ne
 fwdctl asks questions about a Forward network and answers them with evidence. Each question is a named analysis: give "fwdctl run NAME" a JSON object on stdin and it returns one result
 (status, evidence, limits, next actions). Names that start with edit- change Forward and do nothing unless the input says "apply": true.
 
-Start here: "fwdctl run" lists every name and what it answers, "echo '{}' | fwdctl run inspect-networks" lists the networks you can see, "fwdctl which \"<question>\"" finds the name for a
-question, and "fwdctl help --tree" lists every command. Every command answers --help; "fwdctl run NAME --help" shows one name's inputs and an example.
+Start here, and read --help before you run anything: "fwdctl run" lists every name and what it answers; "fwdctl run NAME --help" shows one name's inputs, what each view, kind or object
+answers, and an example; "fwdctl which \"<question>\"" finds the name for a question in words; "fwdctl help --tree" lists every command (each answers --help). Then run it, for example
+"echo '{}' | fwdctl run inspect-networks" lists the networks you can see.
 
 Credentials (environment): FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (an API token's access key and secret work).
 Or flags: --url URL --username NAME --password-file FILE [--ca-bundle FILE | --insecure] [--config FILE]; or a saved login (fwdctl login), or a file

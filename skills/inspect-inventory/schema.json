@@ -37,7 +37,30 @@
         "igp_neighbors",
         "bgp_families",
         "security_rules_experimental"
-      ]
+      ],
+      "x-values": {
+        "summary": "device counts by vendor and type",
+        "devices": "name, vendor, OS, model, type, location, tags",
+        "interfaces": "interfaces of a device or the network",
+        "vlans": "VLANs",
+        "vrfs": "VRFs",
+        "hosts": "hosts the network has seen",
+        "cloud_accounts": "cloud accounts and whether each was collected",
+        "cloud_coverage": "per cloud setup, how much was collected and what was not",
+        "endpoints": "endpoints rolled up by profile: collected, not collected",
+        "lifecycle": "OS support dates by vendor and OS",
+        "cloud": "cloud VPCs and VNets",
+        "cloud_routes": "cloud route tables",
+        "cloud_security": "cloud security groups and rules",
+        "cloud_gateways": "cloud gateways, VPN connections and their state",
+        "ip_owner": "the interface that owns an IP",
+        "cloud_subnets": "cloud subnets",
+        "cloud_instances": "cloud compute instances",
+        "routes": "route next hops of a device and VRF",
+        "igp_neighbors": "OSPF adjacencies",
+        "bgp_families": "the BGP address families a network runs, read from config: device counts by family and OS; name = a family lists its devices",
+        "security_rules_experimental": "rule and object counts of Forward's experimental security rules model"
+      }
     },
     "device": {
       "type": "string",

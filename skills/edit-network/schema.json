@@ -1,14 +1,57 @@
 {
   "type": "object",
-  "required": ["object", "action"],
+  "required": [
+    "object",
+    "action"
+  ],
   "additionalProperties": false,
   "properties": {
-    "object": { "type": "string", "enum": ["network", "location", "cluster", "tag", "collector"] },
-    "action": { "type": "string", "enum": ["create", "update", "delete", "assign"] },
-    "network_id": { "type": "string", "minLength": 1 },
-    "name": { "type": "string", "minLength": 1, "description": "network create: the new name; cluster update and tag update or delete: the existing cluster or tag" },
-    "definition": { "type": "object", "description": "the body for the object and action; see Input details in `fwdctl run NAME --help`" },
-    "confirm": { "type": "string", "description": "network delete: the exact network_id; location delete: the location id; tag delete: the exact tag name; cluster delete: the exact cluster name" },
-    "apply": { "type": "boolean", "default": false }
+    "object": {
+      "type": "string",
+      "enum": [
+        "network",
+        "location",
+        "cluster",
+        "tag",
+        "collector"
+      ],
+      "x-values": {
+        "network": "the network itself: create, rename, note, retention, delete",
+        "location": "a location: create, update, delete, assign devices",
+        "cluster": "a device cluster",
+        "tag": "a device tag definition",
+        "collector": "attach a registered collector to the network"
+      }
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "create",
+        "update",
+        "delete",
+        "assign"
+      ]
+    },
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "network create: the new name; cluster update and tag update or delete: the existing cluster or tag"
+    },
+    "definition": {
+      "type": "object",
+      "description": "the body for the object and action; see Input details in `fwdctl run NAME --help`"
+    },
+    "confirm": {
+      "type": "string",
+      "description": "network delete: the exact network_id; location delete: the location id; tag delete: the exact tag name; cluster delete: the exact cluster name"
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    }
   }
 }

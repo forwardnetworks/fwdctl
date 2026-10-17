@@ -17,7 +17,14 @@
         "discovery",
         "connectivity"
       ],
-      "default": "status"
+      "default": "status",
+      "x-values": {
+        "status": "is a collection running, the latest task outcomes, the collector, failed devices (default)",
+        "config": "what Forward is asked to collect: devices, endpoints, jump servers, proxies, schedules, cloud and controller-managed setups, data files and connectors",
+        "migration": "classic devices that belong in a controller-managed setup (ACI, SD-WAN), by category and controller, with the logins that could be tried",
+        "discovery": "Forward's device discovery, read-only: jobs, discovered devices not yet collected and why, schedules",
+        "connectivity": "the last connectivity-test result of every classic device, by error and phase, with the rejected commands of an authorization failure"
+      }
     },
     "limit": {
       "type": "integer",

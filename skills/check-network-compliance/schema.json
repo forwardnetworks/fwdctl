@@ -61,7 +61,11 @@
         "evaluate",
         "read"
       ],
-      "default": "evaluate"
+      "default": "evaluate",
+      "x-values": {
+        "evaluate": "run a policy (Forward's checks or NQE violation queries) against the snapshot and judge it",
+        "read": "list the checks that already exist and their status"
+      }
     },
     "check_id": {
       "type": "string",
