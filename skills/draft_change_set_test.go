@@ -303,3 +303,15 @@ func TestDraftChangeSetLifecycleOnAnExistingChangeSet(t *testing.T) {
 		t.Errorf("an unknown change set is not ok: %s", r.Status)
 	}
 }
+
+// A base snapshot that is being (re)processed cannot carry a change set that runs: Forward stages it, reports success and never produces a predicted snapshot. An explicit snapshot_id that is not PROCESSED is refused (unknown) in the dry run and on apply, and says to wait.
+func TestDraftChangeSetRefusesABaseSnapshotThatIsNotProcessed(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes[snapsPath] = fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSING", "COLLECTION", "2026-09-01T00:00:00.000Z"))
+	for _, extra := range []string{``, `,"apply":true,"run":true`} {
+		r, srv := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","snapshot_id":"s1","name":"x","devices":[{"device":"r1","commands":"hostname r1"}]`+extra+`}`)
+		if r.Status != result.Unknown || writes(srv) != 0 || !strings.Contains(strings.Join(r.Limits, " ")+r.Finding, "PROCESSING") {
+			t.Errorf("a base that is processing: %s %s %v writes=%d", r.Status, r.Finding, r.Limits, writes(srv))
+		}
+	}
+}

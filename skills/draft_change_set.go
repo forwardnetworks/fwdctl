@@ -185,6 +185,10 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			[]string{"no such snapshot (or none processed); nothing was created"}, result.Options{NextActions: []string{"inspect-snapshots"}})
 	}
 	cx = fwd.Context(in.NetworkID, sn)
+	if !fwd.IsReady(sn) {
+		return result.NewUnknown(draftChangeSetName, fmt.Sprintf("Base snapshot %s is %s, not PROCESSED: nothing was created", sn.ID, sn.State), cx,
+			[]string{"a change set created on a snapshot that is still processing is staged and reports success but never produces a predicted snapshot; wait for PROCESSED (fwdctl wait snapshot, or inspect-snapshots) and run this again"}, result.Options{NextActions: []string{"inspect-snapshots"}})
+	}
 	base := string(sn.ID)
 	list, lerr := s.ChangeSets(ctx, in.NetworkID)
 	if lerr != nil {

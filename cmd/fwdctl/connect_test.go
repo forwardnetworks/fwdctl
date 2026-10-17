@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -60,5 +61,38 @@ func TestTheSupportTokenFileFillsTheSupportLoginOnly(t *testing.T) {
 	}
 	if os.Getenv("FORWARD_USERNAME") != "" || os.Getenv("FORWARD_URL") != "https://main.example" {
 		t.Errorf("the main login must be untouched: %q %q", os.Getenv("FORWARD_USERNAME"), os.Getenv("FORWARD_URL"))
+	}
+}
+
+// --profile NAME selects a saved connection by name (~/.config/fwdctl/profiles/NAME.json, the same file format as the default config), so switching between tenants is a name, not a token path on every command. A name that is not a plain
+// word is refused, a missing profile is an error that says how to create it, and --profile with --config is ambiguous.
+func TestProfileSelectsANamedSavedConnection(t *testing.T) {
+	cfgDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgDir)
+	for _, k := range []string{"FORWARD_URL", "FORWARD_USERNAME", "FORWARD_PASSWORD", "FORWARD_SUPPORT_TOKEN_FILE", "FORWARD_CA_BUNDLE"} {
+		t.Setenv(k, "")
+	}
+	dir := filepath.Join(cfgDir, "fwdctl", "profiles")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tok := filepath.Join(t.TempDir(), "a.token")
+	if err := os.WriteFile(tok, []byte("https://a.example\nalice\nsecret-a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "alpha.json"), []byte(`{"token_file":"`+tok+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyConnectionOptions(connOptions{profile: "alpha"}); err != nil || os.Getenv("FORWARD_USERNAME") != "alice" || os.Getenv("FORWARD_URL") != "https://a.example" {
+		t.Fatalf("profile alpha: %v %q %q", err, os.Getenv("FORWARD_USERNAME"), os.Getenv("FORWARD_URL"))
+	}
+	if err := applyConnectionOptions(connOptions{profile: "nope"}); err == nil || !strings.Contains(err.Error(), "fwdctl login --profile nope") {
+		t.Errorf("a missing profile says how to create it: %v", err)
+	}
+	if err := applyConnectionOptions(connOptions{profile: "../x"}); err == nil {
+		t.Errorf("a profile name is a plain word")
+	}
+	if err := applyConnectionOptions(connOptions{profile: "alpha", configFile: "x.json"}); err == nil {
+		t.Errorf("--profile and --config together are ambiguous")
 	}
 }

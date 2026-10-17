@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -22,7 +23,7 @@ type connFile struct {
 	TokenFile string `json:"token_file"`
 	// SupportTokenFile is a second token file for a Forward-support login (FORWARD_SUPPORT_TOKEN_FILE, --support-token-file): only changes that need support authority use it.
 	SupportTokenFile string `json:"support_token_file"`
-	Insecure  bool   `json:"insecure"`
+	Insecure         bool   `json:"insecure"`
 	// CABundle is the path of a PEM file of certificate authorities to trust for Forward's certificate.
 	CABundle string `json:"ca_bundle"`
 }
@@ -67,6 +68,20 @@ func readTokenFile(path string) (url, user, pass string, err error) {
 	return strings.TrimRight(url, "/"), lines[1], lines[2], nil
 }
 
+var profileName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
+
+// profilePath is where a named profile lives: the same file format as the default config, in a profiles folder next to it.
+func profilePath(name string) (string, error) {
+	if !profileName.MatchString(name) {
+		return "", fmt.Errorf("a profile name is lower-case letters, digits, - and _ (at most 32), not %q", name)
+	}
+	base := defaultConfigPath()
+	if base == "" {
+		return "", errors.New("no user config directory on this machine")
+	}
+	return filepath.Join(filepath.Dir(base), "profiles", name+".json"), nil
+}
+
 func defaultConfigPath() string {
 	if d, err := os.UserConfigDir(); err == nil {
 		return filepath.Join(d, "fwdctl", "config.json")
@@ -77,8 +92,21 @@ func defaultConfigPath() string {
 // applyConnectionOptions puts the connection (flags, then the saved config and token file for whatever they leave empty) into the environment the session reads.
 func applyConnectionOptions(o connOptions) error {
 	url, user, passFile, cfg, tokenFile, insecure := o.url, o.username, o.passwordFile, o.configFile, o.tokenFile, o.insecure
+	if o.profile != "" {
+		if cfg != "" {
+			return errors.New("give --profile or --config, not both")
+		}
+		pp, err := profilePath(o.profile)
+		if err != nil {
+			return err
+		}
+		if _, serr := os.Stat(pp); serr != nil && !o.profileMayBeNew {
+			return fmt.Errorf("no profile %q: save one with `fwdctl login --profile %s --file TOKENFILE`", o.profile, o.profile)
+		}
+		cfg = pp
+	}
 	file := cfg
-	explicit := cfg != ""
+	explicit := cfg != "" && !o.profileMayBeNew
 	if file == "" {
 		file = defaultConfigPath()
 	}

@@ -14,8 +14,16 @@ import (
 //	fwdctl login --forget                    remove what was remembered
 //
 // It stores only the path of the file, never the password, and checks the login before it saves anything.
-func loginRun(file string, forget bool, stdout, stderr io.Writer, whoamiRun func() int) int {
+func loginRun(profile, file string, forget bool, stdout, stderr io.Writer, whoamiRun func() int) int {
 	path := defaultConfigPath()
+	if profile != "" {
+		pp, err := profilePath(profile)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return usage
+		}
+		path = pp
+	}
 	if path == "" {
 		fmt.Fprintln(stderr, "error: no user config directory on this machine")
 		return 3

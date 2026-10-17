@@ -186,9 +186,34 @@ func TestPlatformOrgPropertiesCarryTheReleaseDefaultAndWhoCanChangeIt(t *testing
 	}
 	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"org_properties","org_id":"o1","name":"predict_model_ospf"}`)
 	b := jsonOf(r)
+	if strings.Contains(b, `"master"`) || strings.Contains(b, "release_defaults") {
+		t.Errorf("only the build's own release default is shown, never the unreleased master default: %s", b)
+	}
 	for _, want := range []string{`"release_default":"false"`, `"default_release":"26.9"`, "on-premises", "Forward support"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("missing %s in %s", want, b)
 		}
+	}
+}
+
+// A property that changes how snapshots are computed says so (applies_to_snapshots_processed_after_change), so the reader knows a reprocess is needed for an existing snapshot to show it; the rows already name the build.
+func TestPlatformOrgPropertiesSayWhichPropertiesNeedAReprocess(t *testing.T) {
+	if len(knowledge.OrgPropertyNames()) == 0 {
+		t.Skip("the property table is not in this build")
+	}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/version": fwdtest.Const(200, map[string]any{"build": "1.0.0-test", "release": "26.9.4-02", "version": "26.9"}),
+		"GET /api/orgs/o1/config": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("filter") == "CONFIGURED" {
+				return 200, map[string]any{}
+			}
+			return 200, map[string]any{"predict_model_config": false}
+		},
+		"GET /api/global-config": fwdtest.Const(200, map[string]any{"predict_model_config": false}),
+	}
+	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"org_properties","org_id":"o1","name":"predict_model_config"}`)
+	b := jsonOf(r)
+	if !strings.Contains(b, `"applies_to_snapshots_processed_after_change":true`) || !strings.Contains(b, `"release":"26.9.4-02"`) {
+		t.Errorf("reprocess hint or build: %s", b)
 	}
 }

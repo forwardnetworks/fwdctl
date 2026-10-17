@@ -245,3 +245,19 @@ func TestWaitWithATimeoutShorterThanTheIntervalStillWaitsTheTimeout(t *testing.T
 		t.Errorf("still processing: waits the 30 seconds, then times out: %d %s", code, out)
 	}
 }
+
+// A dry run says so on stderr (status ok means the plan is valid, not that it was done), and every run names the Forward and login it uses; stdout stays the result.
+func TestRunSaysOnStderrWhenItWasADryRunAndWhichForwardItUsed(t *testing.T) {
+	t.Setenv("FORWARD_URL", "https://forward.example")
+	t.Setenv("FORWARD_USERNAME", "tester")
+	r := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/snapshots": fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+	}
+	code, out, errs := call(t, []string{"run", "edit-snapshot"}, `{"network_id":"n1","action":"note","snapshot_id":"s1","note":"x"}`, r)
+	if code != 0 || !strings.Contains(errs, "dry run: nothing was changed") || !strings.Contains(errs, "against https://forward.example as tester") {
+		t.Fatalf("code %d stderr %q", code, errs)
+	}
+	if strings.Contains(out, "dry run: nothing") || !strings.Contains(out, `"mode": "dry_run"`) {
+		t.Errorf("stdout is only the result: %q", out)
+	}
+}

@@ -33,6 +33,8 @@ type app struct {
 // connOptions are the connection flags every command accepts; applyConnectionOptions turns them (and the saved login) into the environment a session reads.
 type connOptions struct {
 	url, username, passwordFile, tokenFile, configFile string
+	profile                                            string // a named saved connection (~/.config/fwdctl/profiles/NAME.json)
+	profileMayBeNew                                    bool   // login --profile creates it
 	supportTokenFile                                   string // a second login, for changes that need Forward-support authority (edit-org-property org_id)
 	insecure                                           bool
 	caBundle                                           string
@@ -124,6 +126,7 @@ func (a *app) newRoot() *cobra.Command {
 	pf.StringVar(&a.conn.passwordFile, "password-file", "", "file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)")
 	pf.StringVar(&a.conn.tokenFile, "token-file", "", "a token file: URL, username and password on three lines, mode 600")
 	pf.StringVar(&a.conn.supportTokenFile, "support-token-file", "", "a second token file (same format) for a Forward-support login: used only by changes that need support authority, such as edit-org-property with org_id; the main login is used for everything else")
+	pf.StringVar(&a.conn.profile, "profile", "", "use a named saved connection (fwdctl login --profile NAME --file TOKENFILE), so switching between tenants is a name on every command and `fwdctl: ... against URL as LOGIN` on stderr shows which one ran")
 	pf.StringVar(&a.conn.configFile, "config", "", "connection config file (default ~/.config/fwdctl/config.json)")
 	pf.StringVar(&a.conn.caBundle, "ca-bundle", "", "PEM file of the certificate authorities to trust for Forward's certificate, for a private or self-signed CA (overrides FORWARD_CA_BUNDLE; verification stays on; not with --insecure)")
 	pf.BoolVar(&a.conn.insecure, "insecure", false, "do NOT verify the TLS certificate (a self-signed Forward; every result records it)")
@@ -133,6 +136,7 @@ func (a *app) newRoot() *cobra.Command {
 		case "completion", "help", "man", "__complete", "__completeNoDesc", "":
 			// these read no connection
 		default:
+			a.conn.profileMayBeNew = a.top == "login"
 			if err := applyConnectionOptions(a.conn); err != nil {
 				return a.fail("%v", err)
 			}
@@ -335,10 +339,10 @@ func (a *app) loginCmd() *cobra.Command {
 		Long: "Remember where the login is, so every later fwdctl run (and every agent session that runs it) works with no environment.\n" +
 			"TOKENFILE has three lines: the Forward URL, the username (or an API token's access key) and the password (or its secret), and must be mode 600.\n" +
 			"The login is checked, then only the PATH of the file is saved in ~/.config/fwdctl/config.json; the password is never copied. Flags and FORWARD_* variables still win.",
-		Example: "  fwdctl login --file ~/customer.token\n  fwdctl login --forget",
+		Example: "  fwdctl login --file ~/customer.token\n  fwdctl login --profile staging --file ~/staging.token   # then: fwdctl --profile staging whoami\n  fwdctl login --forget",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.exit(loginRun(file, forget, a.out, a.err, func() int { return whoami(a.session, a.out, a.err) }))
+			return a.exit(loginRun(a.conn.profile, file, forget, a.out, a.err, func() int { return whoami(a.session, a.out, a.err) }))
 		},
 	}
 	c.Flags().StringVar(&file, "file", "", "a token file: URL, username and password on three lines (mode 600)")
@@ -553,9 +557,16 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 		return fail("%v", err)
 	}
 	warnInsecure(a.err, sess)
+	if u := os.Getenv("FORWARD_URL"); u != "" {
+		// which Forward and login this run uses, so a run against the wrong tenant (customer, Skyforge, support) is seen at once; stderr only, stdout stays the result
+		fmt.Fprintf(a.err, "fwdctl: %s against %s as %s\n", name, u, os.Getenv("FORWARD_USERNAME"))
+	}
 	stop := heartbeat(a.err, heartbeatEvery, "fwdctl run "+name)
 	r, err := skills.Run(context.Background(), name, sess, raw)
 	stop()
+	if r.Mode == result.ModeDryRun {
+		fmt.Fprintln(a.err, "dry run: nothing was changed (status ok means the plan is valid, not that it was done); add \"apply\": true to do it")
+	}
 	if errors.Is(err, skills.ErrInvalidInput) || errors.Is(err, skills.ErrUnknown) {
 		// a consumer that parses stdout gets the same envelope as for any other failure, with status error; the plain line still goes to stderr and the exit status stays 64
 		if format == "json" {

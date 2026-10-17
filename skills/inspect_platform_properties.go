@@ -47,6 +47,9 @@ func orgPropertyRows(ctx context.Context, s *fwd.Session, in inspectPlatformInpu
 		m := map[string]any{"row": "property", "name": name, "effective": p.Value, "kind": string(p.Kind)}
 		if info, ok := knowledge.OrgPropertyInfo(name); ok {
 			m["who_can_change"] = whoCanChange(info.Admin)
+			if hasKnownUse(info.Uses, "COMPUTATION") {
+				m["applies_to_snapshots_processed_after_change"] = true // a snapshot already processed shows the old value until it is reprocessed
+			}
 			if dv, defined, known := knowledge.OrgPropertyDefault(name, release); known && defined {
 				m["release_default"], m["default_release"] = dv, release
 			}
