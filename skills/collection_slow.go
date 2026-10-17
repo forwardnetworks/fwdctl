@@ -33,6 +33,16 @@ type slowSummary struct {
 	byType, byConn         map[string]*slowAgg
 	errorsByType           map[string]int
 	m                      *forward.SnapshotCollectionMetrics
+	cmds                   []*cmdRollup // every slowest-command rollup (not only the top shown), for the custom group rollup
+}
+
+// cmdRollup is one command text seen as the slowest command of one or more devices.
+type cmdRollup struct {
+	command string
+	durs    []int64
+	sum     int64
+	types   map[string]int
+	groups  []string
 }
 
 // runOrigin is the start of the run in Forward's clock: the collection's own start when it precedes every device, else the first device's start. ok is false when no device has one.
@@ -109,6 +119,34 @@ func summariseSlow(m *forward.SnapshotCollectionMetrics, filter string) *slowSum
 		sm.parallelism = float64(sm.sumMs) / float64(sm.wallMs)
 		sm.stats["collection_wall_ms"], sm.stats["implied_parallelism"] = sm.wallMs, sm.parallelism
 	}
+	// Forward records only each device's slowest command, so a rollup of those by command text is the closest signal to "which command costs the time"
+	roll := map[string]*cmdRollup{}
+	for _, d := range m.Devices {
+		if filter != "" && !strings.Contains(strings.ToLower(d.DeviceName), strings.ToLower(filter)) {
+			continue
+		}
+		if strings.TrimSpace(d.SlowestCommand) == "" || d.SlowestCommandDurationMillis == nil {
+			continue
+		}
+		r := roll[d.SlowestCommand]
+		if r == nil {
+			r = &cmdRollup{command: d.SlowestCommand, types: map[string]int{}}
+			roll[d.SlowestCommand] = r
+		}
+		r.durs = append(r.durs, *d.SlowestCommandDurationMillis)
+		r.sum += *d.SlowestCommandDurationMillis
+		r.types[firstNonEmpty(d.DeviceType, "(no type)")]++
+	}
+	for _, r := range roll {
+		sort.Slice(r.durs, func(i, j int) bool { return r.durs[i] < r.durs[j] })
+		sm.cmds = append(sm.cmds, r)
+	}
+	sort.Slice(sm.cmds, func(i, j int) bool {
+		if sm.cmds[i].sum != sm.cmds[j].sum {
+			return sm.cmds[i].sum > sm.cmds[j].sum
+		}
+		return sm.cmds[i].command < sm.cmds[j].command
+	})
 	sm.byType = slowGroupMap(m.Devices, func(d forward.DeviceCollectionMetrics) string { return d.DeviceType }, filter)
 	sm.byConn = slowGroupMap(m.Devices, func(d forward.DeviceCollectionMetrics) string { return d.ConnTypeDisplayName }, filter)
 	sm.stats["by_device_type"], sm.stats["by_connection"] = topSlowGroups(sm.byType, 8), topSlowGroups(sm.byConn, 8)
@@ -189,6 +227,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 			limits = append(limits, "the devices carry no collection start time, so how many were in flight over the run is not computed")
 		}
 	}
+	attachSlowestCommands(ctx, s, in.NetworkID, sm, stats, &limits)
 	// a second collection to set beside this one
 	var cmp *slowComparison
 	if in.CompareToSnapshotID != "" {
@@ -607,4 +646,80 @@ func errorLabel(e string) string {
 		e = e[:60]
 	}
 	return e
+}
+
+// attachSlowestCommands adds the rollup of devices' slowest commands by text (top 10) with the custom command group that holds each, and the rollup by group. Forward keeps one command per device, so both are a lower bound on a
+// command's or a group's cost, never the sum of what it took.
+func attachSlowestCommands(ctx context.Context, s *fwd.Session, networkID string, sm *slowSummary, stats map[string]any, limits *[]string) {
+	if len(sm.cmds) == 0 {
+		return
+	}
+	idx := customCommandIndex(ctx, s, networkID) // nil when the groups cannot be read: the rollup then simply names no group
+	type grp struct {
+		devices int
+		sum     int64
+		cmds    int
+	}
+	groups := map[string]*grp{}
+	share := func(sum int64) float64 {
+		if sm.sumMs <= 0 {
+			return 0
+		}
+		return math.Round(float64(sum)/float64(sm.sumMs)*1000) / 10
+	}
+	for _, r := range sm.cmds {
+		for _, g := range idx[strings.ToLower(strings.TrimSpace(r.command))] {
+			r.groups = append(r.groups, g)
+			gr := groups[g]
+			if gr == nil {
+				gr = &grp{}
+				groups[g] = gr
+			}
+			gr.devices += len(r.durs)
+			gr.sum += r.sum
+			gr.cmds++
+		}
+	}
+	rows := make([]map[string]any, 0, 10)
+	shown, _ := result.CapRow(sm.cmds, 10)
+	for _, r := range shown {
+		row := map[string]any{"command": r.command, "devices": len(r.durs), "total_ms": r.sum, "median_ms": r.durs[len(r.durs)/2], "p95_ms": r.durs[(len(r.durs)*95)/100], "max_ms": r.durs[len(r.durs)-1],
+			"share_of_device_time_percent": share(r.sum), "device_types": topSlowTypes(r.types, 3)}
+		if len(r.groups) > 0 {
+			row["custom_group"] = r.groups
+		} else {
+			row["custom_group"] = nil
+		}
+		rows = append(rows, row)
+	}
+	stats["slowest_commands"], stats["slowest_commands_distinct"] = rows, len(sm.cmds)
+	if len(groups) > 0 {
+		out := make([]map[string]any, 0, len(groups))
+		for name, g := range groups {
+			out = append(out, map[string]any{"group": name, "devices": g.devices, "commands": g.cmds, "total_ms": g.sum, "share_of_device_time_percent": share(g.sum)})
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i]["total_ms"].(int64) > out[j]["total_ms"].(int64) })
+		stats["slowest_by_custom_group"] = out
+	}
+	*limits = append(*limits, "slowest_commands rolls up the slowest command of each device by its text (devices, median, p95, max of that command's time on those devices, share of total device time): Forward keeps only the slowest command of each device, not every command, so a command or a custom command group costs at least what is shown here and may cost more where it was not the slowest; custom_group names the custom command group of the network that holds the command text (none for a built-in)")
+}
+
+// topSlowTypes lists the n most common device types of a rollup as "type (count)".
+func topSlowTypes(m map[string]int, n int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if m[keys[i]] != m[keys[j]] {
+			return m[keys[i]] > m[keys[j]]
+		}
+		return keys[i] < keys[j]
+	})
+	keys, _ = result.CapRow(keys, n)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, fmt.Sprintf("%s (%d)", k, m[k]))
+	}
+	return out
 }

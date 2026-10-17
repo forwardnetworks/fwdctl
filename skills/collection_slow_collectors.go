@@ -171,6 +171,12 @@ func addCollectorBreakdown(ctx context.Context, s *fwd.Session, in collectionInp
 		}
 	}
 	stats["by_collector"] = rows
+	if out := collectorOutliers(rows); len(out) > 0 {
+		stats["collector_outliers"] = out
+		for _, o := range out {
+			*limits = append(*limits, fmt.Sprint(o["note"]))
+		}
+	}
 	if straggler != nil && second != nil {
 		stats["by_collector_straggler"] = map[string]any{"collector": straggler.id, "name": nilIfEmpty(straggler.name), "finished_at_seconds": straggler.lastEnd / 1000, "next_collector_finished_at_seconds": second.lastEnd / 1000}
 	}
@@ -325,4 +331,56 @@ func nonEmpty(l ...string) []string {
 		}
 	}
 	return out
+}
+
+// collectorOutliers names a collector whose peak open file descriptors or queued tasks are at least twice the median of the other collectors (with three or more collectors read, and above a floor that keeps small numbers quiet).
+func collectorOutliers(rows []map[string]any) []map[string]any {
+	type metric struct {
+		key   string
+		floor int
+	}
+	var out []map[string]any
+	for _, m := range []metric{{"file_descriptors_open_peak", 1000}, {"queue_size_peak", 100}} {
+		type val struct {
+			name string
+			v    int
+		}
+		var vals []val
+		for _, r := range rows {
+			res, _ := r["resources"].(map[string]any)
+			if res == nil {
+				continue
+			}
+			if v, ok := res[m.key].(int); ok {
+				vals = append(vals, val{fmt.Sprint(firstNonEmptyAny(r["name"], r["collector"])), v})
+			}
+		}
+		if len(vals) < 3 {
+			continue
+		}
+		for i, x := range vals {
+			var others []int
+			for j, y := range vals {
+				if j != i {
+					others = append(others, y.v)
+				}
+			}
+			sort.Ints(others)
+			med := others[len(others)/2]
+			if x.v >= m.floor && x.v >= 2*max(med, 1) {
+				out = append(out, map[string]any{"collector": x.name, "metric": m.key, "value": x.v, "others_median": med,
+					"note": fmt.Sprintf("collector %s peaked at %d for %s, %.1fx the median (%d) of the other collectors %v", x.name, x.v, strings.ReplaceAll(m.key, "_", " "), float64(x.v)/float64(max(med, 1)), med, others)})
+			}
+		}
+	}
+	return out
+}
+
+func firstNonEmptyAny(vs ...any) any {
+	for _, v := range vs {
+		if v != nil && fmt.Sprint(v) != "" && fmt.Sprint(v) != "<nil>" {
+			return v
+		}
+	}
+	return ""
 }

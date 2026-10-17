@@ -1,6 +1,7 @@
 package skills_test
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -220,5 +221,84 @@ func TestSlowViewCompareSaysSameWorkDifferentDispatch(t *testing.T) {
 	d, _ := c["dispatch"].(string)
 	if !strings.Contains(d, "same work, different dispatch") || !strings.Contains(r.Finding, "same work, different dispatch") {
 		t.Errorf("dispatch %q finding %s", d, r.Finding)
+	}
+}
+
+// Forward records only the SLOWEST command of each device, so the closest signal to "what do the custom command groups cost" is a rollup of those commands by text (devices, median, p95, max, share of device time) with the
+// custom group that holds each, and a rollup by group. It is a lower bound on a command's cost, and the limits say so.
+func TestSlowViewRollsUpTheSlowestCommandsAndTheCustomGroupsThatHoldThem(t *testing.T) {
+	routes := slowProfileRoutes(1_200_000, 300_000)
+	var devs []any
+	for i := 0; i < 4; i++ {
+		devs = append(devs, map[string]any{"deviceName": fmt.Sprintf("xe%d", i), "deviceType": "ROUTER", "connTypeDisplayName": "SSH", "collectionStartTime": 0, "collectionDuration": 100_000 + i*100_000,
+			"slowestCommand": "show sdwan omp routes", "slowestCommandDuration": 60_000 + i*10_000})
+	}
+	devs = append(devs, map[string]any{"deviceName": "sw1", "deviceType": "SWITCH", "connTypeDisplayName": "SSH", "collectionStartTime": 0, "collectionDuration": 100_000,
+		"slowestCommand": "show running-config", "slowestCommandDuration": 20_000})
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s1", "collectionStartTime": 0, "collectionEndTime": 600_000, "metrics": devs})
+	routes["GET /api/networks/n1/custom-command-groups"] = fwdtest.Const(200, []any{map[string]any{"name": "Change Validation SD-WAN", "deviceConnTypes": []string{"cisco_ios_xe_ssh"}, "type": "CLI", "commands": []string{"show sdwan omp routes"}}})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow"}`)
+	st := r.Evidence[0].Detail["stats"].(map[string]any)
+	cmds := st["slowest_commands"].([]map[string]any)
+	if len(cmds) != 2 || cmds[0]["command"] != "show sdwan omp routes" || fmt.Sprint(cmds[0]["devices"]) != "4" || fmt.Sprint(cmds[0]["max_ms"]) != "90000" || fmt.Sprint(cmds[0]["median_ms"]) != "80000" {
+		t.Fatalf("rollup by command: %v", cmds)
+	}
+	if fmt.Sprint(cmds[0]["custom_group"]) != "[Change Validation SD-WAN]" || cmds[1]["custom_group"] != nil {
+		t.Errorf("the custom group is named for the command it holds, not for a built-in: %v", cmds)
+	}
+	if sh, ok := cmds[0]["share_of_device_time_percent"].(float64); !ok || sh < 20 || sh > 35 {
+		t.Errorf("share of device time: %v", cmds[0]["share_of_device_time_percent"])
+	}
+	groups := st["slowest_by_custom_group"].([]map[string]any)
+	if len(groups) != 1 || groups[0]["group"] != "Change Validation SD-WAN" || fmt.Sprint(groups[0]["devices"]) != "4" {
+		t.Errorf("rollup by group: %v", groups)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "slowest command of each device") {
+		t.Errorf("the limit says only the slowest command per device is recorded: %v", r.Limits)
+	}
+}
+
+// A collector far above the others in open file descriptors or queued tasks is called out by name, with the figures of the rest for comparison.
+func TestSlowViewCallsOutACollectorThatIsFarAboveTheOthers(t *testing.T) {
+	routes := slowWhatIfRoutes()
+	sample := func(open, queue int) fwdtest.Handler {
+		return fwdtest.Const(200, map[string]any{"metrics": []any{map[string]any{"timestamp": "2026-09-01T00:10:00Z", "cpuMetrics": map[string]any{"cpuLoad": 0.5, "cpuCores": 8},
+			"fileMetrics": map[string]any{"fileDescriptorsMax": 65000, "fileDescriptorsOpen": open}, "taskMetrics": map[string]any{"concurrency": 4, "queueSize": queue, "tasksStarted": 10, "tasksFinished": 9}}}})
+	}
+	routes["GET /api/collectors/Alpha/metrics"] = sample(18724, 8075)
+	routes["GET /api/collectors/Bravo/metrics"] = sample(3700, 700)
+	routes["GET /api/collectors/Garland/metrics"] = sample(3800, 900)
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow"}`)
+	st := r.Evidence[0].Detail["stats"].(map[string]any)
+	out, _ := st["collector_outliers"].([]map[string]any)
+	got := map[string]bool{}
+	for _, o := range out {
+		if o["collector"] == "Alpha" {
+			got[fmt.Sprint(o["metric"])] = true
+		}
+	}
+	if !got["file_descriptors_open_peak"] || !got["queue_size_peak"] || len(out) != 2 {
+		t.Fatalf("Alpha is the outlier on both: %v", out)
+	}
+	if !strings.Contains(fmt.Sprint(out[0]["note"]), "other collectors") {
+		t.Errorf("the others' figures are given: %v", out[0])
+	}
+}
+
+// Slots held against devices actually collecting: slot-hours (up to) against device-hours, so "slots are held several times longer than the devices need" is a number.
+func TestSlowViewStatesSlotTimeAgainstDeviceTime(t *testing.T) {
+	r, _ := collect(t, slowWhatIfRoutes(), `{"network_id":"n1","view":"slow"}`)
+	st := r.Evidence[0].Detail["stats"].(map[string]any)
+	sl, _ := st["slot_time"].(map[string]any)
+	if sl == nil {
+		t.Fatalf("no slot_time: %v", st)
+	}
+	held, _ := sl["slot_hours_held_up_to"].(float64)
+	dev, _ := sl["device_hours"].(float64)
+	if dev <= 0 || held < 2*dev || fmt.Sprint(sl["held_over_device_time"]) == "" {
+		t.Errorf("slot_time %v", sl)
+	}
+	if !strings.Contains(r.Finding, "slot-hours") {
+		t.Errorf("the finding says slot-hours against device-hours: %s", r.Finding)
 	}
 }

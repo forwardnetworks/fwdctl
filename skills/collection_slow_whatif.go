@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -66,6 +67,18 @@ func addSlotAnalysis(ctx context.Context, s *fwd.Session, in collectionInput, cx
 					w = worst{off, held, queued, f, idle}
 				}
 			}
+		}
+		// slots held over time against the devices' own time: a bucket's slots count for the whole bucket, so the slot-hours are an upper bound
+		slotSeconds := 0.0
+		for _, qb := range qbuckets {
+			held, _ := qb["max_slots_held"].(int)
+			slotSeconds += float64(held) * float64(bucketSeconds)
+		}
+		if slotSeconds > 0 && sm.sumMs > 0 {
+			slotH, devH := slotSeconds/3600, float64(sm.sumMs)/3_600_000
+			stats["slot_time"] = map[string]any{"slot_hours_held_up_to": slotH, "device_hours": devH, "held_over_device_time": fmt.Sprintf("%.1fx", slotH/devH), "device_time_percent_of_slot_time": math.Round(devH/slotH*1000) / 10,
+				"note": "slots are counted as held for the whole of each time bucket they were held in, so slot_hours_held_up_to is an upper bound"}
+			sentence = append(sentence, fmt.Sprintf("slots were held for up to %.1f slot-hours against %.1f device-hours of collection (devices needed about %.0f%% of the slot time)", slotH, devH, devH/slotH*100))
 		}
 		if counted > 0 {
 			idleStats := map[string]any{"buckets_with_queued_work_and_idle_slots": withWork, "of_buckets": counted}
