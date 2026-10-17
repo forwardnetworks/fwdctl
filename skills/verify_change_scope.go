@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	forward "github.com/forwardnetworks/forward-go-sdk"
+
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
 )
@@ -24,13 +26,61 @@ var predictOutOfScopeFamilies = []struct{ class, marker string }{
 // predictScope is verify-change view scope: which of a network Predict can model on this release. It joins the license facet, the BGP families in config that are out of scope, the platforms that stop propagation, and the
 // OSPF and static re-propagation facts. It judges no change.
 func predictScope(ctx context.Context, s *fwd.Session, networkID, snapshotID string) (result.Result, error) {
-	snap, err := resolveSnapshot(ctx, s, networkID, snapshotID)
+	sc, err := buildScope(ctx, s, networkID, snapshotID)
 	if err != nil {
 		return result.Result{}, err
 	}
+	if sc.notReady != nil {
+		return *sc.notReady, nil
+	}
+	return result.Build(verifyChangeName, sc.status, sc.finding, result.Deterministic, sc.cx, result.Options{Limits: sc.limits, NextActions: []string{"inspect-inventory", "edit-change-set"},
+		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "predictScope", sc.cx.SnapshotID, map[string]any{"view": "scope", "scope": sc.detail}, sc.finding)}})
+}
+
+// scopeResult is what the scope read produced, for the scope view and the preflight that builds on it.
+type scopeResult struct {
+	detail   map[string]any
+	limits   []string
+	status   result.Status
+	finding  string
+	cx       result.Context
+	snap     *forward.Snapshot
+	notReady *result.Result
+	bgpDevs  map[string]bool // the devices that run BGP in config (any family found)
+}
+
+// predictFlagDefaults are the defaults of the Predict modelling flags by release (OrgProperty.java on the release branches, read by a peer session, not verified here): used only when the flag cannot be read from the tenant.
+var predictFlagDefaults = map[string]map[string]bool{
+	"26.9":  {"predict_model_bgp": true, "predict_model_ospf": false, "predict_model_config": false, "predict_model_cross_protocol": false, "predict_model_omp": false, "predict_model_ext_adv": true},
+	"26.10": {"predict_model_bgp": true, "predict_model_ospf": false, "predict_model_config": false, "predict_model_cross_protocol": true, "predict_model_isis": false, "predict_model_omp": false, "predict_model_ext_adv": true},
+}
+
+// predictFlagOrder is the order the flags are reported in.
+var predictFlagOrder = []string{"predict_modeling", "predict_model_bgp", "predict_model_ospf", "predict_model_config", "predict_model_cross_protocol", "predict_model_isis", "predict_model_omp", "predict_model_ext_adv"}
+
+// releaseOf takes "26.9" from a Forward version or release string such as "26.9.4-02".
+func releaseOf(v string) string {
+	parts := strings.SplitN(strings.TrimSpace(v), ".", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	for _, p := range []string{parts[0], parts[1]} {
+		if p == "" || strings.Trim(p, "0123456789") != "" {
+			return ""
+		}
+	}
+	return parts[0] + "." + parts[1]
+}
+
+func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID string) (scopeResult, error) {
+	snap, err := resolveSnapshot(ctx, s, networkID, snapshotID)
+	if err != nil {
+		return scopeResult{}, err
+	}
 	cx := fwd.Context(networkID, snap)
 	if !fwd.IsReady(snap) {
-		return result.NewUnknown(verifyChangeName, "No processed snapshot is available to read the network from", cx, []string{"no processed snapshot; nothing was measured"}, result.Options{NextActions: []string{"inspect-snapshots"}})
+		r, _ := result.NewUnknown(verifyChangeName, "No processed snapshot is available to read the network from", cx, []string{"no processed snapshot; nothing was measured"}, result.Options{NextActions: []string{"inspect-snapshots"}})
+		return scopeResult{notReady: &r, cx: cx}, nil
 	}
 	sid := fwd.SnapshotID(cx)
 	var limits []string
@@ -51,22 +101,43 @@ func predictScope(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 	d["license"] = lic
 
 	cfg := s.OrgConfig(ctx)
-	prop := func(name string) any {
-		if v, ok := cfg.Effective[name]; ok {
-			return v == "true"
-		}
-		return nil
+	release := ""
+	if v, verr := s.Version(ctx); verr == nil && v != nil {
+		release = firstNonEmpty(releaseOf(v.Release), releaseOf(v.Version))
+		d["version"] = firstNonEmpty(v.Release, v.Version)
 	}
-	d["predict_modeling"], d["predict_model_ospf"] = prop("predict_modeling"), prop("predict_model_ospf")
-	d["ospf_repropagated"] = d["predict_model_ospf"] == true
-	d["static_repropagated"] = false
+	d["release"] = release
+	defaults := predictFlagDefaults[release]
+	flagRows := []map[string]any{}
+	flagVal := map[string]any{}
+	for _, name := range predictFlagOrder {
+		row := map[string]any{"property": name}
+		if v, ok := cfg.Effective[name]; ok {
+			row["value"], row["source"] = v == "true", "read from the tenant"
+		} else if dv, ok := defaults[name]; ok {
+			row["value"], row["source"] = dv, "default for release "+release+", not read from the tenant"
+		} else {
+			row["value"], row["source"] = nil, "not readable here, and no default is held for this release"
+		}
+		flagVal[name] = row["value"]
+		flagRows = append(flagRows, row)
+	}
+	d["flags"] = flagRows
+	d["predict_modeling"], d["predict_model_ospf"] = flagVal["predict_modeling"], flagVal["predict_model_ospf"]
+	d["ospf_repropagated"] = flagVal["predict_model_ospf"]
+	d["static_repropagated"] = flagVal["predict_model_config"]
+	if release == "" {
+		limits = append(limits, "the Forward release could not be read, so a flag that cannot be read from the tenant has no default here")
+	}
 
 	rows, _, _, ferr := s.RunNQEAll(ctx, networkID, sid, strings.ReplaceAll(bgpFamiliesQuery, "´´´", "```"), maxModelRows)
 	classDevs := map[string]map[string]bool{}
+	bgpDevs := map[string]bool{}
 	if ferr != nil {
 		limits = append(limits, "the BGP families could not be read ("+ferr.Error()+"), so out-of-scope families are not shown")
 	}
 	for _, r := range rows {
+		bgpDevs[str(r["device"])] = true
 		fam, _ := normalizeBGPFamily(str(r["family"]))
 		for _, oos := range predictOutOfScopeFamilies {
 			if strings.Contains(fam, oos.marker) {
@@ -117,7 +188,9 @@ func predictScope(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 	if d["ospf_repropagated"] == false {
 		notes = append(notes, "OSPF changes are not re-propagated")
 	}
-	notes = append(notes, "static routes are not re-propagated")
+	if d["static_repropagated"] == false {
+		notes = append(notes, "static and connected changes are not re-propagated")
+	}
 	finding := "Predict fit: " + strings.Join(notes, "; ")
 	status := result.OK
 	if lic["predict"] == false {
@@ -127,6 +200,6 @@ func predictScope(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 		"the scope is prediction-scope.md of the 26.9 and 26.10 documentation (read from the documentation by a peer session, not verified on a live Forward): BGP unicast IPv4/IPv6, VPNv4/VPNv6 and BGP-LU are re-propagated; EVPN, VPLS, multicast/MVPN, BGP-LS, SR policy and flowspec are not; OSPF, static, SD-WAN, IS-IS, EIGRP and RIP are not re-propagated on 26.9. Master's platform-support page adds BGP rows for Meraki MX, AWS Transit Gateway and VeloCloud Edge and turns predict_model_ospf on by default",
 		"full routing re-synthesis is documented for Cisco IOS, IOS-XE, IOS-XR, NX-OS, ASA, Juniper Junos and SRX, Arista EOS, Fortinet and Palo Alto PAN-OS; any other platform stays as collected and propagation stops at it. The platform match is an exact match on Forward's OS name (IOS, IOS_XE, IOS_XR, NXOS, ACI, ASA, JUNOS, SRX, ARISTA_EOS, FORTINET, PAN_OS); an OS name not in that list is reported as a propagation stop, including OTHER and UNKNOWN",
 		"BGP families are read from device config (see inspect-inventory kind bgp_families): EOS, IOS, IOS-XE and NX-OS shapes only; Junos, IOS-XR and FortiOS are not read, so their out-of-scope families, if any, are missing here")
-	return result.Build(verifyChangeName, status, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-inventory", "edit-change-set"},
-		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "predictScope", cx.SnapshotID, map[string]any{"view": "scope", "scope": d}, finding)}})
+	limits = append(limits, "the flag defaults by release (26.9 and 26.10) are Forward's OrgProperty.java on the release branches, read by a peer session, not verified on a live Forward; a value read from the tenant is the effective organization property")
+	return scopeResult{detail: d, limits: limits, status: status, finding: finding, cx: cx, snap: snap, bgpDevs: bgpDevs}, nil
 }

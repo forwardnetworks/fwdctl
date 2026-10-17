@@ -36,11 +36,12 @@ type verifyChangeInput struct {
 
 // Inputs by view (an input of another view is rejected). describe reads one change set; verify and impact compare a before and an after.
 var verifyChangeViewInputs = map[string][]string{
-	"verify":   {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "expectations"},
-	"impact":   {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
-	"describe": {"change_set_id", "device"},
-	"list":     {},
-	"scope":    {},
+	"verify":    {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "expectations"},
+	"impact":    {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
+	"describe":  {"change_set_id", "device"},
+	"list":      {},
+	"scope":     {},
+	"preflight": {},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -53,9 +54,9 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list", "scope":
+	case "verify", "impact", "describe", "list", "scope", "preflight":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list or scope", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope or preflight", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
@@ -65,6 +66,8 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return listChangeSets(ctx, s, in.NetworkID)
 	case "scope":
 		return predictScope(ctx, s, in.NetworkID, "")
+	case "preflight":
+		return predictPreflight(ctx, s, in.NetworkID)
 	case "impact":
 		return analyzeBlastRadius(ctx, s, raw)
 	case "describe":

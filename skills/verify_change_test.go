@@ -293,6 +293,7 @@ func TestVerifyChangeScopeViewJoinsLicenseFamiliesPlatformsAndFeatures(t *testin
 		map[string]any{"predict_modeling": true, "predict_model_ospf": false},
 		map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{"predict_model_ospf": false})
 	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	routes["GET /api/version"] = fwdtest.Const(200, map[string]any{"version": "26.9.4", "release": "26.9.4-02", "build": "b"})
 	routes[snapsPath] = ready("s1")
 	routes[nqePath] = invNQE(map[string]fwdtest.Handler{
 		"router bgp": rowsOf(4,
@@ -357,5 +358,97 @@ func TestScopeStatusIsFailedWhenTheLicenseHasNoPredictAndLeadsWithTheLicense(t *
 	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
 	if r.Status != result.Failed || !strings.HasPrefix(r.Finding, "Predict fit: the license (tier NS) has no Predict facet") {
 		t.Errorf("%s %s", r.Status, r.Finding)
+	}
+}
+
+// The per-release truth of Predict's flags: scope prints the effective value of every predict_* flag the login can read, and for a flag it cannot read it falls back to the default of the release (Forward's OrgProperty.java, as read by a
+// peer session) and says "default for this release, not read from the tenant". OSPF and static re-propagation come from the flags, not from prose.
+func TestScopeReadsEveryPredictFlagAndFallsBackToTheReleaseDefault(t *testing.T) {
+	routes := cfgRoutes(
+		map[string]any{"predict_modeling": true, "predict_model_ospf": true, "predict_model_bgp": true},
+		map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})
+	routes["GET /api/version"] = fwdtest.Const(200, map[string]any{"version": "26.10.0", "release": "26.10.0-02", "build": "b"})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	routes[snapsPath] = ready("s1")
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{})
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
+	var d map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["scope"].(map[string]any); ok {
+			d = v
+		}
+	}
+	flags := map[string]map[string]any{}
+	for _, f := range d["flags"].([]map[string]any) {
+		flags[f["property"].(string)] = f
+	}
+	if f := flags["predict_model_ospf"]; f["value"] != true || f["source"] != "read from the tenant" {
+		t.Errorf("a flag the login can read: %v", f)
+	}
+	if f := flags["predict_model_cross_protocol"]; f["value"] != true || !strings.Contains(fmt.Sprint(f["source"]), "default for release 26.10, not read from the tenant") {
+		t.Errorf("26.10 turns cross-protocol on by default: %v", f)
+	}
+	if f := flags["predict_model_config"]; f["value"] != false || !strings.Contains(fmt.Sprint(f["source"]), "not read from the tenant") {
+		t.Errorf("direct and static modelling is off by default on 26.10: %v", f)
+	}
+	if d["ospf_repropagated"] != true || d["static_repropagated"] != false {
+		t.Errorf("OSPF from its flag, static from predict_model_config: %v %v", d["ospf_repropagated"], d["static_repropagated"])
+	}
+	if d["release"] != "26.10" || !strings.Contains(strings.Join(r.Limits, " "), "OrgProperty.java") {
+		t.Errorf("release %v limits %v", d["release"], r.Limits)
+	}
+}
+
+// view preflight is the demo checklist in one call: license facet, release, flags, platform support, out-of-scope families, whether received BGP advertisements are collected on the BGP devices (modify and withdraw silently do nothing
+// without it), whether the base snapshot is a fresh collection, and the existing change sets.
+func TestPreflightJoinsTheDemoChecklist(t *testing.T) {
+	routes := cfgRoutes(map[string]any{"predict_modeling": true, "predict_model_ospf": false}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})
+	routes["GET /api/version"] = fwdtest.Const(200, map[string]any{"version": "26.9.4", "release": "26.9.4-02", "build": "b"})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	routes[snapsPath] = ready("s1")
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{
+		"router bgp": rowsOf(3,
+			map[string]any{"device": "eos1", "os": "ARISTA_EOS", "model": "7050", "family": "evpn"},
+			map[string]any{"device": "eos1", "os": "ARISTA_EOS", "model": "7050", "family": "ipv4"},
+			map[string]any{"device": "eos2", "os": "ARISTA_EOS", "model": "7050", "family": "ipv4"}),
+		"group d as g by d.platform.os": rowsOf(2, map[string]any{"os": "ARISTA_EOS", "devices": 2}, map[string]any{"os": "F5", "devices": 5}),
+	})
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{
+		map[string]any{"name": "eos1", "host": "h", "collectBgpAdvertisements": true},
+		map[string]any{"name": "eos2", "host": "h"},
+	})
+	routes["GET /api/networks/n1/change-sets"] = fwdtest.Const(200, map[string]any{"changeSets": []any{map[string]any{"id": "cs1", "name": "x", "networkId": "n1", "snapshotId": "s1"}}})
+	r, srv := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"preflight"}`)
+	if writes(srv) != 0 || r.Status != result.OK {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	var d map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["preflight"].(map[string]any); ok {
+			d = v
+		}
+	}
+	if d == nil {
+		t.Fatalf("no preflight detail: %s", jsonOf(r))
+	}
+	if d["release"] != "26.9" {
+		t.Errorf("release: %v", d["release"])
+	}
+	adv := d["bgp_advertisement_collection"].(map[string]any)
+	if fmt.Sprint(adv["bgp_devices"]) != "2" || fmt.Sprint(adv["collecting_received_advertisements"]) != "1" || !strings.Contains(fmt.Sprint(adv["warning"]), "no warning is shown") {
+		t.Errorf("received-advertisement coverage and the silent no-op warning: %v", adv)
+	}
+	if fmt.Sprint(d["existing_change_sets"]) != "1" {
+		t.Errorf("existing change sets: %v", d["existing_change_sets"])
+	}
+	snap := d["base_snapshot"].(map[string]any)
+	if snap["id"] != "s1" {
+		t.Errorf("base snapshot: %v", snap)
+	}
+	if d["scope"] == nil {
+		t.Errorf("the scope is part of the preflight: %v", d)
+	}
+	if !strings.HasPrefix(r.Finding, "Predict preflight:") {
+		t.Errorf("finding %q", r.Finding)
 	}
 }
