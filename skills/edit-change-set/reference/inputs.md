@@ -24,5 +24,7 @@ A full firewall rule (the shapes matter: address, user, application and service 
             "sourceUsers": {}, "applications": {}, "services": {}}}]}
 ```
 
+A rule staged in the local rulebase (the only editable one) is evaluated after any centrally managed pre-rules, so an earlier permit shadows a deny there, as it would on the device: check the pre-rules for the flow before expecting a block.
+
 Read the effect from the rule diff the result carries (`firewall_rules_diff`) and the checks (a firewall rule compliance check moves by the violations the rule creates), not only from a path search on the predicted snapshot: a path search shows a flow the rule blocks only if that flow crosses the firewall, and `verify-change` view `paths` needs advanced reachability on the base (`edit-advanced-reachability`).
 
