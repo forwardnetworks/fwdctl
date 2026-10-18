@@ -250,3 +250,31 @@ func TestAccessActivitySaysWhenUsersInTheRecordsAreNotInTheUserList(t *testing.T
 		t.Errorf("an id with no user is shown as the id and said: %v", r.Limits)
 	}
 }
+
+// With one user named, the users view adds that user's Forward-internal system roles and the organizations they support (an unexpired supported-org grant is how support access works; there is no SUPPORT system role), so the state
+// a sync wrote can be read back. An audit row of an impersonated request names who acted when Forward shows it.
+func TestAccessUsersShowSystemRolesAndSupportedOrgsAndActivityNamesTheImpersonator(t *testing.T) {
+	routes := accessRoutes(sessionJSON([]string{"ADMIN"}, nil), map[string]string{})
+	routes["GET /api/users/u-bob/roles"] = fwdtest.Const(200, map[string]any{"org": []string{}, "network": map[string]any{}, "system": []string{"SUPPORT_ADMIN"}, "supportedOrgIds": []string{"101", "205"}})
+	r, _ := mustRun(t, "inspect-access", routes, `{"view":"users","user":"bob@example.test"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"system_roles":["SUPPORT_ADMIN"]`, `"supported_org_ids":["101","205"]`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	// without a user filter no per-user role call is made (one call per user would be a cost)
+	routes["GET /api/users/u-bob/roles"] = func(*http.Request, []byte) (int, any) {
+		t.Errorf("no per-user role read without a user filter")
+		return 200, map[string]any{}
+	}
+	mustRun(t, "inspect-access", routes, `{"view":"users"}`)
+
+	routes["GET /api/audit-logs"] = fwdtest.Const(200, map[string]any{"records": []map[string]any{
+		{"timestamp": "2026-10-01T10:00:00Z", "userId": "u-bob", "impersonated": true, "impersonatorId": "u-sup", "impersonatorUsername": "support@example.test", "httpMethod": "PUT", "targetUri": "/networks/N1/notes", "httpResponseCode": 200, "remoteIp": "192.0.2.1"},
+	}, "paging": map[string]any{"total": 1}})
+	r, _ = mustRun(t, "inspect-access", routes, `{"view":"activity"}`)
+	if !strings.Contains(jsonOf(r), `"impersonator":"support@example.test"`) {
+		t.Errorf("the impersonator is named: %s", jsonOf(r))
+	}
+}

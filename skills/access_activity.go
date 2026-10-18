@@ -153,6 +153,9 @@ func accessActivity(ctx context.Context, s *fwd.Session, in inspectAccessInput, 
 		row := map[string]any{"time": r.Time.UTC().Format(time.RFC3339), "user": who, "method": r.HTTPMethod, "route": r.TargetURI, "status": r.HTTPResponseCode, "from": r.RemoteIP}
 		if r.Impersonated {
 			row["impersonated"] = true
+			if who := firstNonEmpty(r.ImpersonatorUsername, string(r.ImpersonatorID)); who != "" {
+				row["impersonator"] = who // shown only to Forward's own users
+			}
 		}
 		rows = append(rows, row)
 	}

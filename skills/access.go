@@ -252,6 +252,7 @@ func accessUsers(ctx context.Context, s *fwd.Session, in inspectAccessInput, cx 
 	tfa, _, tfaErr := s.Client.Users.TwoFactorStatuses(ctx)
 	m := strings.ToLower(strings.TrimSpace(in.Match + in.User))
 	var rows []map[string]any
+	var extra []string
 	for _, u := range users {
 		if m != "" && !strings.Contains(strings.ToLower(u.Username+" "+u.Email+" "+string(u.ID)), m) {
 			continue
@@ -274,6 +275,12 @@ func accessUsers(ctx context.Context, s *fwd.Session, in inspectAccessInput, cx 
 				nets = append(nets, map[string]string{"id": string(n.ID), "name": n.Name, "role": n.Role})
 			}
 			row["accessible_networks"] = nets
+			if ur, _, rerr := s.Client.Users.Roles(ctx, string(u.ID)); rerr != nil {
+				extra = append(extra, "the system roles and supported organizations of "+u.Username+" could not be read: "+rerr.Error())
+			} else if ur != nil {
+				// Forward-internal roles, and the organizations this user supports (an unexpired supported-org grant is how support access works; there is no SUPPORT system role)
+				row["system_roles"], row["supported_org_ids"] = nonNilStrings(ur.System), nonNilStrings(ur.SupportedOrgIDs)
+			}
 		}
 		rows = append(rows, row)
 	}
@@ -284,7 +291,7 @@ func accessUsers(ctx context.Context, s *fwd.Session, in inspectAccessInput, cx 
 	if !ok {
 		return result.NewUnknown(inspectAccessName, fmt.Sprintf("Offset %d is beyond the %d users", in.Offset, len(rows)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
-	var limits []string
+	limits := append([]string(nil), extra...)
 	if tfaErr != nil {
 		limits = append(limits, "two-factor status could not be read: "+tfaErr.Error())
 	}
