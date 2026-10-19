@@ -51,13 +51,20 @@
     },
     "advertised": {
       "type": "object",
-      "description": "list the prefixes device advertises to peer (needs device and peer; vrf for a non-default VRF) as a paged list instead of neighbor rows; outside: CIDR blocks, keep only prefixes not inside any of them",
+      "description": "list the prefixes device advertises to peer (needs device and peer; vrf for a non-default VRF) as a paged list instead of neighbor rows; outside: CIDR blocks, keep only prefixes not inside any of them; direction: out (default) or in, where in lists what the device RECEIVED from the peer (Adj-RIB-In after input policy: every prefix with next hop, local preference and AS path), for choosing a prefix to withdraw",
       "properties": {
         "outside": {
           "type": "array",
           "items": {
             "type": "string"
           }
+        },
+        "direction": {
+          "enum": [
+            "out",
+            "in"
+          ],
+          "default": "out"
         }
       },
       "additionalProperties": false

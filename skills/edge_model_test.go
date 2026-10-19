@@ -418,3 +418,40 @@ func TestBGPAdvertisedListsTheMinimalSetOutsideTheGivenBlocksAndCountsByContaini
 		t.Errorf("no rows is not proof: %s", r.Status)
 	}
 }
+
+// advertised.direction "in" lists what the device RECEIVED from the peer (Adj-RIB-In after input policy), every distinct prefix (no aggregation: the list is for picking a prefix to withdraw), with next hop, local preference and AS path.
+func TestBGPReceivedListsEveryPrefixFromOnePeerWithItsAttributes(t *testing.T) {
+	routes := modelRoutes()
+	var query string
+	routes[nqePath] = func(_ *http.Request, body []byte) (int, any) {
+		query = string(body)
+		items := []map[string]any{
+			{"peer": "203.0.113.1", "afi": "IPV4_UNICAST", "vrf": nil, "prefix": "10.1.0.0/16", "nextHop": "203.0.113.1", "localPref": float64(80), "asPath": []any{float64(65001)}, "active": true},
+			{"peer": "203.0.113.1", "afi": "IPV4_UNICAST", "vrf": nil, "prefix": "10.1.1.0/24", "nextHop": "203.0.113.1", "localPref": float64(80), "asPath": []any{float64(65001), float64(65002)}, "active": true},
+			{"peer": "203.0.113.9", "afi": "IPV4_UNICAST", "vrf": nil, "prefix": "172.16.0.0/12"},
+		}
+		return 200, map[string]any{"items": items, "totalNumItems": len(items)}
+	}
+	r, _ := mustRun(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.1","advertised":{"direction":"in"}}`)
+	b := jsonOf(r)
+	if !strings.Contains(query, "adjRibInPost") || strings.Contains(query, "adjRibOutPost") {
+		t.Fatalf("direction in reads Adj-RIB-In: %s", query)
+	}
+	for _, want := range []string{`"prefix":"10.1.0.0/16"`, `"prefix":"10.1.1.0/24"`, `"local_pref":80`, `"as_path":"65001 65002"`, "received"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	if strings.Contains(b, "172.16.0.0") {
+		t.Errorf("another peer's routes must not be listed")
+	}
+	if r.Evidence[0].Detail["listed"] != 2 {
+		t.Errorf("both prefixes are listed, the /24 is not dropped as covered: %v", r.Evidence[0].Detail)
+	}
+	if _, _, err := runSkill(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.1","advertised":{"direction":"sideways"}}`); err == nil {
+		t.Errorf("an unknown direction is refused")
+	}
+	if _, _, err := runSkill(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.1","advertised":{"direction":"in","outside":["10.0.0.0/8"]}}`); err == nil {
+		t.Errorf("outside belongs to the advertised direction")
+	}
+}

@@ -17,6 +17,8 @@ import (
 type advertisedInput struct {
 	// Outside keeps only prefixes that do not lie inside any of these CIDR blocks (a prefix wider than a block, or overlapping it, is outside).
 	Outside []string `json:"outside"`
+	// Direction is "out" (the default: what the device advertises to the peer) or "in" (what it received from the peer, Adj-RIB-In after input policy: every distinct prefix, to pick one to withdraw).
+	Direction string `json:"direction"`
 }
 
 const (
@@ -27,16 +29,20 @@ const (
 
 // advertisedQuery reads one device's Adj-RIB-Out after output policy, one row per route; the peer and address family are filtered here, not in the query, so the peer
 // address needs no quoting in NQE. The device name is a string literal, checked by the caller.
-func advertisedQuery(device string) string {
+func advertisedQuery(device string, received bool) string {
+	rib := "adjRibOutPost"
+	if received {
+		rib = "adjRibInPost"
+	}
 	return `foreach device in network.devices
 where device.name == "` + device + `"
 where isPresent(device.bgpRib)
 foreach afi in device.bgpRib.afiSafis
 foreach n in afi.neighbors
-where isPresent(n.adjRibOutPost)
-foreach route in n.adjRibOutPost.routes
+where isPresent(n.` + rib + `)
+foreach route in n.` + rib + `.routes
 foreach attr in route.pathAttributes
-select {peer: n.neighborAddress, afi: afi.afiSafiName, vrf: route.vrf, prefix: route.prefix, nextHop: attr.nextHop, origin: attr.origin, asPath: attr.asPath?.members, active: attr.activeRoute}`
+select {peer: n.neighborAddress, afi: afi.afiSafiName, vrf: route.vrf, prefix: route.prefix, nextHop: attr.nextHop, origin: attr.origin, localPref: attr.localPref, asPath: attr.asPath?.members, active: attr.activeRoute}`
 }
 
 // bgpAdvertised is inspect-bgp-neighbors with advertised: the prefixes a device advertises to one BGP peer after output policy, for IPv4 unicast in one VRF, as the minimal set
@@ -53,6 +59,17 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	if err != nil {
 		return result.Result{}, fmt.Errorf("%w: peer must be an IP address", ErrInvalidInput)
 	}
+	received := false
+	switch strings.ToLower(strings.TrimSpace(adv.Direction)) {
+	case "", "out":
+	case "in":
+		received = true
+		if len(adv.Outside) > 0 {
+			return result.Result{}, fmt.Errorf("%w: outside filters what the device advertises (direction out); it does not apply to direction in", ErrInvalidInput)
+		}
+	default:
+		return result.Result{}, fmt.Errorf("%w: advertised.direction is out (what the device advertises, the default) or in (what it received)", ErrInvalidInput)
+	}
 	if in.Unmodelled || in.State != "" || in.PeerAS != 0 || in.Offset < 0 {
 		return result.Result{}, fmt.Errorf("%w: with advertised, only device, peer, vrf, limit, offset and snapshot_id apply", ErrInvalidInput)
 	}
@@ -68,12 +85,13 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	if wantVRF == "" || strings.EqualFold(wantVRF, "default") {
 		wantVRF = ""
 	}
-	rows, _, trunc, err := s.RunNQEAll(ctx, in.NetworkID, sid, advertisedQuery(in.Device), maxAdvertisedRead)
+	rows, _, trunc, err := s.RunNQEAll(ctx, in.NetworkID, sid, advertisedQuery(in.Device, received), maxAdvertisedRead)
 	if err != nil {
 		return result.Result{}, err
 	}
 	type attrs struct {
 		nextHop, origin string
+		localPref       any
 		asPath          []string
 		active          bool
 	}
@@ -95,7 +113,7 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		}
 		mp := p.Masked()
 		seen[mp] = true
-		a := attrs{nextHop: strings.TrimSpace(str(r["nextHop"])), origin: str(r["origin"])}
+		a := attrs{nextHop: strings.TrimSpace(str(r["nextHop"])), origin: str(r["origin"]), localPref: r["localPref"]}
 		if l, ok := r["asPath"].([]any); ok {
 			for _, m := range l {
 				if f, ok := m.(float64); ok { // AS numbers can exceed 2^31: print them whole, not as 4.25e+09
@@ -133,6 +151,10 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	// the minimal covering set: shortest first, drop anything inside one already kept
 	var kept []netip.Prefix
 	for _, p := range all {
+		if received { // a received list is not aggregated: it is the list to pick a prefix to withdraw from
+			kept = append(kept, p)
+			continue
+		}
 		covered := false
 		for _, k := range kept {
 			if k.Bits() <= p.Bits() && k.Contains(p.Addr()) {
@@ -176,6 +198,9 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		if len(a.asPath) > 0 {
 			row["as_path"] = strings.Join(a.asPath, " ")
 		}
+		if received && a.localPref != nil {
+			row["local_pref"] = a.localPref
+		}
 		rowsOut = append(rowsOut, row)
 		byOrigin[originType(a.nextHop)]++
 		if a.nextHop != "" && originType(a.nextHop) == "learned" {
@@ -194,6 +219,9 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		return result.NewUnknown(inspectBGPNeighborsName, fmt.Sprintf("Offset %d is beyond the %d prefixes", in.Offset, len(list)), cx, []string{"offset is past the end of the list"}, result.Options{})
 	}
 	finding := fmt.Sprintf("%s advertises %d distinct IPv4 prefixes to %s in VRF %s (%d after dropping those inside another advertised prefix)", in.Device, len(seen), peer, firstNonEmpty(in.VRF, "default"), len(kept))
+	if received {
+		finding = fmt.Sprintf("%s received %d distinct IPv4 prefixes from %s in VRF %s (Adj-RIB-In after input policy)", in.Device, len(seen), peer, firstNonEmpty(in.VRF, "default"))
+	}
 	if len(outside) > 0 {
 		finding += fmt.Sprintf("; %d of those lie outside %s", len(list), strings.Join(adv.Outside, ", "))
 	}
@@ -204,6 +232,13 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		"outside means not inside any given block: a prefix wider than a block, or one that overlaps it without being inside, is listed as outside; check those by hand",
 		"origin_type is read from the path's next hop: local means 0.0.0.0 (the device itself originates or redistributes the route), learned means a next hop elsewhere (re-advertised from a peer: learned_by_next_hop says which); as_path and origin_code are the path attributes of the active path. Communities are NOT in Forward's model, so which prefixes carry a given community, and the route-map that decides what is sent, are read from the device files (reference/policy.md)",
 		"by_containing_16 groups IPv4 prefixes by their /16 (a prefix shorter than /16 is its own group)")
+	if received {
+		limits = []string{
+			"read from the device's Adj-RIB-In after input policy (what the device accepted from this peer; routes the policy denied are not listed), IPv4 unicast, for this peer address and VRF; it exists only where received BGP advertisements are collected on the device (collectBgpAdvertisements on, BGP table type BOTH or ADJ_RIB_IN covering the peer), so no rows can mean not collected",
+			"every distinct prefix is listed (no aggregation); the count can differ from the neighbor's received_prefixes counter, which counts routes before policy and across families",
+			"use a row's vrf, the peer and the prefix as the key of a BGP withdraw in edit-change-set bgp_advertisements; a withdraw is ignored when the key matches no received advertisement",
+			"by_containing_16 groups IPv4 prefixes by their /16 (a prefix shorter than /16 is its own group)"}
+	}
 	if other > 0 {
 		limits = append(limits, fmt.Sprintf("%d more route(s) go to this peer address in other VRFs or address families and are not counted", other))
 	}
@@ -222,8 +257,12 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	})
 	d := map[string]any{"device": in.Device, "peer": peer.String(), "vrf": firstNonEmpty(in.VRF, "default"), "distinct_prefixes": len(seen), "after_dropping_covered": len(kept),
 		"listed": len(list), "by_origin_type": byOrigin, "learned_by_next_hop": topDeviceCountRowsNamed(byNextHop, 10, "prefixes"), "by_origin_code": byOriginCode, "outside_filter": adv.Outside, "by_containing_16": groups, "offset": in.Offset, "prefixes": win}
+	next := []string{"edit-internet-exclusions", "inspect-topology"}
+	if received {
+		next = []string{"edit-change-set", "verify-change"}
+	}
 	return result.Build(inspectBGPNeighborsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
-		NextActions: []string{"edit-internet-exclusions", "inspect-topology"}, Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, d, finding)}})
+		NextActions: next, Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, d, finding)}})
 }
 
 // parseAdvertised reads the advertised option; ok is false when it is absent.
