@@ -29,7 +29,7 @@ const (
 
 // advertisedQuery reads one device's Adj-RIB-Out after output policy, one row per route; the peer and address family are filtered here, not in the query, so the peer
 // address needs no quoting in NQE. The device name is a string literal, checked by the caller.
-func advertisedQuery(device string, received bool) string {
+func advertisedQuery(device, peer string, received bool) string {
 	rib := "adjRibOutPost"
 	if received {
 		rib = "adjRibInPost"
@@ -39,6 +39,7 @@ where device.name == "` + device + `"
 where isPresent(device.bgpRib)
 foreach afi in device.bgpRib.afiSafis
 foreach n in afi.neighbors
+where n.neighborAddress == ipAddress("` + peer + `")
 where isPresent(n.` + rib + `)
 foreach route in n.` + rib + `.routes
 foreach attr in route.pathAttributes
@@ -85,7 +86,18 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	if wantVRF == "" || strings.EqualFold(wantVRF, "default") {
 		wantVRF = ""
 	}
-	rows, _, trunc, err := s.RunNQEAll(ctx, in.NetworkID, sid, advertisedQuery(in.Device, received), maxAdvertisedRead)
+	sameVRF := func(v string) bool { // the default VRF is null or empty on some rows and the name "default" on others
+		if wantVRF == "" {
+			return v == "" || strings.EqualFold(v, "default")
+		}
+		return v == wantVRF
+	}
+	ribName := "Adj-RIB-Out"
+	if received {
+		ribName = "Adj-RIB-In"
+	}
+	sawForPeer := map[string]bool{}
+	rows, _, trunc, err := s.RunNQEAll(ctx, in.NetworkID, sid, advertisedQuery(in.Device, peer.String(), received), maxAdvertisedRead)
 	if err != nil {
 		return result.Result{}, err
 	}
@@ -103,7 +115,8 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		if perr != nil || rp != peer {
 			continue
 		}
-		if !strings.Contains(strings.ToUpper(str(r["afi"])), "IPV4_UNICAST") || str(r["vrf"]) != wantVRF {
+		sawForPeer[str(r["afi"])+" in VRF "+firstNonEmpty(str(r["vrf"]), "(default)")] = true
+		if !strings.Contains(strings.ToUpper(str(r["afi"])), "IPV4_UNICAST") || !sameVRF(str(r["vrf"])) {
 			other++
 			continue
 		}
@@ -131,12 +144,20 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 	}
 	cx.State = "current"
 	if len(seen) == 0 {
-		lim := []string{fmt.Sprintf("%d row(s) of this device's Adj-RIB-Out were read; none is an IPv4 unicast route to %s in VRF %q", len(rows), peer, firstNonEmpty(in.VRF, "default")),
-			"Adj-RIB-Out is only reported by Junos, IOS, IOS-XE, NX-OS and IOS-XR devices; no rows means the device, the peer address or the VRF is not as given, or the platform does not report it: that is not proof the peer is sent nothing (inspect-bgp-neighbors without advertised lists the device's peers and VRFs)"}
+		lim := []string{fmt.Sprintf("%d row(s) of this device's %s for peer %s were read; none is an IPv4 unicast route in VRF %q", len(rows), ribName, peer, firstNonEmpty(in.VRF, "default")),
+			ribName + " is only reported by some platforms (Junos, IOS, IOS-XE, NX-OS and IOS-XR for Adj-RIB-Out) and, for Adj-RIB-In, only where received BGP advertisements are collected on the device; no rows means the device, the peer address or the VRF is not as given, or the platform or collection does not provide it: that is not proof the peer sends or sent nothing (inspect-bgp-neighbors without advertised lists the device's peers and VRFs)"}
+		if len(sawForPeer) > 0 {
+			seen := make([]string, 0, len(sawForPeer))
+			for k := range sawForPeer {
+				seen = append(seen, k)
+			}
+			sort.Strings(seen)
+			lim = append(lim, "rows for this peer were found in: "+strings.Join(seen, "; "))
+		}
 		if other > 0 {
 			lim = append(lim, fmt.Sprintf("%d route(s) go to this peer in other VRFs or families", other))
 		}
-		return result.NewUnknown(inspectBGPNeighborsName, fmt.Sprintf("No advertised IPv4 prefixes found for %s to %s", in.Device, peer), cx, lim, result.Options{NextActions: []string{"inspect-bgp-neighbors"}})
+		return result.NewUnknown(inspectBGPNeighborsName, fmt.Sprintf("No IPv4 prefixes found in %s for %s and peer %s", ribName, in.Device, peer), cx, lim, result.Options{NextActions: []string{"inspect-bgp-neighbors"}})
 	}
 	all := make([]netip.Prefix, 0, len(seen))
 	for p := range seen {

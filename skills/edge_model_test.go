@@ -437,6 +437,9 @@ func TestBGPReceivedListsEveryPrefixFromOnePeerWithItsAttributes(t *testing.T) {
 	if !strings.Contains(query, "adjRibInPost") || strings.Contains(query, "adjRibOutPost") {
 		t.Fatalf("direction in reads Adj-RIB-In: %s", query)
 	}
+	if !strings.Contains(query, `n.neighborAddress == ipAddress(\"203.0.113.1\")`) {
+		t.Errorf("the peer is filtered in the query (not by reading the whole device and filtering after): %s", query)
+	}
 	for _, want := range []string{`"prefix":"10.1.0.0/16"`, `"prefix":"10.1.1.0/24"`, `"local_pref":80`, `"as_path":"65001 65002"`, "received"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("missing %s in %s", want, b)
@@ -453,5 +456,28 @@ func TestBGPReceivedListsEveryPrefixFromOnePeerWithItsAttributes(t *testing.T) {
 	}
 	if _, _, err := runSkill(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.1","advertised":{"direction":"in","outside":["10.0.0.0/8"]}}`); err == nil {
 		t.Errorf("outside belongs to the advertised direction")
+	}
+}
+
+// Received routes can carry the default VRF as the name "default" where advertised routes carry it as null or empty: both mean the default VRF. And when nothing matches, the result names the RIB it read and what it saw for that peer
+// (the address families and VRFs), so a mismatch of VRF or family is visible instead of "no rows".
+func TestBGPReceivedMatchesTheDefaultVRFByNameAndSaysWhatItSawWhenNothingMatches(t *testing.T) {
+	routes := modelRoutes()
+	routes[nqePath] = func(_ *http.Request, _ []byte) (int, any) {
+		items := []map[string]any{
+			{"peer": "203.0.113.1", "afi": "IPV4_UNICAST", "vrf": "default", "prefix": "10.1.0.0/16", "nextHop": "203.0.113.1", "localPref": float64(80), "active": false},
+			{"peer": "203.0.113.1", "afi": "IPV4_UNICAST", "vrf": "default", "prefix": "10.1.0.0/16", "nextHop": "203.0.113.1", "localPref": float64(80), "active": false},
+			{"peer": "203.0.113.5", "afi": "IPV6_UNICAST", "vrf": "BLUE", "prefix": "2001:db8::/32"},
+		}
+		return 200, map[string]any{"items": items, "totalNumItems": len(items)}
+	}
+	r, _ := mustRun(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.1","vrf":"default","advertised":{"direction":"in"}}`)
+	if r.Status != result.OK || r.Evidence[0].Detail["listed"] != 1 {
+		t.Fatalf("a route in the VRF named default matches vrf default, and two path rows of one prefix are one prefix: %s %v", r.Status, r.Evidence)
+	}
+	r, _ = mustRun(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.5","advertised":{"direction":"in"}}`)
+	l := strings.Join(r.Limits, "|")
+	if r.Status != result.Unknown || !strings.Contains(l, "Adj-RIB-In") || strings.Contains(l, "Adj-RIB-Out were read") || !strings.Contains(l, "IPV6_UNICAST") || !strings.Contains(l, "BLUE") {
+		t.Errorf("the no-match result names the RIB read and what it saw for the peer: %s %v", r.Status, r.Limits)
 	}
 }
