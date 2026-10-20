@@ -211,6 +211,7 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		}
 		by16[key]++
 	}
+	nullLocalPref := 0
 	rowsOut := make([]map[string]any, 0, len(list))
 	byOrigin, byNextHop, byOriginCode := map[string]int{}, map[string]int{}, map[string]int{}
 	for _, p := range list {
@@ -219,8 +220,11 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 		if len(a.asPath) > 0 {
 			row["as_path"] = strings.Join(a.asPath, " ")
 		}
-		if received && a.localPref != nil {
-			row["local_pref"] = a.localPref
+		if received {
+			row["local_pref"] = a.localPref // null when the snapshot does not report it
+			if a.localPref == nil {
+				nullLocalPref++
+			}
 		}
 		rowsOut = append(rowsOut, row)
 		byOrigin[originType(a.nextHop)]++
@@ -258,7 +262,11 @@ func bgpAdvertised(ctx context.Context, s *fwd.Session, in inspectBGPNeighborsIn
 			"read from the device's Adj-RIB-In after input policy (what the device accepted from this peer; routes the policy denied are not listed), IPv4 unicast, for this peer address and VRF; it exists only where received BGP advertisements are collected on the device (collectBgpAdvertisements on, BGP table type BOTH or ADJ_RIB_IN covering the peer), so no rows can mean not collected",
 			"every distinct prefix is listed (no aggregation); the count can differ from the neighbor's received_prefixes counter, which counts routes before policy and across families",
 			"use a row's vrf, the peer and the prefix as the key of a BGP withdraw in edit-change-set bgp_advertisements; a withdraw is ignored when the key matches no received advertisement",
-			"by_containing_16 groups IPv4 prefixes by their /16 (a prefix shorter than /16 is its own group)"}
+			"by_containing_16 groups IPv4 prefixes by their /16 (a prefix shorter than /16 is its own group)",
+			"on a PREDICTED snapshot this is the snapshot's modelled Adj-RIB-In, not the forwarding table: a route staged with an inject was seen in the forwarding table but not in this list in a reported case, so read the forwarding entry (an NQE read of the device's routes, or verify-change) as the authority for what the device forwards; whether an injected route passed input policy is not reported by either read"}
+		if nullLocalPref > 0 && nullLocalPref == len(rowsOut) {
+			limits = append(limits, "local preference is not reported on these routes (null on every row): it is not modelled for them or not set, so a staged local-preference change cannot be read back here")
+		}
 	}
 	if other > 0 {
 		limits = append(limits, fmt.Sprintf("%d more route(s) go to this peer address in other VRFs or address families and are not counted", other))

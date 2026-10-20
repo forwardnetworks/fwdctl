@@ -481,3 +481,21 @@ func TestBGPReceivedMatchesTheDefaultVRFByNameAndSaysWhatItSawWhenNothingMatches
 		t.Errorf("the no-match result names the RIB read and what it saw for the peer: %s %v", r.Status, r.Limits)
 	}
 }
+
+// The received list says when local preference is not reported (null on every row: not modelled, or unset), and says which read is authoritative on a predicted snapshot: an injected route was seen in the forwarding table but not in this list.
+func TestBGPReceivedSaysWhenLocalPrefIsNullAndWhichReadIsAuthoritative(t *testing.T) {
+	routes := modelRoutes()
+	routes[nqePath] = func(_ *http.Request, _ []byte) (int, any) {
+		items := []map[string]any{{"peer": "203.0.113.1", "afi": "IPV4_UNICAST", "vrf": nil, "prefix": "10.1.0.0/16", "nextHop": "203.0.113.1", "active": true}}
+		return 200, map[string]any{"items": items, "totalNumItems": len(items)}
+	}
+	r, _ := mustRun(t, "inspect-bgp-neighbors", routes, `{"network_id":"n1","device":"wan1","peer":"203.0.113.1","advertised":{"direction":"in"}}`)
+	b := jsonOf(r)
+	l := strings.Join(r.Limits, "|")
+	if !strings.Contains(b, `"local_pref":null`) || !strings.Contains(l, "local preference is not reported") {
+		t.Errorf("local preference: %s %v", b, r.Limits)
+	}
+	if !strings.Contains(l, "forwarding entry") || !strings.Contains(l, "input policy") {
+		t.Errorf("which read is authoritative: %v", r.Limits)
+	}
+}

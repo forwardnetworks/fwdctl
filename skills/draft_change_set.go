@@ -287,7 +287,20 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			for _, e := range errs {
 				rows = append(rows, map[string]any{"line": e.LineNumber, "type": e.ErrorType, "message": e.ErrorMsg})
 			}
-			return rollback(fmt.Sprintf("Forward rejected %d line(s) of the commands for %s", len(errs), d.Device), map[string]any{"device": d.Device, "command_errors": rows})
+			lines := strings.Split(d.Commands, "\n")
+			var named []string
+			for i, e := range errs {
+				if i == 3 {
+					named = append(named, fmt.Sprintf("and %d more", len(errs)-3))
+					break
+				}
+				text := ""
+				if e.LineNumber >= 1 && e.LineNumber <= len(lines) {
+					text = strings.TrimSpace(lines[e.LineNumber-1])
+				}
+				named = append(named, fmt.Sprintf("line %d: %q (%s)", e.LineNumber, text, firstNonEmpty(e.ErrorMsg, e.ErrorType)))
+			}
+			return rollback(fmt.Sprintf("Forward rejected %d line(s) of the commands for %s: %s", len(errs), d.Device, strings.Join(named, "; ")), map[string]any{"device": d.Device, "command_errors": rows})
 		}
 	}
 	for _, d := range in.Devices {
@@ -366,6 +379,12 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		extra["firewall_rules_diff"] = diffs
 	}
 	finding := fmt.Sprintf("Created change set %q (id %s) on snapshot %s editing %d device(s); commands validated and staged, nothing reached a device", in.Name, csID, base, len(devices))
+	for _, a := range in.BGP {
+		if a.Action == "withdraw" {
+			finding += "; a withdraw only changes the prediction for a peer outside the snapshot (a peer that is itself a collected device needs none, and a withdraw from it changes nothing)"
+			break
+		}
+	}
 	if in.Run {
 		p, err := s.PredictedSnapshot(ctx, in.NetworkID, csID, true)
 		if err != nil || p == nil {

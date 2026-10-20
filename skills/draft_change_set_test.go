@@ -341,3 +341,24 @@ func TestDraftChangeSetFirewallRuleListInAnObjectFieldSaysTheShape(t *testing.T)
 		t.Fatalf("the error should show the shape: %v", err)
 	}
 }
+
+// A rejected command line is named in the finding itself (its number, its text and Forward's message), not only in the evidence, so a caller sees which line to fix.
+func TestDraftChangeSetFindingNamesTheRejectedLineAndTheParserMessage(t *testing.T) {
+	bad := map[string]any{"commandErrors": []any{map[string]any{"lineNumber": 2, "errorType": "INVALID", "errorMsg": "expected a number after cost"}}}
+	in := `{"network_id":"n1","name":"ospf cost","apply":true,"devices":[{"device":"r1","commands":"interface Ethernet1\n no ip ospf cost\n"}]}`
+	r, _ := mustRun(t, "edit-change-set", dcRoutes(bad), in)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, `line 2: "no ip ospf cost"`) || !strings.Contains(r.Finding, "expected a number after cost") {
+		t.Fatalf("finding: %s", r.Finding)
+	}
+}
+
+// A withdraw says in the finding that it only changes the prediction for a peer outside the snapshot, since a peer that is itself a collected device needs none and a withdraw from it is a no-op that otherwise reports ok.
+func TestDraftChangeSetWithdrawFindingNamesTheNoOpCase(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes["POST "+csRoot+"/cs7/draft/devices/r1/bgp-advertisements"] = func(*http.Request, []byte) (int, any) { return 204, nil }
+	in := `{"network_id":"n1","name":"w","apply":true,"bgp_advertisements":[{"action":"withdraw","device":"r1","vrf":"default","external_peer":"192.0.2.1","prefix":"203.0.113.0/24"}]}`
+	r, _ := mustRun(t, "edit-change-set", routes, in)
+	if !strings.Contains(r.Finding, "only changes the prediction for a peer outside the snapshot") {
+		t.Errorf("finding: %s", r.Finding)
+	}
+}
