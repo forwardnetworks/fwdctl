@@ -388,3 +388,44 @@ func matchText(m forward.ACLMatch, negated bool) string {
 	}
 	return m.Field + op + vals
 }
+
+// PredictionRun is a started prediction: the predicted snapshot's id (known as soon as Forward accepts the run), its last seen state, and the processed snapshot when the wait finished.
+type PredictionRun struct {
+	ID    string
+	State string
+	Done  *forward.Snapshot
+}
+
+// RunPrediction starts a prediction of the change set and waits for the predicted snapshot. The id and last state come back even when the wait ends in an error (a failed state, or a poll that failed), so a caller can name the snapshot and
+// say whether it failed or may still be running. err is nil only when the snapshot is PROCESSED.
+func (s *Session) RunPrediction(ctx context.Context, networkID, changeSetID, note string) (PredictionRun, error) {
+	poller, _, err := s.Client.Predict.RunOperation(ctx, networkID, changeSetID, note)
+	if err != nil {
+		return PredictionRun{}, err
+	}
+	run := PredictionRun{}
+	if cur := poller.Current(); cur != nil {
+		run.ID, run.State = string(cur.ID), cur.State
+	}
+	done, _, werr := poller.Wait(ctx, forward.PollOptions[forward.Snapshot]{})
+	if cur := poller.Current(); cur != nil {
+		run.State = cur.State
+	}
+	if werr != nil {
+		return run, werr
+	}
+	run.Done = done
+	if done != nil {
+		run.State = done.State
+	}
+	return run, nil
+}
+
+// DraftDevices is how many devices the caller's uncommitted draft of the change set edits (0 when there is no draft).
+func (s *Session) DraftDevices(ctx context.Context, networkID, changeSetID string) (int, error) {
+	d, _, err := s.Client.Predict.GetDraft(ctx, networkID, changeSetID)
+	if err != nil || d == nil || d.Draft == nil {
+		return 0, err
+	}
+	return len(d.Draft.DeviceToChanges), nil
+}

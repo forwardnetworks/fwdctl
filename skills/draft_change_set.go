@@ -135,7 +135,7 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 		touched[d.Device] = true
 	}
-	bgpWarn, injectWarn := false, false
+	bgpWarn, injectWarn, droppedConfigure := false, false, false
 	for i, a := range in.BGP {
 		switch a.Action {
 		case "", "inject", "modify":
@@ -156,6 +156,21 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			injectWarn = true
 		}
 		touched[a.Device] = true
+	}
+	for i := range in.Devices {
+		// commands are applied in configuration mode already, and Forward rejects a leading "configure terminal" as an invalid command (a patch file often starts with it)
+		lines := strings.Split(in.Devices[i].Commands, "\n")
+		for len(lines) > 0 {
+			t := strings.ToLower(strings.TrimSpace(lines[0]))
+			if t != "configure terminal" && t != "conf t" && t != "configure" && t != "" {
+				break
+			}
+			if t != "" {
+				droppedConfigure = true
+			}
+			lines = lines[1:]
+		}
+		in.Devices[i].Commands = strings.Join(lines, "\n")
 	}
 	cliShutdown := false
 	for _, d := range in.Devices {
@@ -240,6 +255,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	if cfgDevices {
 		limits = append(limits, "a device given config has its WHOLE running configuration replaced (send the complete configuration, at most 2 MB); Forward stores the text unchecked, so it is not validated here, and whether Predict can model the result depends on the device type, which Forward finds out when it runs")
+	}
+	if droppedConfigure {
+		limits = append(limits, "dropped the leading \"configure terminal\" line of a device's commands: they are applied in configuration mode already, and Forward rejects that line as an invalid command")
 	}
 	if injectWarn {
 		limits = append(limits, "inject and modify are not confirmed to take effect on every build: they can finish with status ok and change nothing (an injected prefix appeared on no device on one build, and a modify left route attributes unchanged). Pick a prefix the inbound policy permits (a denied or documentation prefix looks identical to a failure), and check the predicted snapshot (verify-change impact, or an NQE read of the prefix) before relying on one")
@@ -386,14 +404,24 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 	}
 	if in.Run {
-		p, err := s.PredictedSnapshot(ctx, in.NetworkID, csID, true)
+		run, err := s.RunPrediction(ctx, in.NetworkID, csID, "fwdctl")
+		p := run.Done
 		if err != nil || p == nil {
 			why := "no predicted snapshot was returned"
 			if err != nil {
 				why = err.Error()
 			}
 			limits = append(limits, "the change set was created and staged but the prediction did not finish: "+why)
-			finding += "; NOT predicted yet: the prediction may still be running (a long one finishes after this call returns), so read its snapshot later with verify-change view list (predicted_snapshots) or view describe before trusting any result"
+			switch {
+			case run.ID != "" && strings.EqualFold(run.State, "FAILED"), run.ID != "" && (strings.EqualFold(run.State, "CANCELED") || strings.EqualFold(run.State, "TIMED_OUT")):
+				extra["predicted_snapshot_id"] = run.ID
+				finding += fmt.Sprintf("; the prediction was started but snapshot %s ended %s (no result): read why with inspect-snapshots, then run the change set again", run.ID, strings.ToUpper(run.State))
+			case run.ID != "":
+				extra["predicted_snapshot_id"], extra["predicted_snapshot_state"] = run.ID, run.State
+				finding += fmt.Sprintf("; NOT predicted yet: snapshot %s was started (state %s) and the wait ended (%s); a long prediction finishes after this call returns, so wait for it with `fwdctl wait snapshot --network %s --snapshot %s` or read verify-change view list before trusting any result", run.ID, run.State, why, in.NetworkID, run.ID)
+			default:
+				finding += "; NOT predicted: the prediction could not be started (" + why + ")"
+			}
 		} else {
 			extra["predicted_snapshot_id"] = string(p.ID)
 			changes = append(changes, result.Change{Action: "run_prediction", Target: "change set " + csID, After: string(p.ID), Applied: true, Reversible: false})

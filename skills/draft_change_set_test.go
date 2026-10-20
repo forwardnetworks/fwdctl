@@ -324,8 +324,9 @@ func TestDraftChangeSetRefusesABaseSnapshotThatIsNotProcessed(t *testing.T) {
 func TestDraftChangeSetRunWithoutAPredictedSnapshotSaysItIsNotPredictedYet(t *testing.T) {
 	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
 	routes["GET "+csRoot+"/cs7/predicted-snapshots"] = fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{}})
+	routes["POST "+csRoot+"/cs7"] = fwdtest.Const(200, map[string]any{"id": "p1", "state": "PROCESSING"}) // started, but the snapshot cannot be polled
 	r, _ := mustRun(t, "edit-change-set", routes, dcIn+`,"apply":true,"run":true}`)
-	if r.Status != result.OK || !strings.Contains(r.Finding, "NOT predicted yet") || !strings.Contains(r.Finding, "predicted_snapshots") {
+	if r.Status != result.OK || !strings.Contains(r.Finding, "NOT predicted yet") || !strings.Contains(r.Finding, "verify-change view list") || !strings.Contains(r.Finding, "snapshot p1") {
 		t.Fatalf("finding: %s %s", r.Status, r.Finding)
 	}
 	if !strings.Contains(strings.Join(r.Limits, " "), "did not finish") {
@@ -360,5 +361,48 @@ func TestDraftChangeSetWithdrawFindingNamesTheNoOpCase(t *testing.T) {
 	r, _ := mustRun(t, "edit-change-set", routes, in)
 	if !strings.Contains(r.Finding, "only changes the prediction for a peer outside the snapshot") {
 		t.Errorf("finding: %s", r.Finding)
+	}
+}
+
+// With run requested the result names the predicted snapshot as soon as it was started, even if the wait ended before it finished, and says why: still running, or ended in a failed state.
+func TestDraftChangeSetRunNamesTheStartedPredictedSnapshotAndItsEnd(t *testing.T) {
+	for _, tc := range []struct{ state, want string }{
+		{"PROCESSED", "predicted as snapshot p1"},
+		{"FAILED", "snapshot p1 ended FAILED"},
+	} {
+		routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+		routes["GET "+csRoot+"/cs7/predicted-snapshots"] = fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{}})
+		routes["POST "+csRoot+"/cs7"] = fwdtest.Const(200, map[string]any{"id": "p1", "state": "PROCESSING"})
+		routes[snapsPath] = fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"), fwdtest.Snap("p1", tc.state, "PREDICT", "2026-09-02T00:00:00.000Z"))
+		r, _ := mustRun(t, "edit-change-set", routes, dcIn+`,"apply":true,"run":true}`)
+		if !strings.Contains(r.Finding, tc.want) {
+			t.Errorf("%s: finding %q", tc.state, r.Finding)
+		}
+	}
+}
+
+// A leading "configure terminal" (or "conf t") is dropped, since the commands are applied in configuration mode already and Forward rejects it as an invalid command; the result says it was dropped.
+func TestDraftChangeSetDropsALeadingConfigureTerminal(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	var staged string
+	routes["PUT "+csRoot+"/cs7/draft/devices/r1/commands"] = func(_ *http.Request, b []byte) (int, any) { staged = string(b); return 200, map[string]any{} }
+	in := `{"network_id":"n1","name":"patch","apply":true,"devices":[{"device":"r1","commands":"configure terminal\ninterface Ethernet1\n description x\n"}]}`
+	r, _ := mustRun(t, "edit-change-set", routes, in)
+	if r.Status != result.OK || strings.Contains(staged, "configure terminal") || !strings.Contains(staged, "interface Ethernet1") || !strings.Contains(strings.Join(r.Limits, " "), "dropped the leading") {
+		t.Fatalf("staged %q, limits %v", staged, r.Limits)
+	}
+}
+
+// view list says how many devices the last COMMITTED version edits (devices_edited) and, where that is zero, how many devices the caller's uncommitted draft edits (draft_devices), so a staged-but-uncommitted change set does not read as empty.
+func TestVerifyChangeListShowsDraftDevicesWhenNothingIsCommitted(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets":                         fwdtest.Const(200, map[string]any{"changeSets": []any{map[string]any{"id": "cs1", "name": "staged", "snapshotId": "s1"}}}),
+		"GET /api/networks/n1/change-sets/cs1/predicted-snapshots": fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{}}),
+		"GET /api/networks/n1/change-sets/cs1/draft":               fwdtest.Const(200, map[string]any{"draft": map[string]any{"id": "cs1", "deviceToChanges": map[string]any{"r1": map[string]any{}, "r2": map[string]any{}, "r3": map[string]any{}}}}),
+	}
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
+	b := jsonOf(r)
+	if !strings.Contains(b, `"devices_edited":0`) || !strings.Contains(b, `"draft_devices":3`) || !strings.Contains(strings.Join(r.Limits, " "), "COMMITTED") {
+		t.Errorf("draft devices: %s %v", b, r.Limits)
 	}
 }

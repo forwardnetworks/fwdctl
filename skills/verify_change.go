@@ -240,11 +240,18 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 				row["predicted_snapshots"] = preds
 			}
 		}
+		if len(c.DeviceToChanges) == 0 && i < maxListPredictions {
+			// nothing committed: say how many devices the caller's uncommitted draft edits, so a staged change set does not read as empty
+			if n, derr := s.DraftDevices(ctx, networkID, string(c.ID)); derr == nil {
+				row["draft_devices"] = n
+			}
+		}
 		rows = append(rows, row)
 	}
 	shown, omitted := result.Cap(rows, 100, "change sets", "describe one with view describe")
 	limits := []string{"this lists the change sets Forward holds now; a deleted change set is gone, so none here does not prove Predict was never used",
-		fmt.Sprintf("predicted_snapshots (newest first) are read for the first %d change sets only; a change set's checks are read with view describe (change_set_id)", maxListPredictions)}
+		fmt.Sprintf("predicted_snapshots (newest first) are read for the first %d change sets only; a change set's checks are read with view describe (change_set_id)", maxListPredictions),
+		"devices_edited counts the devices of the change set's last COMMITTED version; a change set that was staged but not yet committed or run shows 0 there, and draft_devices (read for change sets with nothing committed) counts the devices of this login's uncommitted draft"}
 	finding := fmt.Sprintf("%d change set(s) on network %s", len(rows), networkID)
 	if len(rows) == 0 {
 		finding = fmt.Sprintf("No change set on network %s", networkID)
