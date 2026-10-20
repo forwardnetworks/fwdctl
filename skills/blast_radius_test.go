@@ -261,6 +261,9 @@ func TestBlastRadiusChecksStagedAdvertisementsAgainstTheForwardingEntries(t *tes
 	}
 	r, _ := mustRun(t, "analyze-blast-radius", routes, csInput+"}")
 	b := jsonOf(r)
+	if !strings.Contains(r.Finding, "1 staged advertisement(s) recorded but the forwarding entry") {
+		t.Errorf("the finding says it: %s", r.Finding)
+	}
 	for _, want := range []string{"staged_advertisement_effect", `"prefix":"10.9.0.0/24"`, `"forwarding_changed":false`, `"forwarding_changed":true`, "recorded but"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("missing %q in %s", want, b)

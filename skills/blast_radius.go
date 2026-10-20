@@ -119,10 +119,12 @@ func analyzeBlastRadius(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		}
 	}
 	rev, rlim, routingChanged := routingDelta(ctx, s, in.NetworkID, rc.BeforeID, afterID, in.Device, edited)
+	stagedUnchanged := 0
 	if in.ChangeSetID != "" {
 		if eff, elim := stagedAdvertisementEffect(ctx, s, in.NetworkID, in.ChangeSetID, rc.BeforeID, afterID); eff != nil {
 			rev = append(rev, result.NewEvidence(result.EvPredict, "stagedAdvertisementEffect", sid, map[string]any{"staged_advertisement_effect": eff}, "staged BGP advertisements checked against the forwarding entries"))
 			rlim = append(rlim, elim...)
+			stagedUnchanged, _ = eff["recorded_but_unchanged"].(int)
 		} else {
 			rlim = append(rlim, elim...)
 		}
@@ -144,6 +146,9 @@ func analyzeBlastRadius(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		parts = append(parts, "differs in "+strings.Join(touched, ", "))
 	}
 
+	if stagedUnchanged > 0 {
+		parts = append(parts, fmt.Sprintf("%d staged advertisement(s) recorded but the forwarding entry for their prefix did not change", stagedUnchanged))
+	}
 	if conn.Settled && conn.Compared && (conn.NewlyIsolated > 0 || conn.NewlyConnected > 0) {
 		parts = append(parts, fmt.Sprintf("%d subnet pair(s) lost connectivity, %d gained", conn.NewlyIsolated, conn.NewlyConnected))
 	}
