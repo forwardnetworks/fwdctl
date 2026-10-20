@@ -108,11 +108,28 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		ch.Reversible = false
 		ch.Undo = "none: a started prediction leaves a predicted snapshot that these skills cannot delete (edit-snapshot action cancel stops it while it runs, with ADMINISTER_SYSTEM)"
 		do = func() (any, error) {
-			p, _, e := s.Client.Predict.Run(ctx, in.NetworkID, id, "fwdctl")
-			if p != nil {
-				return map[string]any{"predicted_snapshot_id": string(p.ID), "state": p.State}, e
+			known := map[string]bool{}
+			if prev, perr := s.PredictedSnapshots(ctx, in.NetworkID, id); perr == nil {
+				for _, q := range prev {
+					known[string(q.ID)] = true
+				}
 			}
-			return nil, e
+			p, _, e := s.Client.Predict.Run(ctx, in.NetworkID, id, "fwdctl")
+			if p == nil {
+				return nil, e
+			}
+			state := p.State
+			if now, perr := s.PredictedSnapshots(ctx, in.NetworkID, id); perr == nil {
+				for _, q := range now {
+					if q.ID == p.ID && q.State != "" {
+						state = q.State
+					}
+				}
+			}
+			if state == "" {
+				state = "not reported"
+			}
+			return map[string]any{"predicted_snapshot_id": string(p.ID), "state": state, "new_prediction": !known[string(p.ID)]}, e
 		}
 	case "restore_commit":
 		ch.Action, verb = "restore_commit", "restore version "+l.CommitID+" as the current content of"
@@ -143,7 +160,9 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 	}
 	ch.Applied = true
 	finding := fmt.Sprintf("Applied: %s change set %s (%s)", verb, id, cs.Name)
-	if m, ok := detail.(map[string]any); ok && op == "predict" {
+	if m, ok := detail.(map[string]any); ok && op == "predict" && m["new_prediction"] == false {
+		finding = fmt.Sprintf("Forward answered with predicted snapshot %v, which already existed for change set %s (%s) in state %v: no new prediction was visible, so nothing is known to have started (Forward may reuse the earlier prediction while the change set is unchanged since it); list the change set's predictions with verify-change view describe or list", m["predicted_snapshot_id"], id, cs.Name, m["state"])
+	} else if m, ok := detail.(map[string]any); ok && op == "predict" {
 		finding = fmt.Sprintf("Started a prediction of change set %s (%s) as predicted snapshot %v (state %v); it did NOT wait: wait for it with `fwdctl wait snapshot --network %s --snapshot %v`, then read verify-change view list or describe", id, cs.Name, m["predicted_snapshot_id"], m["state"], in.NetworkID, m["predicted_snapshot_id"])
 	}
 	return result.Build(draftChangeSetName, result.OK, finding, result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"verify-change"},

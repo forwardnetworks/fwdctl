@@ -433,3 +433,16 @@ func TestDraftChangeSetLifecyclePredictStartsAndReturnsAtOnce(t *testing.T) {
 		t.Errorf("apply: %s %d %s", r.Status, started, r.Finding)
 	}
 }
+
+// Forward can answer a predict request with a snapshot that already existed for the change set (reported live: the id of an earlier PROCESSED prediction, with no state). The finding must not say "Started" then: it says no new prediction was visible, names the existing one, and fills the state from the listing.
+func TestLifecyclePredictSaysWhenForwardReturnedAnExistingSnapshot(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets":                         fwdtest.Const(200, []any{map[string]any{"id": "cs9", "name": "withdraw", "snapshotId": "s1"}}),
+		"GET /api/networks/n1/change-sets/cs9/predicted-snapshots": fwdtest.Const(200, map[string]any{"snapshots": []any{map[string]any{"id": "p5", "state": "PROCESSED", "createdAt": "2026-10-20T11:25:58Z"}}}),
+		"POST /api/networks/n1/change-sets/cs9":                    fwdtest.Const(200, map[string]any{"id": "p5"}),
+	}
+	r, _ := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"predict"},"apply":true}`)
+	if strings.Contains(r.Finding, "Started") || !strings.Contains(r.Finding, "already existed") || !strings.Contains(r.Finding, "PROCESSED") || !strings.Contains(jsonOf(r), `"new_prediction":false`) {
+		t.Errorf("existing: %s", r.Finding)
+	}
+}
