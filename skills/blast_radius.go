@@ -119,6 +119,14 @@ func analyzeBlastRadius(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		}
 	}
 	rev, rlim, routingChanged := routingDelta(ctx, s, in.NetworkID, rc.BeforeID, afterID, in.Device, edited)
+	if in.ChangeSetID != "" {
+		if eff, elim := stagedAdvertisementEffect(ctx, s, in.NetworkID, in.ChangeSetID, rc.BeforeID, afterID); eff != nil {
+			rev = append(rev, result.NewEvidence(result.EvPredict, "stagedAdvertisementEffect", sid, map[string]any{"staged_advertisement_effect": eff}, "staged BGP advertisements checked against the forwarding entries"))
+			rlim = append(rlim, elim...)
+		} else {
+			rlim = append(rlim, elim...)
+		}
+	}
 	evidence = append(evidence, rev...)
 	limits = append(limits, rlim...)
 	if len(rev) > 0 {

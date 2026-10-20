@@ -3,9 +3,12 @@ package skills
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
+
+	forward "github.com/forwardnetworks/forward-go-sdk"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
@@ -181,34 +184,36 @@ func routingDelta(ctx context.Context, s *fwd.Session, networkID, beforeID, afte
 	return evidence, limits, changed
 }
 
-// devicePrefixChanges lists one device's IPv4 prefixes whose next hops differ between the snapshots (added, removed, next hops changed), per VRF.
-func devicePrefixChanges(ctx context.Context, s *fwd.Session, networkID, beforeID, afterID, device string) ([]map[string]any, error) {
+// devicePrefixMap reads one device's IPv4 forwarding entries on a snapshot: "vrf\x00prefix" to its sorted next-hop addresses, joined.
+func devicePrefixMap(ctx context.Context, s *fwd.Session, networkID, snap, device string) (map[string]string, error) {
 	q := `foreach device in network.devices
 where device.name == ` + strconv.Quote(device) + `
 foreach instance in device.networkInstances
 where isPresent(instance.afts) && isPresent(instance.afts.ipv4Unicast)
 foreach entry in instance.afts.ipv4Unicast.ipEntries
 select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry.nextHops select hop.ipAddress}`
-	read := func(snap string) (map[string]string, error) {
-		rows, _, _, err := s.RunNQEAll(ctx, networkID, snap, q, maxRoutingRows)
-		m := map[string]string{}
-		for _, r := range rows {
-			hops := []string{}
-			if hs, ok := r["nextHops"].([]any); ok {
-				for _, h := range hs {
-					hops = append(hops, fmt.Sprint(h))
-				}
+	rows, _, _, err := s.RunNQEAll(ctx, networkID, snap, q, maxRoutingRows)
+	m := map[string]string{}
+	for _, r := range rows {
+		hops := []string{}
+		if hs, ok := r["nextHops"].([]any); ok {
+			for _, h := range hs {
+				hops = append(hops, fmt.Sprint(h))
 			}
-			sort.Strings(hops)
-			m[fmt.Sprint(r["vrf"])+"\x00"+fmt.Sprint(r["prefix"])] = strings.Join(hops, ",")
 		}
-		return m, err
+		sort.Strings(hops)
+		m[fmt.Sprint(r["vrf"])+"\x00"+fmt.Sprint(r["prefix"])] = strings.Join(hops, ",")
 	}
-	b, err := read(beforeID)
+	return m, err
+}
+
+// devicePrefixChanges lists one device's IPv4 prefixes whose next hops differ between the snapshots (added, removed, next hops changed), per VRF.
+func devicePrefixChanges(ctx context.Context, s *fwd.Session, networkID, beforeID, afterID, device string) ([]map[string]any, error) {
+	b, err := devicePrefixMap(ctx, s, networkID, beforeID, device)
 	if err != nil {
 		return nil, err
 	}
-	a, err := read(afterID)
+	a, err := devicePrefixMap(ctx, s, networkID, afterID, device)
 	if err != nil {
 		return nil, err
 	}
@@ -235,4 +240,71 @@ select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry
 		shown = append(shown, map[string]any{"note": fmt.Sprintf("%d of %d prefix changes shown", len(shown), total)})
 	}
 	return shown, nil
+}
+
+// stagedAdvertisementEffect checks each BGP advertisement a change set stages against the forwarding entry it should move: for a withdraw or an inject on a device it reads that device's entry for the prefix on the base and on the predicted
+// snapshot. "forwarding_changed" false on a staged withdraw or inject is the case worth seeing: it was recorded, and the forwarding entry did not move. It says nothing about why, and a backup path that is never best (or a prefix the inbound policy
+// does not permit) also leaves the entry as it was.
+func stagedAdvertisementEffect(ctx context.Context, s *fwd.Session, networkID, changeSetID, beforeID, afterID string) (map[string]any, []string) {
+	content := s.ChangeContent(ctx, networkID, changeSetID)
+	changes := content.Committed
+	source := "committed version"
+	if len(forward.EditedDevices(changes)) == 0 {
+		changes, source = content.Draft, "uncommitted draft"
+	}
+	var rows []map[string]any
+	var limits []string
+	for _, dev := range forward.EditedDevices(changes) {
+		c := changes[dev]
+		if len(c.AddedAdvertisements) == 0 && len(c.RemovedAdvertisements) == 0 {
+			continue
+		}
+		before, e1 := devicePrefixMap(ctx, s, networkID, beforeID, dev)
+		after, e2 := devicePrefixMap(ctx, s, networkID, afterID, dev)
+		if e1 != nil || e2 != nil {
+			limits = append(limits, "the forwarding entries of "+dev+" could not be read, so its staged advertisements were not checked")
+			continue
+		}
+		check := func(action, vrf, prefix string) {
+			p := prefix
+			if pp, err := netip.ParsePrefix(strings.TrimSpace(prefix)); err == nil {
+				p = pp.Masked().String()
+			} else if a, err := netip.ParseAddr(strings.TrimSpace(prefix)); err == nil {
+				p = netip.PrefixFrom(a, a.BitLen()).String()
+			}
+			find := func(m map[string]string) (string, bool) {
+				for k, v := range m {
+					kv := strings.SplitN(k, "\x00", 2)
+					if len(kv) == 2 && kv[1] == p && (strings.EqualFold(kv[0], vrf) || (vrf == "" && strings.EqualFold(kv[0], "default"))) {
+						return v, true
+					}
+				}
+				return "", false
+			}
+			b, hadB := find(before)
+			a, hadA := find(after)
+			rows = append(rows, map[string]any{"device": dev, "action": action, "vrf": firstNonEmpty(vrf, "default"), "prefix": p, "next_hops_base": nilIfEmpty(b), "next_hops_predicted": nilIfEmpty(a),
+				"in_base": hadB, "in_predicted": hadA, "forwarding_changed": hadB != hadA || b != a})
+		}
+		for _, r := range c.RemovedAdvertisements {
+			check("withdraw", r.VRF, r.Prefix)
+		}
+		for _, a := range c.AddedAdvertisements {
+			check("inject_or_modify", a.VRF, a.Prefix)
+		}
+	}
+	if len(rows) == 0 {
+		return nil, limits
+	}
+	unchanged := 0
+	for _, r := range rows {
+		if r["forwarding_changed"] == false {
+			unchanged++
+		}
+	}
+	if unchanged > 0 {
+		limits = append(limits, fmt.Sprintf("%d staged advertisement(s) were recorded but the forwarding entry for their prefix did not change between the base and the prediction: nothing here says why (a backup path that is never best, a prefix the inbound policy does not permit, or a modelling gap all look like this)", unchanged))
+	}
+	limits = append(limits, "staged_advertisement_effect compares the device's forwarding entry (VRF and prefix) on the base and predicted snapshots; it is read from the "+source+" of the change set")
+	return map[string]any{"checked": rows, "recorded_but_unchanged": unchanged}, limits
 }

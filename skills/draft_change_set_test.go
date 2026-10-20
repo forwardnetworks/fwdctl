@@ -393,17 +393,22 @@ func TestDraftChangeSetDropsALeadingConfigureTerminal(t *testing.T) {
 	}
 }
 
-// view list says how many devices the last COMMITTED version edits (devices_edited) and, where that is zero, how many devices the caller's uncommitted draft edits (draft_devices), so a staged-but-uncommitted change set does not read as empty.
+// view list reads each change set's content from its head commit and, where nothing is committed, its draft (the change-set list never carries the per-device changes): devices_edited counts the committed devices (a BGP-only change set counts its devices), and draft_devices the uncommitted ones.
 func TestVerifyChangeListShowsDraftDevicesWhenNothingIsCommitted(t *testing.T) {
 	routes := map[string]fwdtest.Handler{
-		"GET /api/networks/n1/change-sets":                         fwdtest.Const(200, map[string]any{"changeSets": []any{map[string]any{"id": "cs1", "name": "staged", "snapshotId": "s1"}}}),
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, map[string]any{"changeSets": []any{
+			map[string]any{"id": "cs1", "name": "staged", "snapshotId": "s1"}, map[string]any{"id": "cs2", "name": "committed", "snapshotId": "s1"}}}),
 		"GET /api/networks/n1/change-sets/cs1/predicted-snapshots": fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{}}),
-		"GET /api/networks/n1/change-sets/cs1/draft":               fwdtest.Const(200, map[string]any{"draft": map[string]any{"id": "cs1", "deviceToChanges": map[string]any{"r1": map[string]any{}, "r2": map[string]any{}, "r3": map[string]any{}}}}),
+		"GET /api/networks/n1/change-sets/cs2/predicted-snapshots": fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{}}),
+		"GET /api/networks/n1/change-sets/cs1/commits/head":        fwdtest.Const(404, map[string]any{"message": "no commit"}),
+		"GET /api/networks/n1/change-sets/cs1/draft":               fwdtest.Const(200, map[string]any{"draft": map[string]any{"id": "cs1", "deviceToChanges": map[string]any{"r1": map[string]any{"commands": "x"}, "r2": map[string]any{"removedAdvertisements": []any{map[string]any{"vrf": "default", "externalPeer": "p", "prefix": "10.0.0.0/8"}}}, "r3": map[string]any{"commands": "y"}}}}),
+		"GET /api/networks/n1/change-sets/cs2/commits/head":        fwdtest.Const(200, map[string]any{"id": "cs2", "commitId": "c", "deviceToChanges": map[string]any{"r1": map[string]any{"removedAdvertisements": []any{map[string]any{"vrf": "default", "externalPeer": "p", "prefix": "10.0.0.0/8"}}}}}),
+		"GET /api/networks/n1/change-sets/cs2/draft":               fwdtest.Const(200, map[string]any{"draft": nil}),
 	}
 	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
 	b := jsonOf(r)
-	if !strings.Contains(b, `"devices_edited":0`) || !strings.Contains(b, `"draft_devices":3`) || !strings.Contains(strings.Join(r.Limits, " "), "COMMITTED") {
-		t.Errorf("draft devices: %s %v", b, r.Limits)
+	if !strings.Contains(b, `"draft_devices":3`) || !strings.Contains(b, `"devices_edited":0`) || !strings.Contains(b, `"devices_edited":1`) || !strings.Contains(strings.Join(r.Limits, " "), "COMMITTED") {
+		t.Errorf("devices: %s %v", b, r.Limits)
 	}
 }
 

@@ -22,6 +22,8 @@ func csRoutes(preds any, base, after any) map[string]fwdtest.Handler {
 			"deviceToChanges": map[string]any{"fw1": map[string]any{}, "r1": map[string]any{}}}}}),
 		csPredPath: fwdtest.Const(200, map[string]any{"snapshots": preds}),
 	}
+	r["GET /api/networks/n1/change-sets/cs1/commits/head"] = fwdtest.Const(200, map[string]any{"id": "cs1", "commitId": "c1", "deviceToChanges": map[string]any{"fw1": map[string]any{"hasSecurityRuleChanges": true}, "r1": map[string]any{"commands": "x"}}})
+	r["GET /api/networks/n1/change-sets/cs1/draft"] = fwdtest.Const(200, map[string]any{"draft": nil})
 	r[csCheckPath] = func(req *http.Request, _ []byte) (int, any) {
 		if req.URL.Query().Get("snapshotId") == "p1" {
 			return 200, after
@@ -73,16 +75,36 @@ func TestReviewChangeSetOKNeedsAPredictionAndSaysWhenThereAreNoChecks(t *testing
 	}
 }
 
-// describe says how many devices the committed version edits AND how many the caller's uncommitted draft edits: a change set that holds only BGP advertisements, or was staged and not committed, can show 0 committed devices. The limit says what 0 does and does not prove.
-func TestDescribeShowsDraftDevicesAndSaysWhatZeroCommittedDevicesMeans(t *testing.T) {
+// describe reads the change set's content from its head commit and its draft (the change-set list never carries the per-device changes): the devices it edits, and per device the staged commands, a whole-config replacement, pending firewall rule changes, and the BGP advertisements it injects, modifies or withdraws. A change set that holds only BGP advertisements lists its devices.
+func TestDescribeListsTheStagedAdvertisementsPerDevice(t *testing.T) {
 	r := csRoutes([]any{}, []any{}, []any{})
 	r[csListPath] = fwdtest.Const(200, map[string]any{"changeSets": []any{map[string]any{"id": "cs1", "name": "withdraw", "networkId": "n1", "snapshotId": "s1"}}})
-	r["GET /api/networks/n1/change-sets/cs1/draft"] = fwdtest.Const(200, map[string]any{"draft": map[string]any{"id": "cs1", "deviceToChanges": map[string]any{"r1": map[string]any{}}}})
+	r["GET /api/networks/n1/change-sets/cs1/commits/head"] = fwdtest.Const(200, map[string]any{"id": "cs1", "commitId": "c1", "deviceToChanges": map[string]any{
+		"r1": map[string]any{"hasConfig": false, "hasSecurityRuleChanges": false, "removedAdvertisements": []any{map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "203.0.113.0/24"}}},
+		"r2": map[string]any{"commands": "interface lo1\n description x", "hasConfig": false, "hasSecurityRuleChanges": false,
+			"addedAdvertisements": []any{map[string]any{"vrf": "default", "externalPeer": "192.0.2.9", "prefix": "198.51.100.0/24", "nextHop": "192.0.2.9", "type": "EBGP"}}},
+		"fw1": map[string]any{"hasConfig": false, "hasSecurityRuleChanges": true},
+		"r3":  map[string]any{"hasConfig": false, "hasSecurityRuleChanges": false}, // an empty entry (a restore left nothing): not edited
+	}})
+	r["GET /api/networks/n1/change-sets/cs1/draft"] = fwdtest.Const(200, map[string]any{"draft": nil})
 	res, _ := mustRun(t, "verify-change", r, `{"network_id":"n1","view":"describe","change_set_id":"cs1"}`)
 	b := jsonOf(res)
-	l := strings.Join(res.Limits, " ")
-	if !strings.Contains(b, `"draft_devices":1`) || !strings.Contains(l, "committed") || !strings.Contains(l, "advertisements") {
-		t.Errorf("draft devices and the zero-devices limit: %s %v", b, res.Limits)
+	for _, want := range []string{`"devices_edited":["fw1","r1","r2"]`, `"withdrawn_advertisements"`, `203.0.113.0/24`, `"injected_or_modified_advertisements"`, `198.51.100.0/24`, `"has_security_rule_changes":true`, `"commands":2`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	if strings.Contains(b, `"r3"`) && strings.Contains(b, `"devices_edited":["fw1","r1","r2","r3"]`) {
+		t.Errorf("an empty entry is not an edited device")
+	}
+	// a change set with only a draft (nothing committed) shows its draft devices
+	r["GET /api/networks/n1/change-sets/cs1/commits/head"] = fwdtest.Const(404, map[string]any{"message": "no commit"})
+	r["GET /api/networks/n1/change-sets/cs1/draft"] = fwdtest.Const(200, map[string]any{"draft": map[string]any{"id": "cs1", "deviceToChanges": map[string]any{
+		"r1": map[string]any{"removedAdvertisements": []any{map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "203.0.113.0/24"}}}}}})
+	res, _ = mustRun(t, "verify-change", r, `{"network_id":"n1","view":"describe","change_set_id":"cs1"}`)
+	b = jsonOf(res)
+	if !strings.Contains(b, `"draft_devices":1`) || !strings.Contains(b, `"devices_edited":[]`) || !strings.Contains(strings.Join(res.Limits, " "), "uncommitted") {
+		t.Errorf("draft only: %s %v", b, res.Limits)
 	}
 }
 

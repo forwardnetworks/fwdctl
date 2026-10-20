@@ -264,9 +264,13 @@ func TestVerifyChangeManyRegressionsAreAllCountedButOnlyTheWorstAreCited(t *test
 func TestVerifyChangeListViewListsTheNetworksChangeSets(t *testing.T) {
 	routes := map[string]fwdtest.Handler{
 		"GET /api/networks/n1/change-sets": fwdtest.Const(200, map[string]any{"changeSets": []any{
-			map[string]any{"id": "cs1", "name": "add loopback", "networkId": "n1", "snapshotId": "s1", "deviceToChanges": map[string]any{"r1": []any{}, "r2": []any{}}},
+			map[string]any{"id": "cs1", "name": "add loopback", "networkId": "n1", "snapshotId": "s1"},
 			map[string]any{"id": "cs2", "name": "remove acl", "networkId": "n1", "snapshotId": "s2"},
 		}}),
+		"GET /api/networks/n1/change-sets/cs1/commits/head": fwdtest.Const(200, map[string]any{"id": "cs1", "commitId": "c", "deviceToChanges": map[string]any{"r1": map[string]any{"commands": "a"}, "r2": map[string]any{"commands": "b"}}}),
+		"GET /api/networks/n1/change-sets/cs1/draft":        fwdtest.Const(200, map[string]any{"draft": nil}),
+		"GET /api/networks/n1/change-sets/cs2/commits/head": fwdtest.Const(404, map[string]any{"message": "none"}),
+		"GET /api/networks/n1/change-sets/cs2/draft":        fwdtest.Const(200, map[string]any{"draft": nil}),
 	}
 	r, srv := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
 	b := jsonOf(r)

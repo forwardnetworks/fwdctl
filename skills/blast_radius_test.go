@@ -231,3 +231,39 @@ func TestBlastRadiusRoutingAreaReportsSessionsRouteCountsAndBaselineDrift(t *tes
 		t.Errorf("a routing change is part of the finding: %q", r.Finding)
 	}
 }
+
+// With a change set, impact checks each staged BGP advertisement against the forwarding entries it should move: for a withdraw or inject on a device it reads that device's entry for the prefix on the base and on the predicted snapshot and says changed or unchanged, so "the withdraw was recorded but nothing changed" is said by the skill instead of found by hand.
+func TestBlastRadiusChecksStagedAdvertisementsAgainstTheForwardingEntries(t *testing.T) {
+	f := changeFix{}
+	routes := f.routes()
+	routes["GET /api/networks/n1/change-sets/cs1/commits/head"] = fwdtest.Const(200, map[string]any{"id": "cs1", "commitId": "c", "deviceToChanges": map[string]any{
+		"edge1": map[string]any{"removedAdvertisements": []any{
+			map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "10.9.0.0/24"},
+			map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "10.8.0.0/24"}}},
+	}})
+	routes["GET /api/networks/n1/change-sets/cs1/draft"] = fwdtest.Const(200, map[string]any{"draft": nil})
+	nqe := func(snap string) map[string]fwdtest.Handler {
+		after := snap == "a1"
+		hops := func(base, moved string) []any {
+			if after {
+				return []any{moved}
+			}
+			return []any{base}
+		}
+		return map[string]fwdtest.Handler{
+			"nextHops: foreach hop": rowsOf(2,
+				map[string]any{"vrf": "default", "prefix": "10.9.0.0/24", "nextHops": hops("192.0.2.1", "192.0.2.1")},   // withdrawn, but nothing moved
+				map[string]any{"vrf": "default", "prefix": "10.8.0.0/24", "nextHops": hops("192.0.2.1", "172.16.0.2")}), // withdrawn and moved
+		}
+	}
+	routes[nqePath] = func(r *http.Request, b []byte) (int, any) {
+		return invNQE(nqe(r.URL.Query().Get("snapshotId")))(r, b)
+	}
+	r, _ := mustRun(t, "analyze-blast-radius", routes, csInput+"}")
+	b := jsonOf(r)
+	for _, want := range []string{"staged_advertisement_effect", `"prefix":"10.9.0.0/24"`, `"forwarding_changed":false`, `"forwarding_changed":true`, "recorded but"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q in %s", want, b)
+		}
+	}
+}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	forward "github.com/forwardnetworks/forward-go-sdk"
+
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
 )
@@ -228,7 +230,7 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 	rows := make([]map[string]any, 0, len(list))
 	unfinishedPred := false
 	for i, c := range list {
-		row := map[string]any{"id": string(c.ID), "name": c.Name, "description": c.Description, "base_snapshot_id": string(c.SnapshotID), "tags": c.Tags, "devices_edited": len(c.DeviceToChanges)}
+		row := map[string]any{"id": string(c.ID), "name": c.Name, "description": c.Description, "base_snapshot_id": string(c.SnapshotID), "tags": c.Tags}
 		if i < maxListPredictions { // one read per change set, so only the first ones carry their predicted snapshots
 			if ps, perr := s.PredictedSnapshots(ctx, networkID, string(c.ID)); perr != nil {
 				row["predictions_unreadable"] = perr.Error()
@@ -244,10 +246,13 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 				row["predicted_snapshots"] = preds
 			}
 		}
-		if len(c.DeviceToChanges) == 0 && i < maxListPredictions {
-			// nothing committed: say how many devices the caller's uncommitted draft edits, so a staged change set does not read as empty
-			if n, derr := s.DraftDevices(ctx, networkID, string(c.ID)); derr == nil {
-				row["draft_devices"] = n
+		if i < maxListPredictions { // the list never carries the per-device changes: read the head commit, and the draft where nothing is committed
+			content := s.ChangeContent(ctx, networkID, string(c.ID))
+			if content.CommittedErr == nil {
+				row["devices_edited"] = len(forward.EditedDevices(content.Committed))
+			}
+			if len(forward.EditedDevices(content.Committed)) == 0 && content.DraftErr == nil {
+				row["draft_devices"] = len(forward.EditedDevices(content.Draft))
 			}
 		}
 		rows = append(rows, row)
@@ -255,7 +260,7 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 	shown, omitted := result.Cap(rows, 100, "change sets", "describe one with view describe")
 	limits := []string{"this lists the change sets Forward holds now; a deleted change set is gone, so none here does not prove Predict was never used",
 		fmt.Sprintf("predicted_snapshots (newest first) are read for the first %d change sets only; a change set's checks are read with view describe (change_set_id)", maxListPredictions),
-		"devices_edited counts the devices of the change set's last COMMITTED version; a change set that was staged but not yet committed or run shows 0 there, and draft_devices (read for change sets with nothing committed) counts the devices of this login's uncommitted draft"}
+		"devices_edited counts the devices of the change set's last COMMITTED version, read from its head commit (the change-set list itself never carries the per-device changes), and counts a BGP-only change set's devices; a change set staged but not yet committed or run shows 0 there, and draft_devices (read where nothing is committed) counts the devices of this login's uncommitted draft; view describe lists what is staged on each device"}
 	if unfinishedPred {
 		limits = append(limits, "a predicted snapshot reports UNPROCESSED while it is still being created or computed (inspect-snapshots shows its stage, such as CREATION or COMPUTING): only PROCESSED, FAILED, CANCELED and TIMED_OUT are finished (see each prediction's finished flag)")
 	}

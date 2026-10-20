@@ -421,11 +421,29 @@ func (s *Session) RunPrediction(ctx context.Context, networkID, changeSetID, not
 	return run, nil
 }
 
-// DraftDevices is how many devices the caller's uncommitted draft of the change set edits (0 when there is no draft).
-func (s *Session) DraftDevices(ctx context.Context, networkID, changeSetID string) (int, error) {
-	d, _, err := s.Client.Predict.GetDraft(ctx, networkID, changeSetID)
-	if err != nil || d == nil || d.Draft == nil {
-		return 0, err
+// ChangeContent is what a change set stages, per device: the head commit (the committed version) and the caller's uncommitted draft. The change-set list never carries the per-device changes, so
+// this is the only way to see them. A change set with no commit has an empty committed map; a missing draft an empty draft map. Each read that failed is in its own error and the other still stands.
+type ChangeContent struct {
+	Committed, Draft       map[string]forward.DeviceChanges
+	CommittedErr, DraftErr error
+}
+
+// ChangeContent reads the head commit and the draft of a change set.
+func (s *Session) ChangeContent(ctx context.Context, networkID, changeSetID string) ChangeContent {
+	var c ChangeContent
+	if h, _, err := s.Client.Predict.GetHeadCommit(ctx, networkID, changeSetID); err != nil {
+		if st := Status(err); st != 404 {
+			c.CommittedErr = err
+		}
+	} else if h != nil {
+		c.Committed, c.CommittedErr = h.Changes()
 	}
-	return len(d.Draft.DeviceToChanges), nil
+	if d, _, err := s.Client.Predict.GetDraft(ctx, networkID, changeSetID); err != nil {
+		if st := Status(err); st != 404 {
+			c.DraftErr = err
+		}
+	} else if d != nil && d.Draft != nil {
+		c.Draft, c.DraftErr = d.Draft.Changes()
+	}
+	return c
 }

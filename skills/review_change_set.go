@@ -38,19 +38,28 @@ func reviewChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		return result.NewUnknown(reviewChangeSetName, fmt.Sprintf("The network has no change set %s", in.ChangeSetID), cx,
 			[]string{"no such change set in this network (ids are matched exactly)"}, result.Options{})
 	}
-	devices := make([]string, 0, len(cs.DeviceToChanges))
-	for d := range cs.DeviceToChanges {
-		devices = append(devices, d)
+	content := s.ChangeContent(ctx, in.NetworkID, in.ChangeSetID)
+	devices := forward.EditedDevices(content.Committed)
+	if devices == nil {
+		devices = []string{}
 	}
-	sort.Strings(devices)
 	detail := map[string]any{"id": string(cs.ID), "name": cs.Name, "description": cs.Description, "base_snapshot_id": string(cs.SnapshotID),
 		"devices_edited": devices, "tags": cs.Tags}
 	var limits []string
-	if n, derr := s.DraftDevices(ctx, in.NetworkID, in.ChangeSetID); derr == nil {
-		detail["draft_devices"] = n
+	if content.CommittedErr != nil {
+		limits = append(limits, "the committed version could not be read: "+content.CommittedErr.Error())
+	} else {
+		detail["committed"] = stagedChanges(content.Committed)
 	}
-	if len(devices) == 0 {
-		limits = append(limits, "devices_edited lists the devices of the last COMMITTED version, and it is empty for this change set: that does not prove nothing was staged. A change set staged but not yet committed or run, and possibly one that holds only BGP advertisements or firewall rules, can show no devices there; draft_devices counts this login's uncommitted draft. The staged advertisements themselves are not listed by this view")
+	draftDevices := forward.EditedDevices(content.Draft)
+	if content.DraftErr != nil {
+		limits = append(limits, "the draft could not be read: "+content.DraftErr.Error())
+	} else {
+		detail["draft_devices"] = len(draftDevices)
+		if len(draftDevices) > 0 {
+			detail["draft"] = stagedChanges(content.Draft)
+			limits = append(limits, fmt.Sprintf("this login holds an uncommitted draft that edits %d device(s): it is not in a prediction until it is committed (a prediction run commits the draft first)", len(draftDevices)))
+		}
 	}
 	failed := []string{}
 
@@ -171,4 +180,38 @@ func predictionFinished(state string) bool {
 		return true
 	}
 	return false
+}
+
+// stagedChanges lists, per edited device, what is staged: the number of CLI command lines, a whole-config replacement, pending firewall rule changes (the rules are read with a security rules diff, device by device), the BGP advertisements injected or modified, and the ones withdrawn (keys only).
+func stagedChanges(changes map[string]forward.DeviceChanges) map[string]any {
+	out := map[string]any{}
+	for _, dev := range forward.EditedDevices(changes) {
+		c := changes[dev]
+		row := map[string]any{}
+		if c.Commands != "" {
+			row["commands"] = len(strings.Split(strings.TrimRight(c.Commands, "\n"), "\n"))
+		}
+		if c.HasConfig {
+			row["has_config"] = true
+		}
+		if c.HasSecurityRuleChanges {
+			row["has_security_rule_changes"] = true
+		}
+		if len(c.AddedAdvertisements) > 0 {
+			ads := make([]map[string]any, 0, len(c.AddedAdvertisements))
+			for _, a := range c.AddedAdvertisements {
+				ads = append(ads, map[string]any{"vrf": a.VRF, "external_peer": a.ExternalPeer, "prefix": a.Prefix, "next_hop": a.NextHop, "type": a.Type})
+			}
+			row["injected_or_modified_advertisements"] = ads
+		}
+		if len(c.RemovedAdvertisements) > 0 {
+			ads := make([]map[string]any, 0, len(c.RemovedAdvertisements))
+			for _, a := range c.RemovedAdvertisements {
+				ads = append(ads, map[string]any{"vrf": a.VRF, "external_peer": a.ExternalPeer, "prefix": a.Prefix})
+			}
+			row["withdrawn_advertisements"] = ads
+		}
+		out[dev] = row
+	}
+	return out
 }
