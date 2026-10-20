@@ -157,9 +157,10 @@
             "duplicate",
             "delete",
             "discard_device",
-            "restore_commit"
+            "restore_commit",
+            "predict"
           ],
-          "description": "rename: lifecycle.name and/or description; duplicate: copy it (lifecycle.name optional); delete: confirm = the change set id; discard_device: throw away that device's uncommitted edits (lifecycle.device); restore_commit: make an earlier version current (lifecycle.commit_id)"
+          "description": "rename: lifecycle.name and/or description; duplicate: copy it (lifecycle.name optional); delete: confirm = the change set id; discard_device: throw away that device's uncommitted edits (lifecycle.device); restore_commit: make an earlier version current (lifecycle.commit_id); predict: start a prediction of the change set and return the predicted snapshot id at once, without waiting (wait with fwdctl wait snapshot)"
         },
         "name": {
           "type": "string"

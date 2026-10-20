@@ -28,7 +28,7 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		if strings.TrimSpace(l.Name) == "" && strings.TrimSpace(in.Description) == "" {
 			return result.Result{}, fmt.Errorf("%w: rename needs lifecycle.name and/or description", ErrInvalidInput)
 		}
-	case "duplicate", "delete":
+	case "duplicate", "delete", "predict":
 	case "discard_device":
 		if strings.TrimSpace(l.Device) == "" {
 			return result.Result{}, fmt.Errorf("%w: discard_device needs lifecycle.device", ErrInvalidInput)
@@ -38,7 +38,7 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			return result.Result{}, fmt.Errorf("%w: restore_commit needs lifecycle.commit_id (the versions are listed by verify-change view describe)", ErrInvalidInput)
 		}
 	default:
-		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, delete, discard_device or restore_commit", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, delete, discard_device, restore_commit or predict", ErrInvalidInput)
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	list, err := s.ChangeSets(ctx, in.NetworkID)
@@ -103,6 +103,17 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			_, e := s.Client.Predict.DiscardDraftDevice(ctx, in.NetworkID, id, l.Device)
 			return nil, e
 		}
+	case "predict":
+		ch.Action, verb = "start_prediction", "start a prediction of"
+		ch.Reversible = false
+		ch.Undo = "none: a started prediction leaves a predicted snapshot that these skills cannot delete (edit-snapshot action cancel stops it while it runs, with ADMINISTER_SYSTEM)"
+		do = func() (any, error) {
+			p, _, e := s.Client.Predict.Run(ctx, in.NetworkID, id, "fwdctl")
+			if p != nil {
+				return map[string]any{"predicted_snapshot_id": string(p.ID), "state": p.State}, e
+			}
+			return nil, e
+		}
 	case "restore_commit":
 		ch.Action, verb = "restore_commit", "restore version "+l.CommitID+" as the current content of"
 		ch.After = map[string]any{"commit_id": l.CommitID}
@@ -132,6 +143,9 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 	}
 	ch.Applied = true
 	finding := fmt.Sprintf("Applied: %s change set %s (%s)", verb, id, cs.Name)
+	if m, ok := detail.(map[string]any); ok && op == "predict" {
+		finding = fmt.Sprintf("Started a prediction of change set %s (%s) as predicted snapshot %v (state %v); it did NOT wait: wait for it with `fwdctl wait snapshot --network %s --snapshot %v`, then read verify-change view list or describe", id, cs.Name, m["predicted_snapshot_id"], m["state"], in.NetworkID, m["predicted_snapshot_id"])
+	}
 	return result.Build(draftChangeSetName, result.OK, finding, result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"verify-change"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "changeSetLifecycle", nil, map[string]any{"mode": result.ModeApplied, "op": op, "change_set": before, "result": detail}, finding)}})
 }

@@ -495,6 +495,9 @@ func TestBGPReceivedSaysWhenLocalPrefIsNullAndWhichReadIsAuthoritative(t *testin
 	if !strings.Contains(b, `"local_pref":null`) || !strings.Contains(l, "local preference is not reported") {
 		t.Errorf("local preference: %s %v", b, r.Limits)
 	}
+	if !strings.Contains(l, "withdraw") {
+		t.Errorf("a withdrawn route can still be listed on a predicted snapshot: %v", r.Limits)
+	}
 	if !strings.Contains(l, "forwarding entry") || !strings.Contains(l, "input policy") {
 		t.Errorf("which read is authoritative: %v", r.Limits)
 	}

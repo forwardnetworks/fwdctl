@@ -226,6 +226,7 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 		return result.Result{}, err
 	}
 	rows := make([]map[string]any, 0, len(list))
+	unfinishedPred := false
 	for i, c := range list {
 		row := map[string]any{"id": string(c.ID), "name": c.Name, "description": c.Description, "base_snapshot_id": string(c.SnapshotID), "tags": c.Tags, "devices_edited": len(c.DeviceToChanges)}
 		if i < maxListPredictions { // one read per change set, so only the first ones carry their predicted snapshots
@@ -235,7 +236,10 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 				sort.SliceStable(ps, func(a, b int) bool { return ps[a].CreatedAt > ps[b].CreatedAt })
 				preds := make([]map[string]any, 0, len(ps))
 				for _, p := range ps {
-					preds = append(preds, map[string]any{"id": string(p.ID), "state": p.State, "created_at": nilIfEmpty(p.CreatedAt)})
+					preds = append(preds, map[string]any{"id": string(p.ID), "state": p.State, "finished": predictionFinished(p.State), "created_at": nilIfEmpty(p.CreatedAt)})
+					if !predictionFinished(p.State) {
+						unfinishedPred = true
+					}
 				}
 				row["predicted_snapshots"] = preds
 			}
@@ -252,6 +256,9 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 	limits := []string{"this lists the change sets Forward holds now; a deleted change set is gone, so none here does not prove Predict was never used",
 		fmt.Sprintf("predicted_snapshots (newest first) are read for the first %d change sets only; a change set's checks are read with view describe (change_set_id)", maxListPredictions),
 		"devices_edited counts the devices of the change set's last COMMITTED version; a change set that was staged but not yet committed or run shows 0 there, and draft_devices (read for change sets with nothing committed) counts the devices of this login's uncommitted draft"}
+	if unfinishedPred {
+		limits = append(limits, "a predicted snapshot reports UNPROCESSED while it is still being created or computed (inspect-snapshots shows its stage, such as CREATION or COMPUTING): only PROCESSED, FAILED, CANCELED and TIMED_OUT are finished (see each prediction's finished flag)")
+	}
 	finding := fmt.Sprintf("%d change set(s) on network %s", len(rows), networkID)
 	if len(rows) == 0 {
 		finding = fmt.Sprintf("No change set on network %s", networkID)

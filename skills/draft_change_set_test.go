@@ -406,3 +406,25 @@ func TestVerifyChangeListShowsDraftDevicesWhenNothingIsCommitted(t *testing.T) {
 		t.Errorf("draft devices: %s %v", b, r.Limits)
 	}
 }
+
+// lifecycle op predict starts a prediction of an existing change set and returns the predicted snapshot id at once, without waiting (a wait of minutes to hours can then be done with fwdctl wait snapshot instead of a polling script). A dry run says what it would start.
+func TestDraftChangeSetLifecyclePredictStartsAndReturnsAtOnce(t *testing.T) {
+	started := 0
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, []any{map[string]any{"id": "cs9", "name": "withdraw", "snapshotId": "s1"}}),
+		"POST /api/networks/n1/change-sets/cs9": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("action") == "predict" {
+				started++
+			}
+			return 200, map[string]any{"id": "p5", "state": "UNPROCESSED"}
+		},
+	}
+	r, srv := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"predict"}}`)
+	if r.Mode != result.ModeDryRun || started != 0 || writes(srv) != 0 || !strings.Contains(r.Finding, "cs9") {
+		t.Fatalf("dry run: %s %d %s", r.Mode, started, r.Finding)
+	}
+	r, _ = mustRun(t, "edit-change-set", routes, `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"predict"},"apply":true}`)
+	if r.Status != result.OK || started != 1 || !strings.Contains(r.Finding, "p5") || !strings.Contains(r.Finding, "fwdctl wait snapshot") || !strings.Contains(jsonOf(r), `"predicted_snapshot_id":"p5"`) {
+		t.Errorf("apply: %s %d %s", r.Status, started, r.Finding)
+	}
+}

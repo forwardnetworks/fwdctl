@@ -72,3 +72,34 @@ func TestReviewChangeSetOKNeedsAPredictionAndSaysWhenThereAreNoChecks(t *testing
 		t.Fatalf("%s %v", r.Status, r.Limits)
 	}
 }
+
+// describe says how many devices the committed version edits AND how many the caller's uncommitted draft edits: a change set that holds only BGP advertisements, or was staged and not committed, can show 0 committed devices. The limit says what 0 does and does not prove.
+func TestDescribeShowsDraftDevicesAndSaysWhatZeroCommittedDevicesMeans(t *testing.T) {
+	r := csRoutes([]any{}, []any{}, []any{})
+	r[csListPath] = fwdtest.Const(200, map[string]any{"changeSets": []any{map[string]any{"id": "cs1", "name": "withdraw", "networkId": "n1", "snapshotId": "s1"}}})
+	r["GET /api/networks/n1/change-sets/cs1/draft"] = fwdtest.Const(200, map[string]any{"draft": map[string]any{"id": "cs1", "deviceToChanges": map[string]any{"r1": map[string]any{}}}})
+	res, _ := mustRun(t, "verify-change", r, `{"network_id":"n1","view":"describe","change_set_id":"cs1"}`)
+	b := jsonOf(res)
+	l := strings.Join(res.Limits, " ")
+	if !strings.Contains(b, `"draft_devices":1`) || !strings.Contains(l, "committed") || !strings.Contains(l, "advertisements") {
+		t.Errorf("draft devices and the zero-devices limit: %s %v", b, res.Limits)
+	}
+}
+
+// A predicted snapshot reports UNPROCESSED while it is still being created or computed (inspect-snapshots shows the stage). list and describe mark each prediction finished or not, so a waiter does not treat "not PROCESSING" as done.
+func TestPredictionStatesSayWhichAreFinished(t *testing.T) {
+	r := csRoutes([]any{map[string]any{"id": "p1", "state": "UNPROCESSED"}, map[string]any{"id": "p0", "state": "PROCESSED"}}, []any{}, []any{})
+	res, _ := mustRun(t, "verify-change", r, `{"network_id":"n1","view":"describe","change_set_id":"cs1"}`)
+	b := jsonOf(res)
+	if !strings.Contains(b, `"finished":false`) || !strings.Contains(b, `"finished":true`) || !strings.Contains(strings.Join(res.Limits, " "), "UNPROCESSED") {
+		t.Errorf("finished flags: %s %v", b, res.Limits)
+	}
+	l := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, map[string]any{"changeSets": []any{map[string]any{"id": "cs1", "name": "x", "snapshotId": "s1"}}}),
+		csPredPath:                         fwdtest.Const(200, map[string]any{"snapshots": []any{map[string]any{"id": "p1", "state": "UNPROCESSED"}}}),
+	}
+	res, _ = mustRun(t, "verify-change", l, `{"network_id":"n1","view":"list"}`)
+	if !strings.Contains(jsonOf(res), `"finished":false`) || !strings.Contains(strings.Join(res.Limits, " "), "UNPROCESSED") {
+		t.Errorf("list: %s %v", jsonOf(res), res.Limits)
+	}
+}

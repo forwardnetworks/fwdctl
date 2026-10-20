@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
@@ -45,22 +46,35 @@ func reviewChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	detail := map[string]any{"id": string(cs.ID), "name": cs.Name, "description": cs.Description, "base_snapshot_id": string(cs.SnapshotID),
 		"devices_edited": devices, "tags": cs.Tags}
 	var limits []string
+	if n, derr := s.DraftDevices(ctx, in.NetworkID, in.ChangeSetID); derr == nil {
+		detail["draft_devices"] = n
+	}
+	if len(devices) == 0 {
+		limits = append(limits, "devices_edited lists the devices of the last COMMITTED version, and it is empty for this change set: that does not prove nothing was staged. A change set staged but not yet committed or run, and possibly one that holds only BGP advertisements or firewall rules, can show no devices there; draft_devices counts this login's uncommitted draft. The staged advertisements themselves are not listed by this view")
+	}
 	failed := []string{}
 
 	preds, perr := s.PredictedSnapshots(ctx, in.NetworkID, in.ChangeSetID)
 	var newest string
+	unfinished := false
 	if perr != nil {
 		limits = append(limits, "predicted snapshots could not be listed: "+perr.Error())
 	} else {
 		rows := make([]map[string]any, 0, len(preds))
 		sort.SliceStable(preds, func(i, j int) bool { return preds[i].CreatedAt > preds[j].CreatedAt })
 		for _, p := range preds {
-			rows = append(rows, map[string]any{"id": string(p.ID), "state": p.State, "created_at": p.CreatedAt, "processed_at": p.ProcessedAt})
+			rows = append(rows, map[string]any{"id": string(p.ID), "state": p.State, "finished": predictionFinished(p.State), "created_at": p.CreatedAt, "processed_at": p.ProcessedAt})
+			if !predictionFinished(p.State) {
+				unfinished = true
+			}
 			if newest == "" && p.State == "PROCESSED" {
 				newest = string(p.ID)
 			}
 		}
 		detail["predictions"] = rows
+		if unfinished {
+			limits = append(limits, "a predicted snapshot reports UNPROCESSED while it is still being created or computed (inspect-snapshots shows its stage, such as CREATION or COMPUTING): only PROCESSED, FAILED, CANCELED and TIMED_OUT are finished")
+		}
 		if newest == "" {
 			limits = append(limits, "the change set has not been predicted (no processed predicted snapshot), so its effect is not measured; use verify-change with run_predict")
 		}
@@ -148,4 +162,13 @@ func outcomes(list []forward.ChangeSetCheckResult) map[string]checkOutcome {
 		out[string(c.ID)] = o
 	}
 	return out
+}
+
+// predictionFinished says a predicted snapshot's state is final. A predicted snapshot reports UNPROCESSED while it is still being created or computed, so "not PROCESSING" is not "finished".
+func predictionFinished(state string) bool {
+	switch strings.ToUpper(state) {
+	case "PROCESSED", "FAILED", "CANCELED", "TIMED_OUT", "RESTORE_FAILED":
+		return true
+	}
+	return false
 }
