@@ -57,3 +57,8 @@ One `state` item per view: the session, the explanation, the users or the groups
 ## Running this skill
 
 `echo '{}' | fwdctl run inspect-access` is `me`. `echo '{"view":"explain","error":"Missing permission: NetworkOperation.EDIT_CHECKS","network_id":"N"}' | fwdctl run inspect-access`.
+
+## Refusal wordings (any skill)
+
+Forward sends no reason code on a 403 (it is null), so a skill that is refused tells the kinds apart by the wording and names who can resolve each: `Missing permission: <operation>` (a role: `view explain` names the lowest role that holds it), `Unlicensed operation: <operation>` (the licence), `... license has expired` (the licence lapsed: a read-only grace period, then only an organization administrator can sign in), `<PROPERTY> is on/off for your organization` (an organization property: `edit-org-property`, and on a hosted Forward most Predict properties need a Forward-support login), `<PROPERTY> is on/off for your deployment` (not changeable by an organization), and `<X> authority required` (a Forward-support or Forward administrator login). The wordings are Forward's own format strings as the Python SDK read them, so they are as stable as undocumented prose is: wording not recognised stays a plain refusal, which does not mean it has no cause. An empty roles answer from Forward is unknown, not a refusal.
+

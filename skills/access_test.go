@@ -278,3 +278,31 @@ func TestAccessUsersShowSystemRolesAndSupportedOrgsAndActivityNamesTheImpersonat
 		t.Errorf("the impersonator is named: %s", jsonOf(r))
 	}
 }
+
+// Forward words a refusal five ways, and a login can fix only some: a missing permission (a role), an unlicensed operation (the licence), an expired licence, a setting that is off for the organization or for the deployment, and an authority only Forward support holds.
+// Each is told apart by its wording (Forward sends no reason code on a 403) and named with who can resolve it. The wording is read from Forward's access enforcer by the Python SDK; unrecognised wording stays unclassified.
+func TestADenialIsClassifiedByItsWordingAndSaysWhoCanResolveIt(t *testing.T) {
+	for _, tc := range []struct{ msg, want, not string }{
+		{"PREDICT_MODEL_OSPF is off for your organization.", "PREDICT_MODEL_OSPF", ""},
+		{"FIREWALL_PREDICT is off for your deployment.", "deployment", ""},
+		{"Forward support authority required", "platform administrator", ""},
+		{"The organization’s license has expired", "expired", ""},
+	} {
+		routes := map[string]fwdtest.Handler{"GET /api/networks/n1/change-sets": fwdtest.Const(403, map[string]any{"message": tc.msg})}
+		r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
+		b := r.Finding + " " + strings.Join(r.Limits, " ")
+		if r.Status != result.Unknown || !strings.Contains(b, tc.want) || (tc.not != "" && strings.Contains(b, tc.not)) {
+			t.Errorf("%q: %s %s %v", tc.msg, r.Status, r.Finding, r.Limits)
+		}
+	}
+}
+
+// A bare-string org role ("org":"ADMIN") decodes as one role instead of failing the whole session read, and a missing or empty roles object is "Forward did not say", not a refusal.
+func TestAccessMeReadsABareStringOrgRoleAsOneRole(t *testing.T) {
+	sess := map[string]any{"user": map[string]any{"id": "u-me", "username": "me@example.test", "enabled": true, "authSource": "LOCAL"},
+		"roles": map[string]any{"org": "ADMIN", "network": map[string]any{}}, "groupIds": []string{"g1"}}
+	r, _, err := runSkill(t, "inspect-access", accessRoutes(sess, map[string]string{}), `{"view":"me"}`)
+	if err != nil || r.Status == result.Error || !strings.Contains(jsonOf(r), "ADMIN") {
+		t.Fatalf("a bare-string org role: %v %s", err, jsonOf(r))
+	}
+}
