@@ -31,7 +31,7 @@ Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl 
 | `edit-nqe-query` | edit | Saves an authored NQE query to the organization's library, or removes one, showing the effect. Dry run unless apply is true. |
 | `edit-org-property` | edit | Lists Forward's org properties with value, who may change them and risk, and sets or clears one. Dry run unless apply is true. |
 | `edit-platform` | edit | Changes org admin settings: banners, webhooks, certificates, labels, integrations, backups, collection settings, endpoint profiles. Dry run unless apply. |
-| `edit-snapshot` | edit | Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import. Dry run unless apply. |
+| `edit-snapshot` | edit | Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import, cancel jobs. Dry run unless apply. |
 | `edit-source` | edit | Changes what is collected: devices, logins, jump servers, controller setups, command groups, discovery; tests devices. Dry run unless apply: true. |
 | `edit-synthetic-query` | edit | Attaches a saved NQE query to a synthetic node so Forward generates its connections from the rows, or detaches it. Dry run unless apply is true. |
 | `edit-wan-circuit` | edit | Manages one WAN circuit (a synthetic device for a provider's point-to-point L2 link), showing before and after. Dry run unless apply is true. |

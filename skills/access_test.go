@@ -306,3 +306,14 @@ func TestAccessMeReadsABareStringOrgRoleAsOneRole(t *testing.T) {
 		t.Fatalf("a bare-string org role: %v %s", err, jsonOf(r))
 	}
 }
+
+// A second wording of a missing permission (UserPrincipal's network check, as the Python SDK read it from source): "No permission for network operation EDIT_CHECKS". It is told as a role denial naming the operation, like "Missing permission: NetworkOperation.EDIT_CHECKS".
+func TestTheNetworkOperationWordingOfAMissingPermissionIsARoleDenial(t *testing.T) {
+	needModel(t)
+	routes := map[string]fwdtest.Handler{"GET /api/networks/n1/change-sets": fwdtest.Const(403, map[string]any{"message": "No permission for network operation EDIT_CHECKS"})}
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"list"}`)
+	b := r.Finding + " " + strings.Join(r.Limits, " ")
+	if r.Status != result.Unknown || !strings.Contains(b, "EDIT_CHECKS") || !strings.Contains(r.Finding, "lacks") {
+		t.Errorf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}

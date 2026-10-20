@@ -26,6 +26,12 @@ func denialResult(skill string, err error, cx result.Context, doing string) (res
 	}
 	op, ok := forward.MissingPermission(err)
 	if !ok {
+		// the other wording of a missing network permission: "No permission for network operation EDIT_CHECKS"
+		if m := denialNetworkPermission.FindStringSubmatch(err.Error()); m != nil && (fwd.Status(err) == 403 || fwd.Status(err) == 401) {
+			op, ok = "NetworkOperation."+m[1], true
+		}
+	}
+	if !ok {
 		return result.Result{}, false
 	}
 	scope, name := parseOperation(op)
@@ -49,6 +55,7 @@ var (
 	denialDeploymentSetting = regexp.MustCompile(`([A-Z][A-Z0-9_]+) is (?:on|off) for your deployment`)
 	denialAuthority         = regexp.MustCompile(`(?:^|:\s)([^:]+?)\s+authority required`)
 	denialLicenseExpired    = regexp.MustCompile(`license has expired`)
+	denialNetworkPermission = regexp.MustCompile(`No permission for network operation\s+([A-Z][A-Z0-9_]+)`)
 )
 
 func wordedDenial(skill string, err error, cx result.Context, doing string) (result.Result, bool) {
