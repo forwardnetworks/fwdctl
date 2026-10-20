@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
 )
@@ -444,5 +446,27 @@ func TestLifecyclePredictSaysWhenForwardReturnedAnExistingSnapshot(t *testing.T)
 	r, _ := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"predict"},"apply":true}`)
 	if strings.Contains(r.Finding, "Started") || !strings.Contains(r.Finding, "already existed") || !strings.Contains(r.Finding, "PROCESSED") || !strings.Contains(jsonOf(r), `"new_prediction":false`) {
 		t.Errorf("existing: %s", r.Finding)
+	}
+}
+
+// A predicted snapshot can read FAILED once and be PROCESSED a moment later (seen live: the wait reported FAILED for a snapshot that listed PROCESSED seconds afterwards). The run re-reads before it reports a failure, and reports the snapshot as predicted when the re-read says PROCESSED.
+func TestDraftChangeSetRunRereadsAFailedPredictionBeforeReportingIt(t *testing.T) {
+	fwd.FailedRecheckDelay = time.Millisecond
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes["GET "+csRoot+"/cs7/predicted-snapshots"] = fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{}})
+	routes["POST "+csRoot+"/cs7"] = fwdtest.Const(200, map[string]any{"id": "p1", "state": "PROCESSING"})
+	routes[snapsPath] = fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"), fwdtest.Snap("p1", "FAILED", "PREDICT", "2026-09-02T00:00:00.000Z"))
+	n := 0
+	routes["GET "+csRoot+"/cs7/predicted-snapshots"] = func(*http.Request, []byte) (int, any) {
+		n++
+		state := "FAILED"
+		if n > 1 {
+			state = "PROCESSED"
+		}
+		return 200, map[string]any{"predictedSnapshots": []any{map[string]any{"id": "p1", "state": state}}}
+	}
+	r, _ := mustRun(t, "edit-change-set", routes, dcIn+`,"apply":true,"run":true}`)
+	if !strings.Contains(r.Finding, "predicted as snapshot p1") || strings.Contains(r.Finding, "ended FAILED") || !strings.Contains(r.Finding, "first read FAILED") {
+		t.Errorf("finding: %s", r.Finding)
 	}
 }

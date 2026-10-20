@@ -426,6 +426,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			extra["predicted_snapshot_id"] = string(p.ID)
 			changes = append(changes, result.Change{Action: "run_prediction", Target: "change set " + csID, After: string(p.ID), Applied: true, Reversible: false})
 			finding += fmt.Sprintf("; predicted as snapshot %s", p.ID)
+			if run.FirstFailed {
+				finding += " (the wait first read FAILED and a re-read found it PROCESSED)"
+			}
 			limits = append(limits, "the predicted snapshot stays after the draft is removed; edit-snapshot action delete (confirm = the snapshot id) is the way to remove it, and Forward decides whether it allows it (not verified for a predicted snapshot)")
 		}
 	} else {

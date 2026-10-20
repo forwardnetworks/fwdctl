@@ -394,7 +394,12 @@ type PredictionRun struct {
 	ID    string
 	State string
 	Done  *forward.Snapshot
+	// FirstFailed says the wait first read FAILED and a re-read found the snapshot PROCESSED.
+	FirstFailed bool
 }
+
+// FailedRecheckDelay is how long RunPrediction waits between re-reads of a predicted snapshot that read FAILED (a variable so a test can shorten it).
+var FailedRecheckDelay = 2 * time.Second
 
 // RunPrediction starts a prediction of the change set and waits for the predicted snapshot. The id and last state come back even when the wait ends in an error (a failed state, or a poll that failed), so a caller can name the snapshot and
 // say whether it failed or may still be running. err is nil only when the snapshot is PROCESSED.
@@ -410,6 +415,27 @@ func (s *Session) RunPrediction(ctx context.Context, networkID, changeSetID, not
 	done, _, werr := poller.Wait(ctx, forward.PollOptions[forward.Snapshot]{})
 	if cur := poller.Current(); cur != nil {
 		run.State = cur.State
+	}
+	if werr != nil && strings.EqualFold(run.State, "FAILED") && run.ID != "" {
+		// a predicted snapshot has read FAILED once and PROCESSED seconds later: look again before calling it failed
+		for i := 0; i < 3; i++ {
+			select {
+			case <-ctx.Done():
+				return run, werr
+			case <-time.After(FailedRecheckDelay):
+			}
+			list, lerr := s.PredictedSnapshots(ctx, networkID, changeSetID)
+			if lerr != nil {
+				break
+			}
+			for _, p := range list {
+				if string(p.ID) == run.ID && strings.EqualFold(p.State, "PROCESSED") {
+					run.State, run.FirstFailed = p.State, true
+					run.Done = &forward.Snapshot{ID: p.ID, State: p.State, CreatedAt: p.CreatedAt}
+					return run, nil
+				}
+			}
+		}
 	}
 	if werr != nil {
 		return run, werr
