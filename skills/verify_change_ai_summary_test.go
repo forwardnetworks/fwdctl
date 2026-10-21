@@ -69,8 +69,8 @@ func TestAISummaryKindsAndPlainSnapshotPairs(t *testing.T) {
 	}
 }
 
-// The change-set overview (a name, description and tags Forward proposes) needs only the change set; the failure summary is not in the SDK yet, so it is unknown and says so instead of calling a route by hand.
-func TestAISummaryOverviewAndTheFailureSummaryGap(t *testing.T) {
+// The change-set overview (a name, description and tags Forward proposes) needs only the change set; the failure summary is a GET that explains why checks fail, with its own caveats about partial results.
+func TestAISummaryOverviewAndFailure(t *testing.T) {
 	var calls []string
 	r := aiRoutes(aiProps(t, aiOn), &calls)
 	r["POST /api/networks/n1/change-sets/cs1/overview-assists"] = func(*http.Request, []byte) (int, any) {
@@ -83,7 +83,7 @@ func TestAISummaryOverviewAndTheFailureSummaryGap(t *testing.T) {
 	}
 	calls = nil
 	res, _ = mustRun(t, "verify-change", aiRoutes(aiProps(t, aiOn), &calls), `{"network_id":"n1","change_set_id":"cs1","view":"ai_summary","summary_kind":"failure"}`)
-	if res.Status != result.Unknown || len(calls) != 0 || !strings.Contains(strings.Join(res.Limits, " ")+res.Finding, "SDK") {
+	if res.Status != result.OK || strings.Join(calls, ",") != "failure" || !strings.Contains(jsonOf(res), "default-route check fails") || !strings.Contains(strings.Join(res.Limits, " "), "partial") {
 		t.Errorf("failure: %s %v %s", res.Status, calls, res.Finding)
 	}
 }

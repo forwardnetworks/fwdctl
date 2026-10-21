@@ -29,7 +29,7 @@
       "x-values": {
         "verify": "judge a change: did it work and break nothing (before and after snapshots, or a change set) (default)",
         "describe": "what a change set edits, whether it was predicted, which of its checks got worse",
-        "impact": "how far a change reaches, measured: difference areas, subnet connectivity, BGP sessions and route and next-hop counts (device adds per-prefix changes); judges nothing",
+        "impact": "how far a change reaches, measured: difference areas, subnet connectivity, BGP sessions and route and next-hop counts, and Forward's own ARP, MAC, NAT, L3 route, vulnerability and routing-loop diffs (device adds per-prefix and per-device route changes); judges nothing",
         "verdict": "the same as verify",
         "list": "the change sets this network holds, each with its predicted snapshots (none is an answer; an unlicensed organization is a licence limit)",
         "scope": "what of this network Predict can model on this release: license facet, every predict flag, out-of-scope BGP families, platforms where propagation stops",
@@ -108,7 +108,7 @@
         "overview"
       ],
       "default": "impact",
-      "description": "view ai_summary only: which Forward AI summary (config: what changed in the configurations; impact: what the change does; failure: why checks fail (not yet available); overview: a name, description and tags for a change set)"
+      "description": "view ai_summary only: which Forward AI summary (config: what changed in the configurations; impact: what the change does; failure: why checks fail; overview: a name, description and tags for a change set)"
     }
   }
 }

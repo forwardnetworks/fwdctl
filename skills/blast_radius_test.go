@@ -270,3 +270,70 @@ func TestBlastRadiusChecksStagedAdvertisementsAgainstTheForwardingEntries(t *tes
 		}
 	}
 }
+
+// impact also reads Forward's own diff tables for ARP, MAC, NAT and L3 routing (count and the devices that changed, with per-type counts), the vulnerability diff and the routing-loop diff, so a change is described in the same terms the GUI's Compare uses. Each one that cannot be read is named in the limits with the permission it needs.
+func TestBlastRadiusReadsForwardsOwnDiffTables(t *testing.T) {
+	f := changeFix{}
+	routes := f.routes()
+	byQuery := func(list any, count any) fwdtest.Handler {
+		return func(r *http.Request, _ []byte) (int, any) {
+			if _, ok := r.URL.Query()["count"]; ok {
+				return 200, count
+			}
+			return 200, list
+		}
+	}
+	dev := func(name string, added, deleted, modified int) map[string]any {
+		return map[string]any{"deviceName": name, "hasConfigChange": false, "stats": map[string]any{"ADDED": added, "DELETED": deleted, "MODIFIED": modified, "UNCHANGED": 40}}
+	}
+	routes["GET /api/diffs/b1/a1/arp"] = byQuery([]any{dev("r1", 3, 1, 0)}, map[string]any{"count": 4, "complete": true})
+	routes["GET /api/diffs/b1/a1/mac"] = byQuery([]any{}, map[string]any{"count": 0, "complete": true})
+	routes["GET /api/diffs/b1/a1/nat"] = fwdtest.Const(403, map[string]any{"message": "No permission for network operation VIEW_NAT_DIFFS"})
+	routes["GET /api/diffs/b1/a1/l3"] = fwdtest.Const(200, []any{dev("edge1", 0, 12, 3), dev("core1", 2, 0, 0)})
+	routes["GET /api/diffs/b1/a1/l3/summary"] = fwdtest.Const(200, map[string]any{"deviceCount": 2, "prefixCount": 17})
+	routes["GET /api/diffs/b1/a1/vulnerabilities/counts"] = func(r *http.Request, _ []byte) (int, any) {
+		if r.URL.Query().Get("view") == "bidirectional" {
+			return 200, map[string]any{"warnings": map[string]any{"cveCount": 2, "exposedVulnerableDevicesCount": 1}, "improvements": map[string]any{"cveCount": 0, "exposedVulnerableDevicesCount": 0}}
+		}
+		return 200, map[string]any{"newCveCount": 2}
+	}
+	routes["GET /api/diffs/b1/a1/routing-loop/count"] = func(r *http.Request, _ []byte) (int, any) {
+		if r.URL.Query().Get("view") == "bidirectional" {
+			return 200, map[string]any{"warnings": map[string]any{"count": 1, "complete": true}, "improvements": map[string]any{"count": 0, "complete": true}}
+		}
+		return 200, map[string]any{"count": 1, "complete": true}
+	}
+	r, _ := mustRun(t, "analyze-blast-radius", routes, csInput+"}")
+	b, l := jsonOf(r), strings.Join(r.Limits, " ")
+	for _, want := range []string{`"native_diffs"`, `"arp":{`, `"count":4`, `"deviceName":"r1"`, `"l3":{`, `"edge1"`, `"summary"`, `"vulnerabilities"`, `"new_cve_count":2`, `"routing_loops"`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+	if !strings.Contains(l, "VIEW_NAT_DIFFS") || !strings.Contains(r.Finding, "ARP") {
+		t.Errorf("nat denial is named in the limits, and the finding lists the changed tables: %s | %s", r.Finding, l)
+	}
+}
+
+// Forward's own L3 route diff and the model's route counts can disagree (seen live: an injected prefix was counted as added while the L3 table listed no changed device). When they do, impact says so and which to trust, instead of presenting two answers as one.
+func TestBlastRadiusSaysWhenForwardsL3TableMissesARouteChangeTheCountsFound(t *testing.T) {
+	routes := changeFix{}.routes()
+	routes["GET /api/networks/n1/change-sets/cs1"] = fwdtest.Const(200, map[string]any{"id": "cs1", "name": "cs", "snapshotId": "b1", "deviceToChanges": map[string]any{"edge1": map[string]any{}}})
+	routes["GET /api/diffs/b1/a1/l3"] = fwdtest.Const(200, []any{})
+	routes["GET /api/diffs/b1/a1/l3/summary"] = fwdtest.Const(200, map[string]any{})
+	routes[nqePath] = func(r *http.Request, b []byte) (int, any) {
+		more := r.URL.Query().Get("snapshotId") == "a1"
+		ipv4 := 100
+		if more {
+			ipv4 = 101 // one route added on edge1
+		}
+		return invNQE(map[string]fwdtest.Handler{
+			"ipv4NextHops": rowsOf(1, map[string]any{"device": "edge1", "vrf": "default", "ipv4": ipv4, "ipv4NextHops": ipv4, "ipv6": 0, "ipv6NextHops": 0}),
+			"sessionState": rowsOf(0),
+		})(r, b)
+	}
+	r, _ := mustRun(t, "analyze-blast-radius", routes, csInput+"}")
+	if !strings.Contains(strings.Join(r.Limits, " "), "lists no changed device") || !strings.Contains(r.Finding, "routing") {
+		t.Errorf("the disagreement is said: %s | %v", r.Finding, r.Limits)
+	}
+}

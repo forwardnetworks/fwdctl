@@ -491,3 +491,9 @@ func (s *Session) AIPredictOverview(ctx context.Context, networkID, changeSetID 
 	o, _, err := s.Client.AIAssist.GeneratePredictOverview(ctx, networkID, changeSetID)
 	return o, err
 }
+
+// AISummarizeFailures has Forward's AI explain why checks fail between two snapshots (GET /api/diffs/{a}/{b}/failure-summary-assist). Every uncached call is a model call and the route is a GET, so it is sent without retry.
+func (s *Session) AISummarizeFailures(ctx context.Context, beforeID, afterID string) (string, error) {
+	t, _, err := s.Client.AIAssist.SummarizeFailures(forward.WithoutRetry(ctx), beforeID, afterID)
+	return t, err
+}
