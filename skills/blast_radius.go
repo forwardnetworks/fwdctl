@@ -131,6 +131,17 @@ func analyzeBlastRadius(ctx context.Context, s *fwd.Session, raw json.RawMessage
 	}
 	evidence = append(evidence, rev...)
 	limits = append(limits, rlim...)
+	if nd, nlim, nchanged := nativeDiffs(ctx, s, rc.BeforeID, afterID, in.Device); len(nd) > 0 {
+		measured = true
+		evidence = append(evidence, result.NewEvidence(result.EvPredict, "nativeDiffs", sid, map[string]any{"native_diffs": nd}, "Forward's own diff tables: ARP, MAC, NAT, L3 routing, vulnerabilities, routing loops"))
+		touched = append(touched, nchanged...)
+		limits = append(limits, nlim...)
+		if l3, ok := nd["l3"].(map[string]any); ok && routingChanged && l3["devices_changed"] == 0 {
+			limits = append(limits, "Forward's own L3 route diff lists no changed device, but the model's route and next-hop counts above differ: the two disagree (seen live for a predicted BGP advertisement), so trust the counted differences and per-prefix lists above and treat Forward's L3 table as incomplete here")
+		}
+	} else {
+		limits = append(limits, nlim...)
+	}
 	if len(rev) > 0 {
 		measured = true
 		if routingChanged {

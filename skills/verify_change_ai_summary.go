@@ -71,8 +71,9 @@ func aiSummary(ctx context.Context, s *fwd.Session, in verifyChangeInput, kind s
 		case "impact":
 			text, err = s.AISummarizeChangeImpact(ctx, rc.BeforeID, afterID)
 		case "failure":
-			return result.NewUnknown(verifyChangeName, "The failure summary is not available yet: the Go SDK has no wrapper for Forward's failure-summary route, so none was generated", cx,
-				append([]string{"nothing was sent to Forward's AI service; the wrapper has been requested from the SDK", "verify-change view verify lists the checks that got worse without AI"}, rc.Limits...), result.Options{})
+			text, err = s.AISummarizeFailures(ctx, rc.BeforeID, afterID)
+			limits = append(limits, "the failure summary covers the predefined and intent checks and routing loops; NQE checks only where the login may use NQE, and new CVEs or newly exposed vulnerable devices only with VIEW_CVE_DIFFS and a licence that allows it, so a login without those still gets an answer with those parts missing",
+				"if checks were still processing, Forward summarized what was done and the text may say its counts are partial (no field flags it, and it does not cache that answer): ask again later or compare with verify-change view verify")
 		}
 		if err != nil {
 			return aiFailed(cx, err)
