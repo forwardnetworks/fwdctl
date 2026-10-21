@@ -473,3 +473,21 @@ func (s *Session) ChangeContent(ctx context.Context, networkID, changeSetID stri
 	}
 	return c
 }
+
+// AISummarizeConfigDiff has Forward's AI summarize the configuration differences between two snapshots (POST /api/diffs/{a}/{b}/config-summary-assists). The diff content goes to Forward's AI service.
+func (s *Session) AISummarizeConfigDiff(ctx context.Context, beforeID, afterID string) (string, error) {
+	t, _, err := s.Client.AIAssist.SummarizeConfigDiff(ctx, beforeID, afterID)
+	return t, err
+}
+
+// AISummarizeChangeImpact has Forward's AI summarize the modeled impact between two snapshots (POST /api/diffs/{a}/{b}/impact-summary-assists).
+func (s *Session) AISummarizeChangeImpact(ctx context.Context, beforeID, afterID string) (string, error) {
+	t, _, err := s.Client.AIAssist.SummarizeChangeImpact(ctx, beforeID, afterID)
+	return t, err
+}
+
+// AIPredictOverview has Forward's AI propose a name, description and tags for a change set (POST .../change-sets/{id}/overview-assists).
+func (s *Session) AIPredictOverview(ctx context.Context, networkID, changeSetID string) (*forward.PredictOverviewAssist, error) {
+	o, _, err := s.Client.AIAssist.GeneratePredictOverview(ctx, networkID, changeSetID)
+	return o, err
+}

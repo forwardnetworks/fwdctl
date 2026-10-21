@@ -22,7 +22,8 @@
         "list",
         "scope",
         "preflight",
-        "paths"
+        "paths",
+        "ai_summary"
       ],
       "default": "verify",
       "x-values": {
@@ -33,7 +34,8 @@
         "list": "the change sets this network holds, each with its predicted snapshots (none is an answer; an unlicensed organization is a licence limit)",
         "scope": "what of this network Predict can model on this release: license facet, every predict flag, out-of-scope BGP families, platforms where propagation stops",
         "preflight": "the Predict demo checklist: scope plus release, base snapshot age, existing change sets and BGP advertisement collection",
-        "paths": "the GUI's interesting paths: sampled paths through firewalls and load balancers, ranked by score with their stages and path query; on a snapshot (after_snapshot_id) or a change set's predicted snapshot"
+        "paths": "the GUI's interesting paths: sampled paths through firewalls and load balancers, ranked by score with their stages and path query; on a snapshot (after_snapshot_id) or a change set's predicted snapshot",
+        "ai_summary": "Forward AI explains a difference in words (opt-in; generated text, labelled): summary_kind config, impact (default), failure or overview, on a change set or any two snapshots; unknown when the organization has AI off"
       }
     },
     "run_predict": {
@@ -97,6 +99,16 @@
           }
         }
       }
+    },
+    "summary_kind": {
+      "enum": [
+        "config",
+        "impact",
+        "failure",
+        "overview"
+      ],
+      "default": "impact",
+      "description": "view ai_summary only: which Forward AI summary (config: what changed in the configurations; impact: what the change does; failure: why checks fail (not yet available); overview: a name, description and tags for a change set)"
     }
   }
 }

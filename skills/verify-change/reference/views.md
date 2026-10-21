@@ -34,3 +34,11 @@ The full text of each view and the verify procedure. SKILL.md carries the one-li
 3. Read the change set's checks on the base snapshot and on that prediction; a check that is bad on the prediction and was not bad on the base, or has more violations, got worse.
 4. With `device`, read the rule diff and count the entries by kind of change.
 5. **failed** when any check got worse on the prediction; **ok** when a prediction was read and no check got worse; **unknown** when the change set has not been predicted (run view verify with `run_predict`) or its prediction checks could not be read. A change set with no checks attached says so in the limits, since an unchanged verdict then proves nothing. Evidence is one `predict` item with `devices_edited`, `predictions`, `checks_that_got_worse` and, with `device`, `security_rules_diff`.
+
+## view ai_summary
+
+Forward's AI explains a difference in words. It is the differential analysis: what changed, what it does, why checks fail. It is generation, not a read: Forward's AI service receives the diff, so the view is the opt-in and nothing calls it otherwise.
+
+- Inputs: `change_set_id` (the base and the newest prediction), or `before_snapshot_id` and `after_snapshot_id` (any two snapshots, a prediction against its base included), and `summary_kind`: `impact` (default: what the change does to the network), `config` (what changed in the configurations), `overview` (a name, description and tags Forward proposes for a change set; needs `change_set_id`), `failure` (why checks fail: not available yet, the SDK has no wrapper).
+- Needs the organization properties `AI_ALLOWED` and `PREDICT_AI_ASSIST` (the failure summary: `PREDICT_FAILURE_SUMMARY_ASSIST`). They are read first; an explicit false is `unknown` with the property named, and nothing is sent.
+- The result carries the text, `generated_by: Forward AI` and the two snapshot ids, and limits that say it is generated text and not a measurement. Check it against `impact` (the counted differences). Forward's AI may be off for an organization; the deterministic views work without it.
