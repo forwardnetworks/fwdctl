@@ -62,6 +62,9 @@ type Feature struct {
 }
 
 // Features lists nothing in this build.
+// Experimental says Forward still marks the feature experimental. The public source build carries no feature table.
+func (f Feature) Experimental() bool { return false }
+
 func Features() []Feature { return nil }
 
 // EnabledFeatures lists nothing in this build.

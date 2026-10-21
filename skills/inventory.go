@@ -780,7 +780,7 @@ func inventorySecurityRules(ctx context.Context, s *fwd.Session, in inventoryInp
 	}
 	params := map[string]any{"deviceName": in.Device, "nameGlob": glob, "vendorName": vendorParam(in.Vendor)}
 	limits = append(limits, "rows are ordered by rule count, then address objects, largest first; name is a substring of the device name and vendor is Forward's vendor name (FORTINET, PALO_ALTO_NETWORKS...)")
-	limits = append(limits, "Forward's security rules model (device.securityPolicy) is mainline from 26.10 and was experimental before it (older builds gate it behind org properties and change it between builds); it covers PAN-OS and FortiOS, FortiOS native rules only when the organization property NQE_SECURITY_RULES_FORTIOS is true (inspect-environment shows it), and PAN-OS native rules sit behind their own flag. Do not treat these counts as a complete policy")
+	limits = append(limits, "EXPERIMENTAL: Forward's security rules model (device.securityPolicy) is experimental and changes between builds; it covers PAN-OS and FortiOS, FortiOS native rules only when the organization property NQE_SECURITY_RULES_FORTIOS is true (inspect-environment shows it), and PAN-OS native rules sit behind their own flag. Do not treat these counts as a complete policy")
 	full := true
 	out, err := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: invSecurityRules, Parameters: params, SnapshotID: fwd.SnapshotID(cx), Limit: in.Limit, Offset: in.Offset})
 	if _, _, isQuery := fwd.QueryErrors(err); err != nil && isQuery {
