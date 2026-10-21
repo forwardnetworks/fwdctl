@@ -50,6 +50,40 @@
         "cves": "the CVEs that expose the network, or the devices one CVE affects",
         "devices": "the CVEs that affect a device"
       }
+    },
+    "threat_exposure_experimental": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "EXPERIMENTAL, read only: Forward's threat exposure feature (the organization property THREAT_EXPOSURE enables it; its routes exist only in newer Forward builds, an older one is unknown). A different question from the CVE inputs; give one. view definitions (default), definition, status, critical_assets, direct, transitive, edge_assets.",
+      "properties": {
+        "view": {
+          "enum": [
+            "definitions",
+            "definition",
+            "status",
+            "critical_assets",
+            "direct",
+            "transitive",
+            "edge_assets"
+          ],
+          "default": "definitions"
+        },
+        "definition_id": {
+          "type": "string"
+        },
+        "asset_id": {
+          "type": "integer",
+          "description": "the global host id a critical_assets row gives the asset"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   }
 }

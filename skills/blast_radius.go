@@ -137,7 +137,7 @@ func analyzeBlastRadius(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		touched = append(touched, nchanged...)
 		limits = append(limits, nlim...)
 		if l3, ok := nd["l3"].(map[string]any); ok && routingChanged && l3["devices_changed"] == 0 {
-			limits = append(limits, "Forward's own L3 route diff lists no changed device, but the model's route and next-hop counts above differ: the two disagree (seen live for a predicted BGP advertisement), so trust the counted differences and per-prefix lists above and treat Forward's L3 table as incomplete here")
+			limits = append(limits, "Forward's own L3 route diff lists no changed device, but the model's route and next-hop counts above differ: the two disagree. Seen live: on snapshots built from configs alone (no collected routing table) Forward's L3 route diff was empty even for an added static route, with no unchanged entries either, so an empty table there means the diff had no routes to compare, not that nothing changed. Trust the counted differences and per-prefix lists above")
 		}
 	} else {
 		limits = append(limits, nlim...)

@@ -315,7 +315,7 @@ func TestBlastRadiusReadsForwardsOwnDiffTables(t *testing.T) {
 	}
 }
 
-// Forward's own L3 route diff and the model's route counts can disagree (seen live: an injected prefix was counted as added while the L3 table listed no changed device). When they do, impact says so and which to trust, instead of presenting two answers as one.
+// Forward's own L3 route diff and the model's route counts can disagree (seen live: a route was counted as added on a snapshot with no collected routing table while the L3 table listed no changed device). When they do, impact says so and which to trust, instead of presenting two answers as one.
 func TestBlastRadiusSaysWhenForwardsL3TableMissesARouteChangeTheCountsFound(t *testing.T) {
 	routes := changeFix{}.routes()
 	routes["GET /api/networks/n1/change-sets/cs1"] = fwdtest.Const(200, map[string]any{"id": "cs1", "name": "cs", "snapshotId": "b1", "deviceToChanges": map[string]any{"edge1": map[string]any{}}})

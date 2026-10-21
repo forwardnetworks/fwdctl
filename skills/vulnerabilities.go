@@ -75,6 +75,10 @@ func investigateVulnerabilities(ctx context.Context, s *fwd.Session, raw json.Ra
 	if in.CVEID != "" && in.Device != "" {
 		return result.NewError(vulnerabilitiesName, "give cve_id or device, not both", fwd.Context(in.NetworkID, nil)), nil
 	}
+	te, wantTE, terr := parseThreatExposure(raw, in)
+	if terr != nil {
+		return result.Result{}, terr
+	}
 	switch in.View {
 	case "", "cves":
 	case "devices":
@@ -98,6 +102,9 @@ func investigateVulnerabilities(ctx context.Context, s *fwd.Session, raw json.Ra
 	}
 	snapID := fwd.SnapshotID(cx)
 	sid := fwd.SnapshotIDPtr(snap)
+	if wantTE {
+		return threatExposure(ctx, s, in, te, cx, snapID)
+	}
 	in.adv = advancedState(*snap)
 	var limits []string
 	if cx.State == "predicted" {
