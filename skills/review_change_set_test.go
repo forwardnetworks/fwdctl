@@ -157,3 +157,21 @@ func TestUnfinishedPredictionsCarryTheirProcessingProgress(t *testing.T) {
 		t.Errorf("list: %s", jsonOf(res))
 	}
 }
+
+// describe lists each check attached to the change set, with what it is (name, type and note from its definition) and its result on the base and on the newest prediction, so a use case's own checks are visible one by one and not only as counts.
+func TestDescribeListsEachChangeSetCheckWithBaseAndPredictionResult(t *testing.T) {
+	base := []any{map[string]any{"id": "c1", "name": "default route absent on edge", "status": "PASS", "numViolations": 0, "definition": map[string]any{"checkType": "NQE", "note": "no 0.0.0.0/0 on edge routers"}},
+		map[string]any{"id": "c2", "name": "lab reaches 8.8.8.8", "status": "PASS", "definition": map[string]any{"type": "REACHABILITY"}}}
+	after := []any{map[string]any{"id": "c1", "name": "default route absent on edge", "status": "FAIL", "numViolations": 3, "definition": map[string]any{"checkType": "NQE", "note": "no 0.0.0.0/0 on edge routers"}},
+		map[string]any{"id": "c2", "name": "lab reaches 8.8.8.8", "status": "PASS", "definition": map[string]any{"type": "REACHABILITY"}}}
+	r := csRoutes([]any{map[string]any{"id": "p1", "state": "PROCESSED"}}, map[string]any{"checks": base}, map[string]any{"checks": after})
+	r["GET /api/networks/n1/change-sets/cs1/commits/head"] = fwdtest.Const(404, map[string]any{"message": "none"})
+	r["GET /api/networks/n1/change-sets/cs1/draft"] = fwdtest.Const(200, map[string]any{"draft": nil})
+	res, _ := mustRun(t, "verify-change", r, `{"network_id":"n1","view":"describe","change_set_id":"cs1"}`)
+	b := jsonOf(res)
+	for _, want := range []string{`"checks":[`, `"name":"default route absent on edge"`, `"type":"NQE"`, `"note":"no 0.0.0.0/0 on edge routers"`, `"status_on_base":"PASS"`, `"status_on_prediction":"FAIL"`, `"violations_on_prediction":3`, `"type":"REACHABILITY"`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
+	}
+}
