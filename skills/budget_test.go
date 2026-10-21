@@ -69,7 +69,7 @@ var wideReadSkills = map[string]int{
 	"inspect-bgp-neighbors":    13, // routing adds the routing-app option
 	"compare-nqe-results":      9,  // after_network_id, key and ignore compare two networks
 	"inspect-device-files":     11,
-	"investigate-reachability": 12, // return_path asks Forward for the return flow in the same search (a Forward parameter, not a view); no existing input holds it
+	"investigate-reachability": 13, // return_path asks Forward for the return flow in the same search (a Forward parameter, not a view); no existing input holds it
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.
 	"verify-change":                  10, // view describe and view impact take device; view ai_summary adds summary_kind
 	"inspect-edge":                   12, // view exits | public_addresses | trace_sources

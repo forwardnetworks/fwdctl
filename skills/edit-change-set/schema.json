@@ -210,7 +210,8 @@
               "enum": [
                 "ANY",
                 "SYMMETRIC"
-              ]
+              ],
+              "description": "Existential only. SYMMETRIC was measured (by a colleague, on one build) to be accepted and stored but not asserted: to assert symmetry add one check per direction"
             },
             "query_id": {
               "type": "string"

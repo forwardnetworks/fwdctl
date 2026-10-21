@@ -19,7 +19,7 @@ guessed from device output.
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run investigate-reachability --help`, or `reference/inputs.md`.
+What each input means, and the fields per object and action: `fwdctl run investigate-reachability --help`, or `reference/inputs.md`. For several endpoints at once, `matrix` searches every ordered pair in one bulk request and names the pairs whose two directions take different paths (asymmetric routing).
 
 ## Procedure
 

@@ -160,6 +160,9 @@ func changeSetCheck(ctx context.Context, s *fwd.Session, in draftChangeSetInput,
 			return nil, e
 		}
 	}
+	if def.ReturnPath == forward.ReturnPathSymmetric {
+		limits = append(limits, "returnPath SYMMETRIC: a colleague measured on one build that Forward accepts and stores it but symmetry was not asserted (the check passed on a flow whose two directions crossed different backbones, and on every prediction of a change set that moved traffic), so a passing check with it proves nothing about the return path; to assert symmetry add one check per direction, each through the device that direction must cross, and read the pair together. Not confirmed on other builds")
+	}
 	limits = append(limits, "needs MANAGE_CHANGE_SETS and the organization property PREDICT_MODELING; an unlicensed check category is refused with 403", "this route is a preview of Forward's appserver (not in the published OpenAPI), so its behaviour can change between builds", "a change set's checks run on its base and on each prediction; they do not touch a device")
 	if !in.Apply {
 		return result.Build(draftChangeSetName, result.OK, fmt.Sprintf("Dry run: would %s change set %s (%s). Nothing was changed; run again with apply=true", verb, id, cs.Name), result.Deterministic, cx,

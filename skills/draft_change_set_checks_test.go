@@ -102,3 +102,20 @@ func TestEditAndRemoveCheck(t *testing.T) {
 		t.Errorf("remove: %s %v", r.Status, w.deleted)
 	}
 }
+
+// A colleague measured that an Existential check with returnPath SYMMETRIC is accepted and stored but did not assert symmetry (it passed on a flow whose two directions crossed different backbones, and on every prediction of a change set that moved traffic). The limits say so on add and edit, and name the two-checks-per-direction way to assert symmetry; the claim is attributed as a measurement on one build, not ours.
+func TestSymmetricReturnPathCheckCarriesTheNotAssertedCaveat(t *testing.T) {
+	w := &checkWorld{}
+	const sym = `"check":{"type":"Existential","return_path":"SYMMETRIC","filters":{"from":{"type":"HostFilter","values":["a"]},"to":{"type":"HostFilter","values":["b"]}}}`
+	r, _ := mustRun(t, "edit-change-set", w.routes(), `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"add_check","name":"a to b",`+sym+`}}`)
+	l := strings.Join(r.Limits, " ")
+	for _, want := range []string{"SYMMETRIC", "not asserted", "one build", "one check per direction"} {
+		if !strings.Contains(l, want) {
+			t.Errorf("limits miss %q: %s", want, l)
+		}
+	}
+	r, _ = mustRun(t, "edit-change-set", w.routes(), `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"add_check",`+reachCheck+`}}`)
+	if strings.Contains(strings.Join(r.Limits, " "), "SYMMETRIC") {
+		t.Errorf("an ordinary check carries no symmetric caveat")
+	}
+}

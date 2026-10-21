@@ -1,19 +1,118 @@
 {
   "type": "object",
-  "required": ["network_id", "dst_ip"],
+  "required": [
+    "network_id"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "dst_ip": { "type": "string", "minLength": 1 },
-    "src_ip": { "type": "string", "minLength": 1 },
-    "from": { "type": "string", "minLength": 1 },
-    "protocol": { "type": ["string", "integer"] },
-    "src_port": { "type": "string" },
-    "dst_port": { "type": "string" },
-    "snapshot_id": { "type": "string", "minLength": 1 },
-    "max_results": { "type": "integer", "minimum": 1 },
-    "max_seconds": { "type": "integer", "minimum": 1 },
-    "return_path": { "type": "boolean", "default": false, "description": "also ask Forward for the return flow (destination back to source) and summarize it; warns when the forward flow is delivered but the return is not" },
-    "intent": { "enum": ["PREFER_DELIVERED", "PREFER_VIOLATIONS", "VIOLATIONS_ONLY"], "default": "PREFER_DELIVERED", "description": "how Forward orders and selects the paths it returns" }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dst_ip": {
+      "type": "string",
+      "minLength": 1
+    },
+    "src_ip": {
+      "type": "string",
+      "minLength": 1
+    },
+    "from": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "src_port": {
+      "type": "string"
+    },
+    "dst_port": {
+      "type": "string"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_results": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_seconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "return_path": {
+      "type": "boolean",
+      "default": false,
+      "description": "also ask Forward for the return flow (destination back to source) and summarize it; warns when the forward flow is delivered but the return is not"
+    },
+    "intent": {
+      "enum": [
+        "PREFER_DELIVERED",
+        "PREFER_VIOLATIONS",
+        "VIOLATIONS_ONLY"
+      ],
+      "default": "PREFER_DELIVERED",
+      "description": "how Forward orders and selects the paths it returns"
+    },
+    "matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "endpoints"
+      ],
+      "description": "a reachability matrix instead of one flow: every ordered pair of endpoints searched in one bulk request (protocol, src_port, dst_port, intent and snapshot_id apply to all), each pair compared with its reverse so asymmetric routing is named. Does not combine with src_ip, dst_ip, from or return_path.",
+      "properties": {
+        "endpoints": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ip"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "ip": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "2 to 40 endpoints (every ordered pair is searched)"
+        },
+        "transit_groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "pattern"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string",
+                "description": "a regular expression matched against each hop device name"
+              }
+            }
+          }
+        },
+        "max_overall_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "time for the whole request (default 300, at most 3000, which is under Forward's one hour limit for a large job)"
+        }
+      }
+    }
   }
 }
