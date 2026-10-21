@@ -33,13 +33,13 @@ func TestNQEFeaturesListsEachFlagWithItsOrgPropertyDefaultAndKind(t *testing.T) 
 			t.Errorf("incomplete: %+v", f)
 		}
 	}
-	if len(got.Features) != 10 || !by["security-rules-panos"] || !by["cis-benchmarks"] || !by["trim-builtin"] {
+	if len(got.Features) != 10 || by["security-rules-panos"] || !by["cis-benchmarks"] || !by["trim-builtin"] {
 		t.Errorf("features = %v", by)
 	}
 	if !strings.Contains(got.Note, "NQE_ORDERED_LIST") {
 		t.Errorf("the note should say ordered lists are retired: %q", got.Note)
 	}
-	_, out, _ = call(t, []string{"nqe", "features", "--features", "none,security-rules-fortios,device-services"}, "", nil)
+	_, out, _ = call(t, []string{"nqe", "features", "--features", "security-rules-fortios,device-services"}, "", nil)
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -53,20 +53,20 @@ func TestNQEFeaturesListsEachFlagWithItsOrgPropertyDefaultAndKind(t *testing.T) 
 }
 
 func TestNQELintFeaturesFlagMakesAGatedFieldValidAndEnvDoesToo(t *testing.T) {
-	const q = "foreach device in network.devices select {p: device.services}"
+	const q = "foreach device in network.devices select {p: device.securityPolicy}"
 	code, out, _ := call(t, []string{"nqe", "lint", "-"}, q, nil)
-	if code != 1 || !strings.Contains(out, "NQE_DEVICE_SERVICES") || !strings.Contains(out, "--features device-services") {
+	if code != 1 || !strings.Contains(out, "NQE_SECURITY_RULES_PANOS") || !strings.Contains(out, "--features security-rules-panos") {
 		t.Errorf("by default the field is behind a flag and the diagnostic says which: %d %s", code, out)
 	}
-	if code, out, _ = call(t, []string{"nqe", "lint", "--features", "device-services", "-"}, q, nil); code != 0 || !strings.Contains(out, `"valid": true`) {
+	if code, out, _ = call(t, []string{"nqe", "lint", "--features", "security-rules-panos", "-"}, q, nil); code != 0 || !strings.Contains(out, `"valid": true`) {
 		t.Errorf("--features turns it on: %d %s", code, out)
 	}
-	t.Setenv("FORWARD_NQE_FEATURES", "NQE_DEVICE_SERVICES")
+	t.Setenv("FORWARD_NQE_FEATURES", "NQE_SECURITY_RULES_FORTIOS")
 	if code, out, _ = call(t, []string{"nqe", "lint", "-"}, q, nil); code != 0 {
 		t.Errorf("FORWARD_NQE_FEATURES (an org property name) turns it on: %d %s", code, out)
 	}
 	t.Setenv("FORWARD_NQE_FEATURES", "")
-	if code, out, errOut := call(t, []string{"nqe", "lint", "--features", "no-such", "-"}, q, nil); code == 0 || !strings.Contains(out+errOut, "device-services") {
+	if code, out, errOut := call(t, []string{"nqe", "lint", "--features", "no-such", "-"}, q, nil); code == 0 || !strings.Contains(out+errOut, "security-rules-panos") {
 		t.Errorf("an unknown feature is refused with the list: %d %s %s", code, out, errOut)
 	}
 }
@@ -111,5 +111,34 @@ func TestNQELintExperimentalFlagTurnsOnAPerfRuleAndFeaturesListsTheRules(t *test
 	}
 	if code, out, errOut := call(t, []string{"nqe", "lint", "--experimental", "bogus", "-"}, q, nil); code == 0 || !strings.Contains(out+errOut, "perf-command-response") {
 		t.Errorf("an unknown rule is refused with the list: %d %s %s", code, out, errOut)
+	}
+}
+
+// `nqe features` marks the two security-rules features experimental in the data and says so in its help, so nobody reads device.securityPolicy as standard.
+func TestNQEFeaturesMarksTheSecurityRulesFeaturesExperimental(t *testing.T) {
+	_, out, _ := call(t, []string{"nqe", "features"}, "", nil)
+	var got struct {
+		Features []struct {
+			Name         string `json:"name"`
+			Experimental bool   `json:"experimental"`
+			Enabled      bool   `json:"enabled"`
+		} `json:"features"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, f := range got.Features {
+		rules := f.Name == "security-rules-panos" || f.Name == "security-rules-fortios"
+		if f.Experimental != rules || (rules && f.Enabled) {
+			t.Errorf("%s experimental=%v enabled=%v", f.Name, f.Experimental, f.Enabled)
+		}
+		if rules {
+			n++
+		}
+	}
+	_, help, _ := call(t, []string{"nqe", "features", "--help"}, "", nil)
+	if n != 2 || !strings.Contains(help, "EXPERIMENTAL") || !strings.Contains(help, "NQE_SECURITY_RULES_PANOS") || !strings.Contains(help, "26.10") {
+		t.Errorf("help: %s", help)
 	}
 }

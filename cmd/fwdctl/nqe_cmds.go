@@ -340,7 +340,7 @@ func join(s []string) string {
 
 // featuresFlagHelp is the help of --features on every command that reads the data model.
 const featuresFlagHelp = "turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). " +
-	"Forward's defaults apply otherwise. List them with `fwdctl nqe features`. Also FORWARD_NQE_FEATURES"
+	"Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with `fwdctl nqe features`. Also FORWARD_NQE_FEATURES"
 
 // applyNQEFeatures puts the --features flag and FORWARD_NQE_FEATURES (the flag first) into effect for the schema the offline checker reads. An unknown name is a usage error that lists the known ones.
 func (a *app) applyNQEFeatures(cmd *cobra.Command) error {
@@ -402,8 +402,8 @@ func (a *app) nqeFeatures() *cobra.Command {
 	c := &cobra.Command{
 		Use: "features", Short: "list Forward's NQE feature flags: org property, default, what it changes, whether it is on", Args: cobra.NoArgs,
 		Example: "  fwdctl nqe features\n  fwdctl nqe features --features security-rules-fortios,device-services",
-		Long: "Forward serves each organization an NQE schema filtered by its feature flags (org properties). The offline checker uses Forward's defaults; --features turns flags on, as an organization with them would have, " +
-			"so a query using a field behind a flag (the Palo Alto and Fortinet security policy are experimental and off by default) checks clean. `nqe lint --org` reads the organization's own live schema and is the authority for one organization. " +
+		Long: "A feature flag is an org property that switches a change in the model or the data on: setting it enables the fields, types or functions listed against it, and an organization without it does not have them. Forward serves each organization an NQE schema filtered by its feature flags. The offline checker uses Forward's defaults; --features turns flags on, as an organization with them would have, " +
+			"so a query using a field behind a flag checks clean. The Palo Alto and Fortinet security policy features (security-rules-panos and security-rules-fortios, org properties NQE_SECURITY_RULES_PANOS and NQE_SECURITY_RULES_FORTIOS) are EXPERIMENTAL in Forward, still so in 26.10, and off by default: device.securityPolicy exists only in an organization that has one of them turned on, so offline you need --features for it, or `nqe lint --org`. `nqe lint --org` reads the organization's own live schema and is the authority for one organization. " +
 			"Kinds: schema (fields and types), language (a function), runtime (storage and summaries: no effect on the checker).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := a.applyNQEFeatures(cmd); err != nil {
@@ -415,11 +415,12 @@ func (a *app) nqeFeatures() *cobra.Command {
 			}
 			type row struct {
 				nqeschema.Feature
-				Enabled bool `json:"enabled"`
+				Experimental bool `json:"experimental"`
+				Enabled      bool `json:"enabled"`
 			}
 			rows := []row{}
 			for _, f := range nqeschema.Features() {
-				rows = append(rows, row{f, on[f.Name]})
+				rows = append(rows, row{f, f.Experimental(), on[f.Name]})
 			}
 			type rule struct {
 				nqelint.ExperimentalRule

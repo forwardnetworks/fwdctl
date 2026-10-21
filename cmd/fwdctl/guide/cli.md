@@ -108,7 +108,7 @@ Examples:
 Flags:
 
 ```
-      --features fwdctl nqe features   turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+      --features fwdctl nqe features   turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
   -k, --top int                        how many to return (default 3)
 ```
 
@@ -362,7 +362,7 @@ Flags:
 
 ```
       --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
-      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
 ## fwdctl nqe diff
@@ -468,7 +468,7 @@ Flags:
 
 ## fwdctl nqe features
 
-Forward serves each organization an NQE schema filtered by its feature flags (org properties). The offline checker uses Forward's defaults; --features turns flags on, as an organization with them would have, so a query using a field behind a flag (the Palo Alto and Fortinet security policy are experimental and off by default) checks clean. `nqe lint --org` reads the organization's own live schema and is the authority for one organization. Kinds: schema (fields and types), language (a function), runtime (storage and summaries: no effect on the checker).
+A feature flag is an org property that switches a change in the model or the data on: setting it enables the fields, types or functions listed against it, and an organization without it does not have them. Forward serves each organization an NQE schema filtered by its feature flags. The offline checker uses Forward's defaults; --features turns flags on, as an organization with them would have, so a query using a field behind a flag checks clean. The Palo Alto and Fortinet security policy features (security-rules-panos and security-rules-fortios, org properties NQE_SECURITY_RULES_PANOS and NQE_SECURITY_RULES_FORTIOS) are EXPERIMENTAL in Forward, still so in 26.10, and off by default: device.securityPolicy exists only in an organization that has one of them turned on, so offline you need --features for it, or `nqe lint --org`. `nqe lint --org` reads the organization's own live schema and is the authority for one organization. Kinds: schema (fields and types), language (a function), runtime (storage and summaries: no effect on the checker).
 
 ```
 fwdctl nqe features [flags]
@@ -485,7 +485,7 @@ Flags:
 
 ```
       --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
-      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
 ## fwdctl nqe fmt
@@ -528,7 +528,7 @@ Flags:
 
 ```
       --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
-      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
 ## fwdctl nqe lint
@@ -561,7 +561,7 @@ Flags:
 ```
       --errors-only                        report errors only, no warnings or deprecations (the exit status is the same)
       --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
-      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
       --modules string                     where "import" statements are read from (default: the directory of FILE)
       --org                                check against the organization's live schema instead of the embedded one (needs a login)
       --synthetic string                   check the file as a synthetic-device query of this kind (adjacent-network|internet|intranet|l2vpn|l3vpn)
@@ -585,7 +585,7 @@ Flags:
 
 ```
       --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
-      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise. List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
+      --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES
 ```
 
 ## fwdctl nqe metrics
