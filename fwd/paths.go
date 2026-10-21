@@ -185,3 +185,56 @@ func convertPaths(in []forward.NetworkPathResult) []Path {
 	}
 	return out
 }
+
+// BulkCell is one query's answer from a bulk path search.
+type BulkCell struct {
+	PathResult
+	// Failed says Forward answered an error for this query alone (for example a device not in the snapshot); ErrorMessage is its reason. A timed out query is not Failed: it has TimedOut and no paths.
+	Failed       bool
+	ErrorMessage string
+}
+
+// BulkOptions are the settings shared by every query of a bulk path search. Zero means Forward's default, except MaxOverallSeconds, which a large batch must set.
+type BulkOptions struct {
+	SnapshotID        string
+	Intent            string
+	MaxResults        int
+	MaxSeconds        int // per query
+	MaxOverallSeconds int // for the whole request; queries not started when it passes come back TimedOut with no paths
+}
+
+// SearchPathsBulk runs many path searches against one snapshot in one request and returns one cell per query, in order (POST /networks/{n}/paths-bulk). Hops carry device names only.
+func (s *Session) SearchPathsBulk(ctx context.Context, networkID string, queries []PathQuery, o BulkOptions) ([]BulkCell, error) {
+	qs := make([]forward.PathQuery, 0, len(queries))
+	for _, q := range queries {
+		proto, err := ParseProtocol(q.Protocol)
+		if err != nil {
+			return nil, err
+		}
+		qs = append(qs, forward.PathQuery{From: q.From, SrcIP: q.SrcIP, DstIP: q.DstIP, IPProto: proto, SrcPort: q.SrcPort, DstPort: q.DstPort})
+	}
+	opt := forward.PathBulkOptions{SnapshotID: o.SnapshotID, Intent: o.Intent}
+	if o.MaxResults > 0 {
+		opt.MaxResults = &o.MaxResults
+	}
+	if o.MaxSeconds > 0 {
+		opt.MaxSeconds = &o.MaxSeconds
+	}
+	if o.MaxOverallSeconds > 0 {
+		opt.MaxOverallSeconds = &o.MaxOverallSeconds
+	}
+	res, _, err := s.Client.Networks.PathsBulk(ctx, networkID, qs, opt)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]BulkCell, 0, len(res))
+	for _, r := range res {
+		if r.Failed || r.Response == nil {
+			out = append(out, BulkCell{Failed: true, ErrorMessage: r.ErrorMessage})
+			continue
+		}
+		out = append(out, BulkCell{PathResult: PathResult{TimedOut: r.Response.TimedOut, TotalType: r.Response.Info.TotalHits.Type, Paths: convertPaths(r.Response.Info.Paths)}})
+	}
+	s.Annotate(intp(len(out)), false)
+	return out, nil
+}

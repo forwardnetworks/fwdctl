@@ -243,6 +243,13 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	default:
 		return result.Result{}, fmt.Errorf("%w: intent must be PREFER_DELIVERED, PREFER_VIOLATIONS or VIOLATIONS_ONLY", ErrInvalidInput)
 	}
+	mx, mgroups, merr := parseMatrix(raw, in) // validated before any request
+	if merr != nil {
+		return result.Result{}, merr
+	}
+	if mx == nil && strings.TrimSpace(in.DstIP) == "" {
+		return result.Result{}, fmt.Errorf("%w: dst_ip is required for one flow (or give matrix for every pair of several endpoints)", ErrInvalidInput)
+	}
 	snap, err := resolveSnapshot(ctx, s, in.NetworkID, in.SnapshotID)
 	if err != nil {
 		return result.Result{}, err
@@ -254,6 +261,9 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 			result.Options{NextActions: []string{"investigate-collection-failure"}})
 	}
 	sid := fwd.SnapshotIDPtr(snap)
+	if mx != nil {
+		return reachabilityMatrix(ctx, s, in, mx, mgroups, fwd.SnapshotID(cx), cx, sid)
+	}
 	doc, err := s.SearchPaths(ctx, in.NetworkID, fwd.PathQuery{
 		DstIP: in.DstIP, SrcIP: in.SrcIP, From: in.From, Protocol: protocolText(in.Protocol),
 		SrcPort: in.SrcPort, DstPort: in.DstPort, Intent: in.Intent, SnapshotID: fwd.SnapshotID(cx),
