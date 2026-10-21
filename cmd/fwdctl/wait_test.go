@@ -309,3 +309,20 @@ func TestWaitFollowPrintsOnChangeAndEveryNSeconds(t *testing.T) {
 		t.Errorf("%d progress lines on stdout, none on stderr:\n%s\nstderr: %s", progressLines, out.String(), errb.String())
 	}
 }
+
+// While advanced reachability runs the snapshot itself is PROCESSED, so progress is shown for the advanced stage too (Forward reports it as the ADVANCED_REACHABILITY stage); a wait that ends TIMED_OUT, FAILED or CANCELED prints the last progress it saw.
+func TestWaitShowsProgressWhileAdvancedReachabilityRunsAndAtItsEnd(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	seq := []*forward.Snapshot{snap("PROCESSED", "PROCESSING"), snap("PROCESSED", "PROCESSING"), snap("PROCESSED", "TIMED_OUT")}
+	i := 0
+	get := func(context.Context) (*forward.Snapshot, error) { v := seq[min(i, len(seq)-1)]; i++; return v, nil }
+	progress := func(context.Context) string {
+		return "stage ADVANCED_REACHABILITY COMPUTING, 9000 objects, elapsed 12m0s"
+	}
+	var out, errb bytes.Buffer
+	code := waitForSnapshot(context.Background(), get, progress, "s1", "PROCESSED", "PROCESSED", time.Hour, time.Minute, clk.sleep, clk.now, &out, &errb)
+	e := errb.String()
+	if code != waitFailed || strings.Count(e, "stage ADVANCED_REACHABILITY COMPUTING") < 3 || !strings.Contains(e, "last progress") {
+		t.Fatalf("code %d err:\n%s", code, e)
+	}
+}

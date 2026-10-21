@@ -216,3 +216,26 @@ func TestAdvancedReachabilityWarnsWhenTheInternetNodeCannotProduceExposure(t *te
 		t.Errorf("no node is said too: %v", r.Limits)
 	}
 }
+
+// With ADVANCED_REACHABILITY_ANALYSIS = ASYNC Forward starts the analysis itself when the reachability stage of a normal snapshot completes (read from Forward's source), so a manual request in the seconds after PROCESSED can race the automatic one. The limit says so, and says to read the state first.
+func TestAdvancedReachabilityLimitSaysAsyncStartsItselfAndCanRace(t *testing.T) {
+	r, _ := mustRun(t, "edit-advanced-reachability", advRoutes("UNPROCESSED", "PROCESSING", accept()), `{"network_id":"n1","snapshot_id":"s1"}`)
+	l := strings.Join(r.Limits, "|")
+	for _, want := range []string{"ASYNC", "starts it by itself", "race", "predicted"} {
+		if !strings.Contains(l, want) {
+			t.Errorf("limits miss %q: %s", want, l)
+		}
+	}
+}
+
+// A TIMED_OUT advanced reachability says what Forward does not tell: it reports one combined ADVANCED_REACHABILITY stage (the analysis has two parts, a DAG and a DAG merge), so which part or which timeout property ended it is not shown; and that a repeat request is ignored until a reprocess.
+func TestInspectSnapshotsExplainsTimedOutAdvancedReachability(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: fwdtest.Snapshots(advSnap("TIMED_OUT"))}
+	r, _ := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1","snapshot_id":"s1"}`)
+	b := jsonOf(r) + " " + strings.Join(r.Limits, " ")
+	for _, want := range []string{"TIMED_OUT", "does not say which", "REACHABILITY_TIMEOUT_MINUTES", "FLOWLET_COMPUTATION_TIMEOUT_MINS", "reprocessed"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+}
