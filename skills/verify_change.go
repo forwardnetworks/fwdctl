@@ -229,6 +229,7 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 	}
 	rows := make([]map[string]any, 0, len(list))
 	unfinishedPred := false
+	progressReads := 0
 	for i, c := range list {
 		row := map[string]any{"id": string(c.ID), "name": c.Name, "description": c.Description, "base_snapshot_id": string(c.SnapshotID), "tags": c.Tags}
 		if i < maxListPredictions { // one read per change set, so only the first ones carry their predicted snapshots
@@ -238,7 +239,12 @@ func listChangeSets(ctx context.Context, s *fwd.Session, networkID string) (resu
 				sort.SliceStable(ps, func(a, b int) bool { return ps[a].CreatedAt > ps[b].CreatedAt })
 				preds := make([]map[string]any, 0, len(ps))
 				for _, p := range ps {
-					preds = append(preds, map[string]any{"id": string(p.ID), "state": p.State, "finished": predictionFinished(p.State), "created_at": nilIfEmpty(p.CreatedAt)})
+					prow := map[string]any{"id": string(p.ID), "state": p.State, "finished": predictionFinished(p.State), "created_at": nilIfEmpty(p.CreatedAt)}
+					if !predictionFinished(p.State) && progressReads < maxProgressReads {
+						progressReads++
+						prow["processing"] = processingMap(s.Processing(ctx, string(p.ID)))
+					}
+					preds = append(preds, prow)
 					if !predictionFinished(p.State) {
 						unfinishedPred = true
 					}

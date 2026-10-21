@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
@@ -123,5 +124,36 @@ func TestPredictionStatesSayWhichAreFinished(t *testing.T) {
 	res, _ = mustRun(t, "verify-change", l, `{"network_id":"n1","view":"list"}`)
 	if !strings.Contains(jsonOf(res), `"finished":false`) || !strings.Contains(strings.Join(res.Limits, " "), "UNPROCESSED") {
 		t.Errorf("list: %s %v", jsonOf(res), res.Limits)
+	}
+}
+
+// A prediction that has not finished carries where its processing stands (stage, state, elapsed against Forward's estimate, a past-the-estimate flag), in describe and in list, so a stuck one shows early. A finished prediction carries none.
+func TestUnfinishedPredictionsCarryTheirProcessingProgress(t *testing.T) {
+	start := time.Now().Add(-405 * time.Second).UnixMilli()
+	r := csRoutes([]any{map[string]any{"id": "p1", "state": "UNPROCESSED"}, map[string]any{"id": "p0", "state": "PROCESSED"}}, []any{}, []any{})
+	r["GET /api/snapshots/p1/progress"] = fwdtest.Const(200, map[string]any{"snapshotId": "p1", "done": false, "stages": []any{
+		map[string]any{"stage": "CREATION", "operationState": "COMPUTING", "startedAt": start, "numObjects": 4500}}})
+	r["GET /api/snapshots/p1/processEstimate"] = fwdtest.Const(200, map[string]any{"stageToDuration": map[string]any{"CREATION": 216000}})
+	res, _ := mustRun(t, "verify-change", r, `{"network_id":"n1","view":"describe","change_set_id":"cs1"}`)
+	b := jsonOf(res)
+	for _, want := range []string{`"stage":"CREATION"`, `"stage_state":"COMPUTING"`, `"estimate_total_seconds":216`, `"over_estimate":true`, `"objects":4500`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("describe: missing %s in %s", want, b)
+		}
+	}
+	if strings.Count(b, `"processing"`) != 1 {
+		t.Errorf("only the unfinished prediction carries processing: %s", b)
+	}
+	l := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, map[string]any{"changeSets": []any{map[string]any{"id": "cs1", "name": "x", "snapshotId": "s1"}}}),
+		csPredPath:                         fwdtest.Const(200, map[string]any{"snapshots": []any{map[string]any{"id": "p1", "state": "UNPROCESSED"}}}),
+		"GET /api/networks/n1/change-sets/cs1/commits/head": fwdtest.Const(404, map[string]any{"message": "none"}),
+		"GET /api/networks/n1/change-sets/cs1/draft":        fwdtest.Const(200, map[string]any{"draft": nil}),
+		"GET /api/snapshots/p1/progress":                    r["GET /api/snapshots/p1/progress"],
+		"GET /api/snapshots/p1/processEstimate":             r["GET /api/snapshots/p1/processEstimate"],
+	}
+	res, _ = mustRun(t, "verify-change", l, `{"network_id":"n1","view":"list"}`)
+	if !strings.Contains(jsonOf(res), `"over_estimate":true`) {
+		t.Errorf("list: %s", jsonOf(res))
 	}
 }

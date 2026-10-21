@@ -418,6 +418,7 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 				finding += fmt.Sprintf("; the prediction was started but snapshot %s ended %s (no result): read why with inspect-snapshots, then run the change set again", run.ID, strings.ToUpper(run.State))
 			case run.ID != "":
 				extra["predicted_snapshot_id"], extra["predicted_snapshot_state"] = run.ID, run.State
+				finding += "; processing: " + s.Processing(ctx, run.ID).Line()
 				finding += fmt.Sprintf("; NOT predicted yet: snapshot %s was started (state %s) and the wait ended (%s); a long prediction finishes after this call returns, so wait for it with `fwdctl wait snapshot --network %s --snapshot %s` or read verify-change view list before trusting any result (the wait never cancels it: to stop its jobs, edit-snapshot action cancel with snapshot_id %s, a dry run first, needs an ADMINISTER_SYSTEM credential)", run.ID, run.State, why, in.NetworkID, run.ID, run.ID)
 			default:
 				finding += "; NOT predicted: the prediction could not be started (" + why + ")"

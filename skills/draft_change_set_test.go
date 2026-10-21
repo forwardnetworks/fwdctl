@@ -470,3 +470,25 @@ func TestDraftChangeSetRunRereadsAFailedPredictionBeforeReportingIt(t *testing.T
 		t.Errorf("finding: %s", r.Finding)
 	}
 }
+
+// When the wait ends before the prediction does ("NOT predicted yet"), the finding says where the processing stands: the stage, elapsed against Forward's estimate, so a long or stuck prediction is visible at once.
+func TestDraftChangeSetNotPredictedYetSaysWhereProcessingStands(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes["GET "+csRoot+"/cs7/predicted-snapshots"] = fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{}})
+	routes["POST "+csRoot+"/cs7"] = fwdtest.Const(200, map[string]any{"id": "p1", "state": "PROCESSING"})
+	base := routes[snapsPath]
+	reads := 0
+	routes[snapsPath] = func(r *http.Request, body []byte) (int, any) { // the base is readable; after that every poll fails, so the wait ends with the prediction still running
+		if reads++; reads > 1 {
+			return 500, map[string]any{"message": "down"}
+		}
+		return base(r, body)
+	}
+	start := time.Now().Add(-100 * time.Second).UnixMilli()
+	routes["GET /api/snapshots/p1/progress"] = fwdtest.Const(200, map[string]any{"snapshotId": "p1", "done": false, "stages": []any{map[string]any{"stage": "CREATION", "operationState": "COMPUTING", "startedAt": start, "numObjects": 7}}})
+	routes["GET /api/snapshots/p1/processEstimate"] = fwdtest.Const(200, map[string]any{"stageToDuration": map[string]any{"CREATION": 300000}})
+	r, _ := mustRun(t, "edit-change-set", routes, dcIn+`,"apply":true,"run":true}`)
+	if !strings.Contains(r.Finding, "NOT predicted yet") || !strings.Contains(r.Finding, "stage CREATION COMPUTING") || !strings.Contains(r.Finding, "estimate 5m0s") {
+		t.Errorf("finding: %s", r.Finding)
+	}
+}
