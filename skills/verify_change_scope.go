@@ -100,6 +100,7 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 	if v, verr := s.Version(ctx); verr == nil && v != nil {
 		release = firstNonEmpty(releaseOf(v.Release), releaseOf(v.Version))
 		d["version"] = firstNonEmpty(v.Release, v.Version)
+		d["build"] = v.Build
 	}
 	d["release"] = release
 	flagRows := []map[string]any{}

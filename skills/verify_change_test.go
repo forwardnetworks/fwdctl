@@ -327,6 +327,9 @@ func TestVerifyChangeScopeViewJoinsLicenseFamiliesPlatformsAndFeatures(t *testin
 	if d == nil {
 		t.Fatalf("no scope detail: %s", b)
 	}
+	if d["build"] != "b" || d["version"] != "26.9.4-02" {
+		t.Errorf("the scope carries the build id for the field report: %v %v", d["build"], d["version"])
+	}
 	// 26.9 has no predict_model_isis: the scope says it does not exist, not that it is unreadable
 	if !strings.Contains(b, "does not exist in release 26.9") {
 		t.Errorf("an absent flag says so: %s", b)
