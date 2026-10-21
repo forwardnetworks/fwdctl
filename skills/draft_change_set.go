@@ -85,6 +85,9 @@ type draftLifecycle struct {
 	Name     string `json:"name"`
 	Device   string `json:"device"`
 	CommitID string `json:"commit_id"`
+	// CheckID and Check belong to the check ops (add_check, edit_check, remove_check): a check the change set carries, evaluated on its base and on each prediction.
+	CheckID string      `json:"check_id"`
+	Check   *draftCheck `json:"check"`
 }
 
 type draftChangeSetInput struct {

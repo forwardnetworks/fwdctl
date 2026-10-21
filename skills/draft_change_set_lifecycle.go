@@ -23,6 +23,9 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		return result.Result{}, fmt.Errorf("%w: lifecycle works on an existing change set; it does not combine with devices, bgp_advertisements, firewall_rules, snapshot_id or run (create another change set to stage content)", ErrInvalidInput)
 	}
 	op := strings.ToLower(strings.TrimSpace(l.Op))
+	if op == "add_check" || op == "edit_check" || op == "remove_check" {
+		return changeSetCheck(ctx, s, in, op)
+	}
 	switch op {
 	case "rename":
 		if strings.TrimSpace(l.Name) == "" && strings.TrimSpace(in.Description) == "" {
@@ -38,7 +41,7 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			return result.Result{}, fmt.Errorf("%w: restore_commit needs lifecycle.commit_id (the versions are listed by verify-change view describe)", ErrInvalidInput)
 		}
 	default:
-		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, delete, discard_device, restore_commit or predict", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, delete, discard_device, restore_commit, predict, add_check, edit_check or remove_check", ErrInvalidInput)
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	list, err := s.ChangeSets(ctx, in.NetworkID)
