@@ -34,17 +34,20 @@ type verifyChangeInput struct {
 	// been predicted, which of its checks got worse) or "impact" (measure how far it reaches and judge nothing).
 	View         string        `json:"view"`
 	Expectations []expectation `json:"expectations"`
+	// SummaryKind belongs to view ai_summary: config, impact (default), failure or overview.
+	SummaryKind string `json:"summary_kind"`
 }
 
 // Inputs by view (an input of another view is rejected). describe reads one change set; verify and impact compare a before and an after.
 var verifyChangeViewInputs = map[string][]string{
-	"verify":    {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "expectations"},
-	"impact":    {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
-	"describe":  {"change_set_id", "device"},
-	"list":      {},
-	"scope":     {},
-	"preflight": {},
-	"paths":     {"change_set_id", "after_snapshot_id", "connectivity_timeout_seconds"},
+	"verify":     {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "expectations"},
+	"impact":     {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
+	"describe":   {"change_set_id", "device"},
+	"list":       {},
+	"scope":      {},
+	"preflight":  {},
+	"paths":      {"change_set_id", "after_snapshot_id", "connectivity_timeout_seconds"},
+	"ai_summary": {"change_set_id", "before_snapshot_id", "after_snapshot_id", "summary_kind"},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -57,14 +60,16 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list", "scope", "preflight", "paths":
+	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight or paths", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths or ai_summary", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
 	}
 	switch view {
+	case "ai_summary":
+		return aiSummary(ctx, s, in, in.SummaryKind)
 	case "list":
 		return listChangeSets(ctx, s, in.NetworkID)
 	case "scope":
