@@ -39,7 +39,7 @@ func (a *app) waitSnapshotCmd() *cobra.Command {
 	var follow bool
 	c := &cobra.Command{
 		Use: "snapshot --network ID --snapshot ID [--advanced-reachability] [--timeout 2h]", Short: "wait for a snapshot to be processed, and optionally its advanced reachability",
-		Long: "While the snapshot is PROCESSING each poll line also says where it stands: the stage computing now, its object count, elapsed time against Forward's own estimate, and when elapsed is past the estimate (a stuck run looks like this). With --follow the progress goes to stdout like tail -f (a line when the state or stage changes, otherwise every --every), so a background run can be read from its log.\n" +
+		Long: "While the snapshot is PROCESSING, or its advanced reachability is (the ADVANCED_REACHABILITY stage), each poll line also says where it stands: the stage computing now, its object count, elapsed time against Forward's own estimate, and when elapsed is past the estimate (a stuck run looks like this). With --follow the progress goes to stdout like tail -f (a line when the state or stage changes, otherwise every --every), so a background run can be read from its log.\n" +
 			"Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.\n" +
 			"A FAILED, CANCELED or TIMED_OUT state ends the wait with exit 1: Forward does not retry those by itself (a reprocess clears them). The last line on stdout is a JSON object: status,\n" +
 			"snapshot_id, state, advanced_reachability, waited_seconds. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.\n" +
@@ -92,6 +92,7 @@ type waitOpts struct {
 func waitForSnapshotOpts(ctx context.Context, get func(context.Context) (*forward.Snapshot, error), progress func(context.Context) string, id, want, wantAdv string, timeout, interval time.Duration,
 	sleep func(time.Duration), now func() time.Time, stdout, stderr io.Writer, opts waitOpts) int {
 	lastKey, lastPrint := "", time.Time{}
+	lastProgress := "" // the last progress text seen while the work ran, printed when it ends badly
 	final := map[string]bool{"FAILED": true, "CANCELED": true, "TIMED_OUT": true}
 	start := now()
 	errs, idle := 0, 0
@@ -117,8 +118,9 @@ func waitForSnapshotOpts(ctx context.Context, get func(context.Context) (*forwar
 				adv = "NOT_REPORTED"
 			}
 			more := ""
-			if progress != nil && sn.State == "PROCESSING" { // where processing stands: the stage, its objects, elapsed against Forward's estimate
+			if progress != nil && (sn.State == "PROCESSING" || adv == "PROCESSING") { // where processing stands: the stage, its objects, elapsed against Forward's estimate (advanced reachability runs after the snapshot is PROCESSED and is the ADVANCED_REACHABILITY stage)
 				more = "; " + progress(ctx)
+				lastProgress = strings.TrimPrefix(more, "; ")
 			}
 			if opts.follow {
 				key := sn.State + "|" + adv + "|" + strings.SplitN(more, ",", 2)[0]
@@ -144,9 +146,15 @@ func waitForSnapshotOpts(ctx context.Context, get func(context.Context) (*forwar
 			switch {
 			case final[sn.State] && sn.State != want:
 				fmt.Fprintf(stderr, "snapshot %s ended in %s, which Forward does not change by itself; reprocess it to try again\n", id, sn.State)
+				if lastProgress != "" {
+					fmt.Fprintf(stderr, "last progress seen: %s\n", lastProgress)
+				}
 				return emit("failed", sn.State, adv, waitFailed)
 			case wantAdv != "" && sn.State == want && final[adv] && adv != wantAdv:
-				fmt.Fprintf(stderr, "advanced reachability of snapshot %s ended in %s, which Forward does not change by itself\n", id, adv)
+				fmt.Fprintf(stderr, "advanced reachability of snapshot %s ended in %s, which Forward does not change by itself: a request to compute it again is ignored while the state is final, and reprocessing the snapshot (edit-snapshot) clears it. Forward reports the combined ADVANCED_REACHABILITY stage only, so it does not say which part (DAG or DAG merge) or which timeout property ended it\n", id, adv)
+				if lastProgress != "" {
+					fmt.Fprintf(stderr, "last progress seen: %s\n", lastProgress)
+				}
 				return emit("failed", sn.State, adv, waitFailed)
 			case sn.State == want && (wantAdv == "" || adv == wantAdv):
 				return emit("ok", sn.State, adv, waitReached)

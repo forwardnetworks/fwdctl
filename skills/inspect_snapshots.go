@@ -355,7 +355,9 @@ func advancedMeaning(state string) string {
 		return lead + "PROCESSING means it is computing now; internet exposure appears once it is PROCESSED"
 	case forward.AdvancedReachabilityProcessed:
 		return lead + "PROCESSED means it was computed, so internet exposure can be read for this snapshot"
-	case forward.AdvancedReachabilityFailed, forward.AdvancedReachabilityCanceled, forward.AdvancedReachabilityTimedOut:
+	case forward.AdvancedReachabilityTimedOut:
+		return lead + "TIMED_OUT is a final state: a time limit ended it. Forward reports one combined ADVANCED_REACHABILITY stage (the analysis has two parts, a DAG and a DAG merge), so it does not say which part ended it or which timeout property applied (the organization's REACHABILITY_TIMEOUT_MINUTES and FLOWLET_COMPUTATION_TIMEOUT_MINS are the time limits it has); compare the elapsed time with them. It will not run again by itself, and asking again is ignored by Forward until the snapshot is reprocessed"
+	case forward.AdvancedReachabilityFailed, forward.AdvancedReachabilityCanceled:
 		return lead + state + " is a final state: it will not run again by itself, and asking again is ignored by Forward until the snapshot is reprocessed"
 	}
 	return lead + state + " is not a state this skill knows; read it as unknown"
