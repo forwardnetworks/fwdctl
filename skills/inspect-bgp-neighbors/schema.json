@@ -68,6 +68,82 @@
         }
       },
       "additionalProperties": false
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Forward's routing app as a read (a different question from advertised; give one): where a BGP prefix comes from, who accepts or rejects it, how it propagated and why. view search (default): origin and devices by outcome; trace: propagation paths to routing.router (origin and outcome are taken from a search when absent); details: attributes and policies at one hop of a trace (path, hop); device: what routing.device received and installed for the prefix, per VRF; installed: prefixes installed on routing.device or routing.vendors. A preview route; needs the network ADMIN role (BGP_PREFIX_SEARCH).",
+      "properties": {
+        "view": {
+          "enum": [
+            "search",
+            "trace",
+            "details",
+            "device",
+            "installed"
+          ],
+          "default": "search"
+        },
+        "prefix": {
+          "type": "string",
+          "description": "CIDR, required except for view installed"
+        },
+        "router": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "device"
+          ],
+          "properties": {
+            "device": {
+              "type": "string"
+            },
+            "vrf": {
+              "type": "string"
+            }
+          }
+        },
+        "originated_from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "device"
+          ],
+          "properties": {
+            "device": {
+              "type": "string"
+            },
+            "vrf": {
+              "type": "string"
+            }
+          }
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "path": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hop": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "device": {
+          "type": "string"
+        },
+        "vendors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "lowercase vendor-OS names such as cisco_ios"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   }
 }

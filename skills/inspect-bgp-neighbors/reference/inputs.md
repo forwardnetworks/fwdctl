@@ -6,3 +6,15 @@
 
 `advertised.direction` is `out` (the default, the list above) or `in`: with `in` the same input lists what the device RECEIVED from the peer, read from its Adj-RIB-In after input policy (routes the policy denied are not listed), for IPv4 unicast in one VRF. Every distinct prefix is listed, not aggregated, each with its next hop, local preference and AS path, so a prefix can be chosen for a BGP withdraw in `edit-change-set` (`bgp_advertisements`, action `withdraw`, keyed by the row's vrf, the peer and the prefix). It exists only where received BGP advertisements are collected on the device (`collectBgpAdvertisements` on, BGP table type BOTH or ADJ_RIB_IN covering the peer), so no rows can mean not collected, not that nothing was received. `outside` belongs to direction `out`.
 
+
+## routing (Forward's routing app)
+
+A different question from `advertised`; give one. `routing` is `{view, prefix, ...}` and reads Forward's routing app for a BGP prefix: where it comes from, who accepts or rejects it, how it propagated, and why.
+
+- `view: search` (default) with `prefix`: the origin devices and the devices by outcome (INSTALLED, REJECTED and so on), with counts. Optional `router` and `originated_from` (`{device, vrf}`) and `outcome` narrow it.
+- `view: trace` with `prefix` and `router`: the propagation paths from the origin to that router, hop by hop (device, VRF, AS, the import and export policies). The origin and outcome are taken from a search when you give none, and the result says so.
+- `view: details` with `prefix` and `router`: Forward's attributes and the policy rules that matched at one hop of a trace (`path`, default 0, and `hop`, default the router itself).
+- `view: device` with `prefix` and `device`: what that device received (advertisements, next hop, outcome, origin) and which more-specific routes it installed, per VRF.
+- `view: installed` with `device` or `vendors` (lowercase vendor-OS names such as `cisco_ios`; not both): the BGP prefixes installed, up to `limit` (default 200).
+
+It is a preview route that reads BGP, needs the network ADMIN role (the operation BGP_PREFIX_SEARCH; an OPERATOR is refused with 403), the organization property PREDICT_MODELING, and a snapshot processed to the creation stage. A node that does not resolve in the snapshot is `unknown`, not an error. The search and trace calls are POSTs that change nothing.

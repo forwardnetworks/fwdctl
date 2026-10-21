@@ -61,13 +61,13 @@ func TestAlwaysLoadedBudget(t *testing.T) {
 // views should each name their own inputs. The skills below pre-date the rule; each may not grow past the number listed, and none may pass maxInputsEver.
 const (
 	maxReadInputs = 8
-	maxInputsEver = 12
+	maxInputsEver = 13 // inspect-bgp-neighbors takes the routing-app option as one nested object (13); every other skill stays at 12 or fewer
 )
 
 var wideReadSkills = map[string]int{
 	"check-network-compliance": 11,
-	"inspect-bgp-neighbors":    12,
-	"compare-nqe-results":      9, // after_network_id, key and ignore compare two networks
+	"inspect-bgp-neighbors":    13, // routing adds the routing-app option
+	"compare-nqe-results":      9,  // after_network_id, key and ignore compare two networks
 	"inspect-device-files":     11,
 	"investigate-reachability": 12, // return_path asks Forward for the return flow in the same search (a Forward parameter, not a view); no existing input holds it
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.

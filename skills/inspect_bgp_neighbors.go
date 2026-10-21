@@ -49,7 +49,11 @@ func inspectBGPNeighbors(ctx context.Context, s *fwd.Session, raw json.RawMessag
 	if aerr != nil {
 		return result.Result{}, aerr
 	}
-	if !wantAdv {
+	rt, wantRouting, rerr := parseRouting(raw)
+	if rerr != nil {
+		return result.Result{}, rerr
+	}
+	if !wantAdv && !wantRouting {
 		if in.Limit <= 0 {
 			in.Limit = defaultBGPLimit
 		}
@@ -67,6 +71,9 @@ func inspectBGPNeighbors(ctx context.Context, s *fwd.Session, raw json.RawMessag
 	sid := fwd.SnapshotID(cx)
 	if wantAdv {
 		return bgpAdvertised(ctx, s, in, adv, sid, cx)
+	}
+	if wantRouting {
+		return bgpRouting(ctx, s, in, rt, sid, cx)
 	}
 	rows, _, trunc, err := s.RunNQEAll(ctx, in.NetworkID, sid, bgpNeighborQuery, maxModelRows)
 	if err != nil {
