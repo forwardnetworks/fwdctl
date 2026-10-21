@@ -139,8 +139,9 @@ func TestEditNQEQueriesTypecheckReportsImporterErrorsAndRestoresTheDrafts(t *tes
 	head := "c1"
 	dry := map[string]any{"newErrors": map[string]any{"/Team/importer": []any{map[string]any{"severity": "ERROR", "message": "no such field"}}}}
 	routes, state, log := multiLibrary(&head, dry)
+	dryRunSequence(routes, log, map[string]any{"newErrors": map[string]any{}}, dry) // the baseline at head is clean, so the importer error is new
 	r, _ := mustRun(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true,"apply":true}`)
-	if r.Status != result.Failed || !strings.Contains(r.Finding, "error(s)") || strings.Contains(r.Finding, "new error") || head != "c1" {
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "error(s)") || !strings.Contains(r.Finding, "1 new error") || head != "c1" {
 		t.Fatalf("%s %s head=%s", r.Status, r.Finding, head)
 	}
 	// both paths were staged, typed, and the committed sources restored as drafts; nothing committed
@@ -340,5 +341,51 @@ func TestEditNQEQueriesOfflineCheckSkipNeedsTypecheckAndSaysItWasSkipped(t *test
 	r, _ := mustRun(t, "edit-nqe-query", routes, newerFieldIn+`,"offline_check":"skip","typecheck":true}`)
 	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "skipped") {
 		t.Fatalf("skip: %s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}
+
+// dryRunSequence makes the commit dry-run answer with a different set of errors on each call: the first is the baseline (the same queries at head), the second is the change.
+func dryRunSequence(routes map[string]fwdtest.Handler, log *[]string, answers ...map[string]any) *int {
+	n := 0
+	inner := routes["POST /api/nqe/repos/org/commits"]
+	routes["POST /api/nqe/repos/org/commits"] = func(r *http.Request, b []byte) (int, any) {
+		if r.URL.Query().Get("dryRun") == "true" {
+			a := answers[min(n, len(answers)-1)]
+			if log != nil {
+				*log = append(*log, "dryrun")
+			}
+			n++
+			return 200, a
+		}
+		return inner(r, b)
+	}
+	return &n
+}
+
+func importerErrs(msgs ...string) map[string]any {
+	var ds []any
+	for _, m := range msgs {
+		ds = append(ds, map[string]any{"severity": "ERROR", "message": m})
+	}
+	return map[string]any{"newErrors": map[string]any{"/Team/importer": ds}}
+}
+
+// typecheck compares the change with the same queries at head: errors that were already there (an importer broken by an earlier commit) are reported as existing_errors and do not stop the commit; only errors the change adds are new_errors.
+func TestEditNQEQueriesTypecheckSeparatesExistingErrorsFromNewOnes(t *testing.T) {
+	head := "c1"
+	routes, _, _ := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	calls := dryRunSequence(routes, nil, importerErrs("Record does not have field sourceZones"), importerErrs("Record does not have field sourceZones"))
+	r, _ := mustRun(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || *calls != 2 || !strings.Contains(b, `"existing_error_count":1`) || !strings.Contains(b, `"new_error_count":0`) || !strings.Contains(strings.Join(r.Limits, " "), "existed at head") {
+		t.Fatalf("existing only: %s %s %v", r.Status, b, r.Limits)
+	}
+	head = "c1"
+	routes2, _, _ := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	dryRunSequence(routes2, nil, importerErrs("Record does not have field sourceZones"), importerErrs("Record does not have field sourceZones", "Unknown name foo"))
+	r, _ = mustRun(t, "edit-nqe-query", routes2, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true,"apply":true}`)
+	b = jsonOf(r)
+	if r.Status != result.Failed || head != "c1" || !strings.Contains(b, `"new_error_count":1`) || !strings.Contains(b, "Unknown name foo") || !strings.Contains(b, `"existing_error_count":1`) || !strings.Contains(r.Finding, "1 new") {
+		t.Fatalf("a new error stops the commit: %s %s %s", r.Status, r.Finding, b)
 	}
 }

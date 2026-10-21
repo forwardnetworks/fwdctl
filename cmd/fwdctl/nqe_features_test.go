@@ -33,13 +33,13 @@ func TestNQEFeaturesListsEachFlagWithItsOrgPropertyDefaultAndKind(t *testing.T) 
 			t.Errorf("incomplete: %+v", f)
 		}
 	}
-	if len(got.Features) != 10 || by["security-rules-panos"] || !by["cis-benchmarks"] || !by["trim-builtin"] {
+	if len(got.Features) != 10 || !by["security-rules-panos"] || !by["cis-benchmarks"] || !by["trim-builtin"] {
 		t.Errorf("features = %v", by)
 	}
 	if !strings.Contains(got.Note, "NQE_ORDERED_LIST") {
 		t.Errorf("the note should say ordered lists are retired: %q", got.Note)
 	}
-	_, out, _ = call(t, []string{"nqe", "features", "--features", "security-rules-fortios,device-services"}, "", nil)
+	_, out, _ = call(t, []string{"nqe", "features", "--features", "none,security-rules-fortios,device-services"}, "", nil)
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -53,20 +53,20 @@ func TestNQEFeaturesListsEachFlagWithItsOrgPropertyDefaultAndKind(t *testing.T) 
 }
 
 func TestNQELintFeaturesFlagMakesAGatedFieldValidAndEnvDoesToo(t *testing.T) {
-	const q = "foreach device in network.devices select {p: device.securityPolicy}"
+	const q = "foreach device in network.devices select {p: device.services}"
 	code, out, _ := call(t, []string{"nqe", "lint", "-"}, q, nil)
-	if code != 1 || !strings.Contains(out, "NQE_SECURITY_RULES_PANOS") || !strings.Contains(out, "--features security-rules-panos") {
+	if code != 1 || !strings.Contains(out, "NQE_DEVICE_SERVICES") || !strings.Contains(out, "--features device-services") {
 		t.Errorf("by default the field is behind a flag and the diagnostic says which: %d %s", code, out)
 	}
-	if code, out, _ = call(t, []string{"nqe", "lint", "--features", "security-rules-panos", "-"}, q, nil); code != 0 || !strings.Contains(out, `"valid": true`) {
+	if code, out, _ = call(t, []string{"nqe", "lint", "--features", "device-services", "-"}, q, nil); code != 0 || !strings.Contains(out, `"valid": true`) {
 		t.Errorf("--features turns it on: %d %s", code, out)
 	}
-	t.Setenv("FORWARD_NQE_FEATURES", "NQE_SECURITY_RULES_FORTIOS")
+	t.Setenv("FORWARD_NQE_FEATURES", "NQE_DEVICE_SERVICES")
 	if code, out, _ = call(t, []string{"nqe", "lint", "-"}, q, nil); code != 0 {
 		t.Errorf("FORWARD_NQE_FEATURES (an org property name) turns it on: %d %s", code, out)
 	}
 	t.Setenv("FORWARD_NQE_FEATURES", "")
-	if code, out, errOut := call(t, []string{"nqe", "lint", "--features", "no-such", "-"}, q, nil); code == 0 || !strings.Contains(out+errOut, "security-rules-panos") {
+	if code, out, errOut := call(t, []string{"nqe", "lint", "--features", "no-such", "-"}, q, nil); code == 0 || !strings.Contains(out+errOut, "device-services") {
 		t.Errorf("an unknown feature is refused with the list: %d %s %s", code, out, errOut)
 	}
 }

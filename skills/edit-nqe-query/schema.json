@@ -59,7 +59,7 @@
     "typecheck": {
       "type": "boolean",
       "default": false,
-      "description": "with changes: have Forward type the changes and every query that imports them (stages drafts, restores them)"
+      "description": "with changes: have Forward type the changes and every query that imports them (stages drafts, restores them); it types the same queries at head first, so errors that already existed are existing_errors and only what the change adds is new_errors and stops the commit"
     },
     "offline_check": {
       "type": "string",
