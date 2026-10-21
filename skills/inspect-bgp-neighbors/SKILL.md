@@ -16,7 +16,7 @@ metadata:
 ## Intent
 
 The peers a collected device has that are not themselves collected are the unmodelled network beyond it: the upstream, a provider, a partner. This skill lists the neighbors with what is needed to identify them, unmodelled peers first, and pairs each with the number of routes
-advertised to it after output policy, for the neighbor's own VRF.
+advertised to it after output policy, for the neighbor's own VRF. With `routing` it reads Forward's routing app for one BGP prefix instead: search, trace, details, device and installed (`reference/inputs.md`).
 
 ## Inputs
 

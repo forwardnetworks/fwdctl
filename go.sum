@@ -17,6 +17,8 @@ github.com/forwardnetworks/forward-go-sdk v0.5.29 h1:6n3aruz0NRYaEVfbeQ+FT1Y28Lb
 github.com/forwardnetworks/forward-go-sdk v0.5.29/go.mod h1:BIYHI6L5mHgvK4vBojAVCBRlQSe5/R3P6IYcCjDUGng=
 github.com/forwardnetworks/forward-go-sdk v0.5.30 h1:xUk0bD5+th7ddxtSFw+RZrd5wDMsAnzTppl2eAXS6/Q=
 github.com/forwardnetworks/forward-go-sdk v0.5.30/go.mod h1:BIYHI6L5mHgvK4vBojAVCBRlQSe5/R3P6IYcCjDUGng=
+github.com/forwardnetworks/forward-go-sdk v0.5.31 h1:09/d8dFjiU3/lnT5XLC8iY3Q8mvUgtna1RV0oNcMIN4=
+github.com/forwardnetworks/forward-go-sdk v0.5.31/go.mod h1:BIYHI6L5mHgvK4vBojAVCBRlQSe5/R3P6IYcCjDUGng=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
