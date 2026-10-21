@@ -66,13 +66,19 @@ func reviewChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	preds, perr := s.PredictedSnapshots(ctx, in.NetworkID, in.ChangeSetID)
 	var newest string
 	unfinished := false
+	progressReads := 0
 	if perr != nil {
 		limits = append(limits, "predicted snapshots could not be listed: "+perr.Error())
 	} else {
 		rows := make([]map[string]any, 0, len(preds))
 		sort.SliceStable(preds, func(i, j int) bool { return preds[i].CreatedAt > preds[j].CreatedAt })
 		for _, p := range preds {
-			rows = append(rows, map[string]any{"id": string(p.ID), "state": p.State, "finished": predictionFinished(p.State), "created_at": p.CreatedAt, "processed_at": p.ProcessedAt})
+			row := map[string]any{"id": string(p.ID), "state": p.State, "finished": predictionFinished(p.State), "created_at": p.CreatedAt, "processed_at": p.ProcessedAt}
+			if !predictionFinished(p.State) && progressReads < maxProgressReads {
+				progressReads++
+				row["processing"] = processingMap(s.Processing(ctx, string(p.ID)))
+			}
+			rows = append(rows, row)
 			if !predictionFinished(p.State) {
 				unfinished = true
 			}
@@ -214,4 +220,27 @@ func stagedChanges(changes map[string]forward.DeviceChanges) map[string]any {
 		out[dev] = row
 	}
 	return out
+}
+
+// maxProgressReads bounds the progress reads (two calls each) of one listing.
+const maxProgressReads = 5
+
+// processingMap is where a snapshot's processing stands, for the evidence of an unfinished prediction.
+func processingMap(p fwd.Processing) map[string]any {
+	m := map[string]any{"line": p.Line()}
+	if p.Err != nil {
+		return m
+	}
+	m["stage"], m["stage_state"], m["done"] = nilIfEmpty(p.Stage), nilIfEmpty(p.StageState), p.Done
+	if p.Objects != nil {
+		m["objects"] = *p.Objects
+	}
+	if p.ElapsedSeconds != nil {
+		m["elapsed_seconds"] = *p.ElapsedSeconds
+	}
+	if p.EstimateSeconds != nil {
+		m["estimate_total_seconds"] = *p.EstimateSeconds
+	}
+	m["over_estimate"] = p.OverEstimate()
+	return m
 }

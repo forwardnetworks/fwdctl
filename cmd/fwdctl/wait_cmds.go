@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -34,10 +35,12 @@ func (a *app) waitCmd() *cobra.Command {
 func (a *app) waitSnapshotCmd() *cobra.Command {
 	var network, snapshot string
 	var advanced bool
-	var timeout, interval time.Duration
+	var timeout, interval, every time.Duration
+	var follow bool
 	c := &cobra.Command{
 		Use: "snapshot --network ID --snapshot ID [--advanced-reachability] [--timeout 2h]", Short: "wait for a snapshot to be processed, and optionally its advanced reachability",
-		Long: "Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.\n" +
+		Long: "While the snapshot is PROCESSING each poll line also says where it stands: the stage computing now, its object count, elapsed time against Forward's own estimate, and when elapsed is past the estimate (a stuck run looks like this). With --follow the progress goes to stdout like tail -f (a line when the state or stage changes, otherwise every --every), so a background run can be read from its log.\n" +
+			"Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.\n" +
 			"A FAILED, CANCELED or TIMED_OUT state ends the wait with exit 1: Forward does not retry those by itself (a reprocess clears them). The last line on stdout is a JSON object: status,\n" +
 			"snapshot_id, state, advanced_reachability, waited_seconds. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.\n" +
 			"Nothing here starts the work: a reprocess or advanced reachability that was never started (edit-snapshot, edit-advanced-reachability) stays UNPROCESSED, and the wait says so after a few polls and ends at --timeout.",
@@ -59,7 +62,8 @@ func (a *app) waitSnapshotCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout+time.Minute)
 			defer cancel()
 			get := func(ctx context.Context) (*forward.Snapshot, error) { return sess.Snapshot(ctx, network, snapshot) }
-			return a.exit(waitForSnapshot(ctx, get, snapshot, want, wantAdv, timeout, interval, time.Sleep, time.Now, a.out, a.err))
+			progress := func(ctx context.Context) string { return sess.Processing(ctx, snapshot).Line() }
+			return a.exit(waitForSnapshotOpts(ctx, get, progress, snapshot, want, wantAdv, timeout, interval, time.Sleep, time.Now, a.out, a.err, waitOpts{follow: follow, every: every}))
 		},
 	}
 	c.Flags().StringVar(&network, "network", "", "network id")
@@ -67,13 +71,27 @@ func (a *app) waitSnapshotCmd() *cobra.Command {
 	c.Flags().BoolVar(&advanced, "advanced-reachability", false, "also wait for the snapshot's advanced reachability to be PROCESSED")
 	c.Flags().DurationVar(&timeout, "timeout", 2*time.Hour, "give up after this long (exit 2)")
 	c.Flags().DurationVar(&interval, "interval", 30*time.Second, "time between polls (at least 1s)")
+	c.Flags().BoolVar(&follow, "follow", false, "stream progress on stdout like tail -f: a line when the state or stage changes and otherwise every --every, until the snapshot is PROCESSED, FAILED or the timeout; same exit codes and final JSON line; run it in the background and read the log")
+	c.Flags().DurationVar(&every, "every", time.Minute, "with --follow, the longest time between lines while nothing changes")
 	return c
 }
 
 // waitForSnapshot polls get until the snapshot is in the wanted states (0), in a state that will not change by itself (1), or the timeout passes (2). Several polls in a row that
 // error end it with 3, so a Forward outage is not waited out silently; one failed poll is not.
-func waitForSnapshot(ctx context.Context, get func(context.Context) (*forward.Snapshot, error), id, want, wantAdv string, timeout, interval time.Duration,
+func waitForSnapshot(ctx context.Context, get func(context.Context) (*forward.Snapshot, error), progress func(context.Context) string, id, want, wantAdv string, timeout, interval time.Duration,
 	sleep func(time.Duration), now func() time.Time, stdout, stderr io.Writer) int {
+	return waitForSnapshotOpts(ctx, get, progress, id, want, wantAdv, timeout, interval, sleep, now, stdout, stderr, waitOpts{})
+}
+
+// waitOpts: follow prints the progress on stdout, a line when the state or stage changes and otherwise every `every`, instead of a line per poll on stderr.
+type waitOpts struct {
+	follow bool
+	every  time.Duration
+}
+
+func waitForSnapshotOpts(ctx context.Context, get func(context.Context) (*forward.Snapshot, error), progress func(context.Context) string, id, want, wantAdv string, timeout, interval time.Duration,
+	sleep func(time.Duration), now func() time.Time, stdout, stderr io.Writer, opts waitOpts) int {
+	lastKey, lastPrint := "", time.Time{}
 	final := map[string]bool{"FAILED": true, "CANCELED": true, "TIMED_OUT": true}
 	start := now()
 	errs, idle := 0, 0
@@ -98,7 +116,19 @@ func waitForSnapshot(ctx context.Context, get func(context.Context) (*forward.Sn
 			if adv == "" {
 				adv = "NOT_REPORTED"
 			}
-			fmt.Fprintf(stderr, "%s snapshot %s: state %s, advanced reachability %s\n", elapsed.Round(time.Second), id, sn.State, adv)
+			more := ""
+			if progress != nil && sn.State == "PROCESSING" { // where processing stands: the stage, its objects, elapsed against Forward's estimate
+				more = "; " + progress(ctx)
+			}
+			if opts.follow {
+				key := sn.State + "|" + adv + "|" + strings.SplitN(more, ",", 2)[0]
+				if key != lastKey || now().Sub(lastPrint) >= opts.every {
+					fmt.Fprintf(stdout, "%s snapshot %s: state %s, advanced reachability %s%s\n", elapsed.Round(time.Second), id, sn.State, adv, more)
+					lastKey, lastPrint = key, now()
+				}
+			} else {
+				fmt.Fprintf(stderr, "%s snapshot %s: state %s, advanced reachability %s%s\n", elapsed.Round(time.Second), id, sn.State, adv, more)
+			}
 			// a state nothing is producing: the wanted work was never started
 			if sn.State == "UNPROCESSED" || (sn.State == want && wantAdv != "" && adv == "UNPROCESSED") {
 				if idle++; idle == 3 {

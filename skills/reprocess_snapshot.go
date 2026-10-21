@@ -60,7 +60,7 @@ func reprocessSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 	}
 	ch := result.Change{Action: "reprocess", Target: "snapshot " + in.SnapshotID, Before: sn.State, After: "PROCESSED (after reprocessing)", Reversible: false,
 		Undo: "none: reprocessing recomputes the derived data from the same collected data, so running it again gives the same result; nothing collected is lost"}
-	limits := []string{"the snapshot's derived data (paths, checks, NQE answers) is unavailable while it reprocesses; this skill does not wait for it to finish, check inspect-snapshots"}
+	limits := []string{"the snapshot's derived data (paths, checks, NQE answers) is unavailable while it reprocesses; this skill does not wait for it to finish: follow it with `fwdctl wait snapshot --network N --snapshot S --follow` (stage, objects and elapsed time against Forward's estimate; the first seconds show no stage, because Forward reports none until one starts) or read inspect-snapshots"}
 	if !in.Apply {
 		return result.Build(reprocessSnapshotName, result.OK, fmt.Sprintf("Dry run: would reprocess snapshot %s (now %s). Nothing was changed; run again with apply=true to start it", in.SnapshotID, sn.State),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: limits, NextActions: next})

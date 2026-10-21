@@ -885,6 +885,7 @@ Flags:
 
 ## fwdctl wait snapshot
 
+While the snapshot is PROCESSING each poll line also says where it stands: the stage computing now, its object count, elapsed time against Forward's own estimate, and when elapsed is past the estimate (a stuck run looks like this). With --follow the progress goes to stdout like tail -f (a line when the state or stage changes, otherwise every --every), so a background run can be read from its log.
 Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.
 A FAILED, CANCELED or TIMED_OUT state ends the wait with exit 1: Forward does not retry those by itself (a reprocess clears them). The last line on stdout is a JSON object: status,
 snapshot_id, state, advanced_reachability, waited_seconds. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.
@@ -904,6 +905,8 @@ Flags:
 
 ```
       --advanced-reachability   also wait for the snapshot's advanced reachability to be PROCESSED
+      --every duration          with --follow, the longest time between lines while nothing changes (default 1m0s)
+      --follow                  stream progress on stdout like tail -f: a line when the state or stage changes and otherwise every --every, until the snapshot is PROCESSED, FAILED or the timeout; same exit codes and final JSON line; run it in the background and read the log
       --interval duration       time between polls (at least 1s) (default 30s)
       --network string          network id
       --snapshot string         snapshot id

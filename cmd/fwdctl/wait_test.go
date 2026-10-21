@@ -34,7 +34,7 @@ func runWait(t *testing.T, seq []any, want, adv string, timeout time.Duration) (
 		return v.(*forward.Snapshot), nil
 	}
 	var out, errb bytes.Buffer
-	code := waitForSnapshot(context.Background(), get, "s1", want, adv, timeout, time.Minute, clk.sleep, clk.now, &out, &errb)
+	code := waitForSnapshot(context.Background(), get, nil, "s1", want, adv, timeout, time.Minute, clk.sleep, clk.now, &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -259,5 +259,53 @@ func TestRunSaysOnStderrWhenItWasADryRunAndWhichForwardItUsed(t *testing.T) {
 	}
 	if strings.Contains(out, "dry run: nothing") || !strings.Contains(out, `"mode": "dry_run"`) {
 		t.Errorf("stdout is only the result: %q", out)
+	}
+}
+
+// While a snapshot is being processed each poll line says where it stands (stage, objects, elapsed against the estimate); once it is PROCESSED, or Forward cannot say, the line is as before.
+func TestWaitPollLinesShowTheProcessingProgress(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	seq := []*forward.Snapshot{snap("PROCESSING", "UNPROCESSED"), snap("PROCESSING", "UNPROCESSED"), snap("PROCESSED", "UNPROCESSED")}
+	i := 0
+	get := func(context.Context) (*forward.Snapshot, error) { v := seq[min(i, len(seq)-1)]; i++; return v, nil }
+	calls := 0
+	progress := func(context.Context) string {
+		calls++
+		return "stage CREATION COMPUTING, 4500 objects, elapsed 6m45s, estimate 3m36s (3m9s past the estimate)"
+	}
+	var out, errb bytes.Buffer
+	code := waitForSnapshot(context.Background(), get, progress, "s1", "PROCESSED", "", time.Hour, time.Minute, clk.sleep, clk.now, &out, &errb)
+	if code != waitReached || calls != 2 || strings.Count(errb.String(), "past the estimate") != 2 {
+		t.Fatalf("code %d calls %d err %s", code, calls, errb.String())
+	}
+	if !strings.Contains(errb.String(), "state PROCESSING, advanced reachability UNPROCESSED; stage CREATION COMPUTING") {
+		t.Errorf("the progress follows the state on the same line: %s", errb.String())
+	}
+}
+
+// With --follow the progress goes to stdout, one line when the state or stage changes and otherwise only every --every, so an agent can read a log while the wait runs in the background; the exit codes and the final JSON line are the same as without it.
+func TestWaitFollowPrintsOnChangeAndEveryNSeconds(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	seq := []*forward.Snapshot{snap("PROCESSING", "UNPROCESSED"), snap("PROCESSING", "UNPROCESSED"), snap("PROCESSING", "UNPROCESSED"), snap("PROCESSING", "UNPROCESSED"), snap("PROCESSED", "UNPROCESSED")}
+	i := 0
+	get := func(context.Context) (*forward.Snapshot, error) { v := seq[min(i, len(seq)-1)]; i++; return v, nil }
+	stage := []string{"stage CREATION COMPUTING", "stage CREATION COMPUTING", "stage CREATION COMPUTING", "stage REACHABILITY COMPUTING"}
+	j := 0
+	progress := func(context.Context) string { s := stage[min(j, len(stage)-1)]; j++; return s }
+	var out, errb bytes.Buffer
+	code := waitForSnapshotOpts(context.Background(), get, progress, "s1", "PROCESSED", "", time.Hour, time.Minute, clk.sleep, clk.now, &out, &errb, waitOpts{follow: true, every: 150 * time.Second})
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	// polls at 0,60,120,180,240s: a line at 0 (first), none at 60 and 120 (nothing changed, under 150s), one at 180 (the stage changed and 150s passed), one at 240 (PROCESSED); the JSON status line closes the output
+	if code != waitReached || !strings.Contains(lines[len(lines)-1], `"status":"ok"`) {
+		t.Fatalf("code %d out %s", code, out.String())
+	}
+	progressLines := 0
+	for _, l := range lines {
+		if strings.Contains(l, "snapshot s1:") {
+			progressLines++
+		}
+	}
+	if progressLines != 3 || !strings.Contains(out.String(), "stage REACHABILITY COMPUTING") || strings.Contains(errb.String(), "snapshot s1:") {
+		t.Errorf("%d progress lines on stdout, none on stderr:\n%s\nstderr: %s", progressLines, out.String(), errb.String())
 	}
 }
