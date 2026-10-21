@@ -112,6 +112,9 @@ func reviewChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	if base != nil {
 		detail["checks_on_base"] = len(base)
 	}
+	if base != nil || after != nil {
+		detail["checks"] = checkRows(base, after)
+	}
 	if after != nil {
 		detail["checks_on_prediction"] = len(after)
 		var worse []map[string]any
@@ -165,12 +168,13 @@ type checkOutcome struct {
 	name       string
 	status     string
 	violations int64
+	definition json.RawMessage
 }
 
 func outcomes(list []forward.ChangeSetCheckResult) map[string]checkOutcome {
 	out := make(map[string]checkOutcome, len(list))
 	for _, c := range list {
-		o := checkOutcome{name: c.Name, status: c.Status}
+		o := checkOutcome{name: c.Name, status: c.Status, definition: c.Definition}
 		if c.NumViolations != nil {
 			o.violations = *c.NumViolations
 		}
@@ -243,4 +247,54 @@ func processingMap(p fwd.Processing) map[string]any {
 	}
 	m["over_estimate"] = p.OverEstimate()
 	return m
+}
+
+// checkRows lists each check attached to the change set with what it is (name, and type and note from its definition when Forward gives them) and its result on the base and on the newest prediction.
+func checkRows(base, after map[string]checkOutcome) []map[string]any {
+	ids := map[string]bool{}
+	for id := range base {
+		ids[id] = true
+	}
+	for id := range after {
+		ids[id] = true
+	}
+	order := make([]string, 0, len(ids))
+	for id := range ids {
+		order = append(order, id)
+	}
+	sort.Strings(order)
+	rows := make([]map[string]any, 0, len(order))
+	for _, id := range order {
+		b, hb := base[id]
+		a, ha := after[id]
+		def := b.definition
+		name := b.name
+		if ha {
+			def, name = a.definition, a.name
+		}
+		row := map[string]any{"check_id": id, "name": name}
+		var d map[string]any
+		if len(def) > 0 && json.Unmarshal(def, &d) == nil {
+			for _, k := range []string{"type", "checkType"} {
+				if v, ok := d[k].(string); ok && v != "" {
+					row["type"] = v
+					break
+				}
+			}
+			for _, k := range []string{"note", "description"} {
+				if v, ok := d[k].(string); ok && v != "" {
+					row["note"] = v
+					break
+				}
+			}
+		}
+		if hb {
+			row["status_on_base"], row["violations_on_base"] = b.status, b.violations
+		}
+		if ha {
+			row["status_on_prediction"], row["violations_on_prediction"] = a.status, a.violations
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
