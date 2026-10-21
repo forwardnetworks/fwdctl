@@ -1,6 +1,8 @@
 package skills
 
 import (
+	forward "github.com/forwardnetworks/forward-go-sdk"
+
 	"context"
 	"errors"
 	"fmt"
@@ -181,6 +183,38 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 			return fail(fmt.Sprintf("you already have uncommitted changes in the NQE editor at %s; commit or discard them there first, because staging and cleaning up would overwrite or drop them. Nothing was changed", strings.Join(mine, ", ")),
 				map[string]any{"head_commit_id": head, "drafts_at": mine})
 		}
+		// Baseline: the same queries at head, staged as they are, so errors that already exist (an importer broken by an earlier commit, a field a release removed) can be told from the ones this change adds.
+		var base map[string][]map[string]any
+		baselineRan := false
+		var exist []string
+		for _, pth := range paths {
+			if prior[pth].exists {
+				exist = append(exist, pth)
+			}
+		}
+		if len(exist) > 0 {
+			ok := true
+			for _, pth := range exist {
+				src := prior[pth].src
+				src += "\n" // an identical draft can be dropped as no change; a trailing newline is the same query to NQE
+				if err := s.StageOrgQuery(ctx, pth, src); err != nil {
+					ok = false
+					limits = append(limits, "the baseline (the same queries at head) could not be staged ("+err.Error()+"), so errors that already existed are not told apart from new ones")
+					break
+				}
+			}
+			if ok {
+				bdr, berr := s.NQECommitDryRun(ctx, exist, in.SnapshotID)
+				if berr != nil {
+					limits = append(limits, "the baseline typecheck failed ("+berr.Error()+"), so errors that already existed are not told apart from new ones")
+				} else {
+					base, baselineRan = diagMap(bdr.NewErrors), true
+				}
+			}
+			if rerr := s.DiscardOrgDrafts(ctx, exist); rerr != nil {
+				limits = append(limits, "the baseline drafts could not be discarded ("+rerr.Error()+"): check the NQE editor for uncommitted changes of yours")
+			}
+		}
 		discard := discardAll
 		if err := s.AddOrgDirectories(ctx, newDirs); err != nil {
 			return result.Result{}, fmt.Errorf("staging the missing directories failed, nothing is left in your workspace: %w", err)
@@ -204,21 +238,26 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		if derr != nil {
 			return result.Result{}, fmt.Errorf("Forward's typecheck failed: %w", derr)
 		}
-		errs := map[string][]map[string]any{}
-		n := 0
-		for pth, ds := range dr.NewErrors {
-			for _, d := range ds {
-				errs[pth] = append(errs[pth], map[string]any{"severity": d.Severity, "message": d.Message})
-				n++
-			}
+		after := diagMap(dr.NewErrors)
+		errs, existing, fixed := after, map[string][]map[string]any{}, 0
+		if baselineRan {
+			errs, existing, fixed = splitErrors(base, after)
 		}
-		tc = map[string]any{"new_errors": errs, "new_error_count": n, "uses_count": len(dr.Uses), "unauthorized": append(append([]string{}, dr.UnauthorizedQueryChanges...), dr.UnauthorizedAccessSettingChanges...)}
-		limits = append(limits, "typecheck staged your changes as drafts in your workspace, asked Forward, and discarded them; new_errors is Forward's field name, but it holds every error in the changed queries and their importers, with no comparison against head (an importer already broken at head is listed); uses_count counts the checks and dashboards that consume them")
+		n, ne := countDiags(errs), countDiags(existing)
+		tc = map[string]any{"new_errors": errs, "new_error_count": n, "existing_errors": existing, "existing_error_count": ne, "fixed_error_count": fixed, "baseline": baselineRan,
+			"uses_count": len(dr.Uses), "unauthorized": append(append([]string{}, dr.UnauthorizedQueryChanges...), dr.UnauthorizedAccessSettingChanges...)}
+		if baselineRan && ne > 0 {
+			limits = append(limits, fmt.Sprintf("%d error(s) in the changed queries or their importers also existed at head (same query, same message): they are listed as existing_errors and do not stop the commit; only errors the change adds do", ne))
+		}
+		if !baselineRan && len(prior) > 0 {
+			limits = append(limits, "no baseline ran, so new_errors holds every error Forward found, including any that already existed at head")
+		}
+		limits = append(limits, "typecheck staged your changes as drafts in your workspace, asked Forward, and discarded them; Forward's own new_errors holds every error in the changed queries and their importers with no comparison against head, so this skill stages the same queries at head first and reports what the change adds as new_errors and the rest as existing_errors; uses_count counts the checks and dashboards that consume them")
 		if len(dr.UnauthorizedQueryChanges)+len(dr.UnauthorizedAccessSettingChanges) > 0 {
 			return fail("Forward says this login may not commit some of these changes; nothing was changed", map[string]any{"typecheck": tc, "head_commit_id": head})
 		}
 		if n > 0 {
-			return fail(fmt.Sprintf("Forward's typecheck finds %d error(s) across %d quer(ies), in the changed queries and the queries that import them; Forward does not say which already existed at head, so an importer broken by an earlier commit is listed too. Nothing was committed", n, len(errs)),
+			return fail(fmt.Sprintf("Forward's typecheck finds %d new error(s) across %d quer(ies), in the changed queries and the queries that import them%s. Nothing was committed", n, len(errs), map[bool]string{true: "; " + fmt.Sprint(ne) + " more existed at head and are listed apart as existing_errors", false: ""}[ne > 0]),
 				map[string]any{"typecheck": tc, "head_commit_id": head, "paths": paths})
 		}
 	} else {
@@ -291,3 +330,51 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 
 // MaxQueryChanges is how many queries one commit may carry; `fwdctl nqe pack` refuses a larger tree with this number.
 const MaxQueryChanges = maxQueryChanges
+
+// diagMap turns Forward's errors per path into plain maps.
+func diagMap(in map[string][]forward.NQEDiagnostic) map[string][]map[string]any {
+	out := map[string][]map[string]any{}
+	for pth, ds := range in {
+		for _, d := range ds {
+			out[pth] = append(out[pth], map[string]any{"severity": d.Severity, "message": d.Message})
+		}
+	}
+	return out
+}
+
+func countDiags(m map[string][]map[string]any) int {
+	n := 0
+	for _, ds := range m {
+		n += len(ds)
+	}
+	return n
+}
+
+// splitErrors compares the errors after the change with the baseline at head, by path and message (a message that appears as many times in the baseline is existing, the rest are new): it returns the new errors, the existing ones, and how many baseline errors the change no longer has.
+func splitErrors(base, after map[string][]map[string]any) (newErrs, existing map[string][]map[string]any, fixed int) {
+	newErrs, existing = map[string][]map[string]any{}, map[string][]map[string]any{}
+	left := map[string]map[string]int{}
+	for pth, ds := range base {
+		left[pth] = map[string]int{}
+		for _, d := range ds {
+			left[pth][fmt.Sprint(d["severity"], "|", d["message"])]++
+		}
+	}
+	for pth, ds := range after {
+		for _, d := range ds {
+			k := fmt.Sprint(d["severity"], "|", d["message"])
+			if left[pth][k] > 0 {
+				left[pth][k]--
+				existing[pth] = append(existing[pth], d)
+			} else {
+				newErrs[pth] = append(newErrs[pth], d)
+			}
+		}
+	}
+	for _, m := range left {
+		for _, c := range m {
+			fixed += c
+		}
+	}
+	return
+}
