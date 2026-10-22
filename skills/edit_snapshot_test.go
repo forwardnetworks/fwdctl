@@ -1,12 +1,15 @@
 package skills_test
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
 	"github.com/forwardnetworks/fwdctl/skills"
@@ -219,5 +222,45 @@ func TestEditSnapshotImportWaitIsConfigurableAndZeroDoesNotWait(t *testing.T) {
 	r, _ := mustRun(t, "edit-snapshot", routes, importZip(t))
 	if r.Status != result.Unknown || time.Since(start) > 2*time.Second || polls != 1 {
 		t.Fatalf("%s after %s, %d list reads (only the one before the upload)", r.Status, time.Since(start), polls)
+	}
+}
+
+// A long export or import tells the host how far it is: bytes written (export) and bytes sent of the known total (import), through the session's Progress hook; the result is unchanged.
+func TestEditSnapshotExportAndImportReportProgress(t *testing.T) {
+	type seen struct {
+		stage       string
+		done, total int64
+	}
+	var got []seen
+	hook := func(stage string, done, total int64, _ time.Duration) { got = append(got, seen{stage, done, total}) }
+	fwd.ProgressInterval = 0
+	defer func() { fwd.ProgressInterval = 5 * time.Second }()
+
+	zip := []byte("PK\x03\x04 fake zip body")
+	routes := snapWorld("PROCESSED", map[string]fwdtest.Handler{"POST /api/snapshots/s1": func(*http.Request, []byte) (int, any) { return 200, zip }})
+	sess, _ := fwdtest.New(t, routes)
+	sess.Progress = hook
+	out := t.TempDir() + "/s1.zip"
+	if _, err := skills.Run(context.Background(), "edit-snapshot", sess, json.RawMessage(`{"network_id":"n1","snapshot_id":"s1","action":"export","definition":{"path":"`+out+`"},"apply":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || got[len(got)-1] != (seen{"export", int64(len(zip)), 0}) {
+		t.Errorf("export progress: %v", got)
+	}
+
+	got = nil
+	f := t.TempDir() + "/a.zip"
+	body := []byte(strings.Repeat("z", 4096))
+	os.WriteFile(f, body, 0o600)
+	routes = map[string]fwdtest.Handler{"POST /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) {
+		return 200, map[string]any{"id": "new1", "state": "PROCESSING"}
+	}}
+	sess, _ = fwdtest.New(t, routes)
+	sess.Progress = hook
+	if _, err := skills.Run(context.Background(), "edit-snapshot", sess, json.RawMessage(`{"network_id":"n1","action":"import","definition":{"files":["`+f+`"]},"apply":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || got[len(got)-1] != (seen{"import", 4096, 4096}) {
+		t.Errorf("import progress: %v", got)
 	}
 }

@@ -101,7 +101,9 @@ func snapshotExport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 		return result.Result{}, err
 	}
 	h := sha256.New()
-	n, _, err := s.Client.Snapshots.Export(ctx, in.SnapshotID, opts, io.MultiWriter(tmp, h))
+	meter := s.NewMeter("export", 0)
+	n, _, err := s.Client.Snapshots.Export(ctx, in.SnapshotID, opts, meter.Writer(io.MultiWriter(tmp, h)))
+	meter.Done()
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
@@ -164,13 +166,14 @@ func snapshotImport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 			result.Options{Mode: mode, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: limits, NextActions: []string{"inspect-snapshots"}})
 	}
 	var files []forward.SnapshotUploadFile
+	meter := s.NewMeter("import", total)
 	for _, f := range def.Files {
 		fh, err := os.Open(f)
 		if err != nil {
 			return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 		}
 		defer fh.Close()
-		files = append(files, forward.SnapshotUploadFile{Name: filepath.Base(f), Reader: fh})
+		files = append(files, forward.SnapshotUploadFile{Name: filepath.Base(f), Reader: meter.Reader(fh)})
 	}
 	before := map[string]bool{}
 	if ex, lerr := s.Snapshots(ctx, in.NetworkID); lerr == nil {
@@ -180,6 +183,7 @@ func snapshotImport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 	}
 	started := time.Now()
 	snap, _, err := s.Client.Snapshots.Upload(ctx, in.NetworkID, files, forward.SnapshotUploadOptions{Note: in.Note, ExcludeFailedDevices: def.ExcludeFailedDevices, SkipSnapshotProcessing: def.SkipProcessing, Timeout: -1})
+	meter.Done()
 	took := time.Since(started).Round(time.Second)
 	if err != nil {
 		if !uploadOutcomeUnknown(err) {

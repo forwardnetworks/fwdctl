@@ -561,6 +561,9 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 		// which Forward and login this run uses, so a run against the wrong tenant (customer, Skyforge, support) is seen at once; stderr only, stdout stays the result
 		fmt.Fprintf(a.err, "fwdctl: %s against %s as %s\n", name, u, os.Getenv("FORWARD_USERNAME"))
 	}
+	sess.Progress = func(stage string, done, total int64, elapsed time.Duration) {
+		fmt.Fprintf(a.err, "fwdctl run %s: %s\n", name, fwd.ProgressLine(stage, done, total, elapsed))
+	}
 	stop := heartbeat(a.err, heartbeatEvery, "fwdctl run "+name)
 	r, err := skills.Run(context.Background(), name, sess, raw)
 	stop()
