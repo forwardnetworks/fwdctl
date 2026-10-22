@@ -13,14 +13,18 @@
         "location",
         "cluster",
         "tag",
-        "collector"
+        "collector",
+        "threat_exposure",
+        "asset_criticality"
       ],
       "x-values": {
         "network": "the network itself: create, rename, note, retention, delete",
         "location": "a location: create, update, delete, assign devices",
         "cluster": "a device cluster",
         "tag": "a device tag definition",
-        "collector": "attach a registered collector to the network"
+        "collector": "attach a registered collector to the network",
+        "threat_exposure": "EXPERIMENTAL: a threat exposure definition by name: create, update, delete, evaluate (start an analysis on a snapshot); enabled by the org property THREAT_EXPOSURE",
+        "asset_criticality": "EXPERIMENTAL: assign or remove the criticality of named assets (what a threat exposure definition selects its critical assets by)"
       }
     },
     "action": {
@@ -29,7 +33,8 @@
         "create",
         "update",
         "delete",
-        "assign"
+        "assign",
+        "evaluate"
       ]
     },
     "network_id": {
@@ -47,7 +52,7 @@
     },
     "confirm": {
       "type": "string",
-      "description": "network delete: the exact network_id; location delete: the location id; tag delete: the exact tag name; cluster delete: the exact cluster name"
+      "description": "network delete: the exact network_id; location delete: the location id; tag delete: the exact tag name; cluster delete: the exact cluster name; threat_exposure delete: the definition name; asset_criticality delete: the names joined by commas"
     },
     "apply": {
       "type": "boolean",

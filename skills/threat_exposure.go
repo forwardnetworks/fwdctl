@@ -60,7 +60,7 @@ func parseThreatExposure(raw json.RawMessage, in vulnInput) (threatExposureInput
 
 var threatExposureLimits = []string{
 	"EXPERIMENTAL: Forward's threat exposure feature is experimental. It is enabled by the organization property THREAT_EXPOSURE (default off; not an organization administrator's to change), its routes exist only in newer Forward builds (an older one answers 404 and this view says it does not serve them), and its shapes change between builds",
-	"this view only reads; creating or changing definitions, running an analysis and changing asset criticality are not offered here. The analysis views are Forward's raw answer",
+	"this view only reads; creating, changing or deleting definitions, starting an analysis and changing asset criticality are edit-network objects threat_exposure (create, update, delete, evaluate) and asset_criticality. The analysis views are Forward's raw answer",
 	"it needs VIEW_THREAT_EXPOSURE (edge assets: VIEW_COLLECTION_SOURCES) and the security licence facet",
 }
 
