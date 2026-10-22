@@ -535,3 +535,72 @@ func TestVerifyChangeListViewCarriesEachChangeSetsPredictedSnapshots(t *testing.
 		t.Fatalf("predicted snapshots: %s %s", r.Status, b)
 	}
 }
+
+// SD-WAN devices are named in the scope (and so in the preflight): Viptela devices by OS, and IOS-XE devices that collected SD-WAN (OMP) output, with whether the OMP flag is on. Predict does not recompute the SD-WAN overlay without it.
+func TestScopeCountsSDWANDevicesAndSaysWhetherTheOMPFlagIsOn(t *testing.T) {
+	build := func(omp any, xe int) map[string]fwdtest.Handler {
+		eff := map[string]any{"predict_modeling": true}
+		if omp != nil {
+			eff["predict_model_omp"] = omp
+		}
+		routes := cfgRoutes(eff, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})
+		routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+		routes["GET /api/version"] = fwdtest.Const(200, map[string]any{"version": "26.10.0", "release": "26.10.0-10", "build": "b"})
+		routes[snapsPath] = ready("s1")
+		routes[nqePath] = invNQE(map[string]fwdtest.Handler{
+			"group d as g by d.platform.os": rowsOf(2,
+				map[string]any{"os": "VIPTELA", "devices": 2},
+				map[string]any{"os": "IOS_XE", "devices": 5}),
+			"SDWAN_OMP_ROUTES": rowsOf(xe, rowN(xe)...),
+		})
+		return routes
+	}
+	scope := func(routes map[string]fwdtest.Handler, view string) map[string]any {
+		r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"`+view+`"}`)
+		for _, e := range r.Evidence {
+			if v, ok := e.Detail["scope"].(map[string]any); ok {
+				return v
+			}
+			if pf, ok := e.Detail["preflight"].(map[string]any); ok {
+				if v, ok := pf["scope"].(map[string]any); ok {
+					return v
+				}
+			}
+		}
+		t.Fatalf("no scope detail in %s: %s", view, jsonOf(r))
+		return nil
+	}
+	for _, view := range []string{"scope", "preflight"} {
+		d := scope(build(false, 3), view)
+		sd, ok := d["sdwan"].(map[string]any)
+		if !ok || fmt.Sprint(sd["viptela_devices"]) != "2" || fmt.Sprint(sd["ios_xe_sdwan_devices"]) != "3" || fmt.Sprint(sd["devices"]) != "5" || sd["predict_model_omp"] != false {
+			t.Fatalf("%s: sdwan detail %v", view, d["sdwan"])
+		}
+	}
+	r, _ := mustRun(t, "verify-change", build(false, 3), `{"network_id":"n1","view":"scope"}`)
+	if !strings.Contains(r.Finding, "5 SD-WAN device(s)") || !strings.Contains(r.Finding, "PREDICT_MODEL_OMP is off") {
+		t.Errorf("finding: %s", r.Finding)
+	}
+	r, _ = mustRun(t, "verify-change", build(true, 3), `{"network_id":"n1","view":"scope"}`)
+	if !strings.Contains(r.Finding, "SD-WAN") || !strings.Contains(r.Finding, "PREDICT_MODEL_OMP is on") || !strings.Contains(r.Finding, "not validated") {
+		t.Errorf("flag on: %s", r.Finding)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "SDWAN_OMP_ROUTES") {
+		t.Errorf("the IOS-XE detection method is a limit: %v", r.Limits)
+	}
+	// no SD-WAN device, no note
+	routes := build(nil, 0)
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{"group d as g by d.platform.os": rowsOf(1, map[string]any{"os": "EOS", "devices": 2})})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
+	if strings.Contains(r.Finding, "SD-WAN") {
+		t.Errorf("a network without SD-WAN devices says nothing about SD-WAN: %s", r.Finding)
+	}
+}
+
+func rowN(n int) []map[string]any {
+	out := make([]map[string]any, n)
+	for i := range out {
+		out[i] = map[string]any{"device": fmt.Sprintf("xe%d", i+1)}
+	}
+	return out
+}
