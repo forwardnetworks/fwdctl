@@ -66,8 +66,12 @@ func editNetwork(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resu
 		plan, err = planTag(ctx, s, in)
 	case "collector":
 		plan, err = planCollector(ctx, s, in)
+	case "threat_exposure":
+		plan, err = planThreatExposure(ctx, s, in)
+	case "asset_criticality":
+		plan, err = planAssetCriticality(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: object must be network, location, cluster, tag or collector", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: object must be network, location, cluster, tag, collector, threat_exposure or asset_criticality", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err
