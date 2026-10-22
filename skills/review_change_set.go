@@ -288,6 +288,7 @@ func checkRows(base, after map[string]checkOutcome) []map[string]any {
 				}
 			}
 			row["definition"] = json.RawMessage(def)
+			row["add_check"] = addCheckShape(d)
 			if q, ok := d["queryId"].(string); ok && q != "" {
 				row["query_id"] = q
 				if name == "" {
@@ -304,4 +305,15 @@ func checkRows(base, after map[string]checkOutcome) []map[string]any {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// addCheckShape renames a check's stored definition to the keys edit-change-set lifecycle add_check takes, so a check read here can be added to another change set unchanged.
+func addCheckShape(d map[string]any) map[string]any {
+	out := map[string]any{}
+	for from, to := range map[string]string{"checkType": "type", "filters": "filters", "noiseTypes": "noise_types", "headerFieldsWithDefaults": "header_fields_with_defaults", "returnPath": "return_path", "queryId": "query_id", "params": "params"} {
+		if v, ok := d[from]; ok {
+			out[to] = v
+		}
+	}
+	return out
 }

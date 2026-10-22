@@ -182,7 +182,7 @@ func TestReviewChangeSetRowsCarryTheCheckDefinitionAndNameAnNQECheckByItsQuery(t
 	path := map[string]any{"id": "c8", "name": "web to db", "status": "PASS", "definition": map[string]any{"checkType": "Reachability", "filters": map[string]any{"from": "x"}}}
 	r, _ := mustRun(t, "review-change-set", csRoutes([]any{}, map[string]any{"checks": []any{nqe, path}}, nil), `{"network_id":"n1","change_set_id":"cs1"}`)
 	b := jsonOf(r)
-	for _, want := range []string{`"name":"nqe: Q_abc"`, `"query_id":"Q_abc"`, `"checkType":"Reachability"`, `"filters":{"from":"x"}`} {
+	for _, want := range []string{`"name":"nqe: Q_abc"`, `"query_id":"Q_abc"`, `"add_check":{"query_id":"Q_abc","type":"NQE"}`, `"checkType":"Reachability"`, `"filters":{"from":"x"}`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("rows miss %s: %s", want, b)
 		}
