@@ -581,6 +581,12 @@ func TestScopeCountsSDWANDevicesAndSaysWhetherTheOMPFlagIsOn(t *testing.T) {
 	if !strings.Contains(r.Finding, "5 SD-WAN device(s)") || !strings.Contains(r.Finding, "PREDICT_MODEL_OMP is off") {
 		t.Errorf("finding: %s", r.Finding)
 	}
+	if strings.Contains(r.Finding, "on 26.9") || !strings.Contains(r.Finding, "26.10") {
+		t.Errorf("the finding names the release read from the tenant, not a fixed one: %s", r.Finding)
+	}
+	if d := scope(build(false, 3), "scope"); d["predict_model_omp"] != false {
+		t.Errorf("the scope carries the flag at the top level too, agreeing with sdwan: %v", d["predict_model_omp"])
+	}
 	r, _ = mustRun(t, "verify-change", build(true, 3), `{"network_id":"n1","view":"scope"}`)
 	if !strings.Contains(r.Finding, "SD-WAN") || !strings.Contains(r.Finding, "PREDICT_MODEL_OMP is on") || !strings.Contains(r.Finding, "not validated") {
 		t.Errorf("flag on: %s", r.Finding)

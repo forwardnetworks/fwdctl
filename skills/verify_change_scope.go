@@ -129,6 +129,7 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 	d["flags"] = flagRows
 	d["predict_modeling"], d["predict_model_ospf"] = flagVal["predict_modeling"], flagVal["predict_model_ospf"]
 	d["ospf_repropagated"] = flagVal["predict_model_ospf"]
+	d["predict_model_omp"] = flagVal["predict_model_omp"]
 	d["static_repropagated"] = flagVal["predict_model_config"]
 	if release == "" {
 		limits = append(limits, "the Forward release could not be read, so a flag that cannot be read from the tenant has no default here")
@@ -216,7 +217,7 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 		case false:
 			state = "off"
 		}
-		n := fmt.Sprintf("%d SD-WAN device(s) (%d Viptela, %d IOS-XE in SD-WAN mode): the overlay (OMP) is not recomputed on 26.9; PREDICT_MODEL_OMP is %s", sdwanTotal, osCount["VIPTELA"], sdwan["ios_xe_sdwan_devices"], state)
+		n := fmt.Sprintf("%d SD-WAN device(s) (%d Viptela, %d IOS-XE in SD-WAN mode): the overlay (OMP) is recomputed only when PREDICT_MODEL_OMP is on (release %s; the 26.9 documentation says Predict does not recompute it); PREDICT_MODEL_OMP is %s", sdwanTotal, osCount["VIPTELA"], sdwan["ios_xe_sdwan_devices"], firstNonEmpty(release, "unknown"), state)
 		if state == "on" {
 			n += " (the OMP engine is behind the flag and not validated)"
 		}
