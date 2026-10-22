@@ -32,7 +32,7 @@
         "impact": "how far a change reaches, measured: difference areas, subnet connectivity, BGP sessions and route and next-hop counts, and Forward's own ARP, MAC, NAT, L3 route, vulnerability and routing-loop diffs (device adds per-prefix and per-device route changes); judges nothing",
         "verdict": "the same as verify",
         "list": "the change sets this network holds, each with its predicted snapshots (none is an answer; an unlicensed organization is a licence limit)",
-        "scope": "what of this network Predict can model on this release: license facet, every predict flag, out-of-scope BGP families, platforms where propagation stops",
+        "scope": "what of this network Predict can model on this release: license facet, every predict flag, out-of-scope BGP families, platforms where propagation stops, SD-WAN devices (Viptela, IOS-XE in SD-WAN mode) and whether PREDICT_MODEL_OMP is on",
         "preflight": "the Predict demo checklist: scope plus release, base snapshot age, existing change sets and BGP advertisement collection",
         "paths": "the GUI's interesting paths: sampled paths through firewalls and load balancers, ranked by score with their stages and path query; on a snapshot (after_snapshot_id) or a change set's predicted snapshot",
         "ai_summary": "Forward AI explains a difference in words (opt-in; generated text, labelled): summary_kind config, impact (default), failure or overview, on a change set or any two snapshots; unknown when the organization has AI off"

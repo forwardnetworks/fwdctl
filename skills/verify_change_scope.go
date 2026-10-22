@@ -50,6 +50,13 @@ type scopeResult struct {
 	bgpDevs  map[string]bool // the devices that run BGP in config (any family found)
 }
 
+// sdwanIOSXEQuery lists the IOS-XE devices that collected SD-WAN (OMP) route output, which is how an IOS-XE device in SD-WAN mode is recognized.
+const sdwanIOSXEQuery = `foreach d in network.devices
+where d.platform.os == OS.IOS_XE
+foreach c in d.outputs.commands
+where c.commandType == CommandType.SDWAN_OMP_ROUTES
+select distinct {device: d.name}`
+
 // predictFlagOrder is the order the flags are reported in.
 var predictFlagOrder = []string{"predict_modeling", "predict_model_bgp", "predict_model_ospf", "predict_model_config", "predict_model_cross_protocol", "predict_model_isis", "predict_model_omp", "predict_model_ext_adv", "firewall_predict"}
 
@@ -153,10 +160,13 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 	d["out_of_scope_families"] = oos
 
 	stops := []map[string]any{}
+	osCount := map[string]int64{}
 	if osRows, _, _, oerr := s.RunNQEAll(ctx, networkID, sid, bgpOSCountQuery, 1000); oerr != nil {
 		limits = append(limits, "the device count by OS could not be read ("+oerr.Error()+"), so the platforms that stop propagation are not shown")
 	} else {
 		for _, r := range osRows {
+			n0, _ := num(r["devices"])
+			osCount[strings.ToUpper(strings.TrimSpace(str(r["os"])))] += n0
 			if !predictFullPlatforms[strings.ToUpper(strings.TrimSpace(str(r["os"])))] {
 				n, _ := num(r["devices"])
 				stops = append(stops, map[string]any{"os": str(r["os"]), "devices": n})
@@ -165,6 +175,19 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 		sort.Slice(stops, func(i, j int) bool { return fmt.Sprint(stops[i]["os"]) < fmt.Sprint(stops[j]["os"]) })
 	}
 	d["propagation_stops"] = stops
+
+	// SD-WAN: Viptela devices by OS, and IOS-XE devices that collected SD-WAN (OMP) output, which is how an IOS-XE device in SD-WAN mode shows. Predict does not recompute the overlay without PREDICT_MODEL_OMP.
+	sdwan := map[string]any{"viptela_devices": osCount["VIPTELA"], "ios_xe_sdwan_devices": int64(0), "predict_model_omp": flagVal["predict_model_omp"]}
+	if osCount["IOS_XE"] > 0 {
+		if xr, _, _, xerr := s.RunNQEAll(ctx, networkID, sid, sdwanIOSXEQuery, maxModelRows); xerr != nil {
+			limits = append(limits, "IOS-XE devices in SD-WAN mode could not be counted ("+xerr.Error()+")")
+		} else {
+			sdwan["ios_xe_sdwan_devices"] = int64(len(xr))
+		}
+	}
+	sdwanTotal := osCount["VIPTELA"] + sdwan["ios_xe_sdwan_devices"].(int64)
+	sdwan["devices"] = sdwanTotal
+	d["sdwan"] = sdwan
 
 	var notes []string
 	if lic["predict"] == false {
@@ -185,6 +208,20 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 	if d["ospf_repropagated"] == false {
 		notes = append(notes, "OSPF changes are not re-propagated")
 	}
+	if sdwanTotal > 0 {
+		state := "unknown"
+		switch flagVal["predict_model_omp"] {
+		case true:
+			state = "on"
+		case false:
+			state = "off"
+		}
+		n := fmt.Sprintf("%d SD-WAN device(s) (%d Viptela, %d IOS-XE in SD-WAN mode): the overlay (OMP) is not recomputed on 26.9; PREDICT_MODEL_OMP is %s", sdwanTotal, osCount["VIPTELA"], sdwan["ios_xe_sdwan_devices"], state)
+		if state == "on" {
+			n += " (the OMP engine is behind the flag and not validated)"
+		}
+		notes = append(notes, n)
+	}
 	if d["static_repropagated"] == false {
 		notes = append(notes, "static and connected changes are not re-propagated")
 	}
@@ -197,6 +234,7 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 		status = result.Failed // Predict cannot be used on this license whatever the network looks like
 	}
 	limits = append(limits,
+		"SD-WAN devices: Viptela is counted by its OS name; an IOS-XE device is counted as in SD-WAN mode when it collected SDWAN_OMP_ROUTES output (show sdwan omp routes), so one whose SD-WAN output was not collected is not counted",
 		"the scope is prediction-scope.md of the 26.9 and 26.10 documentation (read from the documentation by a peer session, not verified on a live Forward): BGP unicast IPv4/IPv6, VPNv4/VPNv6 and BGP-LU are re-propagated; EVPN, VPLS, multicast/MVPN, BGP-LS, SR policy and flowspec are not; OSPF, static, SD-WAN, IS-IS, EIGRP and RIP are not re-propagated on 26.9. Master's platform-support page adds BGP rows for Meraki MX, AWS Transit Gateway and VeloCloud Edge and turns predict_model_ospf on by default",
 		"full routing re-synthesis is documented for Cisco IOS, IOS-XE, IOS-XR, NX-OS, ASA, Juniper Junos and SRX, Arista EOS, Fortinet and Palo Alto PAN-OS; any other platform stays as collected and propagation stops at it. The platform match is an exact match on Forward's OS name (IOS, IOS_XE, IOS_XR, NXOS, ACI, ASA, JUNOS, SRX, ARISTA_EOS, FORTINET, PAN_OS); an OS name not in that list is reported as a propagation stop, including OTHER and UNKNOWN",
 		"BGP families are read from device config (see inspect-inventory kind bgp_families): EOS, IOS, IOS-XE and NX-OS shapes only; Junos, IOS-XR and FortiOS are not read, so their out-of-scope families, if any, are missing here")
