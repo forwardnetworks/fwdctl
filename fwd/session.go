@@ -112,6 +112,9 @@ type Session struct {
 	// RetryWrites is Config.RetryWrites: whether skills.Run lets an applied write be retried.
 	RetryWrites bool
 
+	// Progress, when set, receives progress reports from long transfers (export and import of a snapshot). A host that wants them sets it; fwdctl prints a line on stderr.
+	Progress ProgressFunc
+
 	// Support is an optional second session on a Forward-support login; SupportOrSelf returns it, else this session.
 	Support *Session
 
