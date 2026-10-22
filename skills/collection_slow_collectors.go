@@ -189,12 +189,12 @@ func addCollectorBreakdown(ctx context.Context, s *fwd.Session, in collectionInp
 			r["collector"] = nil
 		}
 	}
-	addRebalance(sm, spans, by, deviceCollector, pin, defKey, stats, limits)
+	addRebalance(sm, spans, by, deviceCollector, pin, defKey, in, stats, limits)
 }
 
 // addRebalance estimates the run if the devices with no pin were spread over the collectors that already work on this network. Longest-first greedy: each unpinned device goes to the collector whose
 // estimated finish (the longer of its longest device and its device time over its concurrency) it grows least. It is an estimate of the bound, not a schedule.
-func addRebalance(sm *slowSummary, spans []spanMs, by map[string]*collectorLoad, deviceCollector map[string]string, pin map[string]string, defKey string, stats map[string]any, limits *[]string) {
+func addRebalance(sm *slowSummary, spans []spanMs, by map[string]*collectorLoad, deviceCollector map[string]string, pin map[string]string, defKey string, in collectionInput, stats map[string]any, limits *[]string) {
 	type cand struct {
 		l        *collectorLoad
 		load     int64
@@ -267,7 +267,15 @@ func addRebalance(sm *slowSummary, spans []spanMs, by map[string]*collectorLoad,
 	sort.Slice(rows, func(i, j int) bool {
 		return rows[i]["unpinned_devices_to_run"].(int) > rows[j]["unpinned_devices_to_run"].(int)
 	})
+	var assigns []moveAssign
+	for _, c := range cands {
+		for _, sp := range c.assigned {
+			assigns = append(assigns, moveAssign{sp: sp, to: c.l})
+		}
+	}
+	moves, movesTotal, patch := rebalanceMoves(assigns, by, deviceCollector, pin, in)
 	stats["rebalance"] = map[string]any{"unpinned_devices": len(unpinned), "estimated_seconds_now": curMax, "estimated_seconds_if_spread": newMax, "collectors": rows,
+		"moves": moves, "moves_total": movesTotal, "moves_shown": len(moves), "edit_source_definition": patch,
 		"assumptions": "an estimate of the bound only: each collector's finish is the longer of its longest device and its device time over its concurrency; it ignores start ramp-up, jump servers and per-vendor concurrency limits, assumes durations stay the same on another collector and that every collector can reach every unpinned device"}
 	*limits = append(*limits, "rebalance spreads the devices that have no pin over the collectors that already work on this network, longest first, and reports the estimated bound before and after; it changes nothing, and pinning a device to a collector is a separate edit (edit-source object classic_device, collectorId)")
 }
@@ -383,4 +391,60 @@ func firstNonEmptyAny(vs ...any) any {
 		}
 	}
 	return ""
+}
+
+type moveAssign struct {
+	sp spanMs
+	to *collectorLoad
+}
+
+// rebalanceMoves turns the rebalance assignment into the concrete moves: each device that would run on a different collector than it ran on, longest first, with its connection type and device-hours. A device
+// is movable through edit-source classic_device only when it is a classic device with no pin; a device the classic list does not know has its collector set by its source setup, and the row says so. The patch
+// is the ready edit-source definition for the shown movable moves. PreferConnection keeps only that connection type; MaxMoves caps the list (default 50, at most 5000).
+func rebalanceMoves(assigns []moveAssign, by map[string]*collectorLoad, deviceCollector, pin map[string]string, in collectionInput) ([]map[string]any, int, map[string]any) {
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	limit = min(limit, 5000)
+	var all []moveAssign
+	for _, a := range assigns {
+		if from := deviceCollector[a.sp.d.DeviceName]; from == a.to.id {
+			continue
+		}
+		if in.Failure != "" && !strings.EqualFold(a.sp.d.ConnTypeDisplayName, in.Failure) {
+			continue
+		}
+		all = append(all, a)
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		return *all[i].sp.d.CollectionDurationMillis > *all[j].sp.d.CollectionDurationMillis
+	})
+	moves := []map[string]any{}
+	var devices []map[string]any
+	for _, a := range all {
+		if len(moves) >= limit {
+			break
+		}
+		name := a.sp.d.DeviceName
+		from := deviceCollector[name]
+		fromName := ""
+		if l, ok := by[from]; ok {
+			fromName = l.name
+		}
+		_, classic := pin[name]
+		row := map[string]any{"device": name, "connection": a.sp.d.ConnTypeDisplayName, "device_type": a.sp.d.DeviceType, "from_collector": nilIfEmpty(from), "from_name": nilIfEmpty(fromName),
+			"to_collector": a.to.id, "to_name": nilIfEmpty(a.to.name), "device_hours": float64(*a.sp.d.CollectionDurationMillis) / 3_600_000, "pinned": false, "movable_with": "edit-source classic_device"}
+		if !classic {
+			row["movable_with"] = "its source setup (not a classic device)"
+		} else {
+			devices = append(devices, map[string]any{"name": name, "collectorId": a.to.id})
+		}
+		moves = append(moves, row)
+	}
+	var patch map[string]any
+	if len(devices) > 0 {
+		patch = map[string]any{"object": "classic_device", "action": "update", "definition": map[string]any{"devices": devices}}
+	}
+	return moves, len(all), patch
 }

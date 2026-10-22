@@ -81,7 +81,7 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 		"changes":    {"limit", "offset"},
 		"exceptions": {"device", "limit", "offset"},
 		"neighbors":  {"limit", "offset"},
-		"slow":       {"device", "limit", "offset", "compare_to_snapshot_id"},
+		"slow":       {"failure", "device", "limit", "offset", "compare_to_snapshot_id"},
 		"history":    {"limit"},
 		"logs":       {"failure", "device", "limit", "offset"},
 		"cloud":      {},
