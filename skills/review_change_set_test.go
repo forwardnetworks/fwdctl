@@ -175,3 +175,16 @@ func TestDescribeListsEachChangeSetCheckWithBaseAndPredictionResult(t *testing.T
 		}
 	}
 }
+
+// A change set's checks come back with their definitions, so a path check or an NQE check can be copied to another change set, and an NQE check with no name is named by its query.
+func TestReviewChangeSetRowsCarryTheCheckDefinitionAndNameAnNQECheckByItsQuery(t *testing.T) {
+	nqe := map[string]any{"id": "c9", "name": "", "status": "PASS", "definition": map[string]any{"checkType": "NQE", "queryId": "Q_abc"}}
+	path := map[string]any{"id": "c8", "name": "web to db", "status": "PASS", "definition": map[string]any{"checkType": "Reachability", "filters": map[string]any{"from": "x"}}}
+	r, _ := mustRun(t, "review-change-set", csRoutes([]any{}, map[string]any{"checks": []any{nqe, path}}, nil), `{"network_id":"n1","change_set_id":"cs1"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"name":"nqe: Q_abc"`, `"query_id":"Q_abc"`, `"checkType":"Reachability"`, `"filters":{"from":"x"}`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("rows miss %s: %s", want, b)
+		}
+	}
+}
