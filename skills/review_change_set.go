@@ -287,6 +287,13 @@ func checkRows(base, after map[string]checkOutcome) []map[string]any {
 					break
 				}
 			}
+			row["definition"] = json.RawMessage(def)
+			if q, ok := d["queryId"].(string); ok && q != "" {
+				row["query_id"] = q
+				if name == "" {
+					row["name"], row["name_from"] = "nqe: "+q, "query_id (the check has no name)"
+				}
+			}
 		}
 		if hb {
 			row["status_on_base"], row["violations_on_base"] = b.status, b.violations
