@@ -159,6 +159,9 @@ func planThreatExposure(ctx context.Context, s *fwd.Session, in editNetworkInput
 				reversible: false, undo: "none: there is no cancel here; the results for that snapshot are replaced when the analysis finishes", limits: limits,
 				do: func(ctx context.Context) error {
 					_, err := te.Evaluate(ctx, in.NetworkID, cur.ID, def.SnapshotID)
+					if analysisUnavailable(err) {
+						return fmt.Errorf("%s: %w", analysisUnavailableLimit, err)
+					}
 					return err
 				}}, nil
 		}
@@ -246,3 +249,12 @@ func planAssetCriticality(ctx context.Context, s *fwd.Session, in editNetworkInp
 	}
 	return nil, fmt.Errorf("%w: object asset_criticality takes action assign or delete", ErrInvalidInput)
 }
+
+// analysisUnavailable says an error is Forward's HTTP 500 on the threat exposure analysis calls (evaluate, status, the views). On builds before the beta the appserver serves the definition routes but the
+// backend does not implement the analysis service (a gRPC UNIMPLEMENTED shown to the caller as a 500 that asks for logs), so the 500 is a limit of the build, not of the request.
+func analysisUnavailable(err error) bool {
+	var er *forward.ErrorResponse
+	return errors.As(err, &er) && er.Response != nil && er.Response.StatusCode == 500
+}
+
+const analysisUnavailableLimit = "the analysis service is not available on this Forward build: definitions and criticality can be created and read but not evaluated (EXPERIMENTAL feature; the appserver answers 500 on evaluate and status, seen as the backend not implementing it on a pre-beta build). Do not retry; a build from the beta (26.11) on is expected to serve it"

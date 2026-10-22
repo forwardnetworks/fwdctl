@@ -302,3 +302,49 @@ func TestSlowViewStatesSlotTimeAgainstDeviceTime(t *testing.T) {
 		t.Errorf("the finding says slot-hours against device-hours: %s", r.Finding)
 	}
 }
+
+// The rebalance block lists the concrete moves (device, from, to, device-hours), longest first, capped by max_moves and narrowed by prefer_connection, with a ready edit-source batch for the classic devices among them.
+func TestSlowViewRebalanceListsTheMovesAndABatchPatch(t *testing.T) {
+	routes := slowWhatIfRoutes()
+	var devs, classic []any
+	for i := 0; i < 6; i++ {
+		n := "u" + string(rune('0'+i))
+		conn := "SSH"
+		if i%2 == 1 {
+			conn = "TELNET"
+		}
+		devs = append(devs, map[string]any{"deviceName": n, "deviceType": "ROUTER", "connTypeDisplayName": conn, "collectionStartTime": 0, "collectionDuration": 600_000 - i*1000})
+		classic = append(classic, map[string]any{"name": n, "host": "h"})
+	}
+	for _, p := range [][2]string{{"p1", "C1"}, {"p2", "C2"}} {
+		devs = append(devs, map[string]any{"deviceName": p[0], "deviceType": "ROUTER", "connTypeDisplayName": "SSH", "collectionStartTime": 0, "collectionDuration": 10_000})
+		classic = append(classic, map[string]any{"name": p[0], "host": "h", "collectorId": p[1]})
+	}
+	for _, c := range []string{"C1", "C2", "C7"} {
+		routes["GET /api/collectors/"+c+"/collection-settings"] = fwdtest.Const(200, map[string]any{"concurrency": 2})
+	}
+	routes["GET /api/networks/n1/collection-metrics"] = fwdtest.Const(200, map[string]any{"snapshotId": "s1", "collectionStartTime": 0, "collectionEndTime": 1_800_000, "metrics": devs})
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, classic)
+	run := func(in string) map[string]any {
+		r, _ := collect(t, routes, in)
+		rb, _ := r.Evidence[0].Detail["stats"].(map[string]any)["rebalance"].(map[string]any)
+		if rb == nil {
+			t.Fatalf("no rebalance block")
+		}
+		return rb
+	}
+	rb := run(`{"network_id":"n1","view":"slow","limit":2}`)
+	moves, _ := rb["moves"].([]map[string]any)
+	if len(moves) != 2 || rb["moves_total"].(int) < 3 || moves[0]["to_collector"] == moves[0]["from_collector"] || moves[0]["device_hours"].(float64) < moves[1]["device_hours"].(float64) {
+		t.Fatalf("moves are capped by max_moves, differ in collector and run longest first: %v total %v", moves, rb["moves_total"])
+	}
+	patch, _ := rb["edit_source_definition"].(map[string]any)
+	if patch == nil || patch["object"] != "classic_device" || len(patch["definition"].(map[string]any)["devices"].([]map[string]any)) != 2 {
+		t.Errorf("a ready batch for edit-source: %v", patch)
+	}
+	for _, m := range run(`{"network_id":"n1","view":"slow","failure":"telnet"}`)["moves"].([]map[string]any) {
+		if m["connection"] != "TELNET" {
+			t.Errorf("prefer_connection keeps one connection type: %v", m)
+		}
+	}
+}

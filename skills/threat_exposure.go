@@ -74,6 +74,10 @@ func threatExposure(ctx context.Context, s *fwd.Session, in vulnInput, t threatE
 			return result.NewUnknown(vulnerabilitiesName, "This Forward build does not serve the threat exposure routes (EXPERIMENTAL feature), so nothing is known from here", cx,
 				append(limits, "the routes exist only in newer Forward builds; the organization property THREAT_EXPOSURE also has to be on"), result.Options{})
 		}
+		if analysisUnavailable(err) && t.View != "definitions" && t.View != "definition" && t.View != "edge_assets" {
+			return result.NewUnknown(vulnerabilitiesName, "The threat exposure analysis is not available on this Forward build, so nothing is known from here (EXPERIMENTAL feature)", cx,
+				append(limits, analysisUnavailableLimit), result.Options{})
+		}
 		if r, ok := denialResult(vulnerabilitiesName, err, cx, "threat exposure"); ok {
 			return r, nil
 		}

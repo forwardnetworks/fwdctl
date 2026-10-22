@@ -145,3 +145,19 @@ func TestEditNetworkAssetCriticalityAssignAndRemove(t *testing.T) {
 		t.Errorf("an unknown criticality is refused")
 	}
 }
+
+// A 500 on the analysis calls means the build lacks the analysis service: the evaluate error and the status read say so, and say not to retry.
+func TestThreatExposureAnalysis500IsNamedAsABuildLimit(t *testing.T) {
+	w := &teWrites{}
+	routes := teWriteRoutes(w, true)
+	routes["POST /api/networks/n1/threat-exposure-analyses/d1"] = fwdtest.Const(500, map[string]any{"message": "Please send logs to Forward for diagnosis."})
+	routes["GET /api/networks/n1/threat-exposure-analyses/d1"] = fwdtest.Const(500, map[string]any{"message": "Please send logs to Forward for diagnosis."})
+	_, _, err := runSkill(t, "edit-network", routes, `{"network_id":"n1","object":"threat_exposure","action":"evaluate","name":"internet to crown jewels","definition":{"snapshot_id":"s1"},"apply":true}`)
+	if err == nil || !strings.Contains(err.Error(), "analysis service is not available") {
+		t.Errorf("evaluate 500: %v", err)
+	}
+	r := teRun(t, routes, `{"view":"status","definition_id":"d1"}`)
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "analysis service is not available") {
+		t.Errorf("status 500: %s %v", r.Status, r.Limits)
+	}
+}
