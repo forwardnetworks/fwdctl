@@ -132,6 +132,11 @@ func editLinkOverrides(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 		"overrides are stored per snapshot here; whether a snapshot collected later carries them is not stated by Forward's API, so inspect-topology (kind link_overrides, compare_to_snapshot_id) on the next snapshot shows what it actually holds",
 		"this skill uses Forward's snapshot-scoped override endpoint, which Forward has deprecated for removal in release 26.11; the network-level operations (staged for the next snapshot, no invalidation until a backdate) are not used by this skill"}
 	limits = append(limits, vlimits...)
+	limits = append(limits, reprocessAskLimit)
+	later := laterSnapshots(ctx, s, in.NetworkID, in.SnapshotID)
+	if len(later) > 0 {
+		limits = append(limits, fmt.Sprintf("snapshots this write can invalidate (this one and the ones created after it; the exact range is not stated by Forward): %v", later))
+	}
 	if n == 0 {
 		return result.Build(editLinkOverridesName, result.OK, "The overrides are already as requested; nothing to change", result.Deterministic, cx,
 			result.Options{Mode: mode, Evidence: ev(nil), NextActions: next})
@@ -159,7 +164,9 @@ func editLinkOverrides(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 	ch.Applied = true
 	after, err := s.LinkOverrides(ctx, in.SnapshotID)
 	if err != nil {
-		return result.Result{}, fmt.Errorf("the edit was sent but reading the overrides back failed, so it is not proven: %w", err)
+		return result.Build(editLinkOverridesName, result.Unknown, "The edit was sent but could not be read back, so it is NOT proven (the snapshot is probably UNPROCESSED while it reprocesses); do not apply it again", result.NoBasis, cx,
+			result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"read_back_error": err.Error()}),
+				Limits: append(limits, "verify with inspect-topology kind link_overrides once the snapshot is processed (inspect-snapshots shows the state); a retry of this apply is not needed and the 409 on the read-back is the unprocessed snapshot, not a failed write"), NextActions: []string{"inspect-snapshots", "inspect-topology"}})
 	}
 	held := true
 	for _, l := range addP {
@@ -236,3 +243,29 @@ func checkNewLinks(ctx context.Context, s *fwd.Session, networkID, snapshotID st
 	}
 	return problems, notes, limits
 }
+
+// laterSnapshots names the snapshots of the network created at or after the target, which are the ones a snapshot-scoped write can invalidate (how far the override range reaches is not stated by Forward, so these are the candidates).
+func laterSnapshots(ctx context.Context, s *fwd.Session, networkID, snapshotID string) []map[string]any {
+	list, err := s.Snapshots(ctx, networkID)
+	if err != nil {
+		return nil
+	}
+	var target string
+	for _, sn := range list {
+		if string(sn.ID) == snapshotID {
+			target = sn.CreatedAt
+		}
+	}
+	if target == "" {
+		return nil
+	}
+	out := []map[string]any{}
+	for _, sn := range list {
+		if sn.CreatedAt >= target {
+			out = append(out, map[string]any{"snapshot_id": string(sn.ID), "state": sn.State, "created_at": sn.CreatedAt})
+		}
+	}
+	return out
+}
+
+const reprocessAskLimit = "after this write, ASK the person before any reprocess, one snapshot at a time, and never chain edit-snapshot reprocess onto the apply: a reprocess is slow (a 1,400-device snapshot takes about 40 minutes) and the person chooses which invalidated snapshots are worth it"

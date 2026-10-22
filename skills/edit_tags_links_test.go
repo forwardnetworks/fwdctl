@@ -451,3 +451,31 @@ func TestEditInternetExclusionsDryRunNamesEveryEntryForwardWouldRefuse(t *testin
 		t.Errorf("a block that mixes reserved and public space is accepted by Forward: %v", err)
 	}
 }
+
+// The write invalidates the snapshot, so the read-back can answer 409 (UNPROCESSED): the result is unknown ("sent, not proven"), says not to apply again, points to inspect-topology, names the snapshots it can invalidate and says to ask before any reprocess.
+func TestEditLinkOverridesReadBack409IsNotProvenAndReprocessNeedsAsking(t *testing.T) {
+	routes := overrideRoutes(true)
+	posted := false
+	inner := routes["GET /api/snapshots/s1/topology/overrides"]
+	routes["GET /api/snapshots/s1/topology/overrides"] = func(r *http.Request, b []byte) (int, any) {
+		if posted {
+			return 409, map[string]any{"message": "Snapshot s1 cannot be used at the moment (currently UNPROCESSED)"}
+		}
+		return inner(r, b)
+	}
+	post := routes["POST /api/snapshots/s1/topology/overrides"]
+	routes["POST /api/snapshots/s1/topology/overrides"] = func(r *http.Request, b []byte) (int, any) {
+		posted = true
+		return post(r, b)
+	}
+	in := `{"network_id":"n1","snapshot_id":"s1","add_present":[{"port1":"r2:Gi0/1","port2":"sw1:Gi0/23"}]`
+	d, _ := mustRun(t, "edit-link-overrides", overrideRoutes(true), in+`}`)
+	if l := strings.Join(d.Limits, " "); !strings.Contains(l, "ASK the person before any reprocess") || !strings.Contains(l, "s1") {
+		t.Errorf("the dry run says to ask before reprocess and names the snapshots: %s", l)
+	}
+	r, _ := mustRun(t, "edit-link-overrides", routes, in+`,"apply":true}`)
+	l := strings.Join(r.Limits, " ")
+	if r.Status != result.Unknown || !strings.Contains(r.Finding, "NOT proven") || !strings.Contains(l, "inspect-topology kind link_overrides") || !r.Changes[0].Applied {
+		t.Errorf("a 409 read-back is sent-but-unproven, not a failure to retry: %s %s %s", r.Status, r.Finding, l)
+	}
+}
