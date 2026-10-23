@@ -29,7 +29,7 @@ A secret (an S3 secret key, a ServiceNow or Infoblox password, a license key) is
 | `organizations` | `delete` | the organization | | **none**; `confirm` = the name |
 | `cve_index` | `upload` | | `path` (a .gz file), `sha256` (optional) | delete it |
 | `cve_index` | `delete` | | | **none**; `confirm` = `cve_index` |
-| `collectors` | `register` | | `name`, `env_file` (a new path; gets `TOKEN=username:password`, mode 600; the key is in no result) | delete the collector |
+| `collectors` | `register`, `delete`, `upgrade` | | `name`, `env_file` (a new path; gets `TOKEN=username:password`, mode 600; the key is in no result) | delete the collector |
 | `collectors` | `delete` | the collector name, id or username | | **none**; `confirm` = the name |
 | `endpoint_profiles` | `create` | | `name`, `command_sets` (UNIX), `custom_commands` (CLI profiles only; the dry run says which commands the organization has not approved) | delete it |
 | `endpoint_profiles` | `update` | the CLI profile id or name | `command_sets`, `custom_commands` (each replaces the current list; CLI profiles only; every endpoint using the profile follows) | update back |

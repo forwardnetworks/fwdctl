@@ -149,10 +149,27 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 		if creds, _, cerr := s.Client.Credentials.ListCLI(ctx, in.NetworkID); cerr != nil {
 			limits = append(limits, fmt.Sprintf("the CLI logins could not be read (%v), so no credential candidates are listed", cerr))
 		} else {
+			vendorTokens := map[string]bool{}
+			for typ := range byType {
+				if v := strings.Split(vendorOf[typ], "_")[0]; v != "" {
+					vendorTokens[v] = true
+				}
+			}
 			var cands []map[string]any
 			for _, c := range creds {
 				if c.AutoAssociate != nil && *c.AutoAssociate {
-					cands = append(cands, map[string]any{"id": c.ID, "name": c.Name, "username": c.Username, "has_enable_password": c.PrivilegedModePasswordID != ""})
+					cand := map[string]any{"id": c.ID, "name": c.Name, "username": c.Username, "has_enable_password": c.PrivilegedModePasswordID != ""}
+					var likely []string
+					for v := range vendorTokens {
+						if strings.Contains(strings.ToLower(c.Name), v) {
+							likely = append(likely, v)
+						}
+					}
+					if len(likely) > 0 {
+						sort.Strings(likely)
+						cand["name_suggests_vendor"] = likely
+					}
+					cands = append(cands, cand)
 				}
 			}
 			mig["credential_candidates"] = cands
@@ -292,7 +309,7 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 				"snmp_credential_id": nilIfEmpty(string(rec.SNMPCredentialID)), "jump_server_id": nilIfEmpty(string(rec.JumpServerID)), "collector_id": nilIfEmpty(string(rec.CollectorID))}
 			entry["address_confirmed_by_a_record"] = true
 			controller["name"], controller["type"] = rec.Name, rec.Type
-			for field, v := range map[string]string{"cliCredentialId": string(rec.CLICredentialID), "httpCredentialId": string(rec.HTTPCredentialID), "snmpCredentialId": string(rec.SNMPCredentialID), "jumpServerId": string(rec.JumpServerID)} {
+			for field, v := range map[string]string{"cliCredentialId": string(rec.CLICredentialID), "snmpCredentialId": string(rec.SNMPCredentialID), "jumpServerId": string(rec.JumpServerID)} {
 				if v != "" {
 					controller[field] = v
 				}
@@ -337,6 +354,9 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 			"note":       fmt.Sprintf("a pilot of %d of %d devices; run the dry run, then a connectivity test, then the rest", len(managed), len(devs))}
 		if len(hints) > 0 {
 			sm["credential_hints"] = map[string]any{"devices_without_a_recorded_login": hints, "meaning": "for each device with no login recorded, the login ids its same-/24 siblings use and how many do; Forward does not record which login works, so a pilot connectivity test decides. The org's auto-associate logins are in credential_candidates"}
+		}
+		if rec != nil && rec.HTTPCredentialID != "" {
+			sm["controller_http_credential_not_carried"] = map[string]any{"http_credential_id": string(rec.HTTPCredentialID), "meaning": "this controller's classic record holds an HTTP login, but a migrate controller entry has no HTTP credential field (cliCredentialId, snmpCredentialId and jumpServerId only), and the migrate deletes that record; whether Forward carries the HTTP login over, or takes it in cliCredentialId, is not established. Do not apply this migrate for the controller until that is confirmed"}
 		}
 		entry["suggested_migrate"] = sm
 		out = append(out, entry)

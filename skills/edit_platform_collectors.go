@@ -116,6 +116,77 @@ func planPlatformCollector(ctx context.Context, s *fwd.Session, in editPlatformI
 				}
 				return true, nil, err
 			}}, nil
+	case "upgrade":
+		return planCollectorUpgrade(ctx, s, in, cur, find, list)
 	}
-	return nil, fmt.Errorf("%w: collectors takes action register or delete", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: collectors takes action register, delete or upgrade", ErrInvalidInput)
+}
+
+// planCollectorUpgrade queues the upgrade of one collector (name) or of every collector that can take it (definition {"all": true}): the "update" button Forward's UI shows when a collector is out of date. It only queues:
+// Forward waits for a running collection on the collector to finish, then restarts it, and collections queued behind the restart fail with "Collector version changed". PREVIEW: the routes are not in Forward's published spec.
+func planCollectorUpgrade(ctx context.Context, s *fwd.Session, in editPlatformInput, cur []forward.Collector, find func(string) *forward.Collector, list func(context.Context) ([]forward.Collector, error)) (*networkPlan, error) {
+	var def struct {
+		All bool `json:"all"`
+	}
+	if len(in.Definition) > 0 {
+		if err := decodeDefinition(in.Definition, &def, "all (true: every collector that can be upgraded; then give no name)"); err != nil {
+			return nil, err
+		}
+	}
+	limits := []string{
+		"PREVIEW: Forward's collector upgrade routes are not in its published spec; they need the organization administrator permission MANAGE_COLLECTORS",
+		"this only QUEUES the upgrade: it waits for a running collection on that collector to finish, then restarts the collector; collections queued behind the restart fail with \"Collector version changed\", and Forward gives the task 15 minutes. Tell the people who collect through it first",
+		"to check: read the collector again (inspect-platform area collectors, or inspect-collection view status) until it is no longer updating, then its update status: UP_TO_DATE means it worked; a failed or timed-out upgrade also stops the updating and leaves OUTDATED, so do not wait for UP_TO_DATE alone",
+		"this does not check for a bundled on-prem collector (username \"client\") or a bundled-only deployment, which Forward refuses with 400",
+	}
+	row := func(c forward.Collector) map[string]any {
+		return map[string]any{"name": c.Name, "version": nilIfEmpty(c.Version), "update_status": nilIfEmpty(c.UpdateStatus), "connection": nilIfEmpty(c.ConnectionStatus), "updating": c.CollectorUpdating, "blocker": nilIfEmpty(c.UpgradeBlocker())}
+	}
+	if def.All {
+		if in.Name != "" {
+			return nil, fmt.Errorf("%w: all and a collector name are alternatives", ErrInvalidInput)
+		}
+		var rows []map[string]any
+		for _, c := range cur {
+			if c.UpgradeBlocker() == "" {
+				rows = append(rows, row(c))
+			}
+		}
+		if len(rows) == 0 {
+			return nil, nil
+		}
+		return &networkPlan{target: fmt.Sprintf("queue the upgrade of %d collector(s)", len(rows)), action: "upgrade_collectors", before: rows, after: map[string]any{"queued": len(rows)}, reversible: false, confirm: "all",
+			undo: "none: an upgrade is not undone from here", limits: limits,
+			do: func(ctx context.Context) error { _, _, err := s.Client.Collectors.UpgradeAll(ctx); return err },
+			verify: func(ctx context.Context) (bool, any, error) {
+				now, err := list(ctx)
+				queued := 0
+				for _, c := range now {
+					if c.CollectorUpdating || c.UpdateStatus == "UP_TO_DATE" {
+						queued++
+					}
+				}
+				return queued > 0, map[string]any{"collectors_updating_or_current": queued}, err
+			}}, nil
+	}
+	c := find(in.Name)
+	if c == nil {
+		return nil, fmt.Errorf("%w: no collector %q (inspect-platform area collectors lists them)", ErrInvalidInput, in.Name)
+	}
+	if b := c.UpgradeBlocker(); b != "" {
+		return nil, fmt.Errorf("%w: collector %q cannot be upgraded now: %s", ErrInvalidInput, c.Name, b)
+	}
+	id, name := string(c.ID), c.Name
+	return &networkPlan{target: "queue the upgrade of collector " + name, action: "upgrade_collector", before: row(*c), after: map[string]any{"queued": true}, reversible: false, confirm: name,
+		undo: "none: an upgrade is not undone from here", limits: limits,
+		do: func(ctx context.Context) error { _, err := s.Client.Collectors.Upgrade(ctx, name); return err },
+		verify: func(ctx context.Context) (bool, any, error) {
+			now, err := list(ctx)
+			for _, x := range now {
+				if string(x.ID) == id {
+					return x.CollectorUpdating || x.UpdateStatus == "UP_TO_DATE", row(x), err
+				}
+			}
+			return false, nil, err
+		}}, nil
 }
