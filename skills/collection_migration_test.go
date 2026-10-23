@@ -109,3 +109,46 @@ func TestMigrationViewListsTheCredentialCandidatesAndSaysTheWorkingLoginCannotBe
 		t.Errorf("limits: %v", r.Limits)
 	}
 }
+
+// The migration view names every counted device with the host, login, jump server and collector it uses now, groups them by controller with the controller's kind and the devices that point at it, finds the
+// classic record that holds the controller's own login, and returns a ready migrate input for a pilot.
+func TestMigrationViewNamesDevicesControllersAndSuggestsAMigrate(t *testing.T) {
+	routes := migrationRoutes()
+	tr := func(extra map[string]any) map[string]any {
+		return extra
+	}
+	vm := map[string]any{"name": "", "ipAddress": "192.0.2.10"}
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{
+		tr(map[string]any{"name": "vmanage1", "type": "viptela", "host": "192.0.2.10", "cliCredentialId": "L-ctl", "jumpServerId": "J1", "collectorId": "C7", "testResult": map[string]any{"discoveredType": "viptela"}}),
+		tr(map[string]any{"name": "edge1", "host": "198.51.100.1", "cliCredentialId": "L-edge", "jumpServerId": "J2", "collectorId": "C7", "testResult": map[string]any{"discoveredType": "cisco_ios_xe_ssh", "controllerInfos": []any{vm}}}),
+		tr(map[string]any{"name": "edge2", "host": "198.51.100.2", "cliCredentialId": "L-edge", "testResult": map[string]any{"discoveredType": "cisco_ios_xe_ssh", "controllerInfos": []any{vm}}}),
+		tr(map[string]any{"name": "standalone", "host": "198.51.100.9", "testResult": map[string]any{"discoveredType": "arista_eos_ssh"}}),
+	})
+	r, _ := mustRun(t, "inspect-collection", routes, `{"network_id":"n1","view":"migration"}`)
+	var m map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["migration"].(map[string]any); ok {
+			m = v
+		}
+	}
+	devs := m["devices"].([]map[string]any)
+	if len(devs) != 3 || devs[0]["name"] != "edge1" || devs[2]["name"] != "vmanage1" || devs[0]["cli_credential_id"] != "L-edge" || devs[0]["jump_server_id"] != "J2" || devs[0]["collector_id"] != "C7" || devs[0]["host"] != "198.51.100.1" {
+		t.Fatalf("devices: %v", devs)
+	}
+	ctl := m["controllers"].([]map[string]any)
+	if len(ctl) != 1 {
+		t.Fatalf("controllers: %v", ctl)
+	}
+	c := ctl[0]
+	rec, _ := c["classic_record"].(map[string]any)
+	if c["address"] != "192.0.2.10" || c["controller_kind"] != "Cisco SD-WAN (vManage)" || c["address_confirmed_by_a_record"] != true || rec == nil || rec["cli_credential_id"] != "L-ctl" || rec["jump_server_id"] != "J1" {
+		t.Errorf("controller: %v", c)
+	}
+	sm := c["suggested_migrate"].(map[string]any)
+	def := sm["definition"].(map[string]any)
+	cs := def["controllers"].([]map[string]any)
+	md := def["managedDevices"].([]map[string]any)
+	if sm["object"] != "controller_setup" || sm["action"] != "migrate" || cs[0]["cliCredentialId"] != "L-ctl" || cs[0]["name"] != "vmanage1" || len(md) != 2 || md[0]["cliCredentialId"] != "L-edge" {
+		t.Errorf("suggested migrate: %v", sm)
+	}
+}
