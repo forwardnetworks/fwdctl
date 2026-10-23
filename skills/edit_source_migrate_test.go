@@ -67,3 +67,13 @@ func TestMigrateRefusesAGuestWithoutALoginAndNeedsTheSetupNameToApply(t *testing
 		t.Errorf("apply: %s %s posted %q", r.Status, r.Finding, posted)
 	}
 }
+
+// A controller entry takes the HTTP login of an API-collected controller (Versa Director, APIC), a port and the privileged-mode login, and sends them: a migrate carries nothing over from the record it deletes.
+func TestMigrateControllerEntryTakesTheHTTPLoginPortAndExtraCLILogins(t *testing.T) {
+	var posted string
+	in := `{"network_id":"n1","object":"controller_setup","action":"migrate","apply":true,"confirm":"sdwan","definition":{"name":"sdwan","controllers":[{"name":"ctl","type":"versa_director_api","host":"192.0.2.10","port":9182,"httpCredentialId":"H-25","cliCredential2Id":"P-2","jumpServerId":"J1"}],"managedDevices":[{"name":"edge1","cliCredentialId":"L1"}]}}`
+	r, _ := mustRun(t, "edit-source", migrateRoutes(&posted), in)
+	if r.Status != result.OK || !strings.Contains(posted, `"httpCredentialId":"H-25"`) || !strings.Contains(posted, `"port":9182`) || !strings.Contains(posted, `"cliCredential2Id":"P-2"`) || !strings.Contains(posted, `"jumpServerId":"J1"`) {
+		t.Fatalf("the migrate body must restate the controller's logins and port: %s %s", r.Finding, posted)
+	}
+}

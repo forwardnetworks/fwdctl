@@ -199,6 +199,12 @@ func migrationDeviceRow(d forward.SourceTestStatus, eff, cat string, c forward.C
 		row["host"] = c.Host
 		row["cli_credential_id"] = nilIfEmpty(string(c.CLICredentialID))
 		row["http_credential_id"] = nilIfEmpty(string(c.HTTPCredentialID))
+		row["snmp_credential_id"] = nilIfEmpty(string(c.SNMPCredentialID))
+		row["cli_credential2_id"] = nilIfEmpty(string(c.CLICredential2ID))
+		row["cli_credential3_id"] = nilIfEmpty(string(c.CLICredential3ID))
+		if c.Port != nil {
+			row["port"] = *c.Port
+		}
 		row["jump_server_id"] = nilIfEmpty(string(c.JumpServerID))
 		row["collector_id"] = nilIfEmpty(string(c.CollectorID))
 	}
@@ -309,10 +315,13 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 				"snmp_credential_id": nilIfEmpty(string(rec.SNMPCredentialID)), "jump_server_id": nilIfEmpty(string(rec.JumpServerID)), "collector_id": nilIfEmpty(string(rec.CollectorID))}
 			entry["address_confirmed_by_a_record"] = true
 			controller["name"], controller["type"] = rec.Name, rec.Type
-			for field, v := range map[string]string{"cliCredentialId": string(rec.CLICredentialID), "snmpCredentialId": string(rec.SNMPCredentialID), "jumpServerId": string(rec.JumpServerID)} {
+			for field, v := range map[string]string{"cliCredentialId": string(rec.CLICredentialID), "cliCredential2Id": string(rec.CLICredential2ID), "cliCredential3Id": string(rec.CLICredential3ID), "httpCredentialId": string(rec.HTTPCredentialID), "snmpCredentialId": string(rec.SNMPCredentialID), "jumpServerId": string(rec.JumpServerID)} {
 				if v != "" {
 					controller[field] = v
 				}
+			}
+			if rec.Port != nil {
+				controller["port"] = *rec.Port
 			}
 		} else {
 			entry["address_confirmed_by_a_record"] = false
@@ -343,20 +352,19 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 			} else if sib := subnetLogins[subnet24(fmt.Sprint(d["host"]))]; len(sib) > 0 {
 				hints[fmt.Sprint(d["name"])] = sib // credential id -> how many same-subnet devices use it
 			}
-			if v := d["jump_server_id"]; v != nil {
-				m["jumpServerId"] = v
+			for field, key := range map[string]string{"jumpServerId": "jump_server_id", "cliCredential2Id": "cli_credential2_id", "cliCredential3Id": "cli_credential3_id", "httpCredentialId": "http_credential_id", "snmpCredentialId": "snmp_credential_id", "port": "port"} {
+				if v := d[key]; v != nil {
+					m[field] = v
+				}
 			}
 			managed = append(managed, m)
 		}
 		sm := map[string]any{"object": "controller_setup", "action": "migrate",
 			"definition": map[string]any{"name": "<choose the setup name>", "controllers": []map[string]any{controller}, "managedDevices": managed},
-			"warning":    "migrate DELETES each classic device it names (its settings, test results and tags) in the same call, and needs confirm equal to the setup name; there is no undo command: recreate the classic devices from the before list the dry run prints. A device with no cliCredentialId is refused: nothing is inherited from the controller or the classic record",
+			"warning":    "migrate DELETES each classic device it names (its settings, test results and tags) in the same call, and needs confirm equal to the setup name; there is no undo command: recreate the classic devices from the before list the dry run prints. A migrate carries nothing over from the deleted records, so this suggestion restates each one's logins (CLI, HTTP, SNMP), jump server and port; the collection options on a classic record (BGP advertisement collection, SNMP options, pagination, prompts, thresholds, note) are not carried: re-check them after the migrate A device with no cliCredentialId is refused: nothing is inherited from the controller or the classic record",
 			"note":       fmt.Sprintf("a pilot of %d of %d devices; run the dry run, then a connectivity test, then the rest", len(managed), len(devs))}
 		if len(hints) > 0 {
 			sm["credential_hints"] = map[string]any{"devices_without_a_recorded_login": hints, "meaning": "for each device with no login recorded, the login ids its same-/24 siblings use and how many do; Forward does not record which login works, so a pilot connectivity test decides. The org's auto-associate logins are in credential_candidates"}
-		}
-		if rec != nil && rec.HTTPCredentialID != "" {
-			sm["controller_http_credential_not_carried"] = map[string]any{"http_credential_id": string(rec.HTTPCredentialID), "meaning": "this controller's classic record holds an HTTP login, but a migrate controller entry has no HTTP credential field (cliCredentialId, snmpCredentialId and jumpServerId only), and the migrate deletes that record; whether Forward carries the HTTP login over, or takes it in cliCredentialId, is not established. Do not apply this migrate for the controller until that is confirmed"}
 		}
 		entry["suggested_migrate"] = sm
 		out = append(out, entry)
