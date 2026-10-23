@@ -25,8 +25,7 @@
         "delete",
         "retention_policy",
         "export",
-        "import",
-        "cancel"
+        "import"
       ]
     },
     "note": {

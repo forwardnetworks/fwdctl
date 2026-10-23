@@ -109,7 +109,7 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 	case "predict":
 		ch.Action, verb = "start_prediction", "start a prediction of"
 		ch.Reversible = false
-		ch.Undo = "none: a started prediction leaves a predicted snapshot that these skills cannot delete (edit-snapshot action cancel stops it while it runs, with ADMINISTER_SYSTEM)"
+		ch.Undo = "none: a started prediction leaves a predicted snapshot that these skills cannot delete (edit-jobs cancels a wedged job past a threshold, with ADMINISTER_SYSTEM)"
 		do = func() (any, error) {
 			known := map[string]bool{}
 			if prev, perr := s.PredictedSnapshots(ctx, in.NetworkID, id); perr == nil {

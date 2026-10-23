@@ -30,6 +30,10 @@ type editLinkOverridesInput struct {
 	AddAbsent     []linkPair `json:"add_absent"`
 	RemoveAbsent  []linkPair `json:"remove_absent"`
 	Apply         bool       `json:"apply"`
+	// Staged edits or backdates the network-level staged overrides (Forward 26.8 and later); BackdateTo is the snapshot to push them onto (alone, with Confirm equal to it).
+	Staged     bool   `json:"staged"`
+	BackdateTo string `json:"backdate_to_snapshot_id"`
+	Confirm    string `json:"confirm"`
 	// Force lets an add_present name a port the snapshot does not have; without it such an edit is refused, dry run or applied.
 	Force bool `json:"force"`
 }
@@ -60,6 +64,13 @@ func editLinkOverrides(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 	var in editLinkOverridesInput
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	if in.Staged || in.BackdateTo != "" {
+		in.Staged = true
+		return editStagedLinkOverrides(ctx, s, in)
+	}
+	if in.Confirm != "" {
+		return result.Result{}, fmt.Errorf("%w: confirm belongs to a staged backdate", ErrInvalidInput)
 	}
 	total := len(in.AddPresent) + len(in.RemovePresent) + len(in.AddAbsent) + len(in.RemoveAbsent)
 	if in.NetworkID == "" || in.SnapshotID == "" || total == 0 {
