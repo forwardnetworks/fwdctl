@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 )
 
 // Where the Forward login comes from, in order of precedence: command-line flags in front of the command
@@ -20,7 +19,7 @@ type connFile struct {
 	URL          string `json:"url"`
 	Username     string `json:"username"`
 	PasswordFile string `json:"password_file"`
-	// TokenFile is a file of three lines: the Forward URL, the username (or an API token's access key) and the password (or its secret).
+	// TokenFile is a netrc file: machine HOST, login USER (or an API token's access key), password SECRET (or its secret).
 	TokenFile string `json:"token_file"`
 	// SupportTokenFile is a second token file for a Forward-support login (FORWARD_SUPPORT_TOKEN_FILE, --support-token-file): only changes that need support authority use it.
 	SupportTokenFile string `json:"support_token_file"`
@@ -29,7 +28,7 @@ type connFile struct {
 	CABundle string `json:"ca_bundle"`
 }
 
-// readTokenFile reads the three-line login file: URL, username, password. A URL without a scheme gets https://. The file must not be readable
+// readTokenFile reads the netrc login file: machine HOST (or a full URL), login USER, password SECRET. A host without a scheme gets https://. This is the only format. The file must not be readable
 // by other users.
 func readTokenFile(path string) (url, user, pass string, err error) {
 	if strings.HasPrefix(path, "~/") {
@@ -48,38 +47,7 @@ func readTokenFile(path string) (url, user, pass string, err error) {
 	if err != nil {
 		return "", "", "", err
 	}
-	if strings.Contains(string(b), "machine") {
-		return parseNetrc(path, string(b))
-	}
-	var lines []string
-	for _, l := range strings.Split(string(b), "\n") {
-		if l = strings.TrimRight(l, "\r"); strings.TrimSpace(l) != "" {
-			lines = append(lines, strings.TrimSpace(l))
-		}
-	}
-	if len(lines) == 1 { // the same three values on one line, separated by whitespace
-		if f := strings.Fields(lines[0]); len(f) == 3 {
-			lines = f
-		}
-	}
-	if len(lines) != 3 {
-		return "", "", "", fmt.Errorf("the token file %s is not in a format fwdctl reads: expected netrc (machine HOST login USER password SECRET) or, temporarily, three lines (URL, username, password); it has %d non-empty line(s)", path, len(lines))
-	}
-	url = lines[0]
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		url = "https://" + url
-	}
-	legacyTokenFileNotice(path)
-	return strings.TrimRight(url, "/"), lines[1], lines[2], nil
-}
-
-var legacyNoticeOnce sync.Once
-
-// legacyTokenFileNotice says once per run that the three-line token file is a temporary format: the standard is netrc.
-func legacyTokenFileNotice(path string) {
-	legacyNoticeOnce.Do(func() {
-		fmt.Fprintf(os.Stderr, "fwdctl: %s is in the three-line format, which is temporary; use the netrc format (machine HOST, login USER, password SECRET)\n", path)
-	})
+	return parseNetrc(path, string(b))
 }
 
 // parseNetrc reads a netrc token file: one machine entry with login and password, tokens separated by whitespace or newlines. The machine is the Forward host (or a full URL); a bare host gets https://.
@@ -98,7 +66,7 @@ func parseNetrc(path, text string) (string, string, string, error) {
 		}
 	}
 	if len(machines) != 1 || login == "" || password == "" {
-		return "", "", "", fmt.Errorf("the token file %s is not in a format fwdctl reads: expected netrc (one line or several: machine HOST login USER password SECRET, a single machine) or, temporarily, three lines (URL, username, password)", path)
+		return "", "", "", fmt.Errorf("the token file %s is not in a format fwdctl reads: expected netrc: machine HOST, login USER, password SECRET (one machine, on one line or several)", path)
 	}
 	url := machines[0]
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {

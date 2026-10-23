@@ -99,17 +99,17 @@ only the path of a file that does, and that file must be mode 600.
 
 ## Remember a login: `fwdctl login`
 
-    fwdctl login --file ~/forward.token     # once; checks the login, then remembers the file's path
+    fwdctl login --file ~/forward.netrc     # once; checks the login, then remembers the file's path
     fwdctl login --forget
 
 With more than one Forward (a customer, a test system, a support login), name each login instead of passing a token file on every command:
 
-    fwdctl login --profile staging --file ~/staging.token   # once per profile; saved as ~/.config/fwdctl/profiles/staging.json
+    fwdctl login --profile staging --file ~/staging.netrc   # once per profile; saved as ~/.config/fwdctl/profiles/staging.json
     fwdctl --profile staging whoami                         # then on any command
 
 A profile is the same file format as the default config. Every `fwdctl run` prints `fwdctl: NAME against URL as LOGIN` on stderr, so a run against the wrong one is seen at once. A second login only for changes that need Forward-support authority (`edit-org-property` with `org_id`) is `--support-token-file`.
 
-The token file is in netrc format (`machine HOST`, `login USER`, `password SECRET`, on one line or several; the machine may be a host or a full URL) and must be mode 600. The old three-line format (URL, username, password) still works for now and prints a notice; it is temporary. In a `--config` file, `token_file` can sit beside `url` and `username`: a `url` or `username` in the config (and a flag or `FORWARD_*` variable) overrides the matching value in the token file, and a config `password_file` overrides its password. Only its path is saved
+The token file is in netrc format (`machine HOST`, `login USER`, `password SECRET`, on one line or several; the machine may be a host or a full URL) and must be mode 600. In a `--config` file, `token_file` can sit beside `url` and `username`: a `url` or `username` in the config (and a flag or `FORWARD_*` variable) overrides the matching value in the token file, and a config `password_file` overrides its password. Only its path is saved
 (`~/.config/fwdctl/config.json`); the password is never copied. Flags and `FORWARD_*` variables still win.
 
 Through a proxy (a SOCKS tunnel to a tenant that only answers from elsewhere): set `HTTPS_PROXY=socks5://127.0.0.1:1080` (or an `http://` proxy); fwdctl honours the standard proxy variables `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY`. There is no `--proxy` flag.

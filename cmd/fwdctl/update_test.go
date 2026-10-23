@@ -129,7 +129,7 @@ func TestCompletionScriptsNameTheSkills(t *testing.T) {
 func TestTokenFileFillsTheLoginAndIsRefusedWhenOthersCanReadIt(t *testing.T) {
 	dir := t.TempDir()
 	tf := filepath.Join(dir, "cust.token")
-	os.WriteFile(tf, []byte("fwd.example.com\nme@example.com\ns3cret\n\n"), 0o600)
+	os.WriteFile(tf, []byte("machine fwd.example.com\nlogin me@example.com\npassword s3cret\n\n"), 0o600)
 	for _, k := range []string{"FORWARD_URL", "FORWARD_USERNAME", "FORWARD_PASSWORD"} {
 		t.Setenv(k, "")
 	}
@@ -164,7 +164,7 @@ func TestTokenFileFillsTheLoginAndIsRefusedWhenOthersCanReadIt(t *testing.T) {
 func TestConfigURLAndTokenFileWorkTogetherAndTheOneLineFormIsAccepted(t *testing.T) {
 	dir := t.TempDir()
 	tf := filepath.Join(dir, "one.token")
-	os.WriteFile(tf, []byte("fwd.example.com key123 s3cret\n"), 0o600)
+	os.WriteFile(tf, []byte("machine fwd.example.com login key123 password s3cret\n"), 0o600)
 	for _, k := range []string{"FORWARD_URL", "FORWARD_USERNAME", "FORWARD_PASSWORD"} {
 		t.Setenv(k, "")
 	}
