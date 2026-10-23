@@ -1327,7 +1327,7 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 	switch in.Action {
 	case "create":
 		var def forward.NewControllerManagedSetup
-		if err := decodeDefinition(in.Definition, &def, "name, controllers[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId}], managedDevices[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId, collect}]"); err != nil {
+		if err := decodeDefinition(in.Definition, &def, "name, controllers[{name, type, host, port, cliCredentialId, cliCredential2Id, cliCredential3Id, httpCredentialId (the LOGIN credential of an API-collected controller such as a Versa Director or APIC), snmpCredentialId, jumpServerId}], managedDevices[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId, collect}]"); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(def.Name) == "" || len(def.Controllers) == 0 {
@@ -1381,7 +1381,7 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 			}}, nil
 	case "migrate":
 		var def forward.NewControllerManagedSetup
-		if err := decodeDefinition(in.Definition, &def, "name, controllers[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId}], managedDevices[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId, collect}] (list only the devices to move: a subset is a pilot)"); err != nil {
+		if err := decodeDefinition(in.Definition, &def, "name, controllers[{name, type, host, port, cliCredentialId, cliCredential2Id, cliCredential3Id, httpCredentialId (the LOGIN credential of an API-collected controller such as a Versa Director or APIC), snmpCredentialId, jumpServerId}], managedDevices[{name, type, host, cliCredentialId, snmpCredentialId, jumpServerId, collect}] (list only the devices to move: a subset is a pilot)"); err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(def.Name) == "" || len(def.Controllers) == 0 {
