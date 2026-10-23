@@ -479,3 +479,57 @@ func TestEditLinkOverridesReadBack409IsNotProvenAndReprocessNeedsAsking(t *testi
 		t.Errorf("a 409 read-back is sent-but-unproven, not a failure to retry: %s %s %s", r.Status, r.Finding, l)
 	}
 }
+
+func stagedRoutes(posted *[]string) map[string]fwdtest.Handler {
+	present := []any{map[string]any{"port1": "r1:Gi0/1", "port2": "sw1:Gi0/24"}}
+	return map[string]fwdtest.Handler{
+		snapsPath: fwdtest.Snapshots(
+			fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"),
+			fwdtest.Snap("s2", "PROCESSED", "COLLECTION", "2026-09-02T00:00:00.000Z"),
+			fwdtest.Snap("s3", "PROCESSED", "COLLECTION", "2026-09-03T00:00:00.000Z")),
+		"GET /api/networks/n1/link-overrides": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("view") == "staged" {
+				return 200, map[string]any{"presentAdditions": []any{map[string]any{"port1": "r9:Gi0/1", "port2": "sw1:Gi0/9"}}}
+			}
+			return 200, map[string]any{"present": present, "absent": []any{}}
+		},
+		"PATCH /api/networks/n1/link-overrides": func(_ *http.Request, b []byte) (int, any) {
+			*posted = append(*posted, "PATCH "+string(b))
+			present = append(present, map[string]any{"port1": "r2:Gi0/1", "port2": "sw1:Gi0/23"})
+			return 204, nil
+		},
+		"POST /api/networks/n1/link-overrides": func(r *http.Request, _ []byte) (int, any) {
+			*posted = append(*posted, "POST "+r.URL.RawQuery)
+			return 204, nil
+		},
+	}
+}
+
+// Staged mode edits the network-level overrides without touching any snapshot, and a backdate is a separate, confirmed run that names the snapshots Forward's rule invalidates.
+func TestEditLinkOverridesStagedEditsLeaveSnapshotsAloneAndBackdateNeedsConfirm(t *testing.T) {
+	var sent []string
+	edit := `{"network_id":"n1","staged":true,"add_present":[{"port1":"r2:Gi0/1","port2":"sw1:Gi0/23"}]`
+	if r, srv := mustRun(t, "edit-link-overrides", stagedRoutes(&sent), edit+`}`); r.Mode != result.ModeDryRun || writes(srv) != 0 || len(sent) != 0 {
+		t.Fatalf("dry run writes nothing: %s %v", r.Finding, sent)
+	}
+	r, _ := mustRun(t, "edit-link-overrides", stagedRoutes(&sent), edit+`,"apply":true}`)
+	if r.Status != result.OK || len(sent) != 1 || !strings.HasPrefix(sent[0], "PATCH") || !strings.Contains(sent[0], "presentAdditions") {
+		t.Fatalf("a staged edit PATCHes the network and nothing else: %s %v", r.Finding, sent)
+	}
+	sent = nil
+	bd := `{"network_id":"n1","backdate_to_snapshot_id":"s2"`
+	d, _ := mustRun(t, "edit-link-overrides", stagedRoutes(&sent), bd+`}`)
+	if b := jsonOf(d); !strings.Contains(b, `"snapshot_id":"s2"`) || !strings.Contains(b, `"snapshot_id":"s3"`) || strings.Contains(b, `"snapshot_id":"s1"`) || !strings.Contains(strings.Join(d.Limits, " "), "per Forward's rule") || len(sent) != 0 {
+		t.Errorf("the dry run names s2 and s3 (created at or after s2), not s1, worded as Forward's rule: %s", b)
+	}
+	if _, _, err := runSkill(t, "edit-link-overrides", stagedRoutes(&sent), bd+`,"apply":true}`); err == nil || len(sent) != 0 {
+		t.Errorf("a backdate needs confirm: %v %v", err, sent)
+	}
+	if _, _, err := runSkill(t, "edit-link-overrides", stagedRoutes(&sent), edit+`,"backdate_to_snapshot_id":"s2"}`); err == nil {
+		t.Errorf("edits and a backdate are separate runs")
+	}
+	mustRun(t, "edit-link-overrides", stagedRoutes(&sent), bd+`,"apply":true,"confirm":"s2"}`)
+	if len(sent) != 1 || !strings.Contains(sent[0], "action=backdate") || !strings.Contains(sent[0], "snapshotId=s2") {
+		t.Errorf("backdate: %v", sent)
+	}
+}

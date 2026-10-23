@@ -24,7 +24,7 @@ snapshot, and no device.
 ## Inputs
 
 `network_id`, `snapshot_id`, and any of `add_present`, `remove_present`, `add_absent`, `remove_absent`: lists of links, each `{port1, port2}`
-(the port names as `inspect-topology` shows them; a link has no direction). Optional: `apply` (default false), `force` (default false). See `schema.json`.
+(the port names as `inspect-topology` shows them; a link has no direction). Optional: `apply` (default false), `force` (default false). Network-level mode (see Staged mode below): `staged`, `backdate_to_snapshot_id`, `confirm`, and no `snapshot_id`. See `schema.json`.
 
 ## Dry run
 
@@ -67,3 +67,7 @@ The envelope in `schema/skill-result.schema.json`, with `mode` and `changes`.
 Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>", "snapshot_id": "<id>", "add_present": [{"port1": "r1 Gi0/1", "port2": "sw1 Gi0/24"}]}' | fwdctl run edit-link-overrides`.
 It needs the `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
 (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass. Add `"apply": true` only after the dry run was accepted.
+
+## Staged mode (network level, Forward 26.8+)
+
+`staged: true` edits the network's STAGED overrides (same add/remove inputs, no `snapshot_id`): they leave every existing snapshot alone and apply to the network's next snapshot. To push the staged set onto an existing snapshot, run alone `backdate_to_snapshot_id` (dry run first): it invalidates that snapshot and every non-draft snapshot created at or after it, per Forward's rule (Forward has no route that lists them; the dry run computes the list from the snapshot list), and apply needs `confirm` equal to that snapshot id. Edits and a backdate are separate runs so the person is asked before anything is invalidated, and a reprocess after a backdate is asked for too, one snapshot at a time. The snapshot-scoped mode above is deprecated by Forward for removal in 26.11.

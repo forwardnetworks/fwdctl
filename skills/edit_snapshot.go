@@ -53,8 +53,6 @@ func editSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return snapshotLifecycle(ctx, s, in)
 	case "retention_policy":
 		return snapshotRetentionPolicy(ctx, s, in)
-	case "cancel":
-		return snapshotCancel(ctx, s, in)
 	}
 	return result.Result{}, fmt.Errorf("%w: action must be note, reprocess, invalidate, favorite, unfavorite, delete, retention_policy, export, import or cancel", ErrInvalidInput)
 }

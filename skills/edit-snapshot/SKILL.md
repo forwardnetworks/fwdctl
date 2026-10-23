@@ -1,6 +1,6 @@
 ---
 name: edit-snapshot
-description: Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import, cancel jobs. Dry run unless apply. Use when labeling, removing or stopping one.
+description: Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import. Dry run unless apply. Use when labeling or removing one.
 compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "snapshots"
@@ -21,7 +21,7 @@ The one place to change a snapshot, or how a network keeps its snapshots. It rep
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run edit-snapshot --help`, or `reference/inputs.md`, `reference/retention.md`, `reference/transfer.md`, `reference/cancel.md` (action `cancel`: stops the running jobs of one snapshot; needs ADMINISTER_SYSTEM; says what it does not cover).
+What each input means, and the fields per object and action: `fwdctl run edit-snapshot --help`, or `reference/inputs.md`, `reference/retention.md`, `reference/transfer.md`.
 
 ## Dry run
 
@@ -30,7 +30,7 @@ Without `apply: true` nothing changes. The result returns `mode: dry_run`, the c
 ## Procedure
 
 1. Find the snapshot (or read the network's policy). Not found: **unknown**, nothing changed.
-2. A snapshot being worked on (UNPACKING, PROCESSING, RESTORING) is refused for every action but `note` and `cancel` (which exists to stop one).
+2. A snapshot being worked on (UNPACKING, PROCESSING, RESTORING) is refused for every action but `note`.
 3. Dry run returns the plan. With `apply: true`: one call, then read back and say if the read-back differs (**failed**).
 
 ## Limits

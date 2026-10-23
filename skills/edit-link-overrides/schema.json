@@ -1,8 +1,7 @@
 {
   "type": "object",
   "required": [
-    "network_id",
-    "snapshot_id"
+    "network_id"
   ],
   "additionalProperties": false,
   "properties": {
@@ -12,7 +11,8 @@
     },
     "snapshot_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": " (not needed with staged)"
     },
     "add_present": {
       "type": "array",
@@ -105,6 +105,19 @@
     "force": {
       "type": "boolean",
       "default": false
+    },
+    "staged": {
+      "type": "boolean",
+      "default": false,
+      "description": "edit the network-level STAGED overrides (Forward 26.8+): they leave existing snapshots alone and apply to the next snapshot; no snapshot_id needed"
+    },
+    "backdate_to_snapshot_id": {
+      "type": "string",
+      "description": "with staged: push the staged overrides onto this snapshot and every one created after it (INVALIDATES them, per Forward's rule); alone, not with link edits; apply needs confirm equal to this id"
+    },
+    "confirm": {
+      "type": "string",
+      "description": "staged backdate: the exact backdate_to_snapshot_id, to apply"
     }
   }
 }
