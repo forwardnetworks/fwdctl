@@ -5,13 +5,15 @@
     "view": {
       "enum": [
         "networks",
-        "workspaces"
+        "workspaces",
+        "primary"
       ],
       "default": "networks",
       "description": "workspaces: only the change workspaces (networks with a parent), each with its creator, created time, retention and snapshot counts by trigger for the page asked for",
       "x-values": {
         "networks": "every network the login can see (default)",
-        "workspaces": "only the change workspaces, with creator, retention and snapshot counts by trigger for the page asked for"
+        "workspaces": "only the change workspaces, with creator, retention and snapshot counts by trigger for the page asked for",
+        "primary": "the networks that are not change workspaces (no parent)"
       }
     },
     "name": {

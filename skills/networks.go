@@ -38,10 +38,11 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		in.Limit = defaultNetworksLimit
 	}
 	in.Limit = min(in.Limit, maxNetworksLimit)
-	if in.View != "" && in.View != "networks" && in.View != "workspaces" {
-		return result.Result{}, fmt.Errorf("%w: view is networks (the default) or workspaces", ErrInvalidInput)
+	if in.View != "" && in.View != "networks" && in.View != "workspaces" && in.View != "primary" {
+		return result.Result{}, fmt.Errorf("%w: view is networks (the default), primary (networks without the workspaces) or workspaces", ErrInvalidInput)
 	}
 	onlyWorkspaces := in.View == "workspaces"
+	onlyPrimary := in.View == "primary"
 	cx := result.Context{Scope: "account", State: "current"}
 	nets, err := s.Networks(ctx)
 	if err != nil {
@@ -56,6 +57,9 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		}
 		ws := string(n.ParentID) != ""
 		if onlyWorkspaces && !ws {
+			continue
+		}
+		if onlyPrimary && ws {
 			continue
 		}
 		if ws {

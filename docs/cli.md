@@ -11,7 +11,7 @@ Connection flags work on every command that talks to Forward:
       --password-file string        file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)
       --profile string              use a named saved connection (fwdctl login --profile NAME --file TOKENFILE), so switching between tenants is a name on every command (and each run prints the Forward and login it used on stderr)
       --support-token-file string   a second token file (same format) for a Forward-support login: used only by changes that need support authority, such as edit-org-property with org_id; the main login is used for everything else
-      --token-file string           a token file: URL, username and password on three lines, mode 600
+      --token-file string           a token file in netrc format (machine HOST, login USER, password SECRET), mode 600
       --url string                  Forward URL (overrides FORWARD_URL)
       --username string             login name or API token access key (overrides FORWARD_USERNAME)
 ```
@@ -237,7 +237,7 @@ Examples:
 ## fwdctl login
 
 Remember where the login is, so every later fwdctl run (and every agent session that runs it) works with no environment.
-TOKENFILE has three lines: the Forward URL, the username (or an API token's access key) and the password (or its secret), and must be mode 600.
+TOKENFILE is in netrc format (machine HOST, login USER, password SECRET; the username may be an API token's access key and the password its secret) and must be mode 600. The old three-line format still works for now and is temporary.
 The login is checked, then only the PATH of the file is saved in ~/.config/fwdctl/config.json; the password is never copied. Flags and FORWARD_* variables still win.
 
 ```
@@ -255,7 +255,7 @@ Examples:
 Flags:
 
 ```
-      --file string   a token file: URL, username and password on three lines (mode 600)
+      --file string   a token file in netrc format: machine HOST, login USER, password SECRET (mode 600)
       --forget        remove the saved login
 ```
 

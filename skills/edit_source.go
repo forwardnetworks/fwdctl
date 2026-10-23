@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -698,16 +700,43 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 		if err != nil {
 			return nil, err
 		}
+		rename := def.Name != "" && def.Name != in.Name
+		if rename {
+			if err := renameCheck(ctx, s, in.NetworkID, in.Name, def.Name, cur); err != nil {
+				return nil, err
+			}
+			nn := def.Name
+			patch.Name = &nn
+		}
 		before, _ := fwd.Generic(d)
 		after, _ := fwd.Generic(patch) // only the fields that change: the update is partial, so the rest of the device stays as it is
 		if am, ok := after.(map[string]any); ok && len(patch.Clear) > 0 {
 			am["clear"] = patch.Clear
 		}
-		return &networkPlan{target: fmt.Sprintf("update device %q on network %s", in.Name, in.NetworkID), action: "update_device", before: before, after: after, reversible: true, undo: "update it again with the before values",
-			limits: []string{"after lists only the fields this update changes; every other field of the device stays as it is"},
+		limits := []string{"after lists only the fields this update changes; every other field of the device stays as it is"}
+		target, undo := fmt.Sprintf("update device %q on network %s", in.Name, in.NetworkID), "update it again with the before values"
+		if rename {
+			target = fmt.Sprintf("rename device %q to %q on network %s", in.Name, def.Name, in.NetworkID)
+			undo = fmt.Sprintf("rename it back (edit-source classic_device update name %q with definition.name %q)", def.Name, in.Name)
+			limits = append(limits, "a rename applies on the next collection (expected behaviour, not verified): collected snapshots keep the old name; tags, layout, link overrides and synthetic-device references follow the rename; the old name answers 404 afterwards and a rename is not idempotent, so do not apply it twice", "the new name must be unique ignoring case across ALL collection source names; this checked classic devices and controller setups, and Forward also refuses a name used by another source type or a synthetic device (400)")
+		}
+		return &networkPlan{target: target, action: "update_device", before: before, after: after, reversible: true, undo: undo,
+			limits: limits,
 			do: func(ctx context.Context) error {
 				_, _, err := s.Client.ClassicDevices.Patch(ctx, in.NetworkID, in.Name, patch)
 				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				if !rename {
+					return true, nil, nil
+				}
+				l, _, e := s.Client.ClassicDevices.List(ctx, in.NetworkID)
+				for _, x := range l {
+					if x.Name == def.Name {
+						return true, nil, e
+					}
+				}
+				return false, map[string]any{"renamed_listed": false}, e
 			}}, nil
 	}
 	return nil, fmt.Errorf("%w: object classic_device takes action create, update or delete", ErrInvalidInput)
@@ -1716,6 +1745,25 @@ type classicDeviceDef struct {
 	BGPFailure string `json:"bgpAndBmpFailureHandling"`
 	NoIPv6     *bool  `json:"disableIpv6Collection"`
 	FullLog    *bool  `json:"fullCollectionLog"`
+	// session options (SSH and Telnet), BMP and BGP subnets, and SNMP performance thresholds (fractions): update only
+	PaginationMode       string   `json:"paginationMode"`
+	TerminalWidth        *int32   `json:"terminalWidth"`
+	LargeRTT             *bool    `json:"largeRtt"`
+	MinBytesReadPerSec   *int64   `json:"minBytesReadPerSec"`
+	MaxConnectionsPerMin *int32   `json:"maxConnectionsPerMin"`
+	UseFileTransfer      *bool    `json:"useFileTransferForLargeOutput"`
+	Prompt               string   `json:"prompt"`
+	PromptResponse       string   `json:"promptResponse"`
+	BMPStationHost       string   `json:"bmpStationHost"`
+	BGPSubnets           []string `json:"bgpSubnetsToCollect"`
+	HighCPU              *float32 `json:"highCpuUsage"`
+	HighMemory           *float32 `json:"highMemoryUsage"`
+	HighInput            *float32 `json:"highInputUtilization"`
+	HighOutput           *float32 `json:"highOutputUtilization"`
+	MediumCPU            *float32 `json:"mediumCpuUsage"`
+	MediumMemory         *float32 `json:"mediumMemoryUsage"`
+	MediumInput          *float32 `json:"mediumInputUtilization"`
+	MediumOutput         *float32 `json:"mediumOutputUtilization"`
 	// Clear resets properties to unset (an explicit null on the wire): the only way to unpin a device from a collector or remove a credential or option.
 	Clear []string `json:"clear"`
 }
@@ -1743,6 +1791,20 @@ func (def classicDeviceDef) patchFor(cur *forward.ClassicDevice) (forward.Classi
 	set(def.BGPPeer, &patch.BGPPeerType)
 	set(def.BGPFailure, &patch.BGPAndBMPFailureHandling)
 	patch.EnableSNMPCollection, patch.CollectBGPAdvertisements, patch.DisableIPv6Collection, patch.FullCollectionLog = def.EnableSNMP, def.CollectBGP, def.NoIPv6, def.FullLog
+	set(def.PaginationMode, &patch.PaginationMode)
+	set(def.Prompt, &patch.Prompt)
+	set(def.PromptResponse, &patch.PromptResponse)
+	set(def.BMPStationHost, &patch.BMPStationHost)
+	patch.TerminalWidth, patch.LargeRTT, patch.MinBytesReadPerSec, patch.MaxConnectionsPerMin, patch.UseFileTransferForLargeOutput = def.TerminalWidth, def.LargeRTT, def.MinBytesReadPerSec, def.MaxConnectionsPerMin, def.UseFileTransfer
+	if def.BGPSubnets != nil {
+		subnets := append([]string{}, def.BGPSubnets...)
+		patch.BGPSubnetsToCollect = &subnets
+	}
+	patch.HighCPUUsage, patch.HighMemoryUsage, patch.HighInputUtilization, patch.HighOutputUtilization = def.HighCPU, def.HighMemory, def.HighInput, def.HighOutput
+	patch.MediumCPUUsage, patch.MediumMemoryUsage, patch.MediumInputUtilization, patch.MediumOutputUtilization = def.MediumCPU, def.MediumMemory, def.MediumInput, def.MediumOutput
+	if err := checkSessionAndThresholds(def); err != nil {
+		return patch, err
+	}
 	if err := checkDeviceOptions(def.BGPTable, def.BGPPeer, def.BGPFailure); err != nil {
 		return patch, err
 	}
@@ -1766,7 +1828,9 @@ func (def classicDeviceDef) patchFor(cur *forward.ClassicDevice) (forward.Classi
 
 // deviceClearable are the device properties a patch may reset to unset (Forward reads an explicit null as "clear it").
 var deviceClearable = map[string]bool{"cliCredentialId": true, "cliCredential2Id": true, "cliCredential3Id": true, "httpCredentialId": true, "snmpCredentialId": true, "jumpServerId": true, "collectorId": true,
-	"note": true, "port": true, "enableSnmpCollection": true, "collectBgpAdvertisements": true, "bgpTableType": true, "bgpPeerType": true, "bgpAndBmpFailureHandling": true, "disableIpv6Collection": true, "fullCollectionLog": true}
+	"note": true, "port": true, "enableSnmpCollection": true, "collectBgpAdvertisements": true, "bgpTableType": true, "bgpPeerType": true, "bgpAndBmpFailureHandling": true, "disableIpv6Collection": true, "fullCollectionLog": true,
+	"type": true, "collect": true, "paginationMode": true, "terminalWidth": true, "largeRtt": true, "minBytesReadPerSec": true, "maxConnectionsPerMin": true, "useFileTransferForLargeOutput": true, "prompt": true, "promptResponse": true, "bmpStationHost": true, "bgpSubnetsToCollect": true,
+	"highCpuUsage": true, "highMemoryUsage": true, "highInputUtilization": true, "highOutputUtilization": true, "mediumCpuUsage": true, "mediumMemoryUsage": true, "mediumInputUtilization": true, "mediumOutputUtilization": true}
 
 func clearableNames() []string {
 	out := make([]string, 0, len(deviceClearable))
@@ -2106,4 +2170,80 @@ func planCustomCommandGroup(ctx context.Context, s *fwd.Session, in editSourceIn
 			verify: exists(g.Name, false)}, nil
 	}
 	return nil, fmt.Errorf("%w: custom_command_group takes action create, update or delete", ErrInvalidInput)
+}
+
+// checkSessionAndThresholds refuses what Forward answers 400 to, before any request: a prompt needs its response (and may not be empty or *), the terminal width is 80 to 500, the byte and connection limits are
+// positive, a high threshold is 0.75 to 1.0 and a medium one 0.5 to 1.0 and no higher than its high one.
+func checkSessionAndThresholds(def classicDeviceDef) error {
+	bad := func(format string, a ...any) error {
+		return fmt.Errorf("%w: "+format, append([]any{ErrInvalidInput}, a...)...)
+	}
+	if (def.Prompt != "") != (def.PromptResponse != "") && !slices.Contains(def.Clear, "prompt") && !slices.Contains(def.Clear, "promptResponse") {
+		return bad("prompt and promptResponse go together: Forward refuses one without the other")
+	}
+	if strings.TrimSpace(def.Prompt) == "*" {
+		return bad("prompt may not be *")
+	}
+	if def.TerminalWidth != nil && (*def.TerminalWidth < 80 || *def.TerminalWidth > 500) {
+		return bad("terminalWidth is 80 to 500, not %d", *def.TerminalWidth)
+	}
+	if def.MinBytesReadPerSec != nil && *def.MinBytesReadPerSec <= 0 {
+		return bad("minBytesReadPerSec must be greater than 0")
+	}
+	if def.MaxConnectionsPerMin != nil && *def.MaxConnectionsPerMin <= 0 {
+		return bad("maxConnectionsPerMin must be greater than 0")
+	}
+	if def.PaginationMode != "" && !slices.Contains([]string{"KEEP_UNCHANGED", "DISABLE_PAGINATION", "ENABLE_PAGINATION"}, def.PaginationMode) {
+		return bad("paginationMode is KEEP_UNCHANGED, DISABLE_PAGINATION or ENABLE_PAGINATION")
+	}
+	pairs := []struct {
+		name         string
+		high, medium *float32
+	}{{"cpu", def.HighCPU, def.MediumCPU}, {"memory", def.HighMemory, def.MediumMemory}, {"input utilization", def.HighInput, def.MediumInput}, {"output utilization", def.HighOutput, def.MediumOutput}}
+	for _, p := range pairs {
+		if p.high != nil && (*p.high < 0.75 || *p.high > 1.0) {
+			return bad("the high %s threshold is a fraction from 0.75 to 1.0, not %v", p.name, *p.high)
+		}
+		if p.medium != nil && (*p.medium < 0.5 || *p.medium > 1.0) {
+			return bad("the medium %s threshold is a fraction from 0.5 to 1.0, not %v", p.name, *p.medium)
+		}
+		if p.high != nil && p.medium != nil && *p.medium > *p.high {
+			return bad("the medium %s threshold may not exceed the high one", p.name)
+		}
+	}
+	return nil
+}
+
+var sourceNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// renameCheck validates a classic device rename: the new name uses letters, digits, dots, hyphens and underscores, and no other collection source of the network has it (ignoring case). A case-only change is not a rename.
+func renameCheck(ctx context.Context, s *fwd.Session, networkID, oldName, newName string, classic []forward.ClassicDevice) error {
+	if !sourceNameRE.MatchString(newName) {
+		return fmt.Errorf("%w: a source name uses letters, digits, dots, hyphens and underscores, not %q", ErrInvalidInput, newName)
+	}
+	if strings.EqualFold(oldName, newName) {
+		return nil
+	}
+	for _, d := range classic {
+		if strings.EqualFold(d.Name, newName) {
+			return fmt.Errorf("%w: the name %q is already used by another classic device (names are unique ignoring case across every collection source)", ErrInvalidInput, newName)
+		}
+	}
+	if setups, _, err := s.Client.ControllerManagedSetups.List(ctx, networkID); err == nil {
+		for _, st := range setups {
+			names := []string{st.Name}
+			for _, c := range st.Controllers {
+				names = append(names, c.Name)
+			}
+			for _, m := range st.ManagedDevices {
+				names = append(names, m.Name)
+			}
+			for _, n := range names {
+				if strings.EqualFold(n, newName) {
+					return fmt.Errorf("%w: the name %q is already used by a controller setup or one of its devices (names are unique ignoring case across every collection source)", ErrInvalidInput, newName)
+				}
+			}
+		}
+	}
+	return nil
 }
