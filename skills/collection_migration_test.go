@@ -152,3 +152,45 @@ func TestMigrationViewNamesDevicesControllersAndSuggestsAMigrate(t *testing.T) {
 		t.Errorf("suggested migrate: %v", sm)
 	}
 }
+
+// Devices whose test reported no controller (Versa edges) are linked to the network's one controller record of their category; the suggested migrate puts the setup name inside the definition, warns that it
+// deletes the classic records, and offers the logins a device's same-subnet siblings use when it has none recorded.
+func TestMigrationViewLinksEdgesWithoutAControllerAndHintsLogins(t *testing.T) {
+	routes := migrationRoutes()
+	routes["GET /api/deviceConnTypes"] = fwdtest.Const(200, map[string]any{
+		"versa_director_api": map[string]any{"vendor": "versa_sase", "collectionSourceType": "CONTROLLER_MANAGED", "relatedTypes": []string{"versa_flexvnf_ssh"}},
+		"versa_flexvnf_ssh":  map[string]any{"vendor": "versa_sase", "collectionSourceType": "CLASSIC"},
+	})
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{
+		map[string]any{"name": "dir1", "type": "versa_director_api", "host": "10.10.12.6", "httpCredentialId": "H-1", "jumpServerId": "J1", "testResult": map[string]any{"discoveredType": "versa_director_api"}},
+		map[string]any{"name": "vedge1", "type": "versa_flexvnf_ssh", "host": "10.20.0.1", "cliCredentialId": "L-9", "testResult": map[string]any{"discoveredType": "versa_flexvnf_ssh"}},
+		map[string]any{"name": "vedge2", "type": "versa_flexvnf_ssh", "host": "10.20.0.2", "testResult": map[string]any{"discoveredType": "versa_flexvnf_ssh"}},
+	})
+	r, _ := mustRun(t, "inspect-collection", routes, `{"network_id":"n1","view":"migration"}`)
+	var m map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["migration"].(map[string]any); ok {
+			m = v
+		}
+	}
+	ctl := m["controllers"].([]map[string]any)
+	if len(ctl) != 1 || ctl[0]["controller_kind"] != "Versa Director" || !strings.Contains(ctl[0]["found_by"].(string), "only SD_WAN controller record") {
+		t.Fatalf("the edges link to the one Director record: %v", ctl)
+	}
+	rec := ctl[0]["classic_record"].(map[string]any)
+	if rec["http_credential_id"] != "H-1" || rec["jump_server_id"] != "J1" {
+		t.Errorf("the Director's HTTP login is shown: %v", rec)
+	}
+	sm := ctl[0]["suggested_migrate"].(map[string]any)
+	if _, top := sm["name"]; top {
+		t.Errorf("the setup name belongs inside definition")
+	}
+	def := sm["definition"].(map[string]any)
+	if def["name"] == nil || !strings.Contains(sm["warning"].(string), "DELETES") {
+		t.Errorf("name in the definition and a delete warning: %v", sm)
+	}
+	h := sm["credential_hints"].(map[string]any)["devices_without_a_recorded_login"].(map[string]any)
+	if sib, _ := h["vedge2"].(map[string]int); sib["L-9"] != 1 {
+		t.Errorf("vedge2 has no login recorded; its same-subnet sibling uses L-9: %v", h)
+	}
+}

@@ -124,7 +124,7 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 	for _, t := range types {
 		vendorOf[t.ID] = t.Vendor
 	}
-	ctls := migrationControllers(devRows, vendorOf, controllerTypes, classicByName, 25)
+	ctls := migrationControllers(devRows, vendorOf, controllerTypes, category, classicByName, 25)
 	sort.SliceStable(devRows, func(i, j int) bool { return fmt.Sprint(devRows[i]["name"]) < fmt.Sprint(devRows[j]["name"]) })
 	limit := in.Limit
 	if limit <= 0 {
@@ -181,6 +181,7 @@ func migrationDeviceRow(d forward.SourceTestStatus, eff, cat string, c forward.C
 	if c.Name != "" {
 		row["host"] = c.Host
 		row["cli_credential_id"] = nilIfEmpty(string(c.CLICredentialID))
+		row["http_credential_id"] = nilIfEmpty(string(c.HTTPCredentialID))
 		row["jump_server_id"] = nilIfEmpty(string(c.JumpServerID))
 		row["collector_id"] = nilIfEmpty(string(c.CollectorID))
 	}
@@ -192,7 +193,7 @@ func migrationControllerKind(cat string, vendors map[string]bool) string {
 	switch {
 	case cat == "ACI":
 		return "Cisco ACI (APIC)"
-	case vendors["versa"]:
+	case hasVendorPrefix(vendors, "versa"):
 		return "Versa Director"
 	case vendors["viptela"] || vendors["cisco_ios_xe"] || vendors["cisco"]:
 		return "Cisco SD-WAN (vManage)"
@@ -203,19 +204,52 @@ func migrationControllerKind(cat string, vendors map[string]bool) string {
 }
 
 // migrationControllers groups the counted devices by the controller their connectivity test reported, and for each says what kind it is, which devices point at it, whether a classic record has that address
-// (a controller record already carrying a login and jump server), and a ready migrate input for a pilot.
-func migrationControllers(rows []map[string]any, vendorOf map[string]string, controllerTypes map[string]bool, classicByName map[string]forward.ClassicDevice, pilot int) []map[string]any {
+// (a controller record already carrying a login and jump server), and a ready migrate input for a pilot. Devices whose test reported no controller (Versa edges) are linked to the network's one controller
+// record of their category, when there is exactly one, and the entry says that is how they were linked.
+func migrationControllers(rows []map[string]any, vendorOf map[string]string, controllerTypes map[string]bool, category map[string]string, classicByName map[string]forward.ClassicDevice, pilot int) []map[string]any {
 	type key struct{ name, address string }
 	order := []key{}
 	group := map[key][]map[string]any{}
+	linkedBy := map[key]string{}
+	var loose []map[string]any
 	for _, r := range rows {
-		for _, c := range r["controllers"].([]map[string]any) {
+		cs := r["controllers"].([]map[string]any)
+		if controllerTypes[fmt.Sprint(r["effective_type"])] {
+			continue // a controller record itself, not a device it manages
+		}
+		if len(cs) == 0 {
+			loose = append(loose, r)
+			continue
+		}
+		for _, c := range cs {
 			k := key{fmt.Sprint(c["name"]), fmt.Sprint(c["address"])}
 			if _, ok := group[k]; !ok {
 				order = append(order, k)
 			}
 			group[k] = append(group[k], r)
 		}
+	}
+	// devices with no reported controller: the one controller record of their category
+	byCat := map[string][]map[string]any{}
+	for _, r := range loose {
+		byCat[fmt.Sprint(r["category"])] = append(byCat[fmt.Sprint(r["category"])], r)
+	}
+	for cat, devs := range byCat {
+		var recs []forward.ClassicDevice
+		for _, c := range classicByName {
+			if controllerTypes[c.Type] && category[c.Type] == cat {
+				recs = append(recs, c)
+			}
+		}
+		if len(recs) != 1 {
+			continue
+		}
+		k := key{recs[0].Name, recs[0].Host}
+		if _, ok := group[k]; !ok {
+			order = append(order, k)
+		}
+		group[k] = append(group[k], devs...)
+		linkedBy[k] = "no connectivity test reported a controller for these devices; they are linked to the network's only " + cat + " controller record"
 	}
 	sort.SliceStable(order, func(i, j int) bool {
 		if len(group[order[i]]) != len(group[order[j]]) {
@@ -237,8 +271,11 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 			names = append(names, fmt.Sprint(d["name"]))
 		}
 		sort.Strings(names)
-		entry := map[string]any{"name": nilIfEmpty(k.name), "address": nilIfEmpty(k.address), "devices": len(devs), "controller_kind": migrationControllerKind(cat, vendors),
-			"found_by": "the devices' last connectivity test (controllerInfos), not from a configuration record"}
+		foundBy := "the devices' last connectivity test (controllerInfos), not from a configuration record"
+		if s, ok := linkedBy[k]; ok {
+			foundBy = s
+		}
+		entry := map[string]any{"name": nilIfEmpty(k.name), "address": nilIfEmpty(k.address), "devices": len(devs), "controller_kind": migrationControllerKind(cat, vendors), "found_by": foundBy}
 		shown, _ := result.CapRow(names, 15)
 		entry["device_names"] = shown
 		var rec *forward.ClassicDevice
@@ -251,19 +288,31 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 		}
 		controller := map[string]any{"name": firstNonEmpty(k.name, "controller"), "host": k.address}
 		if rec != nil {
-			entry["classic_record"] = map[string]any{"name": rec.Name, "type": rec.Type, "host": rec.Host, "cli_credential_id": nilIfEmpty(string(rec.CLICredentialID)), "jump_server_id": nilIfEmpty(string(rec.JumpServerID)), "collector_id": nilIfEmpty(string(rec.CollectorID))}
+			entry["classic_record"] = map[string]any{"name": rec.Name, "type": rec.Type, "host": rec.Host, "cli_credential_id": nilIfEmpty(string(rec.CLICredentialID)), "http_credential_id": nilIfEmpty(string(rec.HTTPCredentialID)),
+				"snmp_credential_id": nilIfEmpty(string(rec.SNMPCredentialID)), "jump_server_id": nilIfEmpty(string(rec.JumpServerID)), "collector_id": nilIfEmpty(string(rec.CollectorID))}
 			entry["address_confirmed_by_a_record"] = true
 			controller["name"], controller["type"] = rec.Name, rec.Type
-			if rec.CLICredentialID != "" {
-				controller["cliCredentialId"] = string(rec.CLICredentialID)
-			}
-			if rec.JumpServerID != "" {
-				controller["jumpServerId"] = string(rec.JumpServerID)
+			for field, v := range map[string]string{"cliCredentialId": string(rec.CLICredentialID), "httpCredentialId": string(rec.HTTPCredentialID), "snmpCredentialId": string(rec.SNMPCredentialID), "jumpServerId": string(rec.JumpServerID)} {
+				if v != "" {
+					controller[field] = v
+				}
 			}
 		} else {
 			entry["address_confirmed_by_a_record"] = false
 		}
+		// the logins the siblings of a device (same /24) already use, for the devices with none recorded
+		subnetLogins := map[string]map[string]int{}
+		for _, d := range devs {
+			if v, ok := d["cli_credential_id"].(string); ok && v != "" {
+				p := subnet24(fmt.Sprint(d["host"]))
+				if subnetLogins[p] == nil {
+					subnetLogins[p] = map[string]int{}
+				}
+				subnetLogins[p][v]++
+			}
+		}
 		managed := []map[string]any{}
+		hints := map[string]any{}
 		for _, d := range devs {
 			if len(managed) >= pilot {
 				break
@@ -272,18 +321,42 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 			if h, ok := d["host"]; ok {
 				m["host"] = h
 			}
-			if v := d["cli_credential_id"]; v != nil {
+			if v, ok := d["cli_credential_id"].(string); ok && v != "" {
 				m["cliCredentialId"] = v
+			} else if sib := subnetLogins[subnet24(fmt.Sprint(d["host"]))]; len(sib) > 0 {
+				hints[fmt.Sprint(d["name"])] = sib // credential id -> how many same-subnet devices use it
 			}
 			if v := d["jump_server_id"]; v != nil {
 				m["jumpServerId"] = v
 			}
 			managed = append(managed, m)
 		}
-		entry["suggested_migrate"] = map[string]any{"object": "controller_setup", "action": "migrate", "name": "<choose the setup name>",
-			"definition": map[string]any{"controllers": []map[string]any{controller}, "managedDevices": managed},
-			"note":       fmt.Sprintf("a pilot of %d of %d devices; run the dry run, then a connectivity test, then the rest; fill in the controller's own login (cliCredentialId) when no classic record carries it", len(managed), len(devs))}
+		sm := map[string]any{"object": "controller_setup", "action": "migrate",
+			"definition": map[string]any{"name": "<choose the setup name>", "controllers": []map[string]any{controller}, "managedDevices": managed},
+			"warning":    "migrate DELETES each classic device it names (its settings, test results and tags) in the same call, and needs confirm equal to the setup name; there is no undo command: recreate the classic devices from the before list the dry run prints. A device with no cliCredentialId is refused: nothing is inherited from the controller or the classic record",
+			"note":       fmt.Sprintf("a pilot of %d of %d devices; run the dry run, then a connectivity test, then the rest", len(managed), len(devs))}
+		if len(hints) > 0 {
+			sm["credential_hints"] = map[string]any{"devices_without_a_recorded_login": hints, "meaning": "for each device with no login recorded, the login ids its same-/24 siblings use and how many do; Forward does not record which login works, so a pilot connectivity test decides. The org's auto-associate logins are in credential_candidates"}
+		}
+		entry["suggested_migrate"] = sm
 		out = append(out, entry)
 	}
 	return out
+}
+
+// subnet24 is the /24 (or the whole text when it is not an IPv4 address) a host sits in, to find a device's neighbours.
+func subnet24(host string) string {
+	if p := strings.Split(host, "."); len(p) == 4 {
+		return p[0] + "." + p[1] + "." + p[2]
+	}
+	return host
+}
+
+func hasVendorPrefix(vendors map[string]bool, prefix string) bool {
+	for v := range vendors {
+		if strings.HasPrefix(v, prefix) {
+			return true
+		}
+	}
+	return false
 }
