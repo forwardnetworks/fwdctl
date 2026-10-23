@@ -94,3 +94,35 @@ func TestEditPlatformCollectorDeleteNeedsTheNameAsConfirmAndSaysItIsNotReversibl
 		t.Errorf("apply without confirm was accepted")
 	}
 }
+
+// A collector upgrade is planned from the list read, refused with Forward's reason when it cannot run, and queued only with the collector's name as confirm.
+func TestEditPlatformCollectorUpgradePlansRefusesAndNeedsConfirm(t *testing.T) {
+	var posted []string
+	routes := map[string]fwdtest.Handler{
+		"GET /api/collectors": fwdtest.Const(200, []any{
+			map[string]any{"id": "C1", "name": "old", "username": "u1", "connectionStatus": "CONNECTED", "version": "1.0", "updateStatus": "OUTDATED", "features": map[string]any{"updatable": true}},
+			map[string]any{"id": "C2", "name": "current", "username": "u2", "connectionStatus": "CONNECTED", "version": "2.0", "updateStatus": "UP_TO_DATE", "features": map[string]any{"updatable": true}},
+			map[string]any{"id": "C3", "name": "offline", "username": "u3", "connectionStatus": "DISCONNECTED", "version": "1.0", "updateStatus": "OUTDATED", "features": map[string]any{"updatable": true}},
+		}),
+		"POST /api/collectors/old": func(r *http.Request, _ []byte) (int, any) {
+			posted = append(posted, r.URL.RawQuery)
+			return 202, nil
+		},
+	}
+	in := `{"area":"collectors","action":"upgrade","name":"old"`
+	if r, srv := mustRun(t, "edit-platform", routes, in+`}`); r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(strings.Join(r.Limits, " "), "Collector version changed") {
+		t.Fatalf("dry run: %s %v", r.Finding, r.Limits)
+	}
+	for name, who := range map[string]string{"current": "up to date", "offline": "offline"} {
+		if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"collectors","action":"upgrade","name":"`+name+`"}`); err == nil || !strings.Contains(err.Error(), who) {
+			t.Errorf("%s must be refused with Forward's reason (%s): %v", name, who, err)
+		}
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, in+`,"apply":true}`); err == nil || len(posted) != 0 {
+		t.Errorf("apply needs confirm: %v %v", err, posted)
+	}
+	mustRun(t, "edit-platform", routes, in+`,"apply":true,"confirm":"old"}`)
+	if len(posted) != 1 || !strings.Contains(posted[0], "action=upgrade") {
+		t.Errorf("the upgrade is queued once: %v", posted)
+	}
+}

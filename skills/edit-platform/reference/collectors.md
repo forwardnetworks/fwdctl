@@ -14,3 +14,7 @@ Four steps, each a command. Steps 1 and 4 change Forward and are dry runs until 
 **Delete** (`edit-platform` area `collectors` action `delete`, `confirm` = the collector's name) cannot be undone: a new registration has a new username and key. Detach it from its networks first, and stop its container.
 
 Limits: registration is verified by reading the collector list back, not by connecting; CONNECTED is proof only that the collector authenticated at that moment.
+
+## Upgrading a collector (PREVIEW)
+
+`action: upgrade` with `name` = the collector queues its upgrade, the "update" button Forward shows when a collector is out of date; `definition: {"all": true}` (no name) queues every collector that can take it. The dry run shows the collector's version, update status and connection, and refuses one Forward would refuse (offline, never connected, not remotely upgradeable, already current, end of life, already updating) with the reason. Apply needs `confirm` equal to the collector name (`all` for all): it waits for a running collection on the collector to finish, then restarts it, and collections queued behind the restart fail with "Collector version changed". Tell the people who collect through it first. Forward's routes are not in its published spec. It does not check for a bundled on-prem collector or a bundled-only deployment, which Forward refuses with 400. To check, read the collector until it is no longer updating, then its update status: UP_TO_DATE means it worked; a failure also stops the updating and leaves OUTDATED.

@@ -185,6 +185,10 @@ func TestMigrationViewLinksEdgesWithoutAControllerAndHintsLogins(t *testing.T) {
 	if _, top := sm["name"]; top {
 		t.Errorf("the setup name belongs inside definition")
 	}
+	cs0 := sm["definition"].(map[string]any)["controllers"].([]map[string]any)[0]
+	if _, bad := cs0["httpCredentialId"]; bad || sm["controller_http_credential_not_carried"] == nil {
+		t.Errorf("a migrate controller entry has no HTTP credential field: the suggestion leaves it out and says the login is not carried: %v", sm)
+	}
 	def := sm["definition"].(map[string]any)
 	if def["name"] == nil || !strings.Contains(sm["warning"].(string), "DELETES") {
 		t.Errorf("name in the definition and a delete warning: %v", sm)
