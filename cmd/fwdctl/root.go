@@ -124,7 +124,7 @@ func (a *app) newRoot() *cobra.Command {
 	pf.StringVar(&a.conn.url, "url", "", "Forward URL (overrides FORWARD_URL)")
 	pf.StringVar(&a.conn.username, "username", "", "login name or API token access key (overrides FORWARD_USERNAME)")
 	pf.StringVar(&a.conn.passwordFile, "password-file", "", "file holding the password or token secret, mode 600 (overrides FORWARD_PASSWORD)")
-	pf.StringVar(&a.conn.tokenFile, "token-file", "", "a token file: URL, username and password on three lines, mode 600")
+	pf.StringVar(&a.conn.tokenFile, "token-file", "", "a token file in netrc format (machine HOST, login USER, password SECRET), mode 600")
 	pf.StringVar(&a.conn.supportTokenFile, "support-token-file", "", "a second token file (same format) for a Forward-support login: used only by changes that need support authority, such as edit-org-property with org_id; the main login is used for everything else")
 	pf.StringVar(&a.conn.profile, "profile", "", "use a named saved connection (fwdctl login --profile NAME --file TOKENFILE), so switching between tenants is a name on every command (and each run prints the Forward and login it used on stderr)")
 	pf.StringVar(&a.conn.configFile, "config", "", "connection config file (default ~/.config/fwdctl/config.json)")
@@ -337,7 +337,7 @@ func (a *app) loginCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use: "login", GroupID: "setup", Short: "remember a login so every run and every agent session uses it",
 		Long: "Remember where the login is, so every later fwdctl run (and every agent session that runs it) works with no environment.\n" +
-			"TOKENFILE has three lines: the Forward URL, the username (or an API token's access key) and the password (or its secret), and must be mode 600.\n" +
+			"TOKENFILE is in netrc format (machine HOST, login USER, password SECRET; the username may be an API token's access key and the password its secret) and must be mode 600. The old three-line format still works for now and is temporary.\n" +
 			"The login is checked, then only the PATH of the file is saved in ~/.config/fwdctl/config.json; the password is never copied. Flags and FORWARD_* variables still win.",
 		Example: "  fwdctl login --file ~/customer.token\n  fwdctl login --profile staging --file ~/staging.token   # then: fwdctl --profile staging whoami\n  fwdctl login --forget",
 		Args:    cobra.NoArgs,
@@ -345,7 +345,7 @@ func (a *app) loginCmd() *cobra.Command {
 			return a.exit(loginRun(a.conn.profile, file, forget, a.out, a.err, func() int { return whoami(a.session, a.out, a.err) }))
 		},
 	}
-	c.Flags().StringVar(&file, "file", "", "a token file: URL, username and password on three lines (mode 600)")
+	c.Flags().StringVar(&file, "file", "", "a token file in netrc format: machine HOST, login USER, password SECRET (mode 600)")
 	c.Flags().BoolVar(&forget, "forget", false, "remove the saved login")
 	c.MarkFlagsMutuallyExclusive("file", "forget")
 	c.MarkFlagsOneRequired("file", "forget")

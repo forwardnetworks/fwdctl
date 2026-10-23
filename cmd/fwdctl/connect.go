@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Where the Forward login comes from, in order of precedence: command-line flags in front of the command
@@ -47,6 +48,9 @@ func readTokenFile(path string) (url, user, pass string, err error) {
 	if err != nil {
 		return "", "", "", err
 	}
+	if strings.Contains(string(b), "machine") {
+		return parseNetrc(path, string(b))
+	}
 	var lines []string
 	for _, l := range strings.Split(string(b), "\n") {
 		if l = strings.TrimRight(l, "\r"); strings.TrimSpace(l) != "" {
@@ -59,13 +63,48 @@ func readTokenFile(path string) (url, user, pass string, err error) {
 		}
 	}
 	if len(lines) != 3 {
-		return "", "", "", fmt.Errorf("the token file must have three lines (URL, username, password); %s has %d", path, len(lines))
+		return "", "", "", fmt.Errorf("the token file %s is not in a format fwdctl reads: expected netrc (machine HOST login USER password SECRET) or, temporarily, three lines (URL, username, password); it has %d non-empty line(s)", path, len(lines))
 	}
 	url = lines[0]
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		url = "https://" + url
 	}
+	legacyTokenFileNotice(path)
 	return strings.TrimRight(url, "/"), lines[1], lines[2], nil
+}
+
+var legacyNoticeOnce sync.Once
+
+// legacyTokenFileNotice says once per run that the three-line token file is a temporary format: the standard is netrc.
+func legacyTokenFileNotice(path string) {
+	legacyNoticeOnce.Do(func() {
+		fmt.Fprintf(os.Stderr, "fwdctl: %s is in the three-line format, which is temporary; use the netrc format (machine HOST, login USER, password SECRET)\n", path)
+	})
+}
+
+// parseNetrc reads a netrc token file: one machine entry with login and password, tokens separated by whitespace or newlines. The machine is the Forward host (or a full URL); a bare host gets https://.
+func parseNetrc(path, text string) (string, string, string, error) {
+	toks := strings.Fields(text)
+	var machines []string
+	var login, password string
+	for i := 0; i+1 < len(toks); i += 2 {
+		switch toks[i] {
+		case "machine":
+			machines = append(machines, toks[i+1])
+		case "login":
+			login = toks[i+1]
+		case "password":
+			password = toks[i+1]
+		}
+	}
+	if len(machines) != 1 || login == "" || password == "" {
+		return "", "", "", fmt.Errorf("the token file %s is not in a format fwdctl reads: expected netrc (one line or several: machine HOST login USER password SECRET, a single machine) or, temporarily, three lines (URL, username, password)", path)
+	}
+	url := machines[0]
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		url = "https://" + url
+	}
+	return strings.TrimRight(url, "/"), login, password, nil
 }
 
 var profileName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)

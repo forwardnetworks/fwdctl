@@ -91,3 +91,15 @@ func TestListNetworksWorkspacesViewSummarisesEachWorkspace(t *testing.T) {
 		t.Errorf("finding: %s", r.Finding)
 	}
 }
+
+// view primary lists only the networks that are not change workspaces.
+func TestNetworksViewPrimaryLeavesOutWorkspaces(t *testing.T) {
+	routes := map[string]fwdtest.Handler{"GET /api/networks": fwdtest.Const(200, []any{
+		map[string]any{"id": "1", "name": "prod"},
+		map[string]any{"id": "2", "name": "ws", "parentId": "1"},
+	})}
+	r, _ := mustRun(t, "inspect-networks", routes, `{"view":"primary"}`)
+	if b := jsonOf(r); !strings.Contains(b, `"name":"prod"`) || strings.Contains(b, `"name":"ws"`) {
+		t.Errorf("only prod: %s", b)
+	}
+}
