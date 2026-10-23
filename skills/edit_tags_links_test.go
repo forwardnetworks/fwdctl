@@ -533,3 +533,19 @@ func TestEditLinkOverridesStagedEditsLeaveSnapshotsAloneAndBackdateNeedsConfirm(
 		t.Errorf("backdate: %v", sent)
 	}
 }
+
+// The dry run carries the exact API body (presentAdditions, ...) and the curl that sends it by hand, for both the snapshot-scoped and the staged mode.
+func TestEditLinkOverridesDryRunEmitsTheAPIBodyAndCurl(t *testing.T) {
+	r, _ := mustRun(t, "edit-link-overrides", overrideRoutes(true), `{"network_id":"n1","snapshot_id":"s1","add_present":[{"port1":"r2:Gi0/1","port2":"sw1:Gi0/23"}]}`)
+	b := jsonOf(r)
+	for _, want := range []string{`POST /api/snapshots/s1/topology/overrides`, `presentAdditions`, `curl -sS -X POST`, `--data @body.json`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("snapshot mode misses %q: %s", want, b)
+		}
+	}
+	var sent []string
+	r, _ = mustRun(t, "edit-link-overrides", stagedRoutes(&sent), `{"network_id":"n1","staged":true,"add_present":[{"port1":"r2:Gi0/1","port2":"sw1:Gi0/23"}]}`)
+	if b := jsonOf(r); !strings.Contains(b, `PATCH /api/networks/n1/link-overrides`) || !strings.Contains(b, `curl -sS -X PATCH`) {
+		t.Errorf("staged mode: %s", b)
+	}
+}

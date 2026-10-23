@@ -68,7 +68,7 @@ func editStagedLinkOverrides(ctx context.Context, s *fwd.Session, in editLinkOve
 	n := len(addP) + len(remP) + len(addA) + len(remA)
 	limits = append(limits, "ports are checked by Forward against the latest processed snapshot (an unknown port answers 400 Illegal ports in link overrides); this skill does not pre-check them here")
 	ev := func(extra map[string]any) []result.Evidence {
-		d := map[string]any{"staged": true, "edit": edit, "mode": mode, "present_before": len(cur.Present), "absent_before": len(cur.Absent)}
+		d := map[string]any{"staged": true, "edit": edit, "mode": mode, "api": map[string]any{"route": "PATCH /api/networks/" + in.NetworkID + "/link-overrides", "body": edit, "curl": linkOverridesCurl("PATCH", "/api/networks/"+in.NetworkID+"/link-overrides")}, "present_before": len(cur.Present), "absent_before": len(cur.Absent)}
 		for k, v := range extra {
 			d[k] = v
 		}

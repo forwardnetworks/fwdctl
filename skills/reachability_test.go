@@ -440,3 +440,13 @@ func TestOnlyReachabilityAsksForNetworkFunctions(t *testing.T) {
 		t.Error("the expectation was not searched, so this checked nothing")
 	}
 }
+
+// Forward does not resolve DNS: a host name in dst_ip or src_ip is refused up front with a message that says so, before any request.
+func TestReachabilityRefusesAHostNameWithAnExplanation(t *testing.T) {
+	for _, in := range []string{`{"network_id":"n1","dst_ip":"ctc.threatpulse.com"}`, `{"network_id":"n1","src_ip":"10.0.0.1","dst_ip":"www.example.org"}`} {
+		_, srv, err := runSkill(t, "investigate-reachability", map[string]fwdtest.Handler{}, in)
+		if err == nil || !strings.Contains(err.Error(), "does not resolve DNS") || len(srv.Calls()) != 0 {
+			t.Errorf("%s: %v", in, err)
+		}
+	}
+}

@@ -27,6 +27,8 @@ type topologyInput struct {
 	// CompareToSnapshotID belongs to kind link_overrides: the earlier snapshot to compare with, which turns the summary into the added, removed
 	// and changed diff against snapshot_id (default: the newest processed snapshot).
 	CompareToSnapshotID string `json:"compare_to_snapshot_id"`
+	// Interface narrows kind links to the links on one interface of device.
+	Interface string `json:"interface"`
 }
 
 const (
@@ -41,6 +43,12 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	}
 	if in.Kind == "external" {
 		return inspectExternalConnectivity(ctx, s, raw)
+	}
+	if in.Interface != "" && in.Kind != "links" {
+		return result.Result{}, fmt.Errorf("%w: interface is an input of kind links", ErrInvalidInput)
+	}
+	if in.Interface != "" && in.Device == "" {
+		return result.Result{}, fmt.Errorf("%w: interface names an interface of device; give device too", ErrInvalidInput)
 	}
 	if in.CompareToSnapshotID != "" {
 		if in.Kind != "link_overrides" {
@@ -94,6 +102,9 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		}
 		for _, l := range links {
 			if in.Device != "" && !portOn(l.SourcePort, in.Device) && !portOn(l.TargetPort, in.Device) {
+				continue
+			}
+			if !linkMatches(l.SourcePort, l.TargetPort, in) {
 				continue
 			}
 			rows = append(rows, map[string]any{"source": l.SourcePort, "target": l.TargetPort})
@@ -233,6 +244,25 @@ func capNames(names []string) any {
 }
 
 // portOn reports whether a port name ("<device> <interface>", as Forward writes it) is on the device.
+// linkMatches applies the interface filter of kind links: a port is "device interface", and the filter names the device's own end.
+func linkMatches(src, dst string, in topologyInput) bool {
+	if in.Interface == "" {
+		return true
+	}
+	ends := [][2]string{{src, dst}, {dst, src}}
+	for _, e := range ends {
+		own := e[0]
+		if in.Device != "" && !portOn(own, in.Device) {
+			continue
+		}
+		if in.Interface != "" && !strings.EqualFold(own, in.Device+" "+in.Interface) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 func portOn(port, device string) bool { return port == device || strings.HasPrefix(port, device+" ") }
 
 func contains(xs []string, x string) bool {
