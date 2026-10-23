@@ -139,3 +139,21 @@ func TestTopologyZonesListDevicesWithTheirZonesAndFilterByDevice(t *testing.T) {
 		t.Errorf("no zones returned must be unknown, not none defined: %s", r.Status)
 	}
 }
+
+// interface narrows kind links to one interface of the device,.
+func TestTopologyLinksFilterByInterface(t *testing.T) {
+	ls := fwdtest.Const(200, map[string]any{"links": []any{
+		map[string]any{"sourcePort": "d1 po28", "targetPort": "leaf1 po28"},
+		map[string]any{"sourcePort": "d1 et1", "targetPort": "leaf2 et9"},
+		map[string]any{"sourcePort": "d2 po28", "targetPort": "leaf1 po29"},
+	}})
+	run := func(in string) string {
+		return fmt.Sprint(topo(t, map[string]fwdtest.Handler{topoPath: ls}, in).Evidence[0].Detail)
+	}
+	if d := run(`{"network_id":"n1","kind":"links","device":"d1","interface":"PO28"}`); !strings.Contains(d, "total:1") || !strings.Contains(d, "leaf1 po28") {
+		t.Errorf("only d1's po28 link: %s", d)
+	}
+	if _, _, err := runSkill(t, "inspect-topology", map[string]fwdtest.Handler{topoPath: ls, snapsPath: ready("s1")}, `{"network_id":"n1","kind":"links","interface":"po28"}`); err == nil {
+		t.Errorf("interface needs device")
+	}
+}

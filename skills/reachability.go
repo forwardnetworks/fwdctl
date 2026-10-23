@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
+	"regexp"
 	"strings"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
@@ -250,6 +252,11 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	if mx == nil && strings.TrimSpace(in.DstIP) == "" {
 		return result.Result{}, fmt.Errorf("%w: dst_ip is required for one flow (or give matrix for every pair of several endpoints)", ErrInvalidInput)
 	}
+	for name, v := range map[string]string{"dst_ip": in.DstIP, "src_ip": in.SrcIP} {
+		if looksLikeHostname(v) {
+			return result.Result{}, fmt.Errorf("%w: %s %q is a host name; Forward does not resolve DNS and takes an IP address or prefix. Resolve it yourself (the address the host had at the time of the incident) and pass that", ErrInvalidInput, name, v)
+		}
+	}
 	snap, err := resolveSnapshot(ctx, s, in.NetworkID, in.SnapshotID)
 	if err != nil {
 		return result.Result{}, err
@@ -435,4 +442,19 @@ func returnFlowSummary(doc fwd.PathResult, asked bool) (map[string]any, string, 
 	}
 	verdict := fwd.Verdict(doc.ReturnPaths, doc.TimedOut)
 	return map[string]any{"paths": len(doc.ReturnPaths), "delivered": delivered, "outcomes": classes, "verdict": verdict}, verdict, ""
+}
+
+// hostnameRE matches a dotted name whose last label has a letter, which no IPv4 address or prefix has.
+var hostnameRE = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.[A-Za-z][A-Za-z0-9-]*\.?$`)
+
+// looksLikeHostname says v is a DNS name rather than an address: an address or prefix parses, a name does not.
+func looksLikeHostname(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" || strings.ContainsAny(v, "/:") {
+		return false
+	}
+	if _, err := netip.ParseAddr(v); err == nil {
+		return false
+	}
+	return hostnameRE.MatchString(v)
 }

@@ -4,7 +4,7 @@
 
 | `kind` | Returns | Narrow with |
 |---|---|---|
-| `links` | port pairs, each written `<device> <interface>` | `device` (links with an end on it) |
+| `links` | port pairs, each written `<device> <interface>` | `device` (links with an end on it), `interface` (with `device`: the links on that interface) |
 | `locations` | id, name, city, admin division, country, lat/lng, device globs, and the devices in each (assigned, anchored, matched by glob) with a count of devices in no location | nothing |
 | `tags` | tag name and the devices that carry it | `device` (tags on it) |
 | `zones` | each device and the security zones Forward derived for it (`zones`, `zone_count`); use it to resolve zone membership before testing segmentation | `device` (one device by exact name) |

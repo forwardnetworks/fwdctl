@@ -84,3 +84,4 @@ Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fw
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe investigate-reachability reference/<file>`).
 
 - [reference/reading-paths.md](reference/reading-paths.md): test both directions, real host addresses, a drop reason to the next read, and an empty result. Read when interpreting a path result.
+- [reference/aci-pbr-loop.md](reference/aci-pbr-loop.md): a loop through an ACI service redirect: pcTags, zoning rules, the redirect target (peer-reported, unconfirmed). Read when a loop repeats one leaf.

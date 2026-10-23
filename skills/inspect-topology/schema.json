@@ -49,6 +49,10 @@
     "compare_to_snapshot_id": {
       "type": "string",
       "minLength": 1
+    },
+    "interface": {
+      "type": "string",
+      "description": "kind links: only the links on this interface of device (give device too)"
     }
   }
 }

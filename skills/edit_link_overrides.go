@@ -123,7 +123,8 @@ func editLinkOverrides(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 	problems, notes, vlimits := checkNewLinks(ctx, s, in.NetworkID, in.SnapshotID, addP, addA)
 	ev := func(extra map[string]any) []result.Evidence {
 		// counts, not the lists: a snapshot can hold hundreds of overrides, and inspect-topology (kind link_overrides) reads them
-		d := map[string]any{"snapshot_id": in.SnapshotID, "edit": edit, "mode": mode,
+		apiBody := map[string]any{"route": "POST /api/snapshots/" + in.SnapshotID + "/topology/overrides", "body": edit, "curl": linkOverridesCurl("POST", "/api/snapshots/"+in.SnapshotID+"/topology/overrides")}
+		d := map[string]any{"snapshot_id": in.SnapshotID, "edit": edit, "mode": mode, "api": apiBody,
 			"present_before": len(cur.Present), "absent_before": len(cur.Absent),
 			"present_after": len(cur.Present) + len(addP) - len(remP), "absent_after": len(cur.Absent) + len(addA) - len(remA)}
 		if len(problems) > 0 {
@@ -280,3 +281,8 @@ func laterSnapshots(ctx context.Context, s *fwd.Session, networkID, snapshotID s
 }
 
 const reprocessAskLimit = "after this write, ASK the person before any reprocess, one snapshot at a time, and never chain edit-snapshot reprocess onto the apply: a reprocess is slow (a 1,400-device snapshot takes about 40 minutes) and the person chooses which invalidated snapshots are worth it"
+
+// linkOverridesCurl is the curl that sends the evidence's api body (saved as body.json) by hand: Forward's own request, with the address and credentials left as variables.
+func linkOverridesCurl(method, route string) string {
+	return fmt.Sprintf("curl -sS -X %s -u \"$FORWARD_USERNAME:$FORWARD_PASSWORD\" -H 'Content-Type: application/json' --data @body.json \"$FORWARD_URL%s\"", method, route)
+}
