@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The token file is netrc (machine, login, password; one line or several). The old three-line form is accepted for now; any other shape is refused with a message naming both formats.
+// The token file is netrc (machine, login, password; one line or several). Any other shape, including the old three-line form, is refused with a message naming the expected format.
 func TestTokenFileReadsNetrcAndStillTheOldThreeLines(t *testing.T) {
 	write := func(text string) string {
 		p := filepath.Join(t.TempDir(), "tok")
@@ -18,7 +18,6 @@ func TestTokenFileReadsNetrcAndStillTheOldThreeLines(t *testing.T) {
 		"several lines": "machine fwd.example.com\nlogin me@example.com\npassword s3cret\n",
 		"one line":      "machine fwd.example.com login me@example.com password s3cret\n",
 		"full url":      "machine https://fwd.example.com/ login me@example.com password s3cret\n",
-		"old format":    "https://fwd.example.com\nme@example.com\ns3cret\n",
 	} {
 		u, user, pass, err := readTokenFile(write(text))
 		if err != nil || u != "https://fwd.example.com" || user != "me@example.com" || pass != "s3cret" {
@@ -29,10 +28,11 @@ func TestTokenFileReadsNetrcAndStillTheOldThreeLines(t *testing.T) {
 		"machine a login x password y machine b login x2 password y2\n",
 		"machine fwd.example.com login only\n",
 		"just one line that is not enough\n",
+		"https://fwd.example.com\nme@example.com\ns3cret\n",
 	} {
 		_, _, _, err := readTokenFile(write(bad))
-		if err == nil || !strings.Contains(err.Error(), "netrc") || !strings.Contains(err.Error(), "three lines") {
-			t.Errorf("%q must be refused with both formats named: %v", bad, err)
+		if err == nil || !strings.Contains(err.Error(), "netrc") {
+			t.Errorf("%q must be refused naming netrc: %v", bad, err)
 		}
 	}
 }

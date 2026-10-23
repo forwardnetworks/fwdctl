@@ -42,7 +42,7 @@ func TestTheCABundlePathExpandsALeadingTilde(t *testing.T) {
 func TestTheSupportTokenFileFillsTheSupportLoginOnly(t *testing.T) {
 	dir := t.TempDir()
 	tok := filepath.Join(dir, "support.token")
-	if err := os.WriteFile(tok, []byte("https://support.example\nsupport-user\nsupport-secret\n"), 0o600); err != nil {
+	if err := os.WriteFile(tok, []byte("machine support.example\nlogin support-user\npassword support-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, k := range []string{"FORWARD_URL", "FORWARD_USERNAME", "FORWARD_PASSWORD", "FORWARD_SUPPORT_URL", "FORWARD_SUPPORT_USERNAME", "FORWARD_SUPPORT_PASSWORD", "FORWARD_SUPPORT_TOKEN_FILE"} {
@@ -77,7 +77,7 @@ func TestProfileSelectsANamedSavedConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	tok := filepath.Join(t.TempDir(), "a.token")
-	if err := os.WriteFile(tok, []byte("https://a.example\nalice\nsecret-a\n"), 0o600); err != nil {
+	if err := os.WriteFile(tok, []byte("machine a.example\nlogin alice\npassword secret-a\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "alpha.json"), []byte(`{"token_file":"`+tok+`"}`), 0o600); err != nil {

@@ -237,7 +237,7 @@ Examples:
 ## fwdctl login
 
 Remember where the login is, so every later fwdctl run (and every agent session that runs it) works with no environment.
-TOKENFILE is in netrc format (machine HOST, login USER, password SECRET; the username may be an API token's access key and the password its secret) and must be mode 600. The old three-line format still works for now and is temporary.
+TOKENFILE is in netrc format (machine HOST, login USER, password SECRET; the username may be an API token's access key and the password its secret) and must be mode 600.
 The login is checked, then only the PATH of the file is saved in ~/.config/fwdctl/config.json; the password is never copied. Flags and FORWARD_* variables still win.
 
 ```
@@ -247,8 +247,8 @@ fwdctl login [flags]
 Examples:
 
 ```
-  fwdctl login --file ~/customer.token
-  fwdctl login --profile staging --file ~/staging.token   # then: fwdctl --profile staging whoami
+  fwdctl login --file ~/customer.netrc
+  fwdctl login --profile staging --file ~/staging.netrc   # then: fwdctl --profile staging whoami
   fwdctl login --forget
 ```
 

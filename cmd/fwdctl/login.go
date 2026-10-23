@@ -10,7 +10,7 @@ import (
 
 // loginCmd remembers where the login is, so every later fwdctl run (and every agent session that runs it) works with no environment:
 //
-//	fwdctl login --file ~/customer.token     remember a token file (netrc: machine HOST, login USER, password SECRET)
+//	fwdctl login --file ~/customer.netrc     remember a token file (netrc: machine HOST, login USER, password SECRET)
 //	fwdctl login --forget                    remove what was remembered
 //
 // It stores only the path of the file, never the password, and checks the login before it saves anything.

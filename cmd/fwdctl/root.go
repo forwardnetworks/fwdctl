@@ -337,9 +337,9 @@ func (a *app) loginCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use: "login", GroupID: "setup", Short: "remember a login so every run and every agent session uses it",
 		Long: "Remember where the login is, so every later fwdctl run (and every agent session that runs it) works with no environment.\n" +
-			"TOKENFILE is in netrc format (machine HOST, login USER, password SECRET; the username may be an API token's access key and the password its secret) and must be mode 600. The old three-line format still works for now and is temporary.\n" +
+			"TOKENFILE is in netrc format (machine HOST, login USER, password SECRET; the username may be an API token's access key and the password its secret) and must be mode 600.\n" +
 			"The login is checked, then only the PATH of the file is saved in ~/.config/fwdctl/config.json; the password is never copied. Flags and FORWARD_* variables still win.",
-		Example: "  fwdctl login --file ~/customer.token\n  fwdctl login --profile staging --file ~/staging.token   # then: fwdctl --profile staging whoami\n  fwdctl login --forget",
+		Example: "  fwdctl login --file ~/customer.netrc\n  fwdctl login --profile staging --file ~/staging.netrc   # then: fwdctl --profile staging whoami\n  fwdctl login --forget",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.exit(loginRun(a.conn.profile, file, forget, a.out, a.err, func() int { return whoami(a.session, a.out, a.err) }))
