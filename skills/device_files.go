@@ -163,7 +163,7 @@ func listDeviceFiles(ctx context.Context, s *fwd.Session, in deviceFilesInput, c
 	}
 	if len(files) == 0 {
 		return result.NewUnknown(deviceFilesName, fmt.Sprintf("Forward holds no collected files for %q", in.Device), cx,
-			append(limits, "no files: the device was not collected, or its files were not kept"), result.Options{NextActions: []string{"investigate-collection-failure"}})
+			append(limits, "no files: the device was not collected, its files were not kept, or the name differs from the one Forward stores files under (names are exact; a virtual system, a name with different case or an alias would not match): compare with the device name in inspect-inventory kind devices and in investigate-collection-failure view slow, and try that spelling"), result.Options{NextActions: []string{"investigate-collection-failure"}})
 	}
 	rows := make([]map[string]any, 0, len(files))
 	for _, f := range files {

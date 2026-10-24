@@ -69,7 +69,7 @@ func summariseSlow(m *forward.SnapshotCollectionMetrics, filter string) *slowSum
 	var noDur []map[string]any
 	noDurByType := map[string]int{}
 	for _, d := range m.Devices {
-		if filter != "" && !strings.Contains(strings.ToLower(d.DeviceName), strings.ToLower(filter)) {
+		if !matchesDeviceFilter(d.DeviceName, filter) {
 			continue
 		}
 		row := map[string]any{"device": d.DeviceName, "source_type": d.SourceType, "device_type": d.DeviceType, "connection": d.ConnTypeDisplayName,
@@ -122,7 +122,7 @@ func summariseSlow(m *forward.SnapshotCollectionMetrics, filter string) *slowSum
 	// Forward records only each device's slowest command, so a rollup of those by command text is the closest signal to "which command costs the time"
 	roll := map[string]*cmdRollup{}
 	for _, d := range m.Devices {
-		if filter != "" && !strings.Contains(strings.ToLower(d.DeviceName), strings.ToLower(filter)) {
+		if !matchesDeviceFilter(d.DeviceName, filter) {
 			continue
 		}
 		if strings.TrimSpace(d.SlowestCommand) == "" || d.SlowestCommandDurationMillis == nil {
@@ -183,6 +183,7 @@ func slowCollection(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 	}
 	stats := sm.stats
 	var limits []string
+	addSetupCohorts(ctx, s, in.NetworkID, sm, &limits)
 	if in.Device == "" && sm.wallMs == 0 {
 		limits = append(limits, "Forward recorded no collection start and end for this snapshot, so the implied parallelism (total device time over wall time) is not computed")
 	}
@@ -586,7 +587,7 @@ func compareSlow(cur, base *slowSummary, baseID string) *slowComparison {
 func slowGroupMap(devs []forward.DeviceCollectionMetrics, label func(forward.DeviceCollectionMetrics) string, filter string) map[string]*slowAgg {
 	groups := map[string]*slowAgg{}
 	for _, d := range devs {
-		if filter != "" && !strings.Contains(strings.ToLower(d.DeviceName), strings.ToLower(filter)) {
+		if !matchesDeviceFilter(d.DeviceName, filter) {
 			continue
 		}
 		name := label(d)
@@ -611,6 +612,10 @@ func slowGroupMap(devs []forward.DeviceCollectionMetrics, label func(forward.Dev
 
 // topSlowGroups is the groups that took the most total time, at most n, as rows.
 func topSlowGroups(groups map[string]*slowAgg, n int) []map[string]any {
+	var total int64
+	for _, g := range groups {
+		total += g.sum
+	}
 	names := make([]string, 0, len(groups))
 	for k := range groups {
 		names = append(names, k)
@@ -628,6 +633,9 @@ func topSlowGroups(groups map[string]*slowAgg, n int) []map[string]any {
 		d := append([]int64(nil), g.durs...)
 		sort.Slice(d, func(i, j int) bool { return d[i] < d[j] })
 		row := map[string]any{"name": k, "devices_timed": len(d), "sum_ms": g.sum, "with_error": g.withErr}
+		if total > 0 {
+			row["share_of_device_time"] = float64(g.sum) / float64(total)
+		}
 		if len(d) > 0 {
 			row["median_ms"], row["max_ms"] = d[len(d)/2], d[len(d)-1]
 		}
@@ -722,4 +730,57 @@ func topSlowTypes(m map[string]int, n int) []string {
 		out = append(out, fmt.Sprintf("%s (%d)", k, m[k]))
 	}
 	return out
+}
+
+// matchesDeviceFilter keeps a device whose name contains the filter, ignoring case; the filter may list several names or fragments separated by commas, so cohorts compare in one call. An empty filter keeps all.
+func matchesDeviceFilter(name, filter string) bool {
+	if strings.TrimSpace(filter) == "" {
+		return true
+	}
+	n := strings.ToLower(name)
+	for _, f := range strings.Split(filter, ",") {
+		if f = strings.ToLower(strings.TrimSpace(f)); f != "" && strings.Contains(n, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// addSetupCohorts groups the devices' collection times by the controller-managed setup that collects them (its controllers and managed devices) against every other device, so the cohorts compare in one call:
+// stats.by_setup rows name the setup, the devices, their total and median time and the slowest. Nothing is added when the network has no setup or the list cannot be read.
+func addSetupCohorts(ctx context.Context, s *fwd.Session, networkID string, sm *slowSummary, limits *[]string) {
+	setups, _, err := s.Client.ControllerManagedSetups.List(ctx, networkID)
+	if err != nil || len(setups) == 0 {
+		return
+	}
+	setupOf := map[string]string{}
+	for _, st := range setups {
+		for _, c := range st.Controllers {
+			setupOf[strings.ToLower(c.Name)] = st.Name
+		}
+		for _, m := range st.ManagedDevices {
+			setupOf[strings.ToLower(m.Name)] = st.Name
+		}
+	}
+	groups := map[string]*slowAgg{}
+	for _, r := range sm.rows {
+		ms, ok := r["collection_ms"].(int64)
+		if !ok {
+			continue
+		}
+		key := "(not in a controller-managed setup)"
+		if n, in := setupOf[strings.ToLower(fmt.Sprint(r["device"]))]; in {
+			key = n
+		}
+		g := groups[key]
+		if g == nil {
+			g = &slowAgg{}
+			groups[key] = g
+		}
+		g.durs = append(g.durs, ms)
+		g.sum += ms
+	}
+	sm.stats["by_setup"] = topSlowGroups(groups, 8)
+	sm.stats["setup_groups"] = len(groups)
+	*limits = append(*limits, "by_setup groups the devices by the controller-managed setup that lists them as a controller or managed device; every other device, classic or not, is in one group")
 }

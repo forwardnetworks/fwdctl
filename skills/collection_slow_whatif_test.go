@@ -348,3 +348,30 @@ func TestSlowViewRebalanceListsTheMovesAndABatchPatch(t *testing.T) {
 		}
 	}
 }
+
+// Cohorts compare in one call: the device filter takes several names, each group states its share of the total device time, and stats.by_setup groups devices by the controller-managed setup that collects them.
+func TestSlowViewComparesCohortsInOneCall(t *testing.T) {
+	routes := slowWhatIfRoutes()
+	routes["GET /api/networks/n1/controller-managed-setups"] = fwdtest.Const(200, []any{map[string]any{"name": "pilot", "controllers": []any{map[string]any{"name": "sw0"}}, "managedDevices": []any{map[string]any{"name": "sw1"}}}})
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"slow","device":"sw0, late1"}`)
+	st := r.Evidence[0].Detail["stats"].(map[string]any)
+	rows := r.Evidence[0].Detail["devices"].([]map[string]any)
+	if len(rows) != 2 {
+		t.Fatalf("a comma list keeps sw0 and late1 only: %v", rows)
+	}
+	var share float64
+	for _, g := range st["by_device_type"].([]map[string]any) {
+		share += g["share_of_device_time"].(float64)
+	}
+	if share < 0.999 || share > 1.001 {
+		t.Errorf("the shares of the device types add up to 1: %v", st["by_device_type"])
+	}
+	by := st["by_setup"].([]map[string]any)
+	names := map[string]int{}
+	for _, g := range by {
+		names[fmt.Sprint(g["name"])] = g["devices_timed"].(int)
+	}
+	if names["pilot"] != 1 || names["(not in a controller-managed setup)"] != 1 {
+		t.Errorf("sw0 is in the pilot setup, late1 is not: %v", by)
+	}
+}
