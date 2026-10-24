@@ -200,6 +200,9 @@ func migrationDeviceRow(d forward.SourceTestStatus, eff, cat string, c forward.C
 		row["cli_credential_id"] = nilIfEmpty(string(c.CLICredentialID))
 		row["http_credential_id"] = nilIfEmpty(string(c.HTTPCredentialID))
 		row["snmp_credential_id"] = nilIfEmpty(string(c.SNMPCredentialID))
+		if opts := classicOptions(c); len(opts) > 0 {
+			row["options"] = opts
+		}
 		row["cli_credential2_id"] = nilIfEmpty(string(c.CLICredential2ID))
 		row["cli_credential3_id"] = nilIfEmpty(string(c.CLICredential3ID))
 		if c.Port != nil {
@@ -315,6 +318,9 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 				"snmp_credential_id": nilIfEmpty(string(rec.SNMPCredentialID)), "jump_server_id": nilIfEmpty(string(rec.JumpServerID)), "collector_id": nilIfEmpty(string(rec.CollectorID))}
 			entry["address_confirmed_by_a_record"] = true
 			controller["name"], controller["type"] = rec.Name, rec.Type
+			for k, v := range classicOptions(*rec) {
+				controller[k] = v
+			}
 			for field, v := range map[string]string{"cliCredentialId": string(rec.CLICredentialID), "cliCredential2Id": string(rec.CLICredential2ID), "cliCredential3Id": string(rec.CLICredential3ID), "httpCredentialId": string(rec.HTTPCredentialID), "snmpCredentialId": string(rec.SNMPCredentialID), "jumpServerId": string(rec.JumpServerID)} {
 				if v != "" {
 					controller[field] = v
@@ -352,6 +358,11 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 			} else if sib := subnetLogins[subnet24(fmt.Sprint(d["host"]))]; len(sib) > 0 {
 				hints[fmt.Sprint(d["name"])] = sib // credential id -> how many same-subnet devices use it
 			}
+			if opts, ok := d["options"].(map[string]any); ok {
+				for k, v := range opts {
+					m[k] = v
+				}
+			}
 			for field, key := range map[string]string{"jumpServerId": "jump_server_id", "cliCredential2Id": "cli_credential2_id", "cliCredential3Id": "cli_credential3_id", "httpCredentialId": "http_credential_id", "snmpCredentialId": "snmp_credential_id", "port": "port"} {
 				if v := d[key]; v != nil {
 					m[field] = v
@@ -361,7 +372,7 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 		}
 		sm := map[string]any{"object": "controller_setup", "action": "migrate",
 			"definition": map[string]any{"name": "<choose the setup name>", "controllers": []map[string]any{controller}, "managedDevices": managed},
-			"warning":    "migrate DELETES each classic device it names (its settings, test results and tags) in the same call, and needs confirm equal to the setup name; there is no undo command: recreate the classic devices from the before list the dry run prints. A migrate carries nothing over from the deleted records, so this suggestion restates each one's logins (CLI, HTTP, SNMP), jump server and port; the collection options on a classic record (BGP advertisement collection, SNMP options, pagination, prompts, thresholds, note) are not carried: re-check them after the migrate A device with no cliCredentialId is refused: nothing is inherited from the controller or the classic record",
+			"warning":    "migrate DELETES each classic device it names (its settings, test results and tags) in the same call, and needs confirm equal to the setup name; there is no undo command: recreate the classic devices from the before list the dry run prints. A migrate carries nothing over from the deleted records, so this suggestion restates each one's logins (CLI, HTTP, SNMP), jump server and port; the collection options on a classic record (note, BGP advertisement collection, SNMP options, pagination, prompts, thresholds) are restated too, read from the record; test results and tags cannot be carried A device with no cliCredentialId is refused: nothing is inherited from the controller or the classic record",
 			"note":       fmt.Sprintf("a pilot of %d of %d devices; run the dry run, then a connectivity test, then the rest", len(managed), len(devs))}
 		if len(hints) > 0 {
 			sm["credential_hints"] = map[string]any{"devices_without_a_recorded_login": hints, "meaning": "for each device with no login recorded, the login ids its same-/24 siblings use and how many do; Forward does not record which login works, so a pilot connectivity test decides. The org's auto-associate logins are in credential_candidates"}
@@ -387,4 +398,25 @@ func hasVendorPrefix(vendors map[string]bool, prefix string) bool {
 		}
 	}
 	return false
+}
+
+// migrationOptionKeys are the collection options a classic record holds that a controller or managed entry takes under the same wire names (SDK v0.7.0): a migrate restates them or loses them.
+var migrationOptionKeys = []string{"note", "collect", "enableSnmpCollection", "collectBgpAdvertisements", "bgpTableType", "bgpPeerType", "bgpAndBmpFailureHandling", "bgpSubnetsToCollect", "bmpStationHost",
+	"disableIpv6Collection", "fullCollectionLog", "paginationMode", "terminalWidth", "largeRtt", "minBytesReadPerSec", "maxConnectionsPerMin", "useFileTransferForLargeOutput", "prompt", "promptResponse",
+	"highCpuUsage", "highMemoryUsage", "highInputUtilization", "highOutputUtilization", "mediumCpuUsage", "mediumMemoryUsage", "mediumInputUtilization", "mediumOutputUtilization"}
+
+// classicOptions reads those options off a classic record's wire object (Raw), so a value the SDK does not type is still restated.
+func classicOptions(c forward.ClassicDevice) map[string]any {
+	out := map[string]any{}
+	for _, k := range migrationOptionKeys {
+		raw, ok := c.Raw[k]
+		if !ok || string(raw) == "null" {
+			continue
+		}
+		var v any
+		if json.Unmarshal(raw, &v) == nil {
+			out[k] = v
+		}
+	}
+	return out
 }

@@ -77,3 +77,15 @@ func TestMigrateControllerEntryTakesTheHTTPLoginPortAndExtraCLILogins(t *testing
 		t.Fatalf("the migrate body must restate the controller's logins and port: %s %s", r.Finding, posted)
 	}
 }
+
+// A managed entry restates the collection options of the classic record it replaces (SDK v0.7.0 sends them flat, as Forward reads them).
+func TestMigrateManagedEntryCarriesTheCollectionOptions(t *testing.T) {
+	var posted string
+	in := `{"network_id":"n1","object":"controller_setup","action":"migrate","apply":true,"confirm":"sdwan","definition":{"name":"sdwan","controllers":[{"name":"ctl","host":"192.0.2.10","cliCredentialId":"L1"}],"managedDevices":[{"name":"edge1","cliCredentialId":"L1","collectBgpAdvertisements":true,"bgpTableType":"ADJ_RIB_IN","bgpPeerType":"EBGP","paginationMode":"DISABLE_PAGINATION","note":"pilot"}]}}`
+	r, _ := mustRun(t, "edit-source", migrateRoutes(&posted), in)
+	for _, want := range []string{`"collectBgpAdvertisements":true`, `"bgpTableType":"ADJ_RIB_IN"`, `"paginationMode":"DISABLE_PAGINATION"`, `"note":"pilot"`} {
+		if r.Status != result.OK || !strings.Contains(posted, want) {
+			t.Fatalf("the body must carry %s: %s %s", want, r.Finding, posted)
+		}
+	}
+}

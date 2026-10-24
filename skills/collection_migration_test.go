@@ -120,7 +120,7 @@ func TestMigrationViewNamesDevicesControllersAndSuggestsAMigrate(t *testing.T) {
 	vm := map[string]any{"name": "", "ipAddress": "192.0.2.10"}
 	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{
 		tr(map[string]any{"name": "vmanage1", "type": "viptela", "host": "192.0.2.10", "cliCredentialId": "L-ctl", "jumpServerId": "J1", "collectorId": "C7", "testResult": map[string]any{"discoveredType": "viptela"}}),
-		tr(map[string]any{"name": "edge1", "host": "198.51.100.1", "cliCredentialId": "L-edge", "jumpServerId": "J2", "collectorId": "C7", "testResult": map[string]any{"discoveredType": "cisco_ios_xe_ssh", "controllerInfos": []any{vm}}}),
+		tr(map[string]any{"name": "edge1", "host": "198.51.100.1", "cliCredentialId": "L-edge", "jumpServerId": "J2", "collectorId": "C7", "collectBgpAdvertisements": true, "bgpTableType": "ADJ_RIB_IN", "paginationMode": "DISABLE_PAGINATION", "testResult": map[string]any{"discoveredType": "cisco_ios_xe_ssh", "controllerInfos": []any{vm}}}),
 		tr(map[string]any{"name": "edge2", "host": "198.51.100.2", "cliCredentialId": "L-edge", "testResult": map[string]any{"discoveredType": "cisco_ios_xe_ssh", "controllerInfos": []any{vm}}}),
 		tr(map[string]any{"name": "standalone", "host": "198.51.100.9", "testResult": map[string]any{"discoveredType": "arista_eos_ssh"}}),
 	})
@@ -148,7 +148,7 @@ func TestMigrationViewNamesDevicesControllersAndSuggestsAMigrate(t *testing.T) {
 	def := sm["definition"].(map[string]any)
 	cs := def["controllers"].([]map[string]any)
 	md := def["managedDevices"].([]map[string]any)
-	if sm["object"] != "controller_setup" || sm["action"] != "migrate" || cs[0]["cliCredentialId"] != "L-ctl" || cs[0]["name"] != "vmanage1" || len(md) != 2 || md[0]["cliCredentialId"] != "L-edge" {
+	if sm["object"] != "controller_setup" || sm["action"] != "migrate" || cs[0]["cliCredentialId"] != "L-ctl" || cs[0]["name"] != "vmanage1" || len(md) != 2 || md[0]["cliCredentialId"] != "L-edge" || md[0]["collectBgpAdvertisements"] != true || md[0]["bgpTableType"] != "ADJ_RIB_IN" || md[0]["paginationMode"] != "DISABLE_PAGINATION" {
 		t.Errorf("suggested migrate: %v", sm)
 	}
 }
