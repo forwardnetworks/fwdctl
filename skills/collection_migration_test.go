@@ -295,7 +295,7 @@ func TestConfigDeviceReturnsAControllersFullReportedManagedDevices(t *testing.T)
 func TestMigrationPlanCoversEveryDeviceAndFlagsVEdgesStillCollecting(t *testing.T) {
 	routes := migrationRoutes()
 	routes["GET /api/deviceConnTypes"] = fwdtest.Const(200, map[string]any{
-		"viptela": map[string]any{"vendor": "viptela_smart", "collectionSourceType": "CONTROLLER_MANAGED", "relatedTypes": []string{"cisco_sdwan_ssh", "cisco_ios_xe_ssh"}},
+		"viptela":         map[string]any{"vendor": "viptela_smart", "collectionSourceType": "CONTROLLER_MANAGED", "relatedTypes": []string{"cisco_sdwan_ssh", "cisco_ios_xe_ssh"}},
 		"cisco_sdwan_ssh": map[string]any{"vendor": "viptela", "collectionSourceType": "CLASSIC"}, "cisco_ios_xe_ssh": map[string]any{"vendor": "cisco_ios_xe", "collectionSourceType": "CLASSIC"},
 	})
 	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{

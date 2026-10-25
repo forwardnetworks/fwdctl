@@ -468,3 +468,27 @@ func TestInventoryCloudGatewaysCountsDownVPNsOverEveryMatchAndRoutesFilterByTabl
 		t.Errorf("the name filter also matches a route table: %s", body)
 	}
 }
+
+// An address no interface carries and no connected subnet contains still gets its longest covering route (any VRF of any device), so "no modelled owner" says where the model routes it.
+func TestInventoryIPOwnerNamesTheLongestCoveringRouteForAnUnownedAddress(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), nqePath: func(_ *http.Request, body []byte) (int, any) {
+		q := string(body)
+		rows := func(r ...map[string]any) (int, any) { return 200, map[string]any{"items": r, "totalNumItems": len(r)} }
+		if strings.Contains(q, "length(entry.prefix)") {
+			return rows(
+				map[string]any{"ip": "10.8.125.167", "device": "core1", "vrf": "default", "prefix": "10.8.0.0/16", "length": 16, "nextHops": []any{"10.0.0.2"}},
+				map[string]any{"ip": "10.8.125.167", "device": "core2", "vrf": "default", "prefix": "10.8.125.0/24", "length": 24, "nextHops": []any{"10.0.0.3"}},
+			)
+		}
+		return rows()
+	}}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","kind":"ip_owner","ips":["10.8.125.167"]}`)
+	row := r.Evidence[0].Detail["addresses"].([]map[string]any)[0]
+	cov, _ := row["covering_route"].(map[string]any)
+	if cov == nil || cov["prefix"] != "10.8.125.0/24" || cov["device_vrfs_holding_it"] != 1 {
+		t.Fatalf("the /24 beats the /16: %v", row)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "covering_route") {
+		t.Errorf("limits explain covering_route: %v", r.Limits)
+	}
+}
