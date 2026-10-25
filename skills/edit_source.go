@@ -727,16 +727,21 @@ func planClassicDevice(ctx context.Context, s *fwd.Session, in editSourceInput) 
 				return err
 			},
 			verify: func(ctx context.Context) (bool, any, error) {
-				if !rename {
-					return true, nil, nil
+				want := in.Name
+				if rename {
+					want = def.Name
 				}
 				l, _, e := s.Client.ClassicDevices.List(ctx, in.NetworkID)
 				for _, x := range l {
-					if x.Name == def.Name {
+					if x.Name == want {
+						ok, bad := deviceHolds(x, patch)
+						if !ok {
+							return false, map[string]any{"fields_not_as_asked": bad}, e
+						}
 						return true, nil, e
 					}
 				}
-				return false, map[string]any{"renamed_listed": false}, e
+				return false, map[string]any{"device_listed": false}, e
 			}}, nil
 	}
 	return nil, fmt.Errorf("%w: object classic_device takes action create, update or delete", ErrInvalidInput)
@@ -1366,8 +1371,8 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 		}
 		return &networkPlan{target: fmt.Sprintf("queue a connectivity test of the %d controller(s) and managed device(s) of setup %s", n, c.Name), action: "test_controller_setup",
 			after: map[string]any{"setup": c.Name, "devices_tested": n}, reversible: true, undo: "none needed: a test changes no configuration; it replaces each device's last saved test result",
-			limits: []string{"Forward answers as soon as the tests are queued, not when they finish: read each device's result with inspect-collection-config (view config, controller_setups) and compare its tested_at with when you ran this, because the previous result stays until the new one is saved",
-				"the route is published by Forward as experimental", "with wait_seconds the apply waits for results newer than the queue time and returns them; without it, read them later with inspect-collection-config"},
+			limits: []string{"Forward answers as soon as the tests are queued, not when they finish: read each device's result with inspect-collection (view config, controller_setups) and compare its tested_at with when you ran this, because the previous result stays until the new one is saved",
+				"the route is published by Forward as experimental", "with wait_seconds the apply waits for results newer than the queue time and returns them; without it, read them later with inspect-collection"},
 			do: func(ctx context.Context) error {
 				queuedAt = time.Now()
 				_, err := s.Client.ControllerManagedSetups.Test(ctx, in.NetworkID, "", forward.ControllerAndManagedDeviceSelection{SetupNames: []string{c.Name}})

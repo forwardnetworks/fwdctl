@@ -37,7 +37,7 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 	}
 	var present map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &present)
-	for _, k := range []string{"collector", "names_only", "offset", "wait_seconds", "data_file", "data_connector", "include_content"} {
+	for _, k := range []string{"collector", "names_only", "offset", "wait_seconds", "data_file", "data_connector", "include_content", "device"} {
 		if _, bad := present[k]; bad {
 			return result.Result{}, fmt.Errorf("%w: %s belongs to another view of inspect-collection, not migration", ErrInvalidInput, k)
 		}
@@ -138,7 +138,7 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 		}
 	}
 	for _, c := range ctls {
-		if a, ok := c["address"].(string); ok && c["address_confirmed_by_a_record"] != nil {
+		if a, ok := c["address"].(string); ok {
 			wizardAddrs = append(wizardAddrs, a)
 		}
 	}
@@ -323,7 +323,7 @@ func migrationControllers(rows []map[string]any, vendorOf map[string]string, con
 		var rec *forward.ClassicDevice
 		for _, c := range classicByName {
 			c := c
-			if k.address != "" && c.Host == k.address || (controllerTypes[c.Type] && k.address != "" && strings.Contains(c.Host, k.address)) {
+			if k.address != "" && c.Host == k.address {
 				rec = &c
 				break
 			}

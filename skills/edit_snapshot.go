@@ -54,7 +54,7 @@ func editSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	case "retention_policy":
 		return snapshotRetentionPolicy(ctx, s, in)
 	}
-	return result.Result{}, fmt.Errorf("%w: action must be note, reprocess, invalidate, favorite, unfavorite, delete, retention_policy, export, import or cancel", ErrInvalidInput)
+	return result.Result{}, fmt.Errorf("%w: action must be note, reprocess, invalidate, favorite, unfavorite, delete, retention_policy, export or import", ErrInvalidInput)
 }
 
 // snapshotBusy says a snapshot is being worked on now, so it is not changed under Forward.

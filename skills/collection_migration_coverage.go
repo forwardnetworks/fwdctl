@@ -57,7 +57,7 @@ func migrationCoverage(ctx context.Context, s *fwd.Session, networkID string, ed
 	sid := string(snap.ID)
 	if len(edges) > maxCoverageEdges {
 		limits = append(limits, fmt.Sprintf("coverage read the first %d of %d edges", maxCoverageEdges, len(edges)))
-		edges = edges[:maxCoverageEdges:maxCoverageEdges]
+		edges, _ = result.Cap(edges, maxCoverageEdges, "edges", "narrow the view")
 	}
 	type edgeRead struct {
 		up      []string

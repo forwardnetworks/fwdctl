@@ -26,7 +26,7 @@ func inspectCollectionConnectivity(ctx context.Context, s *fwd.Session, raw json
 	}
 	var present map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &present)
-	for _, k := range []string{"collector", "names_only", "offset", "wait_seconds", "data_file", "data_connector", "include_content"} {
+	for _, k := range []string{"collector", "names_only", "offset", "wait_seconds", "data_file", "data_connector", "include_content", "device"} {
 		if _, bad := present[k]; bad {
 			return result.Result{}, fmt.Errorf("%w: %s belongs to another view of inspect-collection, not connectivity", ErrInvalidInput, k)
 		}

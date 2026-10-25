@@ -671,5 +671,25 @@
     "query": "Does my rewritten NQE query return the same rows as the original on this snapshot?",
     "expect": "author-nqe-query",
     "rival": "compare-nqe-results"
+  },
+  {
+    "query": "The collector has an Update button showing in the UI, queue its upgrade.",
+    "expect": "edit-platform",
+    "rival": "edit-collection"
+  },
+  {
+    "query": "Which controller-managed setups already exist across all networks and workspaces?",
+    "expect": "inspect-platform",
+    "rival": "inspect-collection"
+  },
+  {
+    "query": "Stage a manual link for the next snapshot only, without changing the snapshots we already have.",
+    "expect": "edit-link-overrides",
+    "rival": "edit-topology"
+  },
+  {
+    "query": "Which IOS XE SD-WAN edges does each controller cover, and what is the smallest set of controllers that reaches them all?",
+    "expect": "inspect-collection",
+    "rival": "inspect-topology"
   }
 ]

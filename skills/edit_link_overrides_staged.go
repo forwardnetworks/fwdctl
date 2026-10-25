@@ -27,6 +27,9 @@ func editStagedLinkOverrides(ctx context.Context, s *fwd.Session, in editLinkOve
 	if total > maxLinkEdits {
 		return result.Result{}, fmt.Errorf("%w: at most %d link edits per run", ErrInvalidInput, maxLinkEdits)
 	}
+	if in.SnapshotID != "" || in.Force {
+		return result.Result{}, fmt.Errorf("%w: snapshot_id and force belong to the snapshot-scoped mode, not to staged", ErrInvalidInput)
+	}
 	for _, group := range [][]linkPair{in.AddPresent, in.RemovePresent, in.AddAbsent, in.RemoveAbsent} {
 		for _, l := range group {
 			if strings.TrimSpace(l.Port1) == "" || strings.TrimSpace(l.Port2) == "" || l.Port1 == l.Port2 {
@@ -66,7 +69,17 @@ func editStagedLinkOverrides(ctx context.Context, s *fwd.Session, in editLinkOve
 	edit = forward.TopologyOverridesEdit{PresentAdditions: toSDK(addP), PresentRemovals: toSDK(remP), AbsentAdditions: toSDK(addA), AbsentRemovals: toSDK(remA)}
 	undo = forward.TopologyOverridesEdit{PresentAdditions: toSDK(remP), PresentRemovals: toSDK(addP), AbsentAdditions: toSDK(remA), AbsentRemovals: toSDK(addA)}
 	n := len(addP) + len(remP) + len(addA) + len(remA)
-	limits = append(limits, "ports are checked by Forward against the latest processed snapshot (an unknown port answers 400 Illegal ports in link overrides); this skill does not pre-check them here")
+	if snap, serr := resolveSnapshot(ctx, s, in.NetworkID, ""); serr == nil && snap != nil && fwd.IsReady(snap) {
+		problems, notes, vlimits := checkNewLinks(ctx, s, in.NetworkID, string(snap.ID), addP, addA)
+		if len(problems) > 0 {
+			return result.Result{}, fmt.Errorf("%w: refused, nothing was changed: %s (checked against the newest processed snapshot %s; Forward answers 400 Illegal ports in link overrides for these)", ErrInvalidInput, strings.Join(problems, "; "), snap.ID)
+		}
+		limits = append(limits, notes...)
+		limits = append(limits, vlimits...)
+		limits = append(limits, "ports were checked against the newest processed snapshot "+string(snap.ID)+", the one Forward checks a staged edit against")
+	} else {
+		limits = append(limits, "ports were not pre-checked (no processed snapshot could be read); Forward checks them against the latest processed snapshot and answers 400 Illegal ports in link overrides for an unknown one")
+	}
 	ev := func(extra map[string]any) []result.Evidence {
 		d := map[string]any{"staged": true, "edit": edit, "mode": mode, "api": map[string]any{"route": "PATCH /api/networks/" + in.NetworkID + "/link-overrides", "body": edit, "curl": linkOverridesCurl("PATCH", "/api/networks/"+in.NetworkID+"/link-overrides")}, "present_before": len(cur.Present), "absent_before": len(cur.Absent)}
 		for k, v := range extra {
@@ -123,18 +136,19 @@ func stagedBackdate(ctx context.Context, s *fwd.Session, in editLinkOverridesInp
 		return result.Result{}, err
 	}
 	var target string
+	found := false
 	for _, sn := range snaps {
 		if string(sn.ID) == in.BackdateTo {
-			target = sn.CreatedAt
+			target, found = sn.CreatedAt, true
 		}
 	}
-	if target == "" {
+	if !found || target == "" {
 		return result.NewUnknown(editLinkOverridesName, fmt.Sprintf("The network holds no snapshot %s to backdate to", in.BackdateTo), cx,
 			[]string{"no such snapshot in this network (ids are matched exactly); nothing was changed"}, result.Options{NextActions: []string{"inspect-snapshots"}})
 	}
 	hit := []map[string]any{}
 	for _, sn := range snaps {
-		if sn.CreatedAt >= target {
+		if sn.CreatedAt >= target && !sn.IsDraft {
 			hit = append(hit, map[string]any{"snapshot_id": string(sn.ID), "state": sn.State, "created_at": sn.CreatedAt})
 		}
 	}
@@ -164,6 +178,24 @@ func stagedBackdate(ctx context.Context, s *fwd.Session, in editLinkOverridesInp
 		return result.Result{}, fmt.Errorf("the backdate failed, nothing is known to have changed: %w", err)
 	}
 	ch.Applied = true
+	// read the states back: a backdate that Forward accepted should leave the named snapshots reprocessing or unprocessed
+	still := 0
+	if after, aerr := s.Snapshots(ctx, in.NetworkID); aerr != nil {
+		limits = append(limits, "the snapshot states could not be read back, so the invalidation is not proven: "+aerr.Error())
+	} else {
+		inHit := map[string]bool{}
+		for _, h := range hit {
+			inHit[fmt.Sprint(h["snapshot_id"])] = true
+		}
+		for _, sn := range after {
+			if inHit[string(sn.ID)] && sn.State == "PROCESSED" {
+				still++
+			}
+		}
+		if still > 0 {
+			limits = append(limits, fmt.Sprintf("%d of the %d snapshot(s) still read PROCESSED right after the backdate; read inspect-snapshots again before relying on it", still, len(hit)))
+		}
+	}
 	return result.Build(editLinkOverridesName, result.OK, fmt.Sprintf("Backdate sent for snapshot %s: %d snapshot(s) are invalidated per Forward's rule and reprocess is now the person's decision; ask before running edit-snapshot reprocess, one at a time", in.BackdateTo, len(hit)),
 		result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev, Limits: append(limits, "the invalidated snapshots are UNPROCESSED until reprocessed; Forward does not reprocess them by itself; verify afterwards with inspect-topology kind link_overrides"), NextActions: []string{"inspect-snapshots", "edit-snapshot"}})
 }

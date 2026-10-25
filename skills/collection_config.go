@@ -31,12 +31,14 @@ type collectionConfigInput struct {
 	DataConnector string `json:"data_connector"`
 	// Collector limits the devices to those pinned to one collector: its id (101291 or C101291 are the same) or "none" for the devices with no pin (they run on the network's default collector).
 	Collector string `json:"collector"`
+	// Device limits the devices to those whose name contains one of these comma-separated fragments (ignoring case) and returns each one's full record: host, type, port, the CLI, privileged, expert, HTTP and SNMP login IDS (never a value), jump server, collector, collect, note and the collection options.
+	Device string `json:"device"`
 	// NamesOnly returns the devices as compact [name, collector id] pairs, in larger pages, so a whole network is read in a few calls.
 	NamesOnly bool `json:"names_only"`
 }
 
 // inspectCollectionConfig states what Forward is told to collect: devices, endpoints, jump servers and proxies. It never reads a
-// credential: a device shows only whether a credential is set, and no secret, credential id or username is copied out.
+// credential: a device shows only whether a credential is set unless the device input asks for the full record, which adds login IDS (never a value, never a username or secret).
 func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
 	var in collectionConfigInput
 	if err := json.Unmarshal(raw, &in); err != nil {
@@ -74,6 +76,21 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 		sum := sha256.Sum256([]byte(strings.Join(names, "\n")))
 		detail["device_list_digest"] = hex.EncodeToString(sum[:8])
 		limits = append(limits, "each page re-reads the whole device list and cuts it from the list sorted by name; device_list_digest is a digest of every device name in that read, so pages with the same digest and device_count came from the same list. If they differ, devices were added or removed between the reads")
+		if in.Device != "" {
+			full := map[string]forward.ClassicDevice{}
+			for _, d := range devs {
+				full[d.Name] = d
+			}
+			kept := rows[:0:0]
+			for _, r := range rows {
+				if matchesDeviceFilter(r["name"].(string), in.Device) {
+					fullDeviceRecord(r, full[r["name"].(string)])
+					kept = append(kept, r)
+				}
+			}
+			rows = kept
+			limits = append(limits, "device keeps the devices whose name contains one of the comma-separated fragments and adds each full record: login ids (CLI, privileged, expert, HTTP, SNMP), jump server and the collection options, ids only, never a secret")
+		}
 		all := len(rows)
 		if in.Collector != "" {
 			want := strings.ToLower(strings.TrimSpace(in.Collector))
@@ -835,4 +852,20 @@ func approvedCLIList(ctx context.Context, s *fwd.Session, detail map[string]any,
 		detail["approved_cli_commands"] = approvedCLIRow(ap)
 	}
 	return limits
+}
+
+// fullDeviceRecord adds to a device row the ids and options a migrate or an audit needs: the login ids by kind (never a value), the jump server, the SNMP setting, the note and the collection options of the record.
+func fullDeviceRecord(row map[string]any, d forward.ClassicDevice) {
+	row["cli_credential_id"] = nilIfEmpty(string(d.CLICredentialID))
+	row["cli_credential2_id"] = nilIfEmpty(string(d.CLICredential2ID))
+	row["cli_credential3_id"] = nilIfEmpty(string(d.CLICredential3ID))
+	row["http_credential_id"] = nilIfEmpty(string(d.HTTPCredentialID))
+	row["snmp_credential_id"] = nilIfEmpty(string(d.SNMPCredentialID))
+	row["jump_server_id"] = nilIfEmpty(string(d.JumpServerID))
+	if d.Note != "" {
+		row["note"] = d.Note
+	}
+	if opts := classicOptions(d); len(opts) > 0 {
+		row["options"] = opts
+	}
 }
