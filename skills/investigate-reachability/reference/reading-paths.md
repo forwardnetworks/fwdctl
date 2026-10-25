@@ -41,3 +41,11 @@ Two paths that both cross one device share its fate: if that device fails, both 
 
 Each hop that Forward evaluated an ACL or a security zone on carries `acls` (each with a `name`, a `context` for where it applied, and an `action`) and `ingress_zone` / `egress_zone`. A hop with none has no such keys: that means Forward reported none for it, not that none exist. An ACL `action` of PERMIT on the last hop does not make the flow delivered: read the forwarding outcome too.
 
+
+## A path that leaves the model (DELIVERED_TO_INCORRECT_LOCATION, incomplete_model)
+
+This pair reads like a failure and is not one. The path ends where the model does not go on, for example out an overlay or tunnel toward something that is not modelled: it is neither a drop in the model nor a delivery. The finding says so (`The flow leaves the modelled network...`) and a matrix row carries `leaves_the_model`. Only a real test, such as Forward's connectivity test, shows whether the flow arrives. A flow that is DROPPED or BLACKHOLEd inside the model is the opposite: the model routes it nowhere, so a real connection from there is unlikely to work.
+
+## Is a candidate address reachable from a collector? (source-read recipe, not a verdict)
+
+`inspect-platform` area `collectors` gives each collector's `internalIps`. Use one as an endpoint with the candidate addresses in `matrix` (`protocol` tcp, `dst_port` 22 or the controller's port): every ordered pair is searched in one bulk request, so 13 endpoints are 156 searches, and only the rows from the collector matter. Read each row: **left the model** (`leaves_the_model`: routed out of what the model describes, likely reachable but unproven), **dropped or blackholed in the model** (the model has no route: likely unreachable), or **inconclusive**. The snapshot needs the collector's segment in the model and, for a clean result, advanced reachability. The model cannot say which address inside a routed prefix is the controller, and only Forward's connectivity test proves real reachability. Checked once by hand by a field session on a real network (the working controller address left the model; the edge-side control addresses were dropped at the core).

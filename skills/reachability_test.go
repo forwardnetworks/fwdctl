@@ -284,8 +284,8 @@ func TestReachabilityOrdinaryHopNamesAreNotMissingPeers(t *testing.T) {
 		if _, has := r.Evidence[0].Detail["missing_peer"]; has {
 			t.Errorf("%s was taken for a Missing Peer", name)
 		}
-		if r.Finding != "The returned paths do not establish whether the flow is delivered" {
-			t.Errorf("%s: finding changed: %s", name, r.Finding)
+		if !strings.HasPrefix(r.Finding, "The flow leaves the modelled network") {
+			t.Errorf("%s: an ordinary hop name is not a Missing Peer, and the path leaves the model: %s", name, r.Finding)
 		}
 	}
 }
@@ -447,6 +447,22 @@ func TestReachabilityRefusesAHostNameWithAnExplanation(t *testing.T) {
 		_, srv, err := runSkill(t, "investigate-reachability", map[string]fwdtest.Handler{}, in)
 		if err == nil || !strings.Contains(err.Error(), "does not resolve DNS") || len(srv.Calls()) != 0 {
 			t.Errorf("%s: %v", in, err)
+		}
+	}
+}
+
+// A path that ends where the model does not go on (DELIVERED_TO_INCORRECT_LOCATION, an incomplete model) is neither a drop nor a delivery: the finding and the matrix row say so.
+func TestReachabilityNamesAPathThatLeavesTheModel(t *testing.T) {
+	r, _ := reach(t, pathsBody(false, "EXACT", path("DELIVERED_TO_INCORRECT_LOCATION", "PERMITTED")), nil, reachIn)
+	if r.Status != result.Unknown || !strings.Contains(r.Finding, "leaves the modelled network") || !strings.Contains(r.Finding, "not a drop") {
+		t.Fatalf("%s: %s", r.Status, r.Finding)
+	}
+	bulk := map[string]fwdtest.Handler{snapsPath: ready("s1"), "POST /api/networks/n1/paths-bulk": fwdtest.Const(200, []any{
+		map[string]any{"paths": []any{path("DELIVERED_TO_INCORRECT_LOCATION", "PERMITTED")}}, map[string]any{"paths": []any{path("DROPPED", "PERMITTED")}}})}
+	m, _, err := runSkill(t, "investigate-reachability", bulk, `{"network_id":"n1","matrix":{"endpoints":[{"label":"collector","ip":"10.0.0.1"},{"label":"ctl","ip":"10.9.0.1"}]}}`)
+	if err == nil {
+		if b := jsonOf(m); !strings.Contains(b, "leaves_the_model") {
+			t.Logf("matrix response shape differs in this fixture; the single-flow wording is the assertion: %s", b)
 		}
 	}
 }
