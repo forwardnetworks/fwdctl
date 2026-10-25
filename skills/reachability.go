@@ -359,6 +359,12 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		}
 		finding, next := "The returned paths do not establish whether the flow is delivered", []string{"investigate-collection-failure"}
 		for _, c := range all {
+			if len(real) == 0 && c.path.ForwardingOutcome == "DELIVERED_TO_INCORRECT_LOCATION" {
+				finding = "The flow leaves the modelled network and the model does not say whether it arrives: " + leavesModelNote
+				break
+			}
+		}
+		for _, c := range all {
 			if mp := missingPeerOf(c.path); mp != nil && len(real) == 0 {
 				finding = "The flow is not established as delivered: " + missingPeerText(mp)
 				next = []string{"plan-synthetic-device", "inspect-edge", "investigate-collection-failure"}
@@ -458,3 +464,6 @@ func looksLikeHostname(v string) bool {
 	}
 	return hostnameRE.MatchString(v)
 }
+
+// leavesModelNote explains the pair forwarding outcome DELIVERED_TO_INCORRECT_LOCATION with an incomplete model: a path that ends where the model does not go on (for example out an overlay tunnel to something that is not modelled) reads like a failure but is neither a drop in the model nor a delivery.
+const leavesModelNote = "the path ends where the model does not go on (forwarding outcome DELIVERED_TO_INCORRECT_LOCATION, classification incomplete_model), for example out an overlay or tunnel toward something that is not modelled: it is not a drop in the model and not a delivery; only a real test (such as Forward's connectivity test) shows whether it arrives"

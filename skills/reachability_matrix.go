@@ -194,6 +194,9 @@ func reachabilityMatrix(ctx context.Context, s *fwd.Session, in reachabilityInpu
 					co.devices = append(co.devices, h.Device)
 				}
 				row["outcome"] = fwd.Classify(top)
+				if fwd.Classify(top) == "incomplete_model" && top.ForwardingOutcome == "DELIVERED_TO_INCORRECT_LOCATION" {
+					row["leaves_the_model"] = leavesModelNote
+				}
 				row["groups"] = co.groups
 				row["hops"] = len(top.Hops)
 			}
