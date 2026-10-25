@@ -65,7 +65,7 @@
     "device": {
       "type": "string",
       "minLength": 1,
-      "description": "view config: only the devices whose name contains one of these comma-separated fragments (ignoring case), each with its full record: login ids (CLI, privileged, expert, HTTP, SNMP: ids, never a value), jump server, collector, note and collection options"
+      "description": "view config: only the devices whose name contains one of these comma-separated fragments (ignoring case), each with its full record: login ids (CLI, privileged, expert, HTTP, SNMP: ids, never a value), jump server, collector, note and collection options; also names controller entries of controller-managed setups: a matching controller returns all the devices its saved test reported managing (name and address), paged by limit and offset"
     }
   }
 }
