@@ -142,7 +142,7 @@ func editLinkOverrides(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 	limits := []string{
 		"applying INVALIDATES this snapshot (and the snapshots after it up to the end of its override range), setting them UNPROCESSED; Forward does not reprocess an invalidated snapshot by itself (confirmed live), so their answers are unavailable until edit-snapshot is run for each one, then edit-advanced-reachability if internet exposure is needed (it only runs after a snapshot is PROCESSED) (Forward's LinkOverridesService invalidates the affected snapshots on a snapshot-scoped write)",
 		"overrides are stored per snapshot here; whether a snapshot collected later carries them is not stated by Forward's API, so inspect-topology (kind link_overrides, compare_to_snapshot_id) on the next snapshot shows what it actually holds",
-		"this skill uses Forward's snapshot-scoped override endpoint, which Forward has deprecated for removal in release 26.11; the network-level operations (staged for the next snapshot, no invalidation until a backdate) are not used by this skill"}
+		"this skill uses Forward's snapshot-scoped override endpoint, which Forward has deprecated for removal in release 26.11; the network-level operations (staged for the next snapshot, no invalidation until a backdate) are this skill's staged mode (staged: true)"}
 	limits = append(limits, vlimits...)
 	limits = append(limits, reprocessAskLimit)
 	later := laterSnapshots(ctx, s, in.NetworkID, in.SnapshotID)

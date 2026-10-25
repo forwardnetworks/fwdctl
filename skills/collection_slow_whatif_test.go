@@ -303,7 +303,7 @@ func TestSlowViewStatesSlotTimeAgainstDeviceTime(t *testing.T) {
 	}
 }
 
-// The rebalance block lists the concrete moves (device, from, to, device-hours), longest first, capped by max_moves and narrowed by prefer_connection, with a ready edit-source batch for the classic devices among them.
+// The rebalance block lists the concrete moves (device, from, to, device-hours), longest first, capped by limit and narrowed by failure (the connection type), with a ready edit-source batch for the classic devices among them.
 func TestSlowViewRebalanceListsTheMovesAndABatchPatch(t *testing.T) {
 	routes := slowWhatIfRoutes()
 	var devs, classic []any
@@ -336,7 +336,7 @@ func TestSlowViewRebalanceListsTheMovesAndABatchPatch(t *testing.T) {
 	rb := run(`{"network_id":"n1","view":"slow","limit":2}`)
 	moves, _ := rb["moves"].([]map[string]any)
 	if len(moves) != 2 || rb["moves_total"].(int) < 3 || moves[0]["to_collector"] == moves[0]["from_collector"] || moves[0]["device_hours"].(float64) < moves[1]["device_hours"].(float64) {
-		t.Fatalf("moves are capped by max_moves, differ in collector and run longest first: %v total %v", moves, rb["moves_total"])
+		t.Fatalf("moves are capped by limit, differ in collector and run longest first: %v total %v", moves, rb["moves_total"])
 	}
 	patch, _ := rb["edit_source_definition"].(map[string]any)
 	if patch == nil || patch["object"] != "classic_device" || len(patch["definition"].(map[string]any)["devices"].([]map[string]any)) != 2 {
@@ -344,7 +344,7 @@ func TestSlowViewRebalanceListsTheMovesAndABatchPatch(t *testing.T) {
 	}
 	for _, m := range run(`{"network_id":"n1","view":"slow","failure":"telnet"}`)["moves"].([]map[string]any) {
 		if m["connection"] != "TELNET" {
-			t.Errorf("prefer_connection keeps one connection type: %v", m)
+			t.Errorf("failure keeps one connection type: %v", m)
 		}
 	}
 }

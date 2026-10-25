@@ -8,7 +8,7 @@ An SE running a customer PoC. Five jobs: (1) can Predict do this change, on this
 ## The Predict surface today
 - `verify-change`: 8 views (verify, verdict, describe, impact, list, scope, preflight, paths); `SKILL.md` is 8.7 KB, the largest skill text.
 - `edit-change-set`: 12 inputs (devices, bgp_advertisements, firewall_rules, run, apply, change_set_id, lifecycle, confirm and the rest).
-- Also touched by Predict work: `edit-snapshot` (import, export, cancel), `inspect-bgp-neighbors` (direction in/out), `edit-network`, `inspect-jobs`.
+- Also touched by Predict work: `edit-snapshot` (import, export), `inspect-bgp-neighbors` (direction in/out), `edit-network`, `inspect-jobs`.
 
 ## Proposal
 1. **One source of truth for "what works".** `verify-change/reference/predict-limits.md` and the PoC doc's measured tables are hand-written and go stale within days. Feed them from the daily field report (Skyforge, native Go): per command form, per build, pass / diff / rejected. The skill text then says "see today's report" and keeps only rules that do not move (validator behaviour, what a dry run is, "unknown is never a pass").

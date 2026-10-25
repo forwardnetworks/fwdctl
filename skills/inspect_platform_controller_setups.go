@@ -10,6 +10,7 @@ import (
 	forward "github.com/forwardnetworks/forward-go-sdk"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
+	"github.com/forwardnetworks/fwdctl/result"
 )
 
 const maxControllerSetupNetworks = 200
@@ -24,7 +25,8 @@ func platformControllerSetups(ctx context.Context, s *fwd.Session, _ string) ([]
 	var lim []string
 	if len(nets) > maxControllerSetupNetworks {
 		lim = append(lim, fmt.Sprintf("only the first %d of %d networks and workspaces were read", maxControllerSetupNetworks, len(nets)))
-		nets, _ = result2cap(nets, maxControllerSetupNetworks)
+		sort.SliceStable(nets, func(i, j int) bool { return nets[i].Name < nets[j].Name }) // the same networks every time
+		nets, _ = result.Cap(nets, maxControllerSetupNetworks, "networks", "name a network")
 	}
 	type found struct {
 		rows []any
@@ -96,11 +98,4 @@ func platformControllerSetups(ctx context.Context, s *fwd.Session, _ string) ([]
 	lim = append(lim, fmt.Sprintf("read %d networks and workspaces; Forward lists an empty set on some deployments that do not support the feature, so no row can mean none or unsupported", len(nets)),
 		"logins are ids only; which stored login works on a controller is not recorded (the last connectivity test result says whether it did)")
 	return out, lim, nil
-}
-
-func result2cap[T any](xs []T, n int) ([]T, int) {
-	if len(xs) <= n {
-		return xs, len(xs)
-	}
-	return xs[:n:n], len(xs)
 }

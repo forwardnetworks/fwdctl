@@ -7,9 +7,9 @@ metadata:
   summary: "add or remove link overrides"
   maturity: "2"
   class: write
-  effect: "snapshot"
+  effect: "network"
   secrets: "false"
-  reversible: "true"
+  reversible: "false"
   tools: "topology"
 ---
 

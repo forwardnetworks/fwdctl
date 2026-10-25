@@ -49,7 +49,7 @@
     "failure": {
       "type": "string",
       "minLength": 1,
-      "description": "(view slow: keep only rebalance moves of devices with this connection type, such as SSH or TELNET)"
+      "description": "views devices, platforms and logs: keep the devices whose failure category (credentials, network_path, device_session, unclassified, processing) or type (CONNECTION_REFUSED, ...) is this; view logs: the minimum log level; view slow: keep only rebalance moves of devices with this connection type (SSH, TELNET, ...)"
     },
     "device": {
       "type": "string",
@@ -59,7 +59,7 @@
     "limit": {
       "type": "integer",
       "minimum": 1,
-      "description": "(view slow: also the number of rebalance moves listed, default 50)"
+      "description": "the most rows to return in a page (each view has its own default and maximum); view slow: also the number of rebalance moves listed (default 50)"
     },
     "offset": {
       "type": "integer",

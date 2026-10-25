@@ -143,7 +143,7 @@ func overrideSummary(all []linkOverride) map[string]any {
 
 const overrideLimitsProvenance = "an override record holds only its two ports and whether it forces the link present or absent: Forward's API gives no author, creation time or source for an override, so who set one and when is not available here"
 
-const overrideLimitsScope = "this reads the overrides stored with the snapshot (GET /api/snapshots/{id}/topology/overrides, which Forward has deprecated for removal in release 26.11 in favour of the network-level link-override operations); overrides staged since that snapshot for the network's next snapshot are not read by this skill or the SDK"
+const overrideLimitsScope = "this reads the overrides stored with the snapshot (GET /api/snapshots/{id}/topology/overrides, which Forward has deprecated for removal in release 26.11 in favour of the network-level link-override operations); overrides staged for the next snapshot are summarised separately as staged"
 
 // overrideRow is one override with the derived flags. ports_exist and link_in_topology are computed for the rows of the page only.
 func overrideRow(l linkOverride) map[string]any {
@@ -287,6 +287,8 @@ func linkOverridesView(ctx context.Context, s *fwd.Session, in topologyInput, sn
 		return result.Result{}, err
 	}
 	limits = append(limits, more...)
+	stagedInfo, stagedLimit := stagedOverrideSummary(ctx, s, in.NetworkID)
+	limits = append(limits, stagedLimit)
 	total, _ := d["total"].(int)
 	sid := string(snap.ID)
 	if total == 0 {
@@ -302,6 +304,24 @@ func linkOverridesView(ctx context.Context, s *fwd.Session, in topologyInput, sn
 		finding += " involving " + in.Device
 	}
 	d["kind"] = "link_overrides"
+	if stagedInfo != nil {
+		d["staged"] = stagedInfo
+	}
 	return result.Build(topologyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"plan-link-overrides", "edit-link-overrides"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvTopology, "topologyOverrides", fwd.SnapshotIDPtr(snap), d, finding)}})
+}
+
+// stagedOverrideSummary reads the network-level STAGED overrides (Forward 26.8 and later): the counts staged now and the change since the latest processed snapshot, which apply to the next snapshot and reach an
+// existing one only through a backdate. It is read-only; a build that does not serve the route answers in the limit text, not as an error.
+func stagedOverrideSummary(ctx context.Context, s *fwd.Session, networkID string) (map[string]any, string) {
+	cur, _, err := s.Client.Topology.NetworkOverrides(ctx, networkID)
+	if err != nil {
+		return nil, "the network-level staged overrides could not be read (" + err.Error() + "; Forward serves them from 26.8), so any staged override is not shown here"
+	}
+	info := map[string]any{"present": len(cur.Present), "absent": len(cur.Absent)}
+	if ch, _, cerr := s.Client.Topology.StagedOverrideChanges(ctx, networkID); cerr == nil && ch != nil {
+		info["change_since_latest_processed_snapshot"] = map[string]any{"present_additions": len(ch.PresentAdditions), "present_removals": len(ch.PresentRemovals),
+			"absent_additions": len(ch.AbsentAdditions), "absent_removals": len(ch.AbsentRemovals)}
+	}
+	return info, "staged shows the network-level overrides the next snapshot will use (counts, and what changed since the latest processed snapshot); a staged override reaches an existing snapshot only through a backdate (edit-link-overrides with staged and backdate_to_snapshot_id)"
 }

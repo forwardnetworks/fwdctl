@@ -8,7 +8,7 @@ import (
 )
 
 // The token file is netrc (machine, login, password; one line or several). Any other shape, including the old three-line form, is refused with a message naming the expected format.
-func TestTokenFileReadsNetrcAndStillTheOldThreeLines(t *testing.T) {
+func TestTokenFileReadsNetrcOnlyAndRefusesTheOldThreeLines(t *testing.T) {
 	write := func(text string) string {
 		p := filepath.Join(t.TempDir(), "tok")
 		os.WriteFile(p, []byte(text), 0o600)

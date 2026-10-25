@@ -157,7 +157,7 @@ func TestTokenFileFillsTheLoginAndIsRefusedWhenOthersCanReadIt(t *testing.T) {
 	os.Chmod(tf, 0o600)
 	os.WriteFile(tf, []byte("a\nb\n"), 0o600)
 	if code, _, _ := call(t, []string{"--token-file", tf, "version"}, "", nil); code != usage {
-		t.Error("a token file in neither format must be refused")
+		t.Error("a token file that is not netrc must be refused")
 	}
 }
 

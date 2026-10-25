@@ -235,3 +235,22 @@ func TestMigrationViewComputesEdgeCoverageFromControlConnections(t *testing.T) {
 		t.Errorf("the wizard's controller 192.0.2.10 reaches s1 but not s4: %v", nr)
 	}
 }
+
+// device (view config) keeps the named devices and returns each one's full record: login ids by kind (never a value), jump server, collector, note and the collection options read off the record.
+func TestCollectionConfigDeviceReturnsTheFullRecordWithLoginIDs(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{
+			map[string]any{"name": "dir1", "type": "versa_director_api", "host": "10.10.12.6", "httpCredentialId": "H-25", "snmpCredentialId": "S-27", "jumpServerId": "J1", "collectorId": "C7", "note": "director", "collectBgpAdvertisements": true, "bgpTableType": "ADJ_RIB_IN"},
+			map[string]any{"name": "edge1", "type": "x", "host": "10.20.0.1", "cliCredentialId": "L-9"},
+		}),
+	}, `{"network_id":"n1","view":"config","device":"dir1"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"http_credential_id":"H-25"`, `"snmp_credential_id":"S-27"`, `"jump_server_id":"J1"`, `"note":"director"`, `"collectBgpAdvertisements":true`, `"bgpTableType":"ADJ_RIB_IN"`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s: %s", want, b)
+		}
+	}
+	if strings.Contains(b, "edge1") {
+		t.Errorf("only the named device: %s", b)
+	}
+}

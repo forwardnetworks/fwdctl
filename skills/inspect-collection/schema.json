@@ -61,6 +61,11 @@
     "names_only": {
       "type": "boolean",
       "description": "view config: list the devices as compact [name, collector id] pairs, up to 20,000 per page (default 5,000), sorted by name, so a whole network is read in a few calls"
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1,
+      "description": "view config: only the devices whose name contains one of these comma-separated fragments (ignoring case), each with its full record: login ids (CLI, privileged, expert, HTTP, SNMP: ids, never a value), jump server, collector, note and collection options"
     }
   }
 }

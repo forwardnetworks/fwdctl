@@ -51,13 +51,11 @@ Every skill is one question with one result shape, and its description says what
 the verb rule keeps names predictable, and the routing eval's "rival" pairs measure the overlap that remains.
 
 The skills, by area:
-- **Path analysis and troubleshooting:** `investigate-reachability`, `inspect-topology`, `inspect-history`, `compare-device-config`, `inspect-device-files`, `investigate-collection-failure`
-- **Security:** `inspect-vulnerabilities`, `check-network-compliance`
-- **Change:** `verify-change`
-- **Health and collection:** `inspect-snapshots`, `inspect-collection`, `inspect-performance`, `inspect-environment`, `inspect-access`
-- **Inventory:** `inspect-networks`, `inspect-inventory`
-- **NQE:** `find-nqe-query`, `author-nqe-query`, `validate-nqe-query`, `compare-nqe-results`
-- **Edit (write, dry run first):** `edit-snapshot` (action note), `edit-snapshot` (action reprocess), `edit-advanced-reachability`, `edit-checks`, `edit-change-set`, `edit-collection`, `edit-endpoint-profile`, `edit-workspace`, `edit-org-property`, `edit-access`, `edit-data-file`, `edit-data-connector`, `edit-nqe-query`, `edit-device-tags`, `edit-link-overrides`, `edit-synthetic-query`, `edit-wan-circuit`
+- **Read (`inspect-*`, `investigate-*`):** `inspect-access`, `inspect-bgp-neighbors`, `inspect-collection`, `inspect-device-files`, `inspect-edge`, `inspect-environment`, `inspect-history`, `inspect-inventory`, `inspect-jobs`, `inspect-networks`, `inspect-performance`, `inspect-platform`, `inspect-snapshots`, `inspect-topology`, `inspect-vulnerabilities`, `investigate-collection-failure`, `investigate-reachability`
+- **Judge and compare (`check-*`, `verify-*`, `compare-*`):** `check-network-compliance`, `compare-device-config`, `compare-nqe-results`, `verify-change`
+- **NQE:** `author-nqe-query`, `find-nqe-query`, `validate-nqe-query`
+- **Edit (write, dry run first):** `edit-access`, `edit-advanced-reachability`, `edit-alias`, `edit-change-set`, `edit-checks`, `edit-collection`, `edit-data-connector`, `edit-data-file`, `edit-device-tags`, `edit-endpoint-profile`, `edit-internet-exclusions`, `edit-jobs`, `edit-link-overrides`, `edit-network`, `edit-nqe-query`, `edit-org-property`, `edit-platform`, `edit-snapshot`, `edit-source`, `edit-synthetic-query`, `edit-wan-circuit`, `edit-workspace`
+- **Playbooks (`plan-*`, procedures that sequence the skills above):** `plan-change-review`, `plan-compliance-audit`, `plan-device-audit`, `plan-incident-triage`, `plan-investigation`, `plan-link-overrides`, `plan-maintenance-window`, `plan-safe-write`, `plan-security-posture`, `plan-segmentation-check`, `plan-snapshot-recovery`, `plan-synthetic-device`, `plan-troubleshoot-connectivity`, `plan-vulnerability-response`, `plan-what-changed`
 
 The result every tool returns is small and structured, so the model spends its attention on the answer:
 - `status`: `ok`, `failed`, `unknown` (could not decide: never a pass) or `error`

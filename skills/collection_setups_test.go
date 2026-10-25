@@ -89,7 +89,7 @@ func TestControllerSetupTestQueuesTheTestsOnlyWhenApplied(t *testing.T) {
 	if r.Status != result.OK || !strings.HasPrefix(q, "action=test ") || !strings.Contains(q, `"setupNames":["sdwan"]`) {
 		t.Errorf("apply: %s %s q=%q", r.Status, r.Finding, q)
 	}
-	if !strings.Contains(strings.Join(r.Limits, " "), "inspect-collection-config") {
+	if !strings.Contains(strings.Join(r.Limits, " "), "inspect-collection (view config") {
 		t.Errorf("limits should point to the read-back: %v", r.Limits)
 	}
 	if r, _, err := runSkill(t, "edit-source", setupsRoutes(&q), `{"network_id":"n1","object":"controller_setup","action":"test","name":"nope","apply":true}`); err == nil && r.Status == result.OK {

@@ -51,8 +51,11 @@ func TestListsAreCutOnlyThroughReportedHelpers(t *testing.T) {
 		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			se, ok := n.(*ast.SliceExpr)
-			if !ok || se.High == nil || se.Low != nil || se.Slice3 {
-				return true // not a prefix cut, or the x[:0:0] empty-slice idiom
+			if !ok || se.High == nil || se.Low != nil {
+				return true // not a prefix cut
+			}
+			if lit, isLit := se.High.(*ast.BasicLit); se.Slice3 && isLit && lit.Value == "0" {
+				return true // the x[:0:0] empty-slice idiom (a three-index cut to a real length is a cap and is reported)
 			}
 			if be, isBin := se.High.(*ast.BinaryExpr); isBin && be.Op == token.SUB {
 				return true // x[:len(x)-1]: dropping the tail, not capping a result

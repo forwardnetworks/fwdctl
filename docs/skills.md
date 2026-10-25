@@ -133,7 +133,7 @@ Policy checks, evidence, a device or a site under review.
 Is the data current, is collection working, is anything stressed.
 
 - `inspect-snapshots`: Which snapshots exist, which is the newest one worth reading, which are predictions, and how complete is one?
-- `inspect-collection`: Is collection running or healthy now (view status), and what is Forward configured to collect, with credentials never shown (view config)?
+- `inspect-collection`: Is collection running or healthy now (view status), and what is Forward configured to collect, with credentials never shown, only their ids on request (view config)?
 - `inspect-performance`: Which devices and interfaces are unhealthy right now (CPU, memory, utilization, errors, loss), and what is their history?
 - `inspect-environment`: Which Forward build, organization, login and vulnerability-index age is this, which features has the client seen, and which features (advanced reachability, flow computation, Predict, NQE fields) are on, what is their default and where is each set (`features`)?
 - `edit-collection` *(writes, dry run first)*: Start or stop a collection; refuses while one runs or the collector is down.
