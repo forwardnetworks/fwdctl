@@ -156,7 +156,7 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 		limits = append(limits, "the classic device records could not be read ("+classicErr+"), so the devices carry no host, login, jump server or collector and no controller record was matched")
 	}
 	mig := map[string]any{
-		"by_category": byCat, "by_effective_type": byType, "controllers": shown, "devices": devShown, "edge_coverage": coverage, "devices_counted": counted, "devices_read": len(statuses), "devices_without_test_result": noTest,
+		"by_category": byCat, "by_effective_type": byType, "controllers": shown, "devices": devShown, "edge_coverage": coverage, "migration_plan": migrationPlan(devRows, vendorOf), "devices_counted": counted, "devices_read": len(statuses), "devices_without_test_result": noTest,
 	}
 	if counted > 0 {
 		if creds, _, cerr := s.Client.Credentials.ListCLI(ctx, in.NetworkID); cerr != nil {
@@ -436,3 +436,60 @@ func classicOptions(c forward.ClassicDevice) map[string]any {
 	}
 	return out
 }
+
+// migrationPlan builds the migrate input for ALL counted devices (not the capped per-controller pilots): every device as a managed entry with its type, host, login ids, jump server, port and collection options restated,
+// `controllers` left empty for the person to fill from the controllers they chose and verified, and the checks a reviewer needs: vEdges whose collect is not false, devices with no login, and devices no controller's
+// test reported. The setup name is a placeholder. It applies nothing and is a starting point to review, not a verdict.
+func migrationPlan(rows []map[string]any, vendorOf map[string]string) map[string]any {
+	const maxPlanDevices = 500
+	managed := []map[string]any{}
+	var vedgeCollecting, noLogin, noController []string
+	for _, r := range rows {
+		name := fmt.Sprint(r["name"])
+		eff := fmt.Sprint(r["effective_type"])
+		if controllerTypeIs(vendorOf[eff]) { // a controller record itself, not a device to move under one
+			continue
+		}
+		m := map[string]any{"name": name, "type": eff}
+		for field, key := range map[string]string{"host": "host", "cliCredentialId": "cli_credential_id", "cliCredential2Id": "cli_credential2_id", "cliCredential3Id": "cli_credential3_id",
+			"httpCredentialId": "http_credential_id", "snmpCredentialId": "snmp_credential_id", "jumpServerId": "jump_server_id", "port": "port"} {
+			if v := r[key]; v != nil {
+				m[field] = v
+			}
+		}
+		if opts, ok := r["options"].(map[string]any); ok {
+			for k, v := range opts {
+				m[k] = v
+			}
+		}
+		if m["cliCredentialId"] == nil && m["httpCredentialId"] == nil {
+			noLogin = append(noLogin, name)
+		}
+		if len(r["controllers"].([]map[string]any)) == 0 {
+			noController = append(noController, name)
+		}
+		if vendorOf[eff] == "viptela" {
+			if c, has := m["collect"]; !has || c != false {
+				vedgeCollecting = append(vedgeCollecting, name)
+			}
+		}
+		managed = append(managed, m)
+	}
+	sort.Slice(managed, func(i, j int) bool { return fmt.Sprint(managed[i]["name"]) < fmt.Sprint(managed[j]["name"]) })
+	total := len(managed)
+	managed, _ = result.Cap(managed, maxPlanDevices, "devices", "narrow the move")
+	cap := func(xs []string) map[string]any {
+		sort.Strings(xs)
+		shown, _ := result.CapRow(xs, 50)
+		return map[string]any{"count": len(xs), "names": shown}
+	}
+	return map[string]any{"object": "controller_setup", "action": "migrate",
+		"definition":      map[string]any{"name": "<choose the setup name>", "controllers": []map[string]any{}, "managedDevices": managed},
+		"devices_in_plan": total, "devices_shown": len(managed),
+		"fill_in": "definition.controllers is empty on purpose: fill it from the controllers you chose and verified (reachable management address, type cisco_sdwan_vsmart_ssh, login, jump server), not from the wizard's system IPs",
+		"review":  map[string]any{"vedges_whose_collect_is_not_false": cap(vedgeCollecting), "devices_with_no_login_recorded": cap(noLogin), "devices_no_controller_test_reported": cap(noController)},
+		"warning": "migrate DELETES each classic device it names and has no undo command; read edit-source reference sdwan-controller-mode.md, dry run first, then a pilot"}
+}
+
+// controllerTypeIs says a vendor is a controller product's own (a vSmart record), so it is not moved as a managed device.
+func controllerTypeIs(vendor string) bool { return vendor == "viptela_smart" }

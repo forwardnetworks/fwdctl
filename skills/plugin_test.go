@@ -24,7 +24,7 @@ func TestPluginManifestsNameTheMarketplaceAndPluginForwardSkills(t *testing.T) {
 			t.Fatalf("%s: %v", path, err)
 		}
 	}
-	if mk.Name != "forward-skills" || pl.Name != "forward-skills" || len(mk.Plugins) != 1 || mk.Plugins[0].Name != "forward-skills" || mk.Plugins[0].Source != "." {
+	if mk.Name != "forward-skills" || pl.Name != "forward-skills" || len(mk.Plugins) != 2 || mk.Plugins[0].Name != "forward-skills" || mk.Plugins[0].Source != "." || mk.Plugins[1].Name != "forward-mcp" || mk.Plugins[1].Source != "./plugins/forward-mcp" {
 		t.Fatalf("marketplace %+v plugin %+v", mk, pl)
 	}
 }

@@ -290,3 +290,39 @@ func TestConfigDeviceReturnsAControllersFullReportedManagedDevices(t *testing.T)
 		t.Errorf("only the named controller returns the full list")
 	}
 }
+
+// The migration plan builds the migrate input for ALL counted devices with their logins, jump server and collection options restated, leaves the controllers empty for the person to fill, and lists the vEdges whose collect is not false.
+func TestMigrationPlanCoversEveryDeviceAndFlagsVEdgesStillCollecting(t *testing.T) {
+	routes := migrationRoutes()
+	routes["GET /api/deviceConnTypes"] = fwdtest.Const(200, map[string]any{
+		"viptela": map[string]any{"vendor": "viptela_smart", "collectionSourceType": "CONTROLLER_MANAGED", "relatedTypes": []string{"cisco_sdwan_ssh", "cisco_ios_xe_ssh"}},
+		"cisco_sdwan_ssh": map[string]any{"vendor": "viptela", "collectionSourceType": "CLASSIC"}, "cisco_ios_xe_ssh": map[string]any{"vendor": "cisco_ios_xe", "collectionSourceType": "CLASSIC"},
+	})
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{
+		map[string]any{"name": "vedge-off", "type": "cisco_sdwan_ssh", "host": "198.51.100.1", "cliCredentialId": "L-1", "collect": false, "testResult": map[string]any{"discoveredType": "cisco_sdwan_ssh"}},
+		map[string]any{"name": "vedge-on", "type": "cisco_sdwan_ssh", "host": "198.51.100.2", "cliCredentialId": "L-1", "testResult": map[string]any{"discoveredType": "cisco_sdwan_ssh"}},
+		map[string]any{"name": "edge-nologin", "type": "cisco_ios_xe_ssh", "host": "198.51.100.3", "testResult": map[string]any{"discoveredType": "cisco_ios_xe_ssh", "controllerInfos": []any{map[string]any{"ipAddress": "192.0.2.10"}}}},
+	})
+	r, _ := mustRun(t, "inspect-collection", routes, `{"network_id":"n1","view":"migration","limit":1}`)
+	var m map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["migration"].(map[string]any); ok {
+			m = v
+		}
+	}
+	plan, _ := m["migration_plan"].(map[string]any)
+	if plan == nil || plan["devices_in_plan"] != 3 {
+		t.Fatalf("all three devices are in the plan whatever limit says: %v", plan)
+	}
+	def := plan["definition"].(map[string]any)
+	if len(def["controllers"].([]map[string]any)) != 0 || len(def["managedDevices"].([]map[string]any)) != 3 {
+		t.Errorf("controllers left empty, three managed devices: %v", def)
+	}
+	rev := plan["review"].(map[string]any)
+	if v := rev["vedges_whose_collect_is_not_false"].(map[string]any); v["count"] != 1 || fmt.Sprint(v["names"]) != "[vedge-on]" {
+		t.Errorf("only vedge-on is still collecting: %v", v)
+	}
+	if v := rev["devices_with_no_login_recorded"].(map[string]any); v["count"] != 1 {
+		t.Errorf("edge-nologin has no login: %v", v)
+	}
+}
