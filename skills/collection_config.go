@@ -326,54 +326,8 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 	} else if len(setups) > 0 {
 		read++
 		total += len(setups)
-		rows := make([]map[string]any, 0, len(setups))
-		for _, st := range setups {
-			var devs []map[string]any
-			tests := map[string]int{}
-			add := func(name, role, host, cred string, collect *bool, tr *forward.DeviceTestResult) {
-				d := map[string]any{"name": name, "role": role}
-				if host != "" {
-					d["host"] = host
-				}
-				if role == "managed" {
-					d["cli_credential_set"] = cred != ""
-					d["collect"] = collect == nil || *collect
-				}
-				outcome, at := setupTestOutcome(tr)
-				d["test"] = outcome
-				if at != "" {
-					d["tested_at"] = at
-				}
-				if tr != nil {
-					setupTestDetails(d, tr)
-					if role == "controller" && in.Device != "" && matchesDeviceFilter(name, in.Device) {
-						all := make([]map[string]any, 0, len(tr.ManagedDevices))
-						for _, m := range tr.ManagedDevices {
-							all = append(all, map[string]any{"name": m.Name, "address": m.IPAddress})
-						}
-						d["managed_devices_reported_count"] = len(all)
-						if page, om, ok := window(all, in.Limit, in.Offset, 100, 2000, "devices reported by "+name); ok {
-							d["managed_devices_reported_page"] = page
-							omitted = append(omitted, om...)
-						}
-					}
-				}
-				tests[strings.SplitN(outcome, ":", 2)[0]]++
-				devs = append(devs, d)
-			}
-			for _, c := range st.Controllers {
-				add(c.Name, "controller", c.Host, c.CLICredentialID, nil, c.TestResult)
-			}
-			for _, m := range st.ManagedDevices {
-				add(m.Name, "managed", m.Host, m.CLICredentialID, m.Collect, m.TestResult)
-			}
-			shown, nDevs := result.CapRow(devs, 100)
-			row := map[string]any{"name": st.Name, "controllers": len(st.Controllers), "managed_devices": len(st.ManagedDevices), "tests": tests, "devices": shown, "devices_total": nDevs}
-			if c := string(st.CollectorID); c != "" {
-				row["collector_id"] = c
-			}
-			rows = append(rows, row)
-		}
+		rows, om := controllerSetupRows(setups, in)
+		omitted = append(omitted, om...)
 		// a controller whose test found no guests is compared with the classic devices that have the same stored error: if others do too, it is not a symptom of the migration
 		if n := classicWithError(ctx, s, in.NetworkID, "HOST_NOT_REPORTING_ANY_GUEST"); n > 0 {
 			for _, r := range rows {

@@ -546,7 +546,7 @@ func TestInspectPlatformControllerSetupsListsEveryNetworkAndWorkspace(t *testing
 		"GET /api/networks/n3/controller-managed-setups": fwdtest.Const(200, []any{}),
 	}, `{"area":"controller_setups"}`)
 	b := jsonOf(r)
-	for _, want := range []string{`"setup":"sdwan"`, `"setup":"pilot"`, `"workspace":true`, `"host":"192.0.2.10"`, `"jump_server_id":"J1"`, `"cli_credential_id":"L-1"`, `"http_credential_id":"H-1"`, `"collector_id":"C1"`} {
+	for _, want := range []string{`"name":"sdwan"`, `"name":"pilot"`, `"workspace":true`, `"host":"192.0.2.10"`, `"jump_server_id":"J1"`, `"cli_credential_id":"L-1"`, `"http_credential_id":"H-1"`, `"collector_id":"C1"`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("missing %s: %s", want, b)
 		}

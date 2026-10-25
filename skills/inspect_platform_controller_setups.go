@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -15,12 +14,22 @@ import (
 
 const maxControllerSetupNetworks = 200
 
-// platformControllerSetups lists the controller-managed setups of EVERY network and workspace the login can see (name, collector, controllers with host, port, type, jump server and which stored logins they use, the guests'
-// count and the last saved connectivity test), so what is already configured can be reused before anyone proposes a new setup. Logins are ids, never values. Networks are read a few at a time.
-func platformControllerSetups(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
+// platformControllerSetups lists the controller-managed setups of EVERY network and workspace the login can see, or of one when network_id is given, in the shape inspect-collection view config uses (controllerSetupRows):
+// the controllers and managed devices with type, host, port, jump server and the stored login ids (never a value), and the last saved connectivity test. It adds the network each setup belongs to, so what is already
+// configured can be reused before anyone proposes a new setup. Networks are read a few at a time.
+func platformControllerSetups(ctx context.Context, s *fwd.Session, networkID string) ([]any, []string, error) {
 	nets, err := s.Networks(ctx)
 	if err != nil {
 		return nil, nil, err
+	}
+	if networkID != "" {
+		var one []forward.Network
+		for _, n := range nets {
+			if string(n.ID) == networkID {
+				one = append(one, n)
+			}
+		}
+		nets = one
 	}
 	var lim []string
 	if len(nets) > maxControllerSetupNetworks {
@@ -29,7 +38,7 @@ func platformControllerSetups(ctx context.Context, s *fwd.Session, _ string) ([]
 		nets, _ = result.Cap(nets, maxControllerSetupNetworks, "networks", "name a network")
 	}
 	type found struct {
-		rows []any
+		rows []map[string]any
 		err  error
 	}
 	res := make([]found, len(nets))
@@ -46,37 +55,11 @@ func platformControllerSetups(ctx context.Context, s *fwd.Session, _ string) ([]
 				res[i].err = e
 				return
 			}
-			for _, st := range setups {
-				ctls := make([]map[string]any, 0, len(st.Controllers))
-				tests := map[string]int{}
-				latest := ""
-				for _, c := range st.Controllers {
-					cr := map[string]any{"name": c.Name, "type": nilIfEmpty(c.Type), "host": nilIfEmpty(c.Host), "jump_server_id": nilIfEmpty(c.JumpServerID),
-						"cli_credential_id": nilIfEmpty(c.CLICredentialID), "http_credential_id": nilIfEmpty(c.HTTPCredentialID), "snmp_credential_id": nilIfEmpty(c.SNMPCredentialID)}
-					if c.Port != nil {
-						cr["port"] = *c.Port
-					}
-					outcome, at := setupTestOutcome(c.TestResult)
-					cr["test"] = outcome
-					if at != "" {
-						cr["tested_at"] = at
-						if at > latest {
-							latest = at
-						}
-					}
-					tests[strings.SplitN(outcome, ":", 2)[0]]++
-					ctls = append(ctls, cr)
-				}
-				row := map[string]any{"network_id": string(n.ID), "network": n.Name, "workspace": string(n.ParentID) != "", "setup": st.Name, "controllers": ctls,
-					"managed_devices": len(st.ManagedDevices), "controller_tests": tests}
-				if latest != "" {
-					row["last_controller_test"] = latest
-				}
-				if c := string(st.CollectorID); c != "" {
-					row["collector_id"] = c
-				}
-				res[i].rows = append(res[i].rows, row)
+			rows, _ := controllerSetupRows(setups, collectionConfigInput{})
+			for _, r := range rows {
+				r["network_id"], r["network"], r["workspace"] = string(n.ID), n.Name, string(n.ParentID) != ""
 			}
+			res[i].rows = rows
 		}(i, n)
 	}
 	wg.Wait()
@@ -87,7 +70,9 @@ func platformControllerSetups(ctx context.Context, s *fwd.Session, _ string) ([]
 			failed++
 			continue
 		}
-		out = append(out, f.rows...)
+		for _, r := range f.rows {
+			out = append(out, r)
+		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return fmt.Sprint(out[i].(map[string]any)["network"]) < fmt.Sprint(out[j].(map[string]any)["network"])
@@ -96,6 +81,6 @@ func platformControllerSetups(ctx context.Context, s *fwd.Session, _ string) ([]
 		lim = append(lim, fmt.Sprintf("%d network(s) could not be read (no access, or the controller-managed route is not served there); an empty list for them is not 'none'", failed))
 	}
 	lim = append(lim, fmt.Sprintf("read %d networks and workspaces; Forward lists an empty set on some deployments that do not support the feature, so no row can mean none or unsupported", len(nets)),
-		"logins are ids only; which stored login works on a controller is not recorded (the last connectivity test result says whether it did)")
+		"the shape is the one inspect-collection view config shows for a network (controller_setups): devices are the controllers and managed devices, up to 100 per setup; logins are ids only; which stored login works is in each device's last test (discovered logins)")
 	return out, lim, nil
 }
