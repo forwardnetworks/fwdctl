@@ -1,6 +1,7 @@
 package skills_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -196,5 +197,41 @@ func TestMigrationViewLinksEdgesWithoutAControllerAndHintsLogins(t *testing.T) {
 	h := sm["credential_hints"].(map[string]any)["devices_without_a_recorded_login"].(map[string]any)
 	if sib, _ := h["vedge2"].(map[string]int); sib["L-9"] != 1 {
 		t.Errorf("vedge2 has no login recorded; its same-subnet sibling uses L-9: %v", h)
+	}
+}
+
+// Edge coverage: each IOS XE SD-WAN edge's control connections give the vSmarts it is up to (STATE found after PROXY, so a row without the trailing group id still reads), a greedy minimal cover, and the edges the wizard's
+// controllers (the addresses the connectivity tests reported) do not reach.
+func TestMigrationViewComputesEdgeCoverageFromControlConnections(t *testing.T) {
+	routes := migrationRoutes()
+	routes[snapsPath] = ready("s1")
+	hdr := "PEER TYPE\nPROT SYSTEM IP\nTYPE\n--------------------------------\n"
+	row := func(ip, state string, withGroup bool) string {
+		g := " 0"
+		if !withGroup {
+			g = ""
+		}
+		return "vsmart  tls  " + ip + "      253        1      198.51.100.23     23556 203.0.113.114    23556 ExampleOrg - 1   biz-internet    No    " + state + "     0:03:09:42" + g + "\n"
+	}
+	routes["GET /api/networks/n1/devices/s1/files/sdwan_control_connections.txt"] = fwdtest.Const(200, []byte(hdr+row("192.0.2.10", "up", true)+row("192.0.2.11", "up", true)+"vbond  tls  192.0.2.99  1 1 a 1 b 1 Org x No up 0:00:00:01 0\n"))
+	routes["GET /api/networks/n1/devices/s4/files/sdwan_control_connections.txt"] = fwdtest.Const(200, []byte(hdr+row("192.0.2.11", "up", false)+row("192.0.2.12", "tear_down", true)))
+	r, _ := mustRun(t, "inspect-collection", routes, `{"network_id":"n1","view":"migration"}`)
+	var m map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["migration"].(map[string]any); ok {
+			m = v
+		}
+	}
+	cov, _ := m["edge_coverage"].(map[string]any)
+	if cov == nil || cov["edges_read"] != 2 || cov["edges_with_a_vsmart_up"] != 2 || cov["distinct_vsmarts_up"] != 2 {
+		t.Fatalf("coverage: %v", cov)
+	}
+	cover := cov["minimal_cover"].([]map[string]any)
+	if len(cover) != 1 || cover[0]["vsmart_system_ip"] != "192.0.2.11" || cover[0]["newly_covered_edges"] != 2 {
+		t.Errorf("one vSmart (192.0.2.11) covers both edges: %v", cover)
+	}
+	nr := cov["edges_the_wizard_controllers_do_not_reach"].(map[string]any)
+	if nr["count"] != 1 || fmt.Sprint(nr["names"]) != "[s4]" {
+		t.Errorf("the wizard's controller 192.0.2.10 reaches s1 but not s4: %v", nr)
 	}
 }

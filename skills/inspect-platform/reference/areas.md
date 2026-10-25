@@ -8,6 +8,7 @@ Read the section for the area you are answering from. Every area removes secret 
 - endpoint_profiles and collection_settings
 - collectors and schedules
 - cloud_setups
+- controller_setups
 - locations and tag_definitions
 - access_labels and api_tokens
 - webhooks, banners, certificates
@@ -38,6 +39,10 @@ Collectors are organization-wide: name, status, connected, version, last connect
 ## cloud_setups
 
 Cloud accounts (AWS, Azure, GCP, VMware), controller-managed setups (ACI, SD-WAN, Zscaler) and Mist setups for one network, each tagged with `setup_type`. Keys, private keys and passwords are not returned. A region's last connectivity test is in `inspect-collection` view `config`.
+
+## controller_setups
+
+The controller-managed setups (SD-WAN, ACI, Versa and the like) of **every network and workspace the login can see**, no `network_id` needed: per setup its network, whether that is a workspace, its collector, its controllers with type, host, port, jump server and which stored logins they use (CLI, HTTP, SNMP: ids only, never a value), the number of managed devices, and the last saved connectivity test per controller. Use it to reuse what is already configured before proposing a new setup. Networks are read a few at a time (at most 200); a network that cannot be read is counted in the limits, and an empty list may mean none or that the feature is not served. Which stored login works is not recorded; the test result says whether it did.
 
 ## locations and tag_definitions
 

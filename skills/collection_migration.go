@@ -131,6 +131,18 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 		limit = 20
 	}
 	shown, omitted := result.Cap(ctls, limit, "controllers", "raise limit")
+	var edgeNames, wizardAddrs []string
+	for _, r := range devRows {
+		if vendorOf[fmt.Sprint(r["effective_type"])] == "cisco_ios_xe" {
+			edgeNames = append(edgeNames, fmt.Sprint(r["name"]))
+		}
+	}
+	for _, c := range ctls {
+		if a, ok := c["address"].(string); ok && c["address_confirmed_by_a_record"] != nil {
+			wizardAddrs = append(wizardAddrs, a)
+		}
+	}
+	coverage, coverageLimits := migrationCoverage(ctx, s, in.NetworkID, edgeNames, wizardAddrs)
 	devShown, devOmitted := result.Cap(devRows, max(limit, 50), "devices", "raise limit")
 	omitted = append(omitted, devOmitted...)
 	limits := []string{
@@ -139,11 +151,12 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 		"field-reported symptom (not checked here): an SSH-collected SD-WAN device whose only collected file is snapshot_time.txt (inspect-device-files list) is one that needs its controller; the controller that already collects its peers has a record with the login and jump server (classic_record)",
 		"counted devices are collected as classic devices but belong in a controller-managed setup (inspect-collection view config lists the setups; edit-source objects create them): this is a finding, not a collection failure",
 	}
+	limits = append(limits, coverageLimits...)
 	if classicErr != "" {
 		limits = append(limits, "the classic device records could not be read ("+classicErr+"), so the devices carry no host, login, jump server or collector and no controller record was matched")
 	}
 	mig := map[string]any{
-		"by_category": byCat, "by_effective_type": byType, "controllers": shown, "devices": devShown, "devices_counted": counted, "devices_read": len(statuses), "devices_without_test_result": noTest,
+		"by_category": byCat, "by_effective_type": byType, "controllers": shown, "devices": devShown, "edge_coverage": coverage, "devices_counted": counted, "devices_read": len(statuses), "devices_without_test_result": noTest,
 	}
 	if counted > 0 {
 		if creds, _, cerr := s.Client.Credentials.ListCLI(ctx, in.NetworkID); cerr != nil {
@@ -175,6 +188,9 @@ func inspectCollectionMigration(ctx context.Context, s *fwd.Session, raw json.Ra
 			mig["credential_candidates"] = cands
 			limits = append(limits, "credential_candidates are the CLI logins set to auto-associate, which Forward may have tried on these devices; the connectivity test result does not record which login worked, so the working one cannot be inferred. A migrated guest inherits nothing from the controller: give each guest a CLI credential and run a connectivity test on a small pilot before moving the rest")
 		}
+	}
+	if coverage == nil {
+		delete(mig, "edge_coverage")
 	}
 	detail := map[string]any{"migration": mig}
 	finding := fmt.Sprintf("%d of %d classic devices need to be migrated to a controller-managed setup (ACI %d, SD-WAN %d)", counted, len(statuses), byCat["ACI"], byCat["SD_WAN"])
