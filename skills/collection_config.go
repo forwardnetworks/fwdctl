@@ -346,6 +346,17 @@ func inspectCollectionConfig(ctx context.Context, s *fwd.Session, raw json.RawMe
 				}
 				if tr != nil {
 					setupTestDetails(d, tr)
+					if role == "controller" && in.Device != "" && matchesDeviceFilter(name, in.Device) {
+						all := make([]map[string]any, 0, len(tr.ManagedDevices))
+						for _, m := range tr.ManagedDevices {
+							all = append(all, map[string]any{"name": m.Name, "address": m.IPAddress})
+						}
+						d["managed_devices_reported_count"] = len(all)
+						if page, om, ok := window(all, in.Limit, in.Offset, 100, 2000, "devices reported by "+name); ok {
+							d["managed_devices_reported_page"] = page
+							omitted = append(omitted, om...)
+						}
+					}
 				}
 				tests[strings.SplitN(outcome, ":", 2)[0]]++
 				devs = append(devs, d)
@@ -807,6 +818,16 @@ func setupTestDetails(d map[string]any, tr *forward.DeviceTestResult) {
 	}
 	if tr.DiscoveredCLICredentialID != "" {
 		d["discovered_cli_credential"] = tr.DiscoveredCLICredentialID
+	}
+	if tr.DiscoveredHTTPCredentialID != "" {
+		d["discovered_http_credential"] = tr.DiscoveredHTTPCredentialID
+	}
+	if tr.DiscoveredSNMPCredentialID != "" {
+		d["discovered_snmp_credential"] = tr.DiscoveredSNMPCredentialID
+	}
+	if len(tr.NameAliases) > 0 {
+		aliases, n := result.CapRow(tr.NameAliases, 10)
+		d["name_aliases"], d["name_aliases_total"] = aliases, n
 	}
 	if len(tr.ManagedDevices) > 0 {
 		rep := make([]map[string]any, 0, len(tr.ManagedDevices))

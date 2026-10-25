@@ -254,3 +254,39 @@ func TestCollectionConfigDeviceReturnsTheFullRecordWithLoginIDs(t *testing.T) {
 		t.Errorf("only the named device: %s", b)
 	}
 }
+
+// A controller's last saved test carries more than its outcome: the addresses reached, the hostnames the query phase found and which stored logins worked (ids only). The config view shows them.
+func TestSetupTestDetailsShowAliasesAndTheWorkingLoginIDs(t *testing.T) {
+	r, _ := mustRun(t, "inspect-collection", map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{map[string]any{"name": "s", "controllers": []any{map[string]any{"name": "ctl", "host": "192.0.2.10",
+			"testResult": map[string]any{"discoveredType": "cisco_sdwan_vsmart_ssh", "hostIps": []any{"192.0.2.10"}, "nameAliases": []any{"vsmart-west"}, "discoveredCliCredentialId": "L-3", "discoveredHttpCredentialId": "H-2"}}}}}),
+	}, `{"network_id":"n1","view":"config"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"name_aliases":["vsmart-west"]`, `"discovered_cli_credential":"L-3"`, `"discovered_http_credential":"H-2"`, `"host_ips":["192.0.2.10"]`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s: %s", want, b)
+		}
+	}
+}
+
+// device (view config) also names controller entries: a matching controller returns EVERY device its saved test reported managing (name, address), paged by limit and offset, so the controller-to-edge tables can be built from saved data.
+func TestConfigDeviceReturnsAControllersFullReportedManagedDevices(t *testing.T) {
+	var reported []any
+	for i := 0; i < 130; i++ {
+		reported = append(reported, map[string]any{"name": fmt.Sprintf("edge%03d", i), "ipAddress": fmt.Sprintf("10.9.0.%d", i)})
+	}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{map[string]any{"name": "s", "controllers": []any{map[string]any{"name": "ctl-a", "host": "192.0.2.10",
+			"testResult": map[string]any{"discoveredType": "cisco_sdwan_vsmart_ssh", "managedDevices": reported}}, map[string]any{"name": "ctl-b", "host": "192.0.2.11", "testResult": map[string]any{"managedDevices": reported[:3]}}}}}),
+	}
+	r, _ := mustRun(t, "inspect-collection", routes, `{"network_id":"n1","view":"config","device":"ctl-a","limit":50,"offset":100}`)
+	b := jsonOf(r)
+	if !strings.Contains(b, `"managed_devices_reported_count":130`) || !strings.Contains(b, "edge100") || !strings.Contains(b, "edge129") || strings.Contains(b, "edge099") {
+		t.Errorf("page 100 to 129 of ctl-a's 130 reported devices: %s", b)
+	}
+	if strings.Contains(strings.Join(r.Limits, "|"), "ctl-b") && strings.Contains(b, `"name":"ctl-b","role":"controller"`) && strings.Contains(b, "managed_devices_reported_page\":[{\"address\":\"10.9.0.0\"") {
+		t.Errorf("only the named controller returns the full list")
+	}
+}

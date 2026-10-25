@@ -17,3 +17,12 @@ What controller mode does and does not skip: `investigate-collection-failure` re
 8. **Undo:** `controller_setup` action `delete`, `confirm` = the setup name (the controller entries go; the edges were never touched).
 
 vEdges are unaffected by controller mode: keep their collection disabled, or use `disable_commands` (org-wide, untested for vEdge), until the collector team confirms otherwise.
+
+## Finding the management address by testing candidates (run once by a field session; not generalised)
+
+When the controllers' management addresses are not in any collected file, a candidate list can be tested without touching production: `edit-workspace` creates a change workspace (one never-collected placeholder device, a few days, no schedule), then in it `edit-source` `controller_setup` `create` with one controller entry per candidate (type `cisco_sdwan_vsmart_ssh`, port 22, a stored login), then `controller_setup` action `test` with `wait_seconds`, then read each controller's result with `inspect-collection` view `config` (`controller_setups`). Observed once on a real network, over the regional management subnets learned from the OMP routes (51 candidates):
+- `HOST_NOT_REPORTING_ANY_GUEST` or `HOST_MISSING_GUEST_RESULTS` on a candidate: a vSmart-type host answered. The count per region matched the number of vSmarts the edges connect to there.
+- `PING_FAILED`: nothing there. `DEVICE_TYPE_MISMATCH`: the login worked on a host that is not a controller.
+- Not resolved by the test: which management address belongs to which system IP. The result has no system IP field; the managed-device sample it returns is a few edge private IPs.
+
+**Caution:** this uses the stored login against every candidate. `DEVICE_TYPE_MISMATCH` means the login worked on a host nobody confirmed. Test only a short list the customer has approved, never a whole subnet by default, and leave the test workspace and its setups for the person to remove (the workspace expires; `controller_setup delete` removes a setup).
