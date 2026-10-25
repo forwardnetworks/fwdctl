@@ -33,7 +33,8 @@
         "dashboards",
         "scorecards",
         "scorecard_trends",
-        "custom_command_groups"
+        "custom_command_groups",
+        "controller_setups"
       ],
       "description": "what to read; the network areas (credentials, jump_servers, proxies, schedules, cloud_setups, locations, tag_definitions, custom_command_groups) need network_id, the others take none"
     },

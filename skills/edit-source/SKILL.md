@@ -25,7 +25,7 @@ A secret (a password, SNMP community string, SSH key) is never put in the input.
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run edit-source --help`, or `reference/inputs.md`, `reference/inventory.md` (many items from one file: `fwdctl source apply`), `reference/objects.md`.
+What each input means, and the fields per object and action: `fwdctl run edit-source --help`, or `reference/inputs.md`, `reference/inventory.md` (many items from one file: `fwdctl source apply`), `reference/objects.md`, `reference/sdwan-controller-mode.md` (flipping an SD-WAN network to controller-mode collection: read the migration view, compute edge coverage, controller-only dry run, checks and undo; source-read, untested).
 
 ## Dry run
 

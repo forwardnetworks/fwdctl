@@ -535,3 +535,20 @@ func TestCollectionConfigShowsTheApprovedCLICommandListWithNoEndpoints(t *testin
 		t.Errorf("approved list: %s", b)
 	}
 }
+
+// inspect-platform controller_setups lists the controller-managed setups of every network and workspace in one call, with the controllers' host, jump server and login ids (never a value) and the last test.
+func TestInspectPlatformControllerSetupsListsEveryNetworkAndWorkspace(t *testing.T) {
+	r, _ := mustRun(t, "inspect-platform", map[string]fwdtest.Handler{
+		"GET /api/networks": fwdtest.Const(200, []any{map[string]any{"id": "n1", "name": "prod"}, map[string]any{"id": "n2", "name": "ws", "parentId": "n1"}, map[string]any{"id": "n3", "name": "empty"}}),
+		"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{map[string]any{"name": "sdwan", "collectorId": "C1",
+			"controllers": []any{map[string]any{"name": "vsmart1", "type": "cisco_sdwan_vsmart_ssh", "host": "192.0.2.10", "port": 22, "jumpServerId": "J1", "cliCredentialId": "L-1", "testResult": map[string]any{"discoveredType": "x"}}}}}),
+		"GET /api/networks/n2/controller-managed-setups": fwdtest.Const(200, []any{map[string]any{"name": "pilot", "controllers": []any{map[string]any{"name": "ctl2", "host": "192.0.2.20", "httpCredentialId": "H-1"}}}}),
+		"GET /api/networks/n3/controller-managed-setups": fwdtest.Const(200, []any{}),
+	}, `{"area":"controller_setups"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"setup":"sdwan"`, `"setup":"pilot"`, `"workspace":true`, `"host":"192.0.2.10"`, `"jump_server_id":"J1"`, `"cli_credential_id":"L-1"`, `"http_credential_id":"H-1"`, `"collector_id":"C1"`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %s: %s", want, b)
+		}
+	}
+}

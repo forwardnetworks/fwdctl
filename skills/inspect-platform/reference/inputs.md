@@ -9,6 +9,7 @@
 | `collectors`, `collection_settings` | organization | each collector, its status, version and last connection, and `networks` (the networks it is attached to: one read per network, first 100 networks; the limits say how many were read); the organization's collection timeouts, retries and rates; `collection_settings` also shows the organization's `disabledCommands` (built-in collection commands switched off, by device type and version range; edit with `edit-platform`) |
 | `endpoint_profiles` | organization | every SNMP, CLI and HTTP endpoint profile (header values removed) |
 | `schedules` | network | collection schedules |
+| `controller_setups` | no | controller-managed setups of every network and workspace: controllers, hosts, jump servers, logins (ids), last test |
 | `cloud_setups` | network | cloud accounts, controller-managed and Mist setups, with regions and collect flags |
 | `custom_command_groups` | network | the custom command and OID groups of the network; `command` keeps the groups holding a command |
 | `locations`, `tag_definitions` | network | locations, and the device tags defined on the network |

@@ -63,6 +63,7 @@ func tag(rows []any, key, value string) []any {
 }
 
 var platformAreas = map[string]platformArea{
+	"controller_setups": {false, "controller-managed setups of every network and workspace the login can see: controllers, hosts, jump servers, logins (ids), last connectivity test", platformControllerSetups},
 	"credentials": {true, "CLI, SNMP and HTTP credentials (names and ids; never the secrets)", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
 		var out []any
 		var lim []string
