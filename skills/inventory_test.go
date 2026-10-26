@@ -130,9 +130,10 @@ func TestInventoryAnOffsetPastTheEndIsSaidSo(t *testing.T) {
 
 func TestInventorySummaryCombinesCountsVendorsAndTypes(t *testing.T) {
 	r, _ := inv(t, map[string]fwdtest.Handler{
-		"Cloud accounts":              rowsOf(1, map[string]any{"Devices": 151, "Interfaces": 2391, "VLANs": 869, "VRFs": 275, "Hosts": 587, "Cloud accounts": 3}),
-		"platform.vendor as vendor":   rowsOf(2, map[string]any{"Vendor": "ARISTA", "Devices": 86}, map[string]any{"Vendor": "CISCO", "Devices": 32}),
-		"platform.deviceType as type": rowsOf(1, map[string]any{"Type": "SWITCH", "Devices": 100}),
+		"[{Devices: length(network.devices)}]": rowsOf(1, map[string]any{"Devices": 151}),
+		"Cloud accounts":                       rowsOf(1, map[string]any{"Devices": 151, "Interfaces": 2391, "VLANs": 869, "VRFs": 275, "Hosts": 587, "Cloud accounts": 3}),
+		"platform.vendor as vendor":            rowsOf(2, map[string]any{"Vendor": "ARISTA", "Devices": 86}, map[string]any{"Vendor": "CISCO", "Devices": 32}),
+		"platform.deviceType as type":          rowsOf(1, map[string]any{"Type": "SWITCH", "Devices": 100}),
 	}, nil, `{"network_id":"n1","kind":"summary"}`)
 	if r.Status != result.OK || r.Finding != "151 devices across 2 vendors" {
 		t.Fatalf("got %s: %s", r.Status, r.Finding)
@@ -147,7 +148,7 @@ func TestInventorySummaryCombinesCountsVendorsAndTypes(t *testing.T) {
 }
 
 func TestInventoryAnEmptyNetworkSummaryIsUnknownNotAllZeroes(t *testing.T) {
-	r, _ := inv(t, map[string]fwdtest.Handler{"Cloud accounts": rowsOf(1, map[string]any{"Devices": 0, "Interfaces": 0})}, nil, `{"network_id":"n1","kind":"summary"}`)
+	r, _ := inv(t, map[string]fwdtest.Handler{"[{Devices: length(network.devices)}]": rowsOf(1, map[string]any{"Devices": 0})}, nil, `{"network_id":"n1","kind":"summary"}`)
 	if r.Status != result.Unknown || !strings.Contains(r.Finding, "no devices") {
 		t.Fatalf("got %s: %s", r.Status, r.Finding)
 	}
@@ -490,5 +491,18 @@ func TestInventoryIPOwnerNamesTheLongestCoveringRouteForAnUnownedAddress(t *test
 	}
 	if !strings.Contains(strings.Join(r.Limits, " "), "covering_route") {
 		t.Errorf("limits explain covering_route: %v", r.Limits)
+	}
+}
+
+// On a very large network the heavy counts (interfaces, VLANs, VRFs, hosts) can take longer than the bound: the summary then answers with the device, vendor and type counts and says what it left out.
+func TestInventorySummaryAnswersWithoutTheHeavyCountsWhenTheyAreTooSlow(t *testing.T) {
+	r, _ := inv(t, map[string]fwdtest.Handler{
+		"[{Devices: length(network.devices)}]": rowsOf(1, map[string]any{"Devices": 45000}),
+		"Cloud accounts":                       func(*http.Request, []byte) (int, any) { return 500, map[string]any{"message": "too slow"} },
+		"platform.vendor as vendor":            rowsOf(1, map[string]any{"Vendor": "ARISTA", "Devices": 45000}),
+		"platform.deviceType as type":          rowsOf(1, map[string]any{"Type": "SWITCH", "Devices": 45000}),
+	}, nil, `{"network_id":"n1","kind":"summary"}`)
+	if r.Status != result.OK || r.Finding != "45000 devices across 1 vendors" || !strings.Contains(strings.Join(r.Limits, " "), "counts were not read within") {
+		t.Fatalf("%s: %s %v", r.Status, r.Finding, r.Limits)
 	}
 }

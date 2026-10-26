@@ -68,7 +68,7 @@ Licenses for the current organization without the signed key; backup settings fo
 
 ## organizations and cve_index
 
-`organizations` lists the organizations the login can see (names, ids), but Forward answers it only to a Forward-support login (an organization administrator is refused and the answer says so: use `--support-token-file`, or ask Forward support); it carries no network or snapshot counts, and there is no read-only org listing for an organization role. cve_index is the vulnerability index's metadata (created, size). `inspect-environment` reports the index's age; `edit-platform` syncs it.
+`organizations` lists the organizations the login can see, but Forward lists several only to a Forward-support login: an organization administrator gets their own organization (id, name; from the current-organization route) and a limit saying so, with no network or snapshot counts (list networks with `inspect-networks`, snapshots with `inspect-snapshots`). cve_index is the vulnerability index's metadata (created, size). `inspect-environment` reports the index's age; `edit-platform` syncs it.
 
 ## org_properties
 

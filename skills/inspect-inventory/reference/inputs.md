@@ -4,7 +4,7 @@
 
 | `kind` | Returns | Narrow with |
 |---|---|---|
-| `summary` | counts of devices, interfaces, VLANs, VRFs, hosts and cloud accounts; devices by vendor and by device type | nothing |
+| `summary` | counts of devices, interfaces, VLANs, VRFs, hosts and cloud accounts; devices by vendor and by device type | nothing (on a very large network the interface, VLAN, VRF, host and cloud-account counts are read within a bounded time and left out, with a limit that says so, if too slow; the device, vendor and type counts always come) |
 | `devices` | name, vendor, OS and version, model, type, location, tags | `device` (exact name), `name` (a case-insensitive substring of the name; no `*` or `?`), `vendor` (Forward's vendor name, such as `FORTINET`; also on `security_rules_experimental`) |
 | `interfaces` | device, name, type, admin and oper status, MTU, speed, MAC, IPv4 addresses (subinterfaces **and routed-VLAN/SVI interfaces**), the VRFs, description | `device`, `name` (interface) |
 | `vlans` | device, VLAN name, VLAN id range | `device`, `name` (VLAN) |

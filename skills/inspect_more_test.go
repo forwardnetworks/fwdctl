@@ -552,3 +552,15 @@ func TestInspectPlatformControllerSetupsListsEveryNetworkAndWorkspace(t *testing
 		}
 	}
 }
+
+// Forward lists several organizations only to a support login; an organization administrator who is refused still gets their own organization, with a limit that says why it is one.
+func TestInspectPlatformOrganizationsFallsBackToTheCurrentOne(t *testing.T) {
+	r, _ := mustRun(t, "inspect-platform", map[string]fwdtest.Handler{
+		"GET /api/admin/orgs":   fwdtest.Const(403, map[string]any{"message": "Missing permission"}),
+		"GET /api/orgs/current": fwdtest.Const(200, map[string]any{"id": "102", "name": "example-org"}),
+	}, `{"area":"organizations"}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || !strings.Contains(b, "example-org") || !strings.Contains(strings.Join(r.Limits, " "), "only the login's own organization") {
+		t.Errorf("%s %s %v", r.Status, b, r.Limits)
+	}
+}

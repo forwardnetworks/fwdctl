@@ -466,3 +466,17 @@ func TestReachabilityNamesAPathThatLeavesTheModel(t *testing.T) {
 		}
 	}
 }
+
+// How Forward located the source is shown: a source placed from injected routes (ROUTE) reads differently from one found on an interface, so the answer says so.
+func TestReachabilitySaysWhenTheSourceWasLocatedFromRoutes(t *testing.T) {
+	body := pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED"))
+	body["srcIpLocationType"] = "ROUTE"
+	body["dstIpLocationType"] = "INTERFACE"
+	r, _ := reach(t, body, nil, reachIn)
+	if !strings.Contains(strings.Join(r.Limits, " "), "source address was located from injected routes") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+	if r.Evidence[0].Detail["src_location_type"] != "ROUTE" || r.Evidence[0].Detail["dst_location_type"] != "INTERFACE" {
+		t.Errorf("evidence: %v", r.Evidence[0].Detail)
+	}
+}
