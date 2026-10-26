@@ -117,3 +117,23 @@ func TestUnhealthyInterfacesWithoutADevicePointsToTheNetworkWideView(t *testing.
 		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
 }
+
+// "Why is there no performance data": the answer names what stops SNMP polling (the network's setting, the SNMP credentials, each device's flags) and says that is necessary, not sufficient.
+func TestNoPerformanceSamplesNamesWhatStopsSNMPPolling(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		ifMetricsPath: fwdtest.Const(200, map[string]any{"metrics": []any{}}),
+		"GET /api/networks/n1/performance/settings": fwdtest.Const(200, map[string]any{"enabled": false}),
+		"GET /api/networks/n1/snmpCredentials":      fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/classic-devices": fwdtest.Const(200, []any{
+			map[string]any{"name": "sw1", "host": "192.0.2.1"},
+			map[string]any{"name": "sw2", "host": "192.0.2.2", "enableSnmpCollection": true},
+		}),
+	}
+	r := perf(t, routes, `{"network_id":"n1","view":"interfaces","metric":"ERROR"}`)
+	all := strings.Join(r.Limits, " | ")
+	for _, want := range []string{"blocker:", "1 of 2 source(s) cannot be polled over SNMP by their own flags: sw1 (SNMP collection is off)", "necessary, not sufficient"} {
+		if r.Status != result.Unknown || !strings.Contains(all, want) {
+			t.Errorf("missing %q: %s %s", want, r.Status, all)
+		}
+	}
+}

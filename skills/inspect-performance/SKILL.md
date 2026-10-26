@@ -51,6 +51,6 @@ Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fw
 ## When there are no samples
 
 An empty answer is `unknown`, never health. The limits say what the API shows about why: whether the organization's `performance_data`
-feature is on, and the SNMP state of the network's sources: how many have SNMP collection enabled and a credential, and the last collection's result by error type (NO_RESPONSE, NOT_AUTHORIZED, ...). Forward reports a status only for a source with SNMP enabled. `unhealthy_interfaces`
+feature is on, what stops SNMP polling (the network's performance setting, whether an SNMP credential exists, each source's collection and SNMP-collection flags, with the reason a source is excluded; necessary, not sufficient, because the device's vendor OS and the collector that serves it are not checked), and the SNMP state of the network's sources: how many have SNMP collection enabled and a credential, and the last collection's result by error type (NO_RESPONSE, NOT_AUTHORIZED, ...). Forward reports a status only for a source with SNMP enabled. `unhealthy_interfaces`
 has no network-wide form because Forward answers it per device: for the worst interfaces across the network use view `interfaces` with
 `PACKET_LOSS`, `ERROR` or `UTILIZATION`.

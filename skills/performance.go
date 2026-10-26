@@ -120,10 +120,11 @@ func performanceCollectionLimits(ctx context.Context, s *fwd.Session, networkID 
 	} else if v, ok := props["performance_data"]; !ok {
 		out = append(out, "this Forward build does not list a performance_data feature")
 	} else if strings.EqualFold(v, "false") {
-		out = append(out, "the organization's performance_data feature is OFF, so no performance data is shown (inspect-environment shows where it is set)")
+		out = append(out, "the organization's performance_data feature is OFF, so the UI hides performance data (inspect-environment shows where it is set); read from Forward's source, this property is a display flag and does not by itself stop polling (not confirmed live)")
 	} else {
 		out = append(out, "the organization's performance_data feature is on ("+v+")")
 	}
+	out = append(out, performanceReadinessLimits(ctx, s, networkID)...)
 	st, err := s.SNMPCollection(ctx, networkID)
 	switch {
 	case err != nil:
@@ -408,4 +409,39 @@ func deviceBoth(ctx context.Context, s *fwd.Session, in performanceInput, cx res
 			result.Options{NextActions: []string{"inspect-environment", "inspect-collection"}})
 	}
 	return perfOK(strings.Join(parts, "; "), detail, limits, nil, cx), nil
+}
+
+// performanceReadinessLimits says what stops Forward polling a network over SNMP, from the network's performance setting, its SNMP credentials and its classic devices (Forward's source, Preview routes, not confirmed live): the setting
+// must be enabled, an SNMP credential must exist, and a device needs collection on and SNMP collection on. Those are necessary, not sufficient: the device's vendor OS must be known and a collector must serve it (the device's own, else the
+// network's default collector), and neither is checked here.
+func performanceReadinessLimits(ctx context.Context, s *fwd.Session, networkID string) []string {
+	r, _, err := s.Client.Performance.Readiness(ctx, networkID)
+	if err != nil || r == nil {
+		why := "no answer"
+		if err != nil {
+			why = err.Error()
+		}
+		return []string{"what stops SNMP polling (the network's performance setting, its SNMP credentials and the devices' SNMP flags) could not be read (" + why + "); it needs permission to view performance settings and device credentials"}
+	}
+	var out []string
+	for _, b := range r.Blockers {
+		out = append(out, "blocker: "+b)
+	}
+	if len(r.Excluded) > 0 {
+		shown, total := result.CapRow(r.Excluded, 10)
+		var parts []string
+		for _, e := range shown {
+			parts = append(parts, e.Name+" ("+strings.Join(e.Reasons, ", ")+")")
+		}
+		line := fmt.Sprintf("%d of %d source(s) cannot be polled over SNMP by their own flags: %s", total, r.Devices, strings.Join(parts, "; "))
+		if total > len(shown) {
+			line += fmt.Sprintf("; %d more", total-len(shown))
+		}
+		out = append(out, line)
+	}
+	if r.Ready() {
+		out = append(out, fmt.Sprintf("the network's performance setting is on (every %d min), an SNMP credential exists and %d of %d source(s) have collection and SNMP collection on: nothing found stops polling", r.IntervalMinutes, len(r.Eligible), r.Devices))
+	}
+	out = append(out, "this is necessary, not sufficient: Forward also needs each device's vendor OS to be known and a collector to serve it (the device's own collector, else the network's default); neither is checked here,; enabling the performance setting with no SNMP credential answers 400 but the setting is stored anyway")
+	return out
 }
