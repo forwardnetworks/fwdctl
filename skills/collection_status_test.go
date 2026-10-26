@@ -184,3 +184,15 @@ func TestCollectionStatusAskedNothingOfNQEForANetworkWithNoCloudSetup(t *testing
 		}
 	}
 }
+
+// The first thing to know when asking why no collection ran: no collector is attached. It is said in the finding only when the attachment was read and is not set.
+func TestCollectionStatusSaysWhenNoCollectorIsAttached(t *testing.T) {
+	none := map[string]fwdtest.Handler{attachPath: fwdtest.Const(200, map[string]any{})}
+	if r := colStatusWithSnapshot(t, "REPROCESS", none); r.Status != result.Unknown || !strings.Contains(r.Finding, "No collector is attached to this network") {
+		t.Errorf("%s: %s", r.Status, r.Finding)
+	}
+	set := map[string]fwdtest.Handler{attachPath: fwdtest.Const(200, map[string]any{"id": "c1", "name": "dc-collector", "connectionStatus": "CONNECTED"})}
+	if r := colStatusWithSnapshot(t, "REPROCESS", set); strings.Contains(r.Finding, "No collector is attached") {
+		t.Errorf("a collector is attached: %s", r.Finding)
+	}
+}

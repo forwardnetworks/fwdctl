@@ -232,7 +232,7 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 	running0, _ := detail["running"].(bool)
 	if (origin == "import" || origin == "reprocess") && !running0 && len(failed) == 0 {
 		verb := map[string]string{"import": "imported", "reprocess": "reprocessed"}[origin]
-		finding := fmt.Sprintf("The newest snapshot (%s) was %s; no collection ran in Forward for it", originID, verb)
+		finding := fmt.Sprintf("The newest snapshot (%s) was %s; no collection ran in Forward for it", originID, verb) + noCollectorSentence(detail)
 		next := []string{"inspect-snapshots", "inspect-inventory"}
 		lim := append(limits, "status stays unknown: Forward has no collection to report on for this snapshot, so this is neither a pass nor a failure of collection")
 		if origin == "import" {
@@ -259,7 +259,7 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 		finding = runningFinding(detail)
 	case !positive:
 		// Nothing failed, but nothing shows it worked either: silence is not health.
-		return result.NewUnknown(collectionStatusName, "No collection is running and nothing shows how the last one went", cx,
+		return result.NewUnknown(collectionStatusName, "No collection is running and nothing shows how the last one went"+noCollectorSentence(detail), cx,
 			append(limits, "no finished task and no device statuses were readable, so this skill cannot say collection is healthy"), result.Options{NextActions: []string{"inspect-snapshots", "investigate-collection-failure"}})
 	}
 	return result.Build(collectionStatusName, status, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
@@ -394,4 +394,14 @@ func cloudCoverage(ctx context.Context, s *fwd.Session, networkID, snapshotID st
 		note = fmt.Sprintf("cloud account coverage read the first %d of %d cloud accounts, so its counts are low", len(rows), nqeTotal)
 	}
 	return map[string]any{"accounts": total, "collected": collected, "not_collected": total - collected, "by_setup": rolled}, note
+}
+
+// noCollectorSentence says, when the network's collector attachment was read and none is set, that no collector is attached: the first thing to know when asking why no collection ran. It is empty when the attachment is set or was not read.
+func noCollectorSentence(detail map[string]any) string {
+	if att, ok := detail["collector"].(map[string]any); ok {
+		if set, ok := att["set"].(bool); ok && !set {
+			return ". No collector is attached to this network (it may collect from Forward's own collector, or from nothing)"
+		}
+	}
+	return ""
 }
