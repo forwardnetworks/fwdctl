@@ -205,10 +205,13 @@ var platformAreas = map[string]platformArea{
 			g, _ := fwd.Generic(tests)
 			for _, row := range r {
 				if m, ok := row.(map[string]any); ok {
-					if id := fmt.Sprint(m["id"]); id != "" {
-						if gm, ok := g.(map[string]any); ok {
-							m["last_test"] = gm[id]
-						}
+					// Forward keys the test results by the webhook's NAME; a webhook row has no id of its own
+					key := fmt.Sprint(m["name"])
+					if m["name"] == nil {
+						key = fmt.Sprint(m["id"])
+					}
+					if gm, ok := g.(map[string]any); ok {
+						m["last_test"] = gm[key]
 					}
 				}
 			}

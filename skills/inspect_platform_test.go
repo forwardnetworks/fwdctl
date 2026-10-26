@@ -217,3 +217,17 @@ func TestPlatformOrgPropertiesSayWhichPropertiesNeedAReprocess(t *testing.T) {
 		t.Errorf("reprocess hint or build: %s", b)
 	}
 }
+
+// Forward keys a webhook's last test result by the webhook's name (a webhook row has no id), so the result must be attached by name; a miss reads as "never tested".
+func TestInspectPlatformWebhooksAttachTheLastTestByName(t *testing.T) {
+	r, _ := mustRun(t, "inspect-platform", map[string]fwdtest.Handler{
+		"GET /api/webhooks": fwdtest.Const(200, map[string]any{
+			"webhooks":    []any{map[string]any{"name": "ops", "url": "https://hook.example.net/in", "enabled": true}},
+			"testResults": map[string]any{"ops": map[string]any{"success": true, "statusCode": 200, "testedAt": "2026-10-26T10:00:00Z"}},
+		}),
+	}, `{"area":"webhooks"}`)
+	b := jsonOf(r)
+	if !strings.Contains(b, `"last_test":{`) || !strings.Contains(b, `"statusCode":200`) {
+		t.Errorf("last_test not attached by name: %s", b)
+	}
+}
