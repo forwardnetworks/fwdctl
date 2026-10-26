@@ -260,7 +260,7 @@ func planWebhook(ctx context.Context, s *fwd.Session, in editPlatformInput) (*ne
 			req.EventParams = map[string]any{}
 		}
 		return &networkPlan{target: "create webhook " + def.Name, action: "create_webhook", after: req, reversible: true, undo: "delete the webhook",
-			limits: []string{"webhook credentials and templates are not set by this skill; webhook schemas are unpublished by Forward (preview)"},
+			limits: []string{"create sets no credential and no template, and Forward tests the connection at once: against a receiver that requires authentication that first test fails (401) until an update sets the credential (definition credential_type and credential_username, password from secret_file or secret_env); webhook schemas are unpublished by Forward (preview)"},
 			do:     func(ctx context.Context) error { _, err := s.Client.Webhooks.Create(ctx, req); return err },
 			verify: verifyIs(true, func(forward.Webhook) bool { return true })}, nil
 	case "update":
