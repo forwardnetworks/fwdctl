@@ -261,7 +261,7 @@ Flags:
 
 ## fwdctl nqe
 
-NQE (Network Query Engine) tools. Offline, no Forward connection: lint, fmt, lsp, complete, hover, template. Connected: run, bundle, synthesize.
+NQE (Network Query Engine) tools. Write NQE with real field names: fwdctl context schema NAME, then fwdctl nqe lint FILE, in any language. Offline, no Forward connection: lint, fmt, lsp, complete, hover, template. Connected: run, bundle, synthesize.
 Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or fwdctl login). Long queries: FORWARD_TIMEOUT, FORWARD_NQE_MODE, FORWARD_NQE_WAIT (fwdctl docs troubleshooting).
 
 ```

@@ -63,11 +63,13 @@ fwdctl asks questions about a Forward network and answers them with evidence. Ea
 Start here, and read --help before you run anything: "fwdctl run" lists every name and what it answers; "fwdctl run NAME --help" shows one name's inputs, what each view, kind or object
 answers, and an example; "fwdctl which \"<question>\"" finds the name for a question in words; "fwdctl help --tree" lists every command (each answers --help). Then run it, for example
 "echo '{}' | fwdctl run inspect-networks" lists the networks you can see.
+Writing NQE in any language (a script, an SDK): run 'fwdctl context schema NAME' for the real field names and 'fwdctl nqe lint FILE' before sending a query; a guessed field name fails with: Record does not have field.
 
 Credentials (environment): FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (an API token's access key and secret work).
 Or flags: --url URL --username NAME --password-file FILE [--ca-bundle FILE | --insecure] [--config FILE]; or a saved login (fwdctl login; with several Forwards, name each one: fwdctl login --profile NAME --file TOKENFILE, then fwdctl --profile NAME ...), or a file
 ~/.config/fwdctl/config.json {"url", "username", "password_file", "ca_bundle"} (the password is read from that file, which must be mode 600).
 Flags win over the environment, the environment over the file.
+To run once against another org without saving or changing a login: --token-file FILE (a netrc file; it supplies the URL, login and secret, and nothing is written).
 To act as another org user without their credential (an administrator Forward allows to impersonate): FORWARD_IMPERSONATE=<user id> with the administrator's login. The session is read-only and every result says it was impersonated.
 For a Forward with a private or self-signed certificate prefer --ca-bundle FILE (or FORWARD_CA_BUNDLE): it trusts only that PEM file and verification stays on. Set FORWARD_INSECURE=true only as a last resort: it turns TLS verification off and every result records it.
 

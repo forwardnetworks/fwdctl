@@ -213,7 +213,9 @@ var platformAreas = map[string]platformArea{
 				}
 			}
 		}
-		return r, []string{"the signing secret and any URL token are never returned"}, err
+		return r, []string{"the signing secret and any URL token are never returned",
+			"a webhook that is configured and enabled can still send nothing: it fires only when a snapshot is created, only for the networks or check directories in its event parameters (an empty network list on SNAPSHOT_READY means all networks), and a deployment-level outbound-connections setting that an org administrator cannot change gates all outbound calls (read from Forward's source; not confirmed live, and not readable through this skill); there is no retry, and the last test result shows only that a test call reached the receiver",
+			"an empty list may mean this login cannot see webhooks rather than that none exist: inspect-access shows this login's roles"}, err
 	}},
 	"integrations": {true, "ServiceNow, Infoblox and Rapid7 integrations (no passwords)", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
 		var out []any

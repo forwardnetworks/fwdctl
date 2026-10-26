@@ -61,6 +61,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Where should the internet attach or egress, why a trace dead-ends at the edge, which default route points at an unowned next hop or upstream | `inspect-edge` (`view: exits`, the default) |
 | Show BGP neighbors or peers, the upstream's AS, session state, what a device advertises to a peer (advertised, received prefixes) | `inspect-bgp-neighbors` |
 | Who owns this IP address: which device, interface or VRF has it, or whether it is inside a connected subnet | `inspect-inventory` (`kind: ip_owner`, `ips`) |
+| A webhook is not arriving, not delivering or failing: the webhook list, its last test result, what it sends, its events and auth, and why a configured one stays silent (outbound connections switched off, scope, no retry); sending events or check results to an external monitoring system | `inspect-platform` (`area: webhooks`) |
 | Who holds a route for a prefix, a more specific one or a covering one: a prefix overlap check across all VRFs | `inspect-inventory` (`kind: routes`, `ips` as prefixes) |
 | Which devices carry public IPv4 addresses on their own interfaces (management, loopback, firewall sides), by role, device type or VRF; what to review before excluding prefixes from the internet node or when a device is flagged internet addressable | `inspect-edge` (`view: public_addresses`) |
 | Is there already a saved NQE query for a question; browse the NQE library: list its top-level folders or directories and the queries in one | `find-nqe-query` (`list: true`) |
