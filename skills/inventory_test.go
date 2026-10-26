@@ -506,3 +506,33 @@ func TestInventorySummaryAnswersWithoutTheHeavyCountsWhenTheyAreTooSlow(t *testi
 		t.Fatalf("%s: %s %v", r.Status, r.Finding, r.Limits)
 	}
 }
+
+// kind routes with ips asks which devices hold an exact, a more specific or a covering route for a prefix, network-wide, and says it reads the forwarding table, not the advertisements.
+func TestInventoryRoutesWithPrefixesCountsExactMoreSpecificAndCovering(t *testing.T) {
+	r, _ := inv(t, map[string]fwdtest.Handler{
+		"ipSubnet(": rowsOf(4,
+			map[string]any{"asked": "10.1.0.0/16", "device": "r1", "vrf": "default", "prefix": "10.1.0.0/16", "nextHops": []any{map[string]any{"ip": "10.9.9.1", "protocol": "BGP"}}},
+			map[string]any{"asked": "10.1.0.0/16", "device": "r2", "vrf": "default", "prefix": "10.1.2.0/24"},
+			map[string]any{"asked": "10.1.0.0/16", "device": "r2", "vrf": "blue", "prefix": "10.1.3.0/24"},
+			map[string]any{"asked": "10.1.0.0/16", "device": "r3", "vrf": "default", "prefix": "10.0.0.0/8"}),
+	}, nil, `{"network_id":"n1","kind":"routes","ips":["10.1.0.5/16"]}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "10.1.0.0/16: 1 device(s) hold it exactly, 1 hold a more specific route, 1 hold a covering route") {
+		t.Fatalf("%s: %s %v", r.Status, r.Finding, r.Limits)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "not the same as advertising") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}
+
+func TestInventoryRoutesWithPrefixesRefusesRowFiltersAndBadEntries(t *testing.T) {
+	for _, in := range []string{
+		`{"network_id":"n1","kind":"routes","ips":["10.1.0.0/16"],"device":"r1"}`,
+		`{"network_id":"n1","kind":"routes","ips":["not-a-prefix"]}`,
+		`{"network_id":"n1","kind":"routes","ips":["2001:db8::/32"]}`,
+		`{"network_id":"n1","kind":"interfaces","ips":["10.1.0.0/16"]}`,
+	} {
+		if _, _, err := runSkill(t, "inspect-inventory", map[string]fwdtest.Handler{snapsPath: ready("s1"), nqePath: invNQE(nil)}, in); err == nil {
+			t.Errorf("accepted %s", in)
+		}
+	}
+}
