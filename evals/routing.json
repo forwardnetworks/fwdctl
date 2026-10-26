@@ -696,5 +696,10 @@
     "query": "Which devices in the network hold a route for 10.1.0.0/16 or anything overlapping it?",
     "expect": "inspect-inventory",
     "rival": "inspect-bgp-neighbors"
+  },
+  {
+    "query": "A webhook is not arriving at our monitoring system; what did its last test return?",
+    "expect": "inspect-platform",
+    "rival": "inspect-collection"
   }
 ]

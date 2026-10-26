@@ -23,7 +23,7 @@ What each input means, and the fields per object and action: `fwdctl run inspect
 ## Procedure
 
 1. Resolve the snapshot; it must be processed. Otherwise `unknown`.
-2. Run the kind's query with `limit` and `offset`. Filters are passed as query parameters, never spliced into the text.
+2. Run the kind's query with `limit` and `offset`. To size a network before reading any rows, use kind `summary`: counts only (devices, interfaces, VLANs, VRFs, hosts, cloud accounts; devices by vendor and type), no rows. Filters are passed as query parameters, never spliced into the text.
 3. Decide:
    - Rows returned: **ok**, with the rows, the total, and the window shown. If more rows exist than were returned, the
      limits say so and how to page.

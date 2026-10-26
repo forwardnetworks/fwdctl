@@ -17,7 +17,7 @@ func (a *app) nqeCmd() *cobra.Command {
 	c := parent(&cobra.Command{
 		Use: "nqe", GroupID: "nqe", Short: "write, check, run and assemble NQE queries",
 		Example: "  fwdctl nqe lint query.nqe\n  fwdctl nqe run --network 123 --file query.nqe --format table",
-		Long: "NQE (Network Query Engine) tools. Offline, no Forward connection: lint, fmt, lsp, complete, hover, template. Connected: run, bundle, synthesize.\n" +
+		Long: "NQE (Network Query Engine) tools. Write NQE with real field names: fwdctl context schema NAME, then fwdctl nqe lint FILE, in any language. Offline, no Forward connection: lint, fmt, lsp, complete, hover, template. Connected: run, bundle, synthesize.\n" +
 			"Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or fwdctl login). Long queries: FORWARD_TIMEOUT, FORWARD_NQE_MODE, FORWARD_NQE_WAIT (fwdctl docs troubleshooting).",
 	})
 	c.AddCommand(a.nqeDiff(), a.nqeCompare(), a.nqeExplain(), a.nqeMetrics(), a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
