@@ -317,6 +317,12 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	ordered := orderByClass(all, func(c classified) string { return c.class })
 	outcomes, _ := outcomeSummary(all, func(c classified) string { return c.class })
 	limits = append(limits, outcomes+" (intent "+in.Intent+"). Forward chooses which paths it returns, so another intent (PREFER_VIOLATIONS, VIOLATIONS_ONLY) or a larger max_results can show paths this answer does not")
+	if l := locationLimit("source", doc.SrcLocationType); l != "" {
+		limits = append(limits, l)
+	}
+	if l := locationLimit("destination", doc.DstLocationType); l != "" {
+		limits = append(limits, l)
+	}
 	retFlow, retVerdict, retLimit := returnFlowSummary(doc, in.ReturnPath)
 	if retLimit != "" {
 		limits = append(limits, retLimit)
@@ -326,6 +332,14 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		ev := uniquePathEvidence(ordered, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, maxReachabilityEvidence)
 		if retFlow != nil && len(ev) > 0 {
 			ev[0].Detail["return_flow"] = retFlow
+		}
+		if len(ev) > 0 {
+			if doc.SrcLocationType != "" {
+				ev[0].Detail["src_location_type"] = doc.SrcLocationType
+			}
+			if doc.DstLocationType != "" {
+				ev[0].Detail["dst_location_type"] = doc.DstLocationType
+			}
 		}
 		if distinct := countDistinct(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }); distinct > len(ev) {
 			omitted = append(omitted, result.Omission{What: "distinct paths", Total: distinct, Shown: len(ev), Next: "one path per outcome is shown first; narrow the flow (src_port, dst_port, from) to see the rest"})
@@ -356,6 +370,14 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		ev := uniquePathEvidence(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, 3)
 		if retFlow != nil && len(ev) > 0 {
 			ev[0].Detail["return_flow"] = retFlow
+		}
+		if len(ev) > 0 {
+			if doc.SrcLocationType != "" {
+				ev[0].Detail["src_location_type"] = doc.SrcLocationType
+			}
+			if doc.DstLocationType != "" {
+				ev[0].Detail["dst_location_type"] = doc.DstLocationType
+			}
 		}
 		finding, next := "The returned paths do not establish whether the flow is delivered", []string{"investigate-collection-failure"}
 		for _, c := range all {
@@ -467,3 +489,19 @@ func looksLikeHostname(v string) bool {
 
 // leavesModelNote explains the pair forwarding outcome DELIVERED_TO_INCORRECT_LOCATION with an incomplete model: a path that ends where the model does not go on (for example out an overlay tunnel to something that is not modelled) reads like a failure but is neither a drop in the model nor a delivery.
 const leavesModelNote = "the path ends where the model does not go on (forwarding outcome DELIVERED_TO_INCORRECT_LOCATION, classification incomplete_model), for example out an overlay or tunnel toward something that is not modelled: it is not a drop in the model and not a delivery; only a real test (such as Forward's connectivity test) shows whether it arrives"
+
+// locationLimit says how Forward located a flow's source or destination address, when that is not an interface or host: ROUTE means from injected routes (the address is in no connected subnet), INTERFACE_ATTACHED_SUBNET that it
+// fell inside an attached subnet, INTERNET that it was treated as an internet address. Without it a source placed by route reads like one found on a device.
+func locationLimit(end, kind string) string {
+	switch kind {
+	case "ROUTE":
+		return fmt.Sprintf("the %s address was located from injected routes (srcIpLocationType/dstIpLocationType ROUTE), not from an interface, a host or an attached subnet: the path starts or ends where the model's routes put the address, so read it with that in mind", end)
+	case "INTERFACE_ATTACHED_SUBNET":
+		return fmt.Sprintf("the %s address was located by the attached subnet it falls in, not by an interface that carries it or a host that was seen", end)
+	case "INTERNET":
+		return fmt.Sprintf("the %s address was treated as an internet address", end)
+	case "CO_LOCATED", "SNAT", "MULTICAST":
+		return fmt.Sprintf("the %s address was located as %s", end, kind)
+	}
+	return ""
+}

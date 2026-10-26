@@ -346,6 +346,13 @@ var platformAreas = map[string]platformArea{
 	"org_properties": {false, "organization properties: effective value and its source (org setting, global override or compiled default), with the appserver build", nil},
 	"organizations": {false, "organizations this login can see", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		v, _, err := s.Client.Organizations.List(ctx)
+		if st := fwd.Status(err); err != nil && (st == 401 || st == 403) {
+			// the listing of organizations is Forward-support only; any signed-in user can read their own
+			if cur, _, cerr := s.Client.Organizations.Current(ctx); cerr == nil && cur != nil {
+				r, rerr := rowsOf([]*forward.Organization{cur}, nil)
+				return r, []string{"Forward lists organizations only to a Forward-support login, so this shows only the login's own organization (GET /orgs/current); there is no route that lists several organizations or counts their networks and snapshots for an organization role (list networks with inspect-networks, snapshots with inspect-snapshots)"}, rerr
+			}
+		}
 		r, err := rowsOf(v, err)
 		return r, nil, err
 	}},

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
@@ -34,6 +35,9 @@ type inventoryInput struct {
 }
 
 // Every filter is a query parameter; "" means no filter. Nothing from the caller is spliced into the query text.
+// summaryHeavyTimeout bounds the interface, VLAN, VRF and host counts of kind summary, which read every device: on a very large network the summary answers without them rather than not at all.
+var summaryHeavyTimeout = 120 * time.Second
+
 const (
 	// the security rules model is experimental (PAN-OS and FortiOS; FortiOS native rules are off unless the org property NQE_SECURITY_RULES_FORTIOS is true): counts only, per device
 	// and scope. invSecurityRules uses the fields of a current build; invSecurityRulesCore only those every build with the model has.
@@ -378,7 +382,8 @@ order by Account asc natural, VPC asc natural, Kind asc natural, Name asc natura
   Hosts: sum(foreach device in network.devices select length(device.hosts)),
   "Cloud accounts": length(network.cloudAccounts)
 }]`
-	invSummaryVendors = `foreach device in network.devices
+	invSummaryDeviceCount = `[{Devices: length(network.devices)}]`
+	invSummaryVendors     = `foreach device in network.devices
 group device.name as names by device.platform.vendor as vendor
 select { Vendor: vendor, Devices: length(names) }
 order by Devices desc, Vendor asc`
@@ -653,40 +658,60 @@ func inventorySummary(ctx context.Context, s *fwd.Session, in inventoryInput, cx
 	run := func(q string, limit int) (fwd.NQEOutcome, error) {
 		return s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: q, SnapshotID: sid, Limit: limit})
 	}
-	counts, err := run(invSummaryCounts, 1)
+	devices, err := run(invSummaryDeviceCount, 1)
 	if errors.Is(err, fwd.ErrSnapshotNotReady) {
 		return result.NewUnknown(inventoryName, "The snapshot became unavailable; nothing was read", cx, []string{err.Error()}, result.Options{})
 	}
 	if err != nil {
 		return result.Result{}, err
 	}
-	rows := fwd.Records(counts.Items)
-	devices := 0
-	if len(rows) == 1 {
-		if f, ok := rows[0]["Devices"].(float64); ok {
-			devices = int(f)
+	nDevices := 0
+	if r := fwd.Records(devices.Items); len(r) == 1 {
+		if f, ok := r[0]["Devices"].(float64); ok {
+			nDevices = int(f)
 		}
 	}
-	if len(rows) == 0 || devices == 0 {
+	if nDevices == 0 {
 		return result.NewUnknown(inventoryName, "The snapshot holds no devices, so there is nothing to summarise", cx,
 			append(limits, "zero devices: an empty or unmodeled network, or a collection that produced nothing; this skill cannot tell which"),
 			result.Options{NextActions: []string{"investigate-collection-failure"}})
 	}
-	vendors, err := run(invSummaryVendors, 100)
-	if err != nil {
-		return result.Result{}, err
+	// the vendor and type groupings and the heavier per-device counts run side by side; the heavy counts get a bounded time, so a very large network answers with what is cheap instead of not answering
+	type out struct {
+		o   fwd.NQEOutcome
+		err error
 	}
-	types, err := run(invSummaryTypes, 100)
-	if err != nil {
-		return result.Result{}, err
+	var wg sync.WaitGroup
+	var vendors, types, counts out
+	wg.Add(3)
+	go func() { defer wg.Done(); vendors.o, vendors.err = run(invSummaryVendors, 100) }()
+	go func() { defer wg.Done(); types.o, types.err = run(invSummaryTypes, 100) }()
+	go func() {
+		defer wg.Done()
+		cctx, cancel := context.WithTimeout(ctx, summaryHeavyTimeout)
+		defer cancel()
+		counts.o, counts.err = s.RunNQE(cctx, in.NetworkID, fwd.NQERun{Query: invSummaryCounts, SnapshotID: sid, Limit: 1})
+	}()
+	wg.Wait()
+	if vendors.err != nil {
+		return result.Result{}, vendors.err
+	}
+	if types.err != nil {
+		return result.Result{}, types.err
+	}
+	countsRow := map[string]any{"Devices": nDevices}
+	if counts.err != nil {
+		limits = append(limits, fmt.Sprintf("the interface, VLAN, VRF, host and cloud-account counts were not read within %s on this network (%v): the device, vendor and type counts above are complete; ask inspect-inventory for kind interfaces, vlans, vrfs or hosts with a device filter for the rest", summaryHeavyTimeout, counts.err))
+	} else if cr := fwd.Records(counts.o.Items); len(cr) == 1 {
+		countsRow = cr[0]
 	}
 	if took := time.Since(started); took > 20*time.Second {
-		limits = append(limits, fmt.Sprintf("this took %s: the first query against a large snapshot can take minutes while Forward loads it, and later ones take seconds (measured about one second warm on a 40,000-device snapshot), so ask again before concluding the summary itself is slow", took.Round(time.Second)))
+		limits = append(limits, fmt.Sprintf("this took %s: the first query against a large snapshot can take minutes while Forward loads it, and later ones take seconds", took.Round(time.Second)))
 	}
-	detail := map[string]any{"kind": "summary", "counts": rows[0], "by_vendor": fwd.Records(vendors.Items), "by_device_type": fwd.Records(types.Items)}
-	return result.Build(inventoryName, result.OK, fmt.Sprintf("%d devices across %d vendors", devices, len(vendors.Items)),
+	detail := map[string]any{"kind": "summary", "counts": countsRow, "by_vendor": fwd.Records(vendors.o.Items), "by_device_type": fwd.Records(types.o.Items)}
+	return result.Build(inventoryName, result.OK, fmt.Sprintf("%d devices across %d vendors", nDevices, len(vendors.o.Items)),
 		result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"inspect-vulnerabilities", "investigate-collection-failure"},
-			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, detail, strings.TrimSpace(fmt.Sprintf("%d devices", devices)))}})
+			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "runNqeQuery", cx.SnapshotID, detail, strings.TrimSpace(fmt.Sprintf("%d devices", nDevices)))}})
 }
 
 // kindFilters are the filter inputs each kind of rows takes; a filter a kind does not take is refused, never silently ignored (a no-op filter that still says "123 match" misleads).

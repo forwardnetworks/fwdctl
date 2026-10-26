@@ -59,9 +59,12 @@ type Path struct {
 
 // PathResult is a path search answer.
 type PathResult struct {
-	TimedOut  bool   `json:"timed_out"`
-	TotalType string `json:"total_type"` // EXACT | LOWER_BOUND
-	Paths     []Path `json:"paths"`
+	TimedOut bool `json:"timed_out"`
+	// SrcLocationType and DstLocationType say how Forward located the source and destination address (INTERFACE, HOST, SNAT, CO_LOCATED, INTERFACE_ATTACHED_SUBNET, INTERNET, ROUTE, MULTICAST: most to least precise); ROUTE means located from injected routes.
+	SrcLocationType string `json:"src_location_type,omitempty"`
+	DstLocationType string `json:"dst_location_type,omitempty"`
+	TotalType       string `json:"total_type"` // EXACT | LOWER_BOUND
+	Paths           []Path `json:"paths"`
 	// ReturnPaths are the paths of the return flow (destination back to source), only when PathQuery.ReturnPaths asked for them.
 	ReturnPaths []Path `json:"return_paths,omitempty"`
 }
@@ -113,7 +116,7 @@ func (s *Session) SearchPaths(ctx context.Context, networkID string, q PathQuery
 	if err != nil {
 		return PathResult{}, err
 	}
-	out := PathResult{TimedOut: resp.TimedOut, TotalType: resp.Info.TotalHits.Type, Paths: convertPaths(resp.Info.Paths)}
+	out := PathResult{TimedOut: resp.TimedOut, TotalType: resp.Info.TotalHits.Type, Paths: convertPaths(resp.Info.Paths), SrcLocationType: resp.SrcIPLocationType, DstLocationType: resp.DstIPLocationType}
 	if q.ReturnPaths > 0 {
 		out.ReturnPaths = convertPaths(resp.ReturnPathInfo.Paths)
 	}

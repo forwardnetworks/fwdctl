@@ -109,7 +109,7 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			break
 		}
 	}
-	limits = append(limits, "which Forward build processed a snapshot is not read here: the snapshot fields this reads (id, state, kind, created and processed times, device counts, parent) do not name a build or version, so 'processed by version' is not exposed by this skill, not guessed")
+	limits = append(limits, "which Forward build processed a snapshot is not exposed by Forward's snapshot API (its snapshot schema carries times, state, trigger, parent, favourite, note and predict info, and no build or version; read from Forward's source by the SDK session): 'processed by version' cannot be answered from here")
 	finding := fmt.Sprintf("%d snapshots (%d predicted); the newest processed collected one is %s", len(all), predicted, orNone(latestReadable))
 	if latestReadable == "" {
 		limits = append(limits, "no snapshot is processed and collected, so the other skills have nothing to read by default")
@@ -141,10 +141,13 @@ func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInpu
 	if sn.State == "UNPROCESSED" {
 		limits = append(limits, staleAfterUpgradeLimit)
 	}
-	if !finalState(sn.State) {
+	if !finalState(sn.State) || sn.State == "FAILED" { // a FAILED snapshot has no stored reason string: the failed stage is the closest answer
 		p, more := processingDetail(ctx, s, *sn)
 		detail["processing"] = p
 		limits = append(limits, more...)
+		if sn.State == "FAILED" {
+			limits = append(limits, "Forward stores no failure reason for a snapshot (a predicted one carries only its base, change set, commit and name): processing shows the stage that failed; the exception text above appears only with the DEBUG_SNAPSHOTS permission and a snapshot whose creation stage completed, so a snapshot that failed earlier shows none")
+		}
 	}
 	if a, ok := detail["advanced_reachability"].(map[string]any); ok {
 		limits = append(limits, readAdvancedStage(ctx, s, sid, a)...)
