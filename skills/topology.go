@@ -179,6 +179,16 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		for _, a := range as {
 			rows = append(rows, map[string]any{"name": a.Name, "type": a.Type, "definition": json.RawMessage(a.Definition)})
 		}
+	case "unlinked_interfaces":
+		ur, ex, ul, err := unlinkedInterfaces(ctx, s, in, sid)
+		if err != nil {
+			return result.Result{}, err
+		}
+		rows = ur
+		for k, v := range ex {
+			extra[k] = v
+		}
+		limits = append(limits, ul...)
 	case "zones":
 		zm, _, err := s.Client.Networks.SecurityZones(ctx, in.NetworkID, sid)
 		if err != nil {

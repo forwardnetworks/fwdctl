@@ -68,7 +68,7 @@ Licenses for the current organization without the signed key; backup settings fo
 
 ## organizations and cve_index
 
-Organizations the login can see, and the vulnerability index's metadata (created, size). `inspect-environment` reports the index's age; `edit-platform` syncs it.
+`organizations` lists the organizations the login can see (names, ids), but Forward answers it only to a Forward-support login (an organization administrator is refused and the answer says so: use `--support-token-file`, or ask Forward support); it carries no network or snapshot counts, and there is no read-only org listing for an organization role. cve_index is the vulnerability index's metadata (created, size). `inspect-environment` reports the index's age; `edit-platform` syncs it.
 
 ## org_properties
 

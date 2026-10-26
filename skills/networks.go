@@ -110,7 +110,16 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		limits = append(limits, fmt.Sprintf("%d of them are workspaces (copies of another network made for a change); use the parent network's id for questions about the real network", workspaces))
 	}
 	page := rows[in.Offset:end]
-	finding := fmt.Sprintf("%d network(s) returned (%d match)", end-in.Offset, total)
+	visibleWS := 0
+	for _, n := range nets {
+		if string(n.ParentID) != "" {
+			visibleWS++
+		}
+	}
+	finding := fmt.Sprintf("%d network(s) returned (%d match; the login sees %d: %d networks and %d workspaces)", end-in.Offset, total, len(nets), len(nets)-visibleWS, visibleWS)
+	if end < total || in.Offset > 0 {
+		finding += fmt.Sprintf(". This is a page, not the whole list: %d of %d shown, next offset=%d", end-in.Offset, total, end)
+	}
 	if onlyWorkspaces {
 		// one snapshot list per workspace on the page, so the reads are bounded by limit
 		for _, row := range page {

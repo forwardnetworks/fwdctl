@@ -109,6 +109,7 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			break
 		}
 	}
+	limits = append(limits, "which Forward build processed a snapshot is not read here: the snapshot fields this reads (id, state, kind, created and processed times, device counts, parent) do not name a build or version, so 'processed by version' is not exposed by this skill, not guessed")
 	finding := fmt.Sprintf("%d snapshots (%d predicted); the newest processed collected one is %s", len(all), predicted, orNone(latestReadable))
 	if latestReadable == "" {
 		limits = append(limits, "no snapshot is processed and collected, so the other skills have nothing to read by default")
