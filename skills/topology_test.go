@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -155,5 +156,25 @@ func TestTopologyLinksFilterByInterface(t *testing.T) {
 	}
 	if _, _, err := runSkill(t, "inspect-topology", map[string]fwdtest.Handler{topoPath: ls, snapsPath: ready("s1")}, `{"network_id":"n1","kind":"links","interface":"po28"}`); err == nil {
 		t.Errorf("interface needs device")
+	}
+}
+
+// kind unlinked_interfaces lists up interfaces with no link and checks each LLDP neighbour name against the device names, so a neighbour named differently from the collected device is visible.
+func TestTopologyUnlinkedInterfacesNamesNeighboursThatMatchNoDevice(t *testing.T) {
+	routes := map[string]fwdtest.Handler{nqePath: func(_ *http.Request, body []byte) (int, any) {
+		q := string(body)
+		rows := func(r ...map[string]any) (int, any) { return 200, map[string]any{"items": r, "totalNumItems": len(r)} }
+		switch {
+		case strings.Contains(q, "foreach n in i.lldp.neighbors"):
+			return rows(map[string]any{"device": "leaf1", "interface": "po28", "neighbor": "F5-BA-01", "port": "1.1"}, map[string]any{"device": "leaf2", "interface": "po28", "neighbor": "spine1.example.net", "port": "e1"})
+		case strings.Contains(q, "isPresent(i.lldp)"):
+			return rows(map[string]any{"device": "leaf1", "interface": "po28", "type": "IF_AGGREGATE"}, map[string]any{"device": "leaf2", "interface": "po28", "type": "IF_AGGREGATE"})
+		}
+		return rows(map[string]any{"device": "leaf1"}, map[string]any{"device": "leaf2"}, map[string]any{"device": "spine1"}, map[string]any{"device": "F5-BA-01-ADMIN"})
+	}}
+	r := topo(t, routes, `{"network_id":"n1","kind":"unlinked_interfaces"}`)
+	d := fmt.Sprint(r.Evidence[0].Detail)
+	if !strings.Contains(d, "F5-BA-01") || !strings.Contains(d, "lldp_neighbor_names_matching_no_device_count:1") || !strings.Contains(d, "matches_a_device:false") || !strings.Contains(d, "matches_a_device:true") {
+		t.Fatalf("F5-BA-01 matches no device (the device is F5-BA-01-ADMIN); spine1.example.net matches spine1: %s", d)
 	}
 }

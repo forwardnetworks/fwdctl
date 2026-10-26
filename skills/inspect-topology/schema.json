@@ -22,7 +22,8 @@
         "aliases",
         "external",
         "link_overrides",
-        "zones"
+        "zones",
+        "unlinked_interfaces"
       ],
       "x-values": {
         "links": "links between devices",
@@ -31,7 +32,8 @@
         "aliases": "named aliases",
         "external": "the internet node, its suggested connections, L3 VPNs",
         "link_overrides": "a snapshot's added and suppressed links; compare_to_snapshot_id diffs two snapshots",
-        "zones": "zones defined in the network"
+        "zones": "zones defined in the network",
+        "unlinked_interfaces": "interfaces that are up but have no link (port-channels, and any interface with an LLDP neighbour), with the neighbour names and whether each matches a device: why a link is missing"
       }
     },
     "device": {

@@ -18,7 +18,8 @@
     },
     "name": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "keep the networks whose name contains this text (case-insensitive substring) or whose id is exactly this; the finding says how many networks and workspaces the login sees in all, so a capped page is never read as none"
     },
     "limit": {
       "type": "integer",
