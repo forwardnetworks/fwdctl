@@ -56,7 +56,7 @@
         "ip_owner": "the interface that owns an IP",
         "cloud_subnets": "cloud subnets",
         "cloud_instances": "cloud compute instances",
-        "routes": "route next hops of a device and VRF",
+        "routes": "route next hops of a device and VRF; with ips (prefixes): which devices hold an exact, more specific or covering route for each, network-wide",
         "igp_neighbors": "OSPF adjacencies",
         "bgp_families": "the BGP address families a network runs, read from config: device counts by family and OS; name = a family lists its devices",
         "security_rules_experimental": "rule and object counts of Forward's experimental security rules model"
@@ -81,7 +81,7 @@
         "minLength": 1
       },
       "minItems": 1,
-      "description": "kind ip_owner, required: the IPv4 addresses whose owning interface to find"
+      "description": "kind ip_owner, required: the IPv4 addresses whose owning interface to find. kind routes: IPv4 prefixes (or addresses, up to 20) to find network-wide, which devices hold an exact, a more specific or a covering route"
     },
     "limit": {
       "type": "integer",

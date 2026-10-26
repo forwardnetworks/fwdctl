@@ -401,8 +401,9 @@ const (
 
 // Inputs by kind, for the one kind that has inputs of its own: ip_owner takes ips and nothing that pages or filters rows.
 var inventoryKindInputs = map[string][]string{
-	"ip_owner": {"ips", "snapshot_id"},
-	"rows":     {"device", "account", "name", "limit", "offset", "snapshot_id"},
+	"ip_owner":      {"ips", "snapshot_id"},
+	"routes_prefix": {"ips", "snapshot_id", "limit"},
+	"rows":          {"device", "account", "name", "limit", "offset", "snapshot_id"},
 }
 
 func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -416,8 +417,14 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		}
 		return findIPOwner(ctx, s, findIPOwnerInput{NetworkID: in.NetworkID, IPs: in.IPs, SnapshotID: in.SnapshotID})
 	}
-	if len(in.IPs) > 0 {
-		return result.Result{}, fmt.Errorf("%w: ips is an input of kind ip_owner, not of kind %s", ErrInvalidInput, in.Kind)
+	prefixSearch := in.Kind == "routes" && len(in.IPs) > 0
+	if prefixSearch {
+		if err := rejectForeignInputs(raw, inventoryName, "kind", "routes_prefix", inventoryKindInputs); err != nil {
+			return result.Result{}, err
+		}
+	}
+	if len(in.IPs) > 0 && !prefixSearch {
+		return result.Result{}, fmt.Errorf("%w: ips is an input of kinds ip_owner and routes, not of kind %s", ErrInvalidInput, in.Kind)
 	}
 	if err := checkKindFilters(in, raw); err != nil {
 		return result.Result{}, err
@@ -452,6 +459,9 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			return result.Result{}, fmt.Errorf("%w: kind devices with compare_to_snapshot_id compares the whole device lists; device and name filter one snapshot's rows", ErrInvalidInput)
 		}
 		return inventoryCompare(ctx, s, in, cx, limits)
+	}
+	if prefixSearch {
+		return inventoryPrefixRoutes(ctx, s, in, cx, limits)
 	}
 	if in.Kind == "summary" {
 		return inventorySummary(ctx, s, in, cx, limits)

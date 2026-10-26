@@ -691,5 +691,10 @@
     "query": "Which IOS XE SD-WAN edges does each controller cover, and what is the smallest set of controllers that reaches them all?",
     "expect": "inspect-collection",
     "rival": "inspect-topology"
+  },
+  {
+    "query": "Which devices in the network hold a route for 10.1.0.0/16 or anything overlapping it?",
+    "expect": "inspect-inventory",
+    "rival": "inspect-bgp-neighbors"
   }
 ]
