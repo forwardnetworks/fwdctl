@@ -246,9 +246,10 @@ func failureCompare(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		}
 	}
 	var fixed []map[string]any
+	var gone []deviceOutcome
 	for _, p := range was {
-		if p.failed() && !curr[p.name] {
-			fixed = append(fixed, map[string]any{"device": p.name, "type": p.typ, "now": "not in this snapshot"})
+		if !curr[p.name] {
+			gone = append(gone, p) // in neither the model nor the failure list now: taken out of the sources (or renamed)
 		} else if c := findOutcome(now, p.name); p.failed() && c != nil && !c.failed() {
 			fixed = append(fixed, map[string]any{"device": p.name, "type": p.typ, "now": "ok"})
 		}
@@ -269,12 +270,37 @@ func failureCompare(ctx context.Context, s *fwd.Session, in collectionInput, cx 
 		omitted = append(omitted, om...)
 		return out
 	}
-	detail := map[string]any{"compared_with": before, "new_failures": cap25(newF, "new failures"), "new_failure_count": len(newF), "changed_failure": cap25(changed, "failures with a changed type"),
+	sort.SliceStable(gone, func(i, j int) bool { return gone[i].name < gone[j].name })
+	goneRows := make([]map[string]any, 0, len(gone))
+	byVendor, byPrefix, wasFailing := map[string]int{}, map[string]int{}, 0
+	for _, g := range gone {
+		v := g.vendor
+		if v == "" || v == "<nil>" {
+			v = "(none)"
+		}
+		byVendor[v]++
+		byPrefix[namePrefix(g.name)]++
+		if g.failed() {
+			wasFailing++
+		}
+		goneRows = append(goneRows, map[string]any{"device": g.name, "vendor": g.vendor, "type": g.typ, "was_failing": g.failed()})
+	}
+	if in.Offset >= len(goneRows) {
+		goneRows = []map[string]any{}
+	} else {
+		goneRows = goneRows[in.Offset:min(len(goneRows), in.Offset+max(in.Limit, 25))]
+	}
+	detail := map[string]any{"compared_with": before, "removed_from_sources_count": len(gone), "removed_from_sources_was_failing": wasFailing, "removed_from_sources": goneRows,
+		"removed_by_vendor": topDeviceCounts(byVendor, 15), "removed_by_name_prefix": topDeviceCounts(byPrefix, 15), "new_failures": cap25(newF, "new failures"), "new_failure_count": len(newF), "changed_failure": cap25(changed, "failures with a changed type"),
 		"recovered": cap25(fixed, "recovered devices"), "recovered_count": len(fixed), "still_failing_count": len(still), "new_after_os_version_change": versionChanged}
 	finding := fmt.Sprintf("Compared with snapshot %s: %d new failure(s), %d recovered, %d still failing, %d changed type", before, len(newF), len(fixed), len(still), len(changed))
+	if len(gone) > 0 {
+		finding += fmt.Sprintf("; %d device(s) in that snapshot are in neither the model nor the failure list now (removed from the sources, or renamed; %d of them were failing)", len(gone), wasFailing)
+	}
 	if versionChanged > 0 {
 		finding += fmt.Sprintf("; %d of the new failures are on a device whose OS version changed", versionChanged)
 	}
+	limits = append(limits, "removed_from_sources lists devices the earlier snapshot had (modelled or failed) that this one has in neither list, by name: Forward drops a device from the snapshot when it leaves the sources (a delete or a batch delete), but this view cannot say who removed it or when, and a device renamed in the sources shows as one removed and one new; limit and offset page the list, and the counts cover all of them")
 	limits = append(limits, "a device is 'new' when it did not fail in the earlier snapshot, including one that was not in it; the OS version comes from each snapshot's own model, so a new failure after a version change is a lead (a parser or support gap for that version), not proof")
 	st := result.OK
 	if len(newF)+len(changed)+len(still) > 0 {

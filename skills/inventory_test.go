@@ -536,3 +536,24 @@ func TestInventoryRoutesWithPrefixesRefusesRowFiltersAndBadEntries(t *testing.T)
 		}
 	}
 }
+
+// A vendor filter narrows the whole comparison, not just the sample of names: the counts, the breakdowns and the lists describe that one vendor.
+func TestInventoryCompareWithAVendorCountsOnlyThatVendor(t *testing.T) {
+	lists := map[string][]map[string]any{
+		"old": {devRow("lb1", "F5", "LOAD_BALANCER"), devRow("lb2", "F5", "LOAD_BALANCER"), devRow("lb3", "F5", "LOAD_BALANCER"), devRow("sw1", "CISCO", "SWITCH")},
+		"new": {devRow("lb1", "F5", "LOAD_BALANCER"), devRow("sw1", "CISCO", "SWITCH"), devRow("sw2", "CISCO", "SWITCH"), devRow("sw3", "CISCO", "SWITCH")},
+	}
+	routes := map[string]fwdtest.Handler{snapsPath: compareSnaps(), nqePath: devicesBySnapshot(lists)}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"new","kind":"devices","compare_to_snapshot_id":"old","vendor":"f5"}`)
+	d := r.Evidence[0].Detail
+	devs := d["devices"].(map[string]any)
+	if devs["baseline"] != 3 || devs["current"] != 1 || devs["added"] != 0 || devs["removed"] != 2 {
+		t.Errorf("counts should be the F5 devices only: %v", devs)
+	}
+	if got := d["removed"].([]string); len(got) != 2 || got[0] != "lb2" || got[1] != "lb3" {
+		t.Errorf("removed: %v", got)
+	}
+	if !strings.Contains(r.Finding, "-2 devices") || !strings.Contains(strings.Join(r.Limits, " "), "only devices of vendor F5") {
+		t.Errorf("finding %q, limits %v", r.Finding, r.Limits)
+	}
+}

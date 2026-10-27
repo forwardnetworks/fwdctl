@@ -98,6 +98,20 @@ func inventoryCompare(ctx context.Context, s *fwd.Session, in inventoryInput, cx
 			return result.Result{}, e
 		}
 	}
+	if in.Vendor != "" {
+		// the counts, the breakdowns and the name lists all describe this one vendor
+		want := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(in.Vendor)), "VENDOR.")
+		keep := func(m map[string]invDevice) {
+			for n, d := range m {
+				if strings.TrimPrefix(strings.ToUpper(d.vendor), "VENDOR.") != want {
+					delete(m, n)
+				}
+			}
+		}
+		keep(cur)
+		keep(old)
+		limits = append(limits, "only devices of vendor "+want+" are compared (both snapshots are filtered by the device's vendor in its own snapshot, so a device whose vendor changed shows as added or removed)")
+	}
 	var added, removed []invDevice
 	for n, d := range cur {
 		if _, ok := old[n]; !ok {
