@@ -27,6 +27,12 @@ When the controllers' management addresses are not in any collected file, a cand
 - `PING_FAILED`: nothing there. `DEVICE_TYPE_MISMATCH`: the login worked on a host that is not a controller.
 - Not resolved by the test: which management address belongs to which system IP. The result has no system IP field; the managed-device sample it returns is a few edge private IPs.
 
+**Where the results are.** `inspect-collection` view `config`, `controller_setups[].devices[].test`. View `connectivity` reads the classic devices' stored tests only: on a workspace holding one placeholder device plus a probe setup it counted only the classic device and did not show the probe setup, so do not read the probe from there.
+
+**A second field run (19 untested addresses in two /28s around two known controllers, a stored login, a workspace only; the setup was deleted afterwards).** 13 returned `PING_FAILED`, 6 returned `DEVICE_TYPE_MISMATCH` (the login worked on a host that is not a controller), none returned a controller-type answer, so neither unmatched system IP was found and the probe proved nothing about them: an address range next to known controllers is not evidence the missing ones sit there. The test finished in about 2 minutes for 19 addresses. Six of 19 accepted the shared login on hosts nobody had confirmed, which is the unknown-host and lockout risk below at work.
+
+**Before running:** say how many addresses and which login the test will use, keep the candidates to the controller subnet (not the surrounding range), and delete the probe setup afterwards (`controller_setup` action `delete`) and say that it was deleted.
+
 **Caution:** this uses the stored login against every candidate. `DEVICE_TYPE_MISMATCH` means the login worked on a host nobody confirmed. Test only a short list the customer has approved, never a whole subnet by default, and leave the test workspace and its setups for the person to remove (the workspace expires; `controller_setup delete` removes a setup).
 
 ## Mapping each controller's system IP to its management address (fingerprint method; run once by a field session, sanitized)
