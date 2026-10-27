@@ -231,3 +231,24 @@ func TestInspectPlatformWebhooksAttachTheLastTestByName(t *testing.T) {
 		t.Errorf("last_test not attached by name: %s", b)
 	}
 }
+
+// Another organization's stored licenses (support): each shows whether it is activated and Available, and an Available stacking license of another tier is previewed as refused.
+func TestInspectPlatformLicensingForAnOrgPreviewsTheTierRule(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/orgs/o1/licenses": fwdtest.Const(200, map[string]any{"licenses": []any{
+			map[string]any{"signedLicenseKey": "KEY", "status": "ACTIVE", "license": map[string]any{"id": "L1", "type": "TIER", "tier": "NS", "replaces": false, "standardDeviceCap": 300, "startsAt": "2026-01-01T00:00:00Z", "expiresAt": "2026-12-31T00:00:00Z"}},
+			map[string]any{"status": "ACTIVE", "license": map[string]any{"id": "L2", "type": "TIER", "tier": "NSP", "replaces": false, "standardDeviceCap": 301}},
+			map[string]any{"status": "ACTIVE", "license": map[string]any{"id": "L3", "type": "TIER", "tier": "NSP", "replaces": true}},
+		}}),
+	}
+	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"licensing","org_id":"o1"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"id":"L2"`, "License tier mismatch: NS and NSP", "replacing: skips the tier check", `"activated":true`, "activates nothing"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q: %s", want, b)
+		}
+	}
+	if strings.Contains(b, "KEY") {
+		t.Errorf("the signed key was returned: %s", b)
+	}
+}

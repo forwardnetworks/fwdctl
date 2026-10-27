@@ -18,7 +18,7 @@
 | `org_properties` | organization (`org_id`, or `network_id` to find it) | every organization property: effective value and its source (org, global override or compiled default), plus the appserver build |
 | `dashboards`, `scorecards`, `scorecard_trends` | network | custom dashboards (raw layout); scorecard definitions and the latest snapshot's scores; each scorecard's score over the last 90 days (first, latest, min, max, change). **Unpublished Forward API** |
 | `integrations` | organization (`network_id` adds Rapid7) | ServiceNow, Infoblox and Rapid7, without passwords |
-| `licensing`, `backups`, `saml` | organization | licenses without the key; backup settings and the last backup; SAML status |
+| `licensing`, `backups`, `saml` | organization (`licensing` with `org_id`: another organization's stored licenses, Forward support, SaaS) | licenses without the key; backup settings and the last backup; SAML status |
 
 Detail and what each area cannot show: `reference/areas.md` (`fwdctl describe inspect-platform reference/areas.md`).
 

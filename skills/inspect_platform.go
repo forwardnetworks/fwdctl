@@ -477,6 +477,8 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	}
 	if in.View == "effective" {
 		rows, limits, differ, err = effectiveSettingRows(ctx, s)
+	} else if in.Area == "licensing" && in.OrgID != "" { // another organization's stored licenses (support)
+		rows, limits, err = orgLicenseRows(ctx, s, in.OrgID)
 	} else if in.Area == "org_properties" { // needs org_id, which the generic list signature does not carry
 		rows, limits, err = orgPropertyRows(ctx, s, in)
 	} else {
