@@ -55,7 +55,7 @@
     "org_id": {
       "type": "string",
       "minLength": 1,
-      "description": "org_properties only: the organization to read (default: the organization of network_id, else the only organization this login sees)"
+      "description": "org_properties, and licensing (another organization's stored licenses; Forward support, SaaS): the organization to read (default: the organization of network_id, else the only organization this login sees)"
     },
     "command": {
       "type": "string",
