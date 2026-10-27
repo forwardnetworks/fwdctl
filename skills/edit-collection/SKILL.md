@@ -34,7 +34,10 @@ finished task, and returns `mode: dry_run` with the change it would make. Show t
 ## Procedure
 
 1. **start**: if a collection is already running, or the attached collector is not connected, the answer is **unknown** with the
-   reason and nothing is started. Otherwise, with `apply`, start it and return the task id at once. It does not wait: use
+   reason and nothing is started. It is also **unknown** when nothing is configured to collect: the check counts classic devices, endpoints,
+   controller-managed setups (a controller or a managed device) and cloud accounts, so a network whose only source is a migrated SD-WAN
+   controller setup can start (the start is the network-wide call; `edit-source` has no start action). A start on a controller-only network
+   has not been run against a live Forward, so the dry run says so. Otherwise, with `apply`, start it and return the task id at once. It does not wait: use
    `inspect-collection-status` for progress and `inspect-snapshots` for the snapshot.
 2. **stop**: read the task. A missing task, another network's task, or one that already finished is **unknown** and untouched.
    `CANCEL` ends it with no snapshot; `SKIP` ends it and makes a snapshot from what was already collected.

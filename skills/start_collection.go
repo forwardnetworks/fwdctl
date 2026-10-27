@@ -67,13 +67,21 @@ func startNow(ctx context.Context, s *fwd.Session, in startCollectionInput, cx r
 	}
 	devs, derr := s.ClassicDevices(ctx, in.NetworkID)
 	eps, eerr := s.Endpoints(ctx, in.NetworkID)
+	// Controller-managed setups and cloud accounts are collection sources too: a network can hold only those (a migrated SD-WAN controller setup), with no classic device and no endpoint.
+	setups, serr := controllerSetupCount(ctx, s, in.NetworkID)
+	accounts, aerr := cloudAccountCount(ctx, s, in.NetworkID)
 	switch {
 	case derr != nil || eerr != nil:
 		limits = append(limits, fmt.Sprintf("what is configured to collect could not be read (%v, %v), so a start may collect nothing", derr, eerr))
-	case len(devs)+len(eps) == 0:
-		return refuseStart(in, cx, "nothing is configured to collect (no collection devices or endpoints); a start would collect nothing", state)
+	case len(devs)+len(eps) == 0 && (serr != nil || aerr != nil):
+		limits = append(limits, fmt.Sprintf("no classic device or endpoint is configured, and the controller setups or cloud accounts could not be read (%v, %v), so a start may collect nothing", serr, aerr))
+	case len(devs)+len(eps)+setups+accounts == 0:
+		return refuseStart(in, cx, "nothing is configured to collect (no collection devices, endpoints, controller setups or cloud accounts); a start would collect nothing", state)
 	default:
-		state["targets"] = map[string]any{"devices": len(devs), "endpoints": len(eps)}
+		state["targets"] = map[string]any{"devices": len(devs), "endpoints": len(eps), "controller_setups": setups, "cloud_accounts": accounts}
+		if len(devs)+len(eps) == 0 && setups > 0 {
+			limits = append(limits, "only controller-managed setups are configured: the start call is the network-wide one and the setups are read as collection sources, but a start on a controller-only network has not been run against a live Forward, so check the task with inspect-collection view status")
+		}
 	}
 	if tasks, err := s.RecentTasks(ctx, in.NetworkID, 20); err == nil {
 		if last := lastFinished(tasks); last != nil {
@@ -176,4 +184,25 @@ func taskActive(status string) bool {
 		return true
 	}
 	return false
+}
+
+// controllerSetupCount counts the controller-managed setups that name a controller or a managed device (an empty shell collects nothing).
+func controllerSetupCount(ctx context.Context, s *fwd.Session, networkID string) (int, error) {
+	setups, _, err := s.Client.ControllerManagedSetups.List(ctx, networkID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, st := range setups {
+		if len(st.Controllers)+len(st.ManagedDevices) > 0 {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// cloudAccountCount counts the cloud accounts configured on the network.
+func cloudAccountCount(ctx context.Context, s *fwd.Session, networkID string) (int, error) {
+	list, _, err := s.Client.CloudAccounts.List(ctx, networkID)
+	return len(list), err
 }

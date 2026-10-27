@@ -84,8 +84,30 @@ func TestStopCollectionOnlyEndsARunningTaskOfThisNetwork(t *testing.T) {
 func TestStartCollectionRefusesWhenNothingIsConfiguredToCollect(t *testing.T) {
 	routes := scRoutes(idle(), nil)
 	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{})
+	routes["GET /api/networks/n1/controller-managed-setups"] = fwdtest.Const(200, []any{})
+	routes["GET /api/networks/n1/cloudAccounts"] = fwdtest.Const(200, []any{})
 	r, srv := mustRun(t, "edit-collection", routes, `{"network_id":"n1","apply":true}`)
 	if r.Status != result.Unknown || writes(srv) != 0 || !strings.Contains(r.Finding, "nothing is configured") {
 		t.Fatalf("%s %s writes=%d", r.Status, r.Finding, writes(srv))
+	}
+}
+
+// A network whose only source is a controller setup (a migrated SD-WAN controller) has no classic device and no endpoint, yet it has something to collect.
+func TestStartCollectionCountsControllerSetupsAndCloudAccountsAsSources(t *testing.T) {
+	for name, extra := range map[string]map[string]fwdtest.Handler{
+		"controller setup": {"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{map[string]any{"name": "s1", "controllers": []any{map[string]any{"name": "c1", "type": "cisco_sdwan_vsmart_ssh", "host": "192.0.2.10"}}}}),
+			"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{})},
+		"cloud account": {"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{}),
+			"GET /api/networks/n1/cloudAccounts": fwdtest.Const(200, []any{map[string]any{"name": "a1", "type": "AWS"}})},
+	} {
+		routes := scRoutes(idle(), nil)
+		routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{})
+		for k, v := range extra {
+			routes[k] = v
+		}
+		r, srv := mustRun(t, "edit-collection", routes, `{"network_id":"n1","apply":true}`)
+		if r.Status != result.OK || writes(srv) != 1 {
+			t.Errorf("%s: %s %s writes=%d", name, r.Status, r.Finding, writes(srv))
+		}
 	}
 }
