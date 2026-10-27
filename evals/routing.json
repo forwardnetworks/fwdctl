@@ -593,6 +593,11 @@
     "rival": "edit-endpoint-profile"
   },
   {
+    "query": "Show me the saved network maps and which devices one of them covers in the latest snapshot",
+    "expect": "inspect-topology",
+    "rival": "inspect-inventory"
+  },
+  {
     "query": "Run one show command on an SSH host through Forward and read its output, without making it a permanent source",
     "expect": "edit-platform",
     "rival": "edit-source"

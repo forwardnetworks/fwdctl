@@ -29,6 +29,8 @@ type topologyInput struct {
 	CompareToSnapshotID string `json:"compare_to_snapshot_id"`
 	// Interface narrows kind links to the links on one interface of device.
 	Interface string `json:"interface"`
+	// MapID belongs to kind maps: read one saved map's coverage in the snapshot.
+	MapID string `json:"map_id"`
 }
 
 const (
@@ -43,6 +45,9 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	}
 	if in.Kind == "external" {
 		return inspectExternalConnectivity(ctx, s, raw)
+	}
+	if in.MapID != "" && in.Kind != "maps" {
+		return result.Result{}, fmt.Errorf("%w: map_id is an input of kind maps", ErrInvalidInput)
 	}
 	if in.Interface != "" && in.Kind != "links" {
 		return result.Result{}, fmt.Errorf("%w: interface is an input of kind links", ErrInvalidInput)
@@ -189,6 +194,19 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 			extra[k] = v
 		}
 		limits = append(limits, ul...)
+	case "maps":
+		mr, ex, ml, err := networkMaps(ctx, s, in, sid)
+		if err != nil {
+			if r, ok := denialResult(topologyName, err, cx, "could not read the saved network maps"); ok {
+				return r, nil
+			}
+			return result.Result{}, err
+		}
+		rows = mr
+		for k, v := range ex {
+			extra[k] = v
+		}
+		limits = append(limits, ml...)
 	case "zones":
 		zm, _, err := s.Client.Networks.SecurityZones(ctx, in.NetworkID, sid)
 		if err != nil {
@@ -211,7 +229,7 @@ func inspectTopology(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	}
 	total := len(rows)
 	// a list of things an administrator DEFINES (tags, aliases, link overrides, locations) that Forward returned empty is an answer, not a doubt: the read succeeded and none exist
-	if total == 0 && in.Device == "" && (in.Kind == "tags" || in.Kind == "aliases" || in.Kind == "link_overrides" || in.Kind == "locations") {
+	if total == 0 && in.Device == "" && (in.Kind == "tags" || in.Kind == "aliases" || in.Kind == "link_overrides" || in.Kind == "locations" || (in.Kind == "maps" && in.MapID == "")) {
 		finding := fmt.Sprintf("No %s are defined (the read succeeded and Forward returned an empty list)", in.Kind)
 		d := map[string]any{"kind": in.Kind, "total": 0, "read": "succeeded", "rows": []map[string]any{}}
 		return result.Build(topologyName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: append(limits, "an empty list from a successful read is 'none defined'; a failed read is an error, never an empty list"),

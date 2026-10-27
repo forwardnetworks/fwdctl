@@ -178,3 +178,36 @@ func TestTopologyUnlinkedInterfacesNamesNeighboursThatMatchNoDevice(t *testing.T
 		t.Fatalf("F5-BA-01 matches no device (the device is F5-BA-01-ADMIN); spine1.example.net matches spine1: %s", d)
 	}
 }
+
+// Saved network maps: the list carries each map's directory; one map shows which placed devices the snapshot lacks; a refused read is not an empty list.
+func TestTopologyMapsListsMapsAndOneMapsCoverage(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                              ready("s1"),
+		"GET /api/networks/n1/maps":            fwdtest.Const(200, map[string]any{"maps": []any{map[string]any{"id": "m2", "name": "Core", "pinned": true, "createdBy": "a@example.com"}, map[string]any{"id": "m1", "name": "Branches"}}}),
+		"GET /api/networks/n1/map-directories": fwdtest.Const(200, map[string]any{"directories": []any{map[string]any{"path": "/", "mapIds": []any{"m1"}}, map[string]any{"path": "/wan", "mapIds": []any{"m2"}}}}),
+		"GET /api/networks/n1/maps/m2": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("view") == "snapshot" {
+				return 200, map[string]any{"id": "m2", "name": "Core", "devices": []any{map[string]any{"name": "R1"}, map[string]any{"name": "r2", "collectionError": "AUTHENTICATION_FAILED"}}}
+			}
+			return 200, map[string]any{"id": "m2", "name": "Core", "devices": []any{map[string]any{"name": "r1"}, map[string]any{"name": "r2"}, map[string]any{"name": "gone"}}}
+		},
+	}
+	r, _ := mustRun(t, "inspect-topology", routes, `{"network_id":"n1","kind":"maps"}`)
+	b := jsonOf(r)
+	for _, want := range []string{`"name":"Branches"`, `"directory":"/wan"`, `"directory":"/"`, "VIEW_NETWORK_MAPS"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("list missing %q: %s", want, b)
+		}
+	}
+	r, _ = mustRun(t, "inspect-topology", routes, `{"network_id":"n1","kind":"maps","map_id":"m2"}`)
+	b = jsonOf(r)
+	for _, want := range []string{`"devices_placed":3`, `"devices_in_snapshot":2`, `gone`, `r2`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("one map missing %q: %s", want, b)
+		}
+	}
+	// map_id belongs to kind maps only
+	if _, _, err := runSkill(t, "inspect-topology", routes, `{"network_id":"n1","kind":"tags","map_id":"m2"}`); err == nil {
+		t.Errorf("map_id with another kind should be refused")
+	}
+}

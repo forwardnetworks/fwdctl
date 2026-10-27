@@ -30,6 +30,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | "What is collected", "is device X switched off for collection", which cloud or AWS accounts are enabled for collection, member accounts, the last test of each region, cloud collection setup, a C2S access portal (CAP) setup and which accounts it collects | `inspect-collection` (view config) |
 | A path ends at the edge, "is the internet modelled", links added by hand, the connections of an L3 VPN or L2 VPN | `inspect-topology` (kind external) |
 | "When did this check start failing", "is this new or old" | `inspect-history` |
+| Show the saved network maps (custom diagrams), their directories, what one map covers in a snapshot | `inspect-topology` kind `maps` (`map_id` for one map) |
 | "Which checks exist or fail", "how many checks fail or error", "why is this check in ERROR", "what did this check find", "what checks does Forward offer" | `check-network-compliance` (view read) |
 | "What does this change set do", "is it ready" | `verify-change` with `view: describe` |
 | Label a snapshot | `edit-snapshot` (action note) (dry run first) |
