@@ -196,3 +196,22 @@ func TestCollectionStatusSaysWhenNoCollectorIsAttached(t *testing.T) {
 		t.Errorf("a collector is attached: %s", r.Finding)
 	}
 }
+
+// While a collection runs, the status view says which device command each running device is on (what Forward's Job progress dialog shows).
+func TestCollectionStatusShowsTheCommandEachRunningDeviceIsOn(t *testing.T) {
+	running := map[string]any{"id": "9", "status": "RUNNING", "type": "NETWORK_COLLECTION", "networkId": "n1", "startedAt": "2026-10-27T10:00:00Z",
+		"progress": map[string]any{"total": 2, "running": 1, "succeeded": 1}}
+	r := colStatus(t, map[string]fwdtest.Handler{
+		tasksPath: fwdtest.Const(200, []any{running}),
+		"GET /api/collector-tasks/9": fwdtest.Const(200, map[string]any{"id": "9", "status": "RUNNING", "type": "NETWORK_COLLECTION", "subTasks": []any{
+			map[string]any{"id": "a", "description": "edge1", "status": "RUNNING", "operation": "show sdwan omp routes", "startedAt": "2026-10-27T10:01:00Z"},
+			map[string]any{"id": "b", "description": "edge2", "status": "SUCCEEDED", "startedAt": "2026-10-27T10:00:10Z", "finishedAt": "2026-10-27T10:00:50Z"}}}),
+	})
+	d := fmt.Sprint(r.Evidence[0].Detail["running_now"])
+	if !strings.Contains(d, "edge1") || !strings.Contains(d, "show sdwan omp routes") || strings.Contains(d, "edge2") && !strings.Contains(d, "SUCCEEDED:1") {
+		t.Fatalf("running_now: %s", d)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "one instant") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}
