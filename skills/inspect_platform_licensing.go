@@ -27,7 +27,7 @@ func orgLicenseRows(ctx context.Context, s *fwd.Session, orgID string) ([]any, [
 	}
 	var rows []any
 	for _, d := range list {
-		row := map[string]any{"id": d.ID, "status": d.Status, "activated": d.Signed, "invalidated": d.Invalidated, "available": d.Available()}
+		row := map[string]any{"id": d.ID, "state": licenseState(d), "status": d.Status, "activated": d.Signed, "invalidated": d.Invalidated, "available": d.Available()}
 		if d.UsedAt != "" {
 			row["used_at"] = d.UsedAt
 		}
@@ -53,6 +53,7 @@ func orgLicenseRows(ctx context.Context, s *fwd.Session, orgID string) ([]any, [
 	}
 	lim := []string{
 		"another organization's stored licenses: this needs Forward support authority and a SaaS deployment; the signed key is never returned",
+		"state says what the license is to this organization (INVALIDATED, ACTIVATED, AVAILABLE or NOT_ACTIVATED); status is Forward's own date-based status (NOT_ACTIVE_YET, ACTIVE, EXPIRED, REPLACED), so an invalidated license can still read ACTIVE there",
 		"available mirrors the support UI's label (not invalidated, not activated, not expired, not a legacy, device, cloud or endpoint license); it is inferred client logic, not a server field",
 		"activation_preview applies the tier rule read from Forward's source by a field session and the SDK session, never run: it compares tiers as of now, not as of the license's start date (an NS license that expires before an NSP license starts stops counting), and it does not check cloud-credit debt, a pending replacement or a tier-trial period, which can each still refuse an activation. This skill activates nothing",
 	}
@@ -75,4 +76,17 @@ func licensePreview(l *forward.License, orgTier string) string {
 	default:
 		return fmt.Sprintf("stacking: expected to be refused with License tier mismatch: %s and %s (a replacing license, or the %s license ending first, would avoid it)", orgTier, l.Tier, orgTier)
 	}
+}
+
+// licenseState is the plain state of a stored license: Forward's status is date-based and keeps saying ACTIVE for an invalidated one.
+func licenseState(d forward.LicenseDetails) string {
+	switch {
+	case d.Invalidated:
+		return "INVALIDATED"
+	case d.Signed:
+		return "ACTIVATED"
+	case d.Available():
+		return "AVAILABLE"
+	}
+	return "NOT_ACTIVATED"
 }
