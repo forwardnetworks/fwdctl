@@ -61,6 +61,16 @@ A device in the list Forward collects (CLI/SNMP/HTTP devices). `create` needs `n
 
 A network endpoint is a host or device Forward collects that is not a classic network device: a Linux host over SSH (type CLI), an SNMP device or an HTTP device. `create` needs `name` and `host`; `credentialId` (a CLI login from `inspect-platform` area `credentials`) and `profileId` (an endpoint profile, for example a CLI profile made with `edit-platform` area `endpoint_profiles`; `inspect-collection` view `config` lists them) are ids. A CLI endpoint takes `protocol` SSH or TELNET and may use a `jumpServerId`. A create is idempotent by name: the same host, credential and profile again is reported as already done; a different definition is refused (use `update`). Collection runs the profile's commands only if the organization approved them.
 
+### Running one command on a host and reading its output
+
+Forward has no ad-hoc "run this command" call; a CLI endpoint is how a command is run through Forward on a host that is not a classic device (a Linux host, a manager or any SSH host the CLI login works on), without logging in outside Forward. Do it in a workspace network (`edit-workspace`), not production.
+1. **Profile.** `edit-platform` area `endpoint_profiles`, action `create`, `definition.type` CLI, `command_sets` `[]` and `custom_commands` with the command. The dry run reads Forward's approved-command list and names any command it has not approved (nothing is saved), so it is also the check that the command is allowed. The profile is **organization-wide**: give it a distinct name.
+2. **Endpoint.** `edit-source` object `endpoint`, action `create`: `name`, `host`, `protocol` SSH, `credentialId` (a CLI login), `profileId`, optional `jumpServerId`.
+3. **Collect.** The command runs at the network's next collection (`edit-collection`, dry run first; it collects every source in that network). It takes no connectivity-test entry: `inspect-collection` view `connectivity` counts no tested device for it.
+4. **Read.** The output is in `network.endpoints` as `cliCommandResponses` (`command`, `response`), read with `fwdctl nqe run` (`fwdctl context schema cliCommandResponses` lists the fields; `collectionError` and `status` are not fields of the response record). Not in the device files.
+5. **Clean up.** `edit-source` `endpoint` `delete`, then `edit-platform` `endpoint_profiles` `delete` (confirm = the profile id), and say so.
+Confirmed once in a field workspace (a CLI profile with three show commands on an SD-WAN Manager: all three ran at the next collection and their output was readable this way); not run here.
+
 ## schedule
 
 A collection schedule is days of the week (0 Sunday to 6 Saturday) plus either `times` (HH:mm) or `periodInSeconds` (with optional `startAt`, `endAt`), in a Forward time zone (UTC and about fifty regional IDs such as America/Chicago). `update` REPLACES the whole schedule: restate every field. A duplicate schedule is refused by Forward. Forward does not return the next run time.

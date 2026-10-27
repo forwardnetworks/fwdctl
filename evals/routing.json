@@ -593,6 +593,11 @@
     "rival": "edit-endpoint-profile"
   },
   {
+    "query": "Run one show command on an SSH host through Forward and read its output, without making it a permanent source",
+    "expect": "edit-platform",
+    "rival": "edit-source"
+  },
+  {
     "query": "Set the enable password credential on our Arista devices and turn on BGP advertisement collection",
     "expect": "edit-source",
     "rival": "edit-platform"
