@@ -156,6 +156,7 @@ func investigateCollectionFailure(ctx context.Context, s *fwd.Session, raw json.
 				result.Options{Evidence: []result.Evidence{result.NewEvidence(result.EvCollection, "getCollectorTask", sid, detail, "")}})
 		case "FAILED", "TIMED_OUT", "CANCELED":
 			problems = append(problems, "the collection task "+strings.ToLower(strings.ReplaceAll(t.Status, "_", " ")))
+			addTaskReason(ctx, s, t, detail, &limits)
 			evidence = append(evidence, result.NewEvidence(result.EvCollection, "getCollectorTask", sid, detail, "task "+t.Status))
 		}
 	}
