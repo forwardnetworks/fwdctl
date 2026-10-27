@@ -161,7 +161,14 @@ func migrationCoverage(ctx context.Context, s *fwd.Session, networkID string, ed
 			distinct[v] = true
 		}
 	}
-	out := map[string]any{"snapshot_id": sid, "edges_read": len(edges), "edges_with_a_vsmart_up": len(edgeUp), "distinct_vsmarts_up": len(distinct), "minimal_cover": cover,
+	// per edge, the vSmart system IPs it is up to in its own control connections: the controller to configure for an edge comes from here, not from the connectivity-test listing
+	perEdge := make([]map[string]any, 0, len(edgeUp))
+	for _, e := range edges {
+		if ups, ok := edgeUp[e]; ok {
+			perEdge = append(perEdge, map[string]any{"edge": e, "vsmarts_up": ups})
+		}
+	}
+	out := map[string]any{"snapshot_id": sid, "edges_read": len(edges), "edges_with_a_vsmart_up": len(edgeUp), "distinct_vsmarts_up": len(distinct), "minimal_cover": cover, "edge_vsmarts_up": perEdge,
 		"edges_with_no_control_connections_file": cap(noFile), "edges_with_no_vsmart_rows": cap(noRows), "edges_with_no_vsmart_up": cap(noneUp), "wizard_controllers": wizard,
 		"edges_the_wizard_controllers_do_not_reach": cap(notReached)}
 	if len(failed) > 0 {

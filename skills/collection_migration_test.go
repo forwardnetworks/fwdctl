@@ -230,6 +230,11 @@ func TestMigrationViewComputesEdgeCoverageFromControlConnections(t *testing.T) {
 	if len(cover) != 1 || cover[0]["vsmart_system_ip"] != "192.0.2.11" || cover[0]["newly_covered_edges"] != 2 {
 		t.Errorf("one vSmart (192.0.2.11) covers both edges: %v", cover)
 	}
+	// per edge, the vSmarts it is up to in its own control connections (a tear_down peer is not one)
+	per := cov["edge_vsmarts_up"].([]map[string]any)
+	if len(per) != 2 || fmt.Sprint(per[0]["edge"], per[0]["vsmarts_up"], per[1]["edge"], per[1]["vsmarts_up"]) != "s1[192.0.2.10 192.0.2.11]s4[192.0.2.11]" {
+		t.Errorf("edge_vsmarts_up: %v", per)
+	}
 	nr := cov["edges_the_wizard_controllers_do_not_reach"].(map[string]any)
 	if nr["count"] != 1 || fmt.Sprint(nr["names"]) != "[s4]" {
 		t.Errorf("the wizard's controller 192.0.2.10 reaches s1 but not s4: %v", nr)
