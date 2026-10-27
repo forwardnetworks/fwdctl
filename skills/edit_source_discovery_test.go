@@ -44,7 +44,7 @@ func TestDiscoveryStartIsADryRunThatSaysItScansAndNeedsTheTypeToConfirm(t *testi
 	if r.Mode != result.ModeDryRun || writes(srv) != 0 || len(calls) != 0 {
 		t.Fatalf("dry run wrote: %s %v", r.Mode, calls)
 	}
-	for _, want := range []string{"192.0.2.0/24", "C7", "scans", "500", "MANAGE_COLLECTION_SOURCES"} {
+	for _, want := range []string{"192.0.2.0/24", "C7", "scans", "500", "MANAGE_COLLECTION_SOURCES", "about 256 address(es)", "subnets_to_skip", "lockout"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("dry run should show %q: %s", want, b)
 		}

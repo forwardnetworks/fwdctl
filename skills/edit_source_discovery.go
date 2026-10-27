@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -56,13 +57,14 @@ func planDiscovery(ctx context.Context, s *fwd.Session, in editSourceInput) (*ne
 			collector = "the network's default collector"
 		}
 		typ := strings.ToUpper(def.Type)
+		scope := scanScopeLimits(typ, def, rate)
 		return &networkPlan{target: fmt.Sprintf("start a %s discovery of %s from %s on network %s", typ, targets, collector, in.NetworkID), action: "start_discovery", after: params, reversible: true, confirm: typ,
 			undo: "stop it (action stop); what it already found stays listed (inspect-collection view discovery)",
-			limits: []string{
-				"this scans: the collector probes the named addresses (connections, and logins for the types that log in) until the job ends or is stopped, so it touches the customer network. The organization's scan rate limit is " + strconv.Itoa(rate) + " connections per second (maxScanConnectionsPerSecond)",
+			limits: append(scope,
+				"this scans: the collector probes the named addresses (connections, and logins for the types that log in) until the job ends or is stopped, so it touches the customer network. The organization's scan rate limit is "+strconv.Itoa(rate)+" connections per second (maxScanConnectionsPerSecond)",
 				"Forward answers 409 if a discovery is already running, and refuses a type that logs in to devices when the organization's exploratory-login setting is off; start returns once the job is queued: read the outcome with inspect-collection view discovery",
-				"needs MANAGE_COLLECTION_SOURCES; apply needs confirm equal to the discovery type (" + typ + ")",
-			},
+				"needs MANAGE_COLLECTION_SOURCES; apply needs confirm equal to the discovery type ("+typ+")",
+			),
 			do: func(ctx context.Context) error {
 				_, _, err := s.Client.DeviceDiscovery.Start(ctx, in.NetworkID, def.CollectorID, params)
 				return err
@@ -293,4 +295,34 @@ func planDiscoverySchedule(ctx context.Context, s *fwd.Session, in editSourceInp
 		return nil, nil
 	}
 	return nil, fmt.Errorf("%w: not a schedule action", ErrInvalidInput)
+}
+
+// scanScopeLimits states, for a subnet scan, how many addresses the job reaches and what a wide range costs, before anything runs: the count, the probing time at the organization's rate limit, and the reason to keep the range to the subnet that is meant.
+func scanScopeLimits(typ string, def discoveryDef, rate int) []string {
+	if typ != "SUBNET_SCAN" {
+		return nil
+	}
+	var total, bad int64
+	for _, c := range def.Subnets {
+		p, err := netip.ParsePrefix(strings.TrimSpace(c))
+		if err != nil {
+			bad++
+			continue
+		}
+		if p.Addr().Is4() {
+			total += int64(1) << (32 - p.Bits())
+		} else {
+			bad++ // an IPv6 range is not counted here
+		}
+	}
+	total += int64(len(def.Hosts))
+	line := fmt.Sprintf("the scan reaches about %d address(es) (%d subnet(s), %d host(s), less any subnets_to_skip)", total, len(def.Subnets), len(def.Hosts))
+	if bad > 0 {
+		line += fmt.Sprintf("; %d subnet(s) are IPv6 or unparsed and are not counted", bad)
+	}
+	if rate > 0 && total > 0 {
+		line += fmt.Sprintf("; at %d connections per second that is at least %d second(s) of probing", rate, (total+int64(rate)-1)/int64(rate))
+	}
+	return []string{line,
+		"keep the range to the subnet you mean to find devices in: every host that answers is probed, and where the discovery type logs in, the network's stored logins are tried on hosts nobody has confirmed, so a wide range can reach hosts that are not network devices and repeated failed logins can trip their lockout policies. Name what to leave out in subnets_to_skip"}
 }
