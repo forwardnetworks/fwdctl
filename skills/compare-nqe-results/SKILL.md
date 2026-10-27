@@ -31,6 +31,7 @@ What each input means, and the fields per object and action: `fwdctl run compare
      network.
    - Unknown query id: **unknown**.
 4. A prediction on either side is stated as a limit.
+5. A list inside a row (next hops, interfaces, tags) has no fixed order in NQE. If a query shows many changed rows that differ only in the order of such a list, order the list inside the query and run again (a field session saw about 15,000 false differences on forwarding entries; not checked against this skill's diff).
 
 ## Evidence
 
