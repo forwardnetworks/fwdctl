@@ -93,3 +93,12 @@ func TestDisablingTheSameCommandAgainIsAlreadyDoneAndBadInputIsRefused(t *testin
 		}
 	}
 }
+
+// A pattern with an upper-case class escape would change meaning when Forward lowercases it (\\S becomes \\s), so the dry run says so.
+func TestDisablingWarnsThatLowercasingFlipsAClassEscape(t *testing.T) {
+	w := newDisabledWorld()
+	r, _ := mustRun(t, "edit-platform", w.routes(), `{"area":"collection_settings","action":"set","name":"organization","definition":{"disable_commands":[{"device_type":"cisco_sdwan_ssh","command":"show omp routes \\S+"}]}}`)
+	if all := strings.Join(r.Limits, " | "); !strings.Contains(all, "opposite class") {
+		t.Errorf("limits: %s", all)
+	}
+}

@@ -36,6 +36,9 @@ func hasDisabledCommandEdit(raw json.RawMessage) bool {
 	return a || b
 }
 
+// upperClass finds a regex class escape in upper case (\S, \D, \W, ...), which lowercasing turns into the opposite class.
+var upperClass = regexp.MustCompile(`\\[A-Z]`)
+
 // planDisabledCommands turns built-in collection commands off org-wide, or back on. Forward replaces the whole map on a patch, so each entry is added or removed by reading the map, changing a copy, and sending
 // all of it back, read again right before the write. It is organization-wide and takes effect at the next collection.
 func planDisabledCommands(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
@@ -171,7 +174,12 @@ func planDisabledCommands(ctx context.Context, s *fwd.Session, in editPlatformIn
 		"Forward accepts this setting from 26.8.3 (its release notes; Forward staff gave 26.8.3-02 as the first build with it). An older build most likely refuses the property (a 400 naming an unrecognized property) and nothing changes. The device_type must be a connection type name Forward knows (panos_ssh, cisco_ios_xe_ssh, f5_ssh, ...), spelled exactly: an unknown key is rejected",
 	}
 	if len(goRegexWarn) > 0 {
-		limits = append(limits, "Forward lowercases the command text it matches, so write the pattern in lower case; these contain upper case: "+strings.Join(goRegexWarn, ", "))
+		limits = append(limits, "Forward lowercases the command text it matches, and the pattern too (read from the collector source), so write the pattern in lower case; these contain upper case: "+strings.Join(goRegexWarn, ", "))
+		for _, c := range goRegexWarn {
+			if upperClass.MatchString(c) {
+				limits = append(limits, fmt.Sprintf("%q uses a class such as \\S or \\D: lowercased it becomes \\s or \\d, the opposite class, so it would match something else than written", c))
+			}
+		}
 	}
 	if len(changes) == 0 {
 		return &networkPlan{target: "disabled commands", before: view(cur), noop: "the disabled commands already are as asked", limits: limits}, nil
