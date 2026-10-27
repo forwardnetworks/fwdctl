@@ -813,3 +813,27 @@ func TestCollectionLogsViewNamesForbiddenCommandLines(t *testing.T) {
 		t.Errorf("%s %v", r.Finding, lg)
 	}
 }
+
+// A failed collector task shows whatever reason the task API holds (its note, a failed subtask's note) and says plainly when it holds none.
+func TestCollectionFailedTaskShowsItsReasonOrSaysThereIsNone(t *testing.T) {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	routes["GET /api/collector-tasks/t1"] = fwdtest.Const(200, map[string]any{"id": "t1", "status": "FAILED", "type": "NETWORK_COLLECTION", "note": "no collectable device", "subTasks": []any{
+		map[string]any{"id": "a", "description": "edge1", "status": "FAILED", "note": "login refused"},
+		map[string]any{"id": "b", "description": "edge2", "status": "SUCCEEDED"}}})
+	r, _ := collect(t, routes, `{"network_id":"n1","collector_task_id":"t1"}`)
+	b := jsonOf(r)
+	for _, want := range []string{"no collectable device", "login refused", "subtasks_not_succeeded"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q: %s", want, b)
+		}
+	}
+	if strings.Contains(strings.Join(r.Limits, " "), "gave no reason") {
+		t.Errorf("a reason was present: %v", r.Limits)
+	}
+
+	routes["GET /api/collector-tasks/t1"] = fwdtest.Const(200, map[string]any{"id": "t1", "status": "FAILED", "type": "NETWORK_COLLECTION"})
+	r, _ = collect(t, routes, `{"network_id":"n1","collector_task_id":"t1"}`)
+	if l := strings.Join(r.Limits, " "); !strings.Contains(l, "gave no reason") || !strings.Contains(l, "never started") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}
