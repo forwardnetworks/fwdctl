@@ -21,3 +21,5 @@ limit stated.
 Ambiguous words: "fix" or "troubleshoot" means find the cause, never apply a change. "Verify" or "check"
 means against current state across devices. "Write" or "generate" applied to an NQE query means produce a
 query the user runs. "Utilization" and "counters" mean the collected snapshot, not live streams.
+
+Not on this list, although it may look like it: Forward's saved Network Maps (custom diagrams refreshed every snapshot) are served by the API and can be read, `inspect-topology` kind `maps` (the list and directories, and one map's devices against a snapshot). Drawing or editing a map is not available here.

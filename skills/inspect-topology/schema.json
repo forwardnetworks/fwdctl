@@ -23,7 +23,8 @@
         "external",
         "link_overrides",
         "zones",
-        "unlinked_interfaces"
+        "unlinked_interfaces",
+        "maps"
       ],
       "x-values": {
         "links": "links between devices",
@@ -33,7 +34,8 @@
         "external": "the internet node, its suggested connections, L3 VPNs",
         "link_overrides": "a snapshot's added and suppressed links; compare_to_snapshot_id diffs two snapshots",
         "zones": "zones defined in the network",
-        "unlinked_interfaces": "interfaces that are up but have no link (port-channels, and any interface with an LLDP neighbour), with the neighbour names and whether each matches a device: why a link is missing"
+        "unlinked_interfaces": "interfaces that are up but have no link (port-channels, and any interface with an LLDP neighbour), with the neighbour names and whether each matches a device: why a link is missing",
+        "maps": "saved Network Maps (custom diagrams): the list with directories, or with map_id one map's devices against the snapshot (placed devices the snapshot lacks); needs VIEW_NETWORK_MAPS"
       }
     },
     "device": {
@@ -55,6 +57,11 @@
     "interface": {
       "type": "string",
       "description": "kind links: only the links on this interface of device (give device too)"
+    },
+    "map_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "kind maps: read this one map's coverage in the snapshot (the id comes from the list)"
     }
   }
 }
