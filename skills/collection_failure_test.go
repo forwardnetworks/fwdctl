@@ -837,3 +837,34 @@ func TestCollectionFailedTaskShowsItsReasonOrSaysThereIsNone(t *testing.T) {
 		t.Errorf("limits: %v", r.Limits)
 	}
 }
+
+// A device the earlier snapshot had that this one has in neither the model nor the failure list was taken out of the sources: named, not counted as recovered.
+func TestCollectionChangesNamesDevicesRemovedFromTheSources(t *testing.T) {
+	dev := func(name, stage, reason string) map[string]any {
+		return map[string]any{"device": name, "stage": stage, "reason": reason, "vendor": "F5", "os": "TMOS", "osVersion": "15.1", "model": "M1"}
+	}
+	routes := cfRoutes("PROCESSED", map[string]any{"numSuccessfulDevices": 2}, nil)
+	routes[snapsPath] = fwdtest.Snapshots(
+		fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"),
+		fwdtest.Snap("s2", "PROCESSED", "COLLECTION", "2026-09-02T00:00:00.000Z"))
+	routes["GET /api/snapshots/s2/metrics"] = fwdtest.Const(200, map[string]any{"numSuccessfulDevices": 1})
+	routes[nqePath] = func(r *http.Request, _ []byte) (int, any) {
+		rows := []map[string]any{dev("lb-a1", "ok", "")}
+		if r.URL.Query().Get("snapshotId") == "s1" {
+			rows = append(rows, dev("lb-a2", "ok", ""), dev("lb-b1", "collection", "DeviceCollectionError.CONNECTION_REFUSED"))
+		}
+		return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
+	}
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"changes"}`)
+	if len(r.Evidence) == 0 {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+	d := r.Evidence[0].Detail
+	rows, _ := d["removed_from_sources"].([]map[string]any)
+	if d["removed_from_sources_count"] != 2 || d["removed_from_sources_was_failing"] != 1 || len(rows) != 2 || rows[0]["device"] != "lb-a2" || rows[1]["was_failing"] != true {
+		t.Fatalf("removed from sources: %v", d)
+	}
+	if d["recovered_count"] != 0 || !strings.Contains(r.Finding, "2 device(s) in that snapshot are in neither the model nor the failure list now") {
+		t.Errorf("a removed device is not recovered; finding %q, recovered %v", r.Finding, d["recovered_count"])
+	}
+}
