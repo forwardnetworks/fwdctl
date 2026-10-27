@@ -229,7 +229,7 @@ func (s *Session) SnapshotLog(ctx context.Context, snapshotID, device, level str
 }
 
 // LogScan is one pass over a device's collection log: the head of it (for paging), and what only the whole log shows: how many lines there are, the first and last
-// line, the last lines, and the lines that say a task was cancelled or timed out.
+// line, the last lines, the lines that say a task was cancelled or timed out, and the lines that say a command was refused as forbidden.
 type LogScan struct {
 	Head          string
 	HeadTruncated bool // the head was cut at the head limit; the rest was still scanned
@@ -238,6 +238,9 @@ type LogScan struct {
 	First, Last   string
 	Tail          []string
 	Marks         []string
+	// Blocked holds the first lines that say a command was refused as forbidden (a disabled command: never sent to the device) and BlockedCount how many such lines the log has.
+	Blocked      []string
+	BlockedCount int
 }
 
 const (
@@ -290,6 +293,12 @@ func (w *logScanner) line(l string) {
 		sc.Tail = sc.Tail[1:]
 	}
 	sc.Tail = append(sc.Tail, l)
+	if strings.Contains(strings.ToLower(l), "list of forbidden commands") {
+		sc.BlockedCount++
+		if len(sc.Blocked) < logScanMarks {
+			sc.Blocked = append(sc.Blocked, l)
+		}
+	}
 	if len(sc.Marks) < logScanMarks {
 		if low := strings.ToLower(l); strings.Contains(low, "cancel") || strings.Contains(low, "timed out") || strings.Contains(low, "timeout") {
 			sc.Marks = append(sc.Marks, l)

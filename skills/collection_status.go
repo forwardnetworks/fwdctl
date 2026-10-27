@@ -91,6 +91,9 @@ func inspectCollectionStatus(ctx context.Context, s *fwd.Session, raw json.RawMe
 	}
 
 	tasks, terr := s.RecentTasks(ctx, in.NetworkID, 20)
+	if running, _ := detail["running"].(bool); running && terr == nil {
+		addRunningNow(ctx, s, in.NetworkID, tasks, detail, &limits)
+	}
 	switch {
 	case terr != nil:
 		limits = append(limits, "recent collector tasks could not be read: "+terr.Error())

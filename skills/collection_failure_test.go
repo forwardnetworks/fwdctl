@@ -802,3 +802,14 @@ func TestCollectionHistoryMeasuresTheNewestRowsIdleStretchAndTimedOutSubtasksAnd
 		t.Errorf("the row and the headline say it was not measured: %v / %s", rows[0]["notes"], r.Finding)
 	}
 }
+
+// A command refused as forbidden (an org-wide disable_commands entry) is named in the log view, so "was the command sent?" has a direct answer.
+func TestCollectionLogsViewNamesForbiddenCommandLines(t *testing.T) {
+	routes := cfRoutes("PROCESSED", nil, nil)
+	routes["GET /api/snapshots/s1/logs"] = fwdtest.Const(200, []byte("2026-09-01 ERROR Command 'show omp routes' in the list of forbidden commands\n2026-09-01 WARN slow prompt\n"))
+	r, _ := collect(t, routes, `{"network_id":"n1","view":"logs","device":"r1"}`)
+	lg := r.Evidence[0].Detail["log"].(map[string]any)
+	if lg["forbidden_command_line_count"] != 1 || len(lg["forbidden_command_lines"].([]string)) != 1 || !strings.Contains(r.Finding, "refused as forbidden") {
+		t.Errorf("%s %v", r.Finding, lg)
+	}
+}

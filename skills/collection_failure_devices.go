@@ -386,6 +386,12 @@ func deviceLog(ctx context.Context, s *fwd.Session, in collectionInput, cx resul
 	d := map[string]any{"device": in.Device, "level": level, "lines_read": len(lines), "offset": in.Offset, "lines": win}
 	// what only the whole log shows: its length, its last line and time, and any line that says the device was cancelled or timed out
 	d["log"] = map[string]any{"lines_in_log": scan.Lines, "first_line": scan.First, "last_line": scan.Last, "last_lines": scan.Tail, "cancel_or_timeout_lines": scan.Marks}
+	if scan.BlockedCount > 0 {
+		d["log"].(map[string]any)["forbidden_command_lines"] = scan.Blocked
+		d["log"].(map[string]any)["forbidden_command_line_count"] = scan.BlockedCount
+		finding += fmt.Sprintf("; %d line(s) say a command was refused as forbidden (a disabled command, not sent to the device)", scan.BlockedCount)
+		limits = append(limits, "forbidden_command_lines are the lines that name a command in the list of forbidden commands (an edit-platform disable_commands entry): per the collector source such a command returns an empty result and is never sent to the device; the wording is read from that source, not seen on a live Forward. They are matched at the level you asked for or above (the source logs them at ERROR), so the default WARN shows them")
+	}
 	if scan.StreamCut {
 		limits = append(limits, fmt.Sprintf("the log is longer than %d MiB, so last_line is where the scan stopped, not the end of the log", maxLogScanBytes>>20))
 	}
