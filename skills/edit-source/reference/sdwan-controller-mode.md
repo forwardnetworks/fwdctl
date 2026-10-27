@@ -31,7 +31,7 @@ For finding devices in a subnet in general, use Forward's device discovery (`edi
 
 **A second field run** (19 candidates beside two known controllers): 13 `PING_FAILED`, 6 `DEVICE_TYPE_MISMATCH`, no controller answer, so a range next to known controllers proved nothing about where the missing ones sit.
 
-To read a Manager's own show output (for example `show control connections`, which lists every vSmart with its system IP, site and control address but not its management address), run the command through a CLI endpoint: `edit-source` reference/objects.md, "Running one command on a host".
+To read a Manager's own show output (for example `show control connections`, which lists every vSmart with its system IP, site and control address but not its management address), run the command through a CLI endpoint (eight Manager show commands tried that way, among them `show control connections`, `show control summary`, `show control local-properties`, `show system status` and `show running-config`, gave no vSmart management address: those live in the Manager's controller list in its GUI or REST API, so ask the network team for it), run the command through a CLI endpoint: `edit-source` reference/objects.md, "Running one command on a host".
 
 **Before running:** say how many addresses and which login the test will use, keep the candidates to the controller subnet (not the surrounding range), and delete the probe setup afterwards (`controller_setup` action `delete`) and say that it was deleted.
 
