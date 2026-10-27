@@ -16,7 +16,7 @@ What controller mode does and does not skip: `investigate-collection-failure` re
 7. **After the first collection:** every covered edge should have an OMP file (`inspect-device-files` list), or the missing ones are listed. Unproven until a lab shows it: that a controller-only setup makes the edges that stay classic skip the command, and what an edge's state is when its controller does not cover it.
 8. **Undo:** `controller_setup` action `delete`, `confirm` = the setup name (the controller entries go; the edges were never touched).
 
-vEdges are unaffected by controller mode: keep their collection disabled, or use `disable_commands` (org-wide, untested for vEdge), until the collector team confirms otherwise.
+vEdges are unaffected by controller mode: keep their collection disabled, or use `disable_commands` (org-wide; source-read, never run on a live vEdge: see "Blocking the OMP routes command on vEdges" below), until it is tested.
 
 ## Finding the management address by testing candidates (run once by a field session; not generalised)
 
@@ -52,3 +52,19 @@ Forward's wizard (`inspect-collection` view `migration`) is the first read, not 
 8. **Apply a pilot first**, test (`controller_setup` action `test`), read the results, then the rest; after the first collection check that every covered edge has an OMP file and that tags are back. There is no undo command: recreate the classic devices from the saved before-records.
 
 **Not every vSmart is reachable from the collector's side.** In the network this was run on, the whole range one regional management prefix covered held only the SD-WAN Manager nodes (aliases with a manager hostname pattern, `HOST_NOT_REPORTING_ANY_GUEST`) and one other SSH device, and no vSmart; the two vSmarts that three edges depend on were in no prefix the head-ends learn from OMP (their management network is elsewhere or not routed from the collector). `name_aliases` on the test result is how to tell a vSmart (a vSmart hostname and its system IP) from a Manager. Since every IOS XE edge skips the OMP command once any vSmart is configured, an edge that connects only to controllers you could not add ends up with no OMP file: list such edges (`edge_coverage`) before applying.
+
+## Blocking the OMP routes command on vEdges (read from the collector source by a field session; nothing run live)
+
+Why: the OMP routes command can crash vEdges when many run it at once; blocking it lets them keep collecting. Each point below was read from the collector's source; none was run on a live vEdge.
+
+1. A vEdge connects through the interactive CLI agent, and the disabled-commands setup runs only for that agent type, right after connect and before collection.
+2. The block sits in the interactive runner: a matching command returns an empty result and is never sent to the device. (The non-interactive agent behaves the same way.)
+3. Entries are chosen by the device's connection type, so an entry for `cisco_sdwan_ssh` affects vEdges only. Each entry needs a start and end version (this skill fills "all versions" when you give none); the vEdge version comes from `show version`.
+4. Matching lowercases BOTH the command and the pattern, and the pattern must match the whole command. Write a plain lower-case literal such as `show omp routes.*`. A regex class like `\S` or `\D` is lowercased into a different class (`\s`, `\d`, the opposite meaning); `edit-platform` warns when a pattern has upper case.
+5. The vEdge OMP commands are `show omp routes`, `show omp routes {prefix}` and `show omp routes family ipv6`; `show omp routes.*` covers all three. `show omp peers` is a separate command and is not blocked by it.
+6. Model impact: there is no vEdge parser for the OMP routes file. vEdge forwarding entries come from `show ip route` and `show ip fib`, where OMP-learned routes already appear with ipsec next hops, and Predict's OMP data for a vEdge is built from configuration (site ID, system IP, VPNs, control peers). Only the IOS XE OMP parsers read an OMP routes file. So blocking the command is expected to empty only the raw file, which matters to NQE checks that parse command text (`author-nqe-query` reference/config-patterns.md, SD-WAN).
+
+**Open:** (a) every path from the shell-API command calls to the checked runner was not traced; (b) how `edit-platform` writes `disable_commands` into the collector settings was not read; (c) nothing has run on a live vEdge. Treat 1 to 6 as a hypothesis until step 7 passes.
+
+7. **Verify on one device before relying on it.** The entry is org-wide and takes effect at the next collection of every `cisco_sdwan_ssh` device in every network of the org, so do it where that is acceptable (a lab, or an org whose other vEdge networks are not about to collect). Apply the entry (`edit-platform` area `collection_settings`, name `organization`, `disable_commands` `[{"device_type":"cisco_sdwan_ssh","command":"show omp routes.*"}]`), collect one vEdge (a workspace holding one vEdge, `edit-workspace`), then check three things against the previous snapshot of that device: the collector log shows the command was not sent, the OMP routes file is empty, and the forwarding entries are unchanged. Only then enable it for the fleet. To undo, `enable_commands` with the same device type and command.
+
