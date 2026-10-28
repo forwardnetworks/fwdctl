@@ -23,7 +23,10 @@
         "scope",
         "preflight",
         "paths",
-        "ai_summary"
+        "ai_summary",
+        "history",
+        "config",
+        "affected"
       ],
       "default": "verify",
       "x-values": {
@@ -35,7 +38,10 @@
         "scope": "what of this network Predict can model on this release: license facet, every predict flag, out-of-scope BGP families, platforms where propagation stops, SD-WAN devices (Viptela, IOS-XE in SD-WAN mode) and whether PREDICT_MODEL_OMP is on",
         "preflight": "the Predict demo checklist: scope plus release, base snapshot age, existing change sets and BGP advertisement collection",
         "paths": "the GUI's interesting paths: sampled paths through firewalls and load balancers, ranked by score with their stages and path query; on a snapshot (after_snapshot_id) or a change set's predicted snapshot",
-        "ai_summary": "Forward AI explains a difference in words (opt-in; generated text, labelled): summary_kind config, impact (default), failure or overview, on a change set or any two snapshots; unknown when the organization has AI off"
+        "ai_summary": "Forward AI explains a difference in words (opt-in; generated text, labelled): summary_kind config, impact (default), failure or overview, on a change set or any two snapshots; unknown when the organization has AI off",
+        "history": "a change set's saved versions (note, who, when), its summary and the directory it is filed in",
+        "config": "one device's configuration in a change set: the draft, or a saved version (commit_id)",
+        "affected": "the devices a prediction changed, for a predicted snapshot (after_snapshot_id)"
       }
     },
     "run_predict": {
@@ -109,6 +115,10 @@
       ],
       "default": "impact",
       "description": "view ai_summary only: which Forward AI summary (config: what changed in the configurations; impact: what the change does; failure: why checks fail; overview: a name, description and tags for a change set)"
+    },
+    "commit_id": {
+      "type": "string",
+      "description": "views history and config: one saved version of the change set (the commit id from view history)"
     }
   }
 }

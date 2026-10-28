@@ -33,6 +33,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Show the saved network maps (custom diagrams), their directories, what one map covers in a snapshot | `inspect-topology` kind `maps` (`map_id` for one map) |
 | "Which checks exist or fail", "how many checks fail or error", "why is this check in ERROR", "what did this check find", "what checks does Forward offer" | `check-network-compliance` (view read) |
 | "What does this change set do", "is it ready" | `verify-change` with `view: describe` |
+| Show a Predict change set's saved versions, notes and history, the config a version holds, what a prediction affected; commit or copy a change set | `verify-change` views `history`, `config`, `affected`; changes with `edit-change-set` lifecycle |
 | Label a snapshot | `edit-snapshot` (action note) (dry run first) |
 | Add a policy check, turn an authored query into a check, or switch a check off | `edit-checks` (dry run first) |
 | Create, change or remove an alias (a named group a check refers to) | `edit-alias` (dry run first) |

@@ -26,6 +26,8 @@ the intended outcome holds and whether anything regressed.
 - `list`: the network's change sets with their predictions. `scope` and `preflight`: whether Predict fits (license, flags, platforms, features). `paths`: interesting paths on a snapshot.
 - `ai_summary`: Forward's own AI explains a difference in words (`summary_kind` config, impact, failure or overview). Opt-in, labelled generated text, works on any two snapshots; unknown when the organization has AI off. Use it beside `impact`, never instead of it.
 
+- `history`: a change set's saved versions (note, who, when), its summary and its directory. `config`: one device's configuration in the draft or in a saved version (`commit_id`). `affected`: the devices a prediction changed (`after_snapshot_id`).
+
 Read the verify procedure before judging a change: `unknown` is never a pass, and a settled connectivity read is required.
 
 ## Inputs

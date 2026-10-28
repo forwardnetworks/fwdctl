@@ -36,6 +36,8 @@ type verifyChangeInput struct {
 	Expectations []expectation `json:"expectations"`
 	// SummaryKind belongs to view ai_summary: config, impact (default), failure or overview.
 	SummaryKind string `json:"summary_kind"`
+	// CommitID belongs to views history and config: one saved version of the change set.
+	CommitID string `json:"commit_id"`
 }
 
 // Inputs by view (an input of another view is rejected). describe reads one change set; verify and impact compare a before and an after.
@@ -48,6 +50,9 @@ var verifyChangeViewInputs = map[string][]string{
 	"preflight":  {},
 	"paths":      {"change_set_id", "after_snapshot_id", "connectivity_timeout_seconds"},
 	"ai_summary": {"change_set_id", "before_snapshot_id", "after_snapshot_id", "summary_kind"},
+	"history":    {"change_set_id", "commit_id"},
+	"config":     {"change_set_id", "device", "commit_id"},
+	"affected":   {"after_snapshot_id"},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -60,9 +65,9 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary":
+	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths or ai_summary", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config or affected", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
@@ -70,6 +75,12 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	switch view {
 	case "ai_summary":
 		return aiSummary(ctx, s, in, in.SummaryKind)
+	case "history":
+		return changeSetHistory(ctx, s, in)
+	case "config":
+		return changeSetConfig(ctx, s, in)
+	case "affected":
+		return predictedAffected(ctx, s, in)
 	case "list":
 		return listChangeSets(ctx, s, in.NetworkID)
 	case "scope":

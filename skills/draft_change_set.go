@@ -88,6 +88,12 @@ type draftLifecycle struct {
 	// CheckID and Check belong to the check ops (add_check, edit_check, remove_check): a check the change set carries, evaluated on its base and on each prediction.
 	CheckID string      `json:"check_id"`
 	Check   *draftCheck `json:"check"`
+	// Note, TargetNetworkID, BaseSnapshotID, Tags and Directory belong to the version, copy, tag and filing ops.
+	Note            string   `json:"note"`
+	TargetNetworkID string   `json:"target_network_id"`
+	BaseSnapshotID  string   `json:"base_snapshot_id"`
+	Tags            []string `json:"tags"`
+	Directory       string   `json:"directory"`
 }
 
 type draftChangeSetInput struct {
