@@ -38,6 +38,10 @@ type verifyChangeInput struct {
 	SummaryKind string `json:"summary_kind"`
 	// CommitID belongs to views history and config: one saved version of the change set.
 	CommitID string `json:"commit_id"`
+	// ObjectKind belongs to view objects; OS and Protocol to view commands.
+	ObjectKind string `json:"object_kind"`
+	OS         string `json:"os"`
+	Protocol   string `json:"protocol"`
 }
 
 // Inputs by view (an input of another view is rejected). describe reads one change set; verify and impact compare a before and an after.
@@ -53,6 +57,10 @@ var verifyChangeViewInputs = map[string][]string{
 	"history":    {"change_set_id", "commit_id"},
 	"config":     {"change_set_id", "device", "commit_id"},
 	"affected":   {"after_snapshot_id"},
+	"bgp_diffs":  {"change_set_id", "device", "commit_id"},
+	"objects":    {"change_set_id", "device", "object_kind"},
+	"checks":     {"change_set_id"},
+	"commands":   {"os", "protocol"},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -65,9 +73,9 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected":
+	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected", "bgp_diffs", "objects", "checks", "commands":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config or affected", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config, affected, bgp_diffs, objects, checks or commands", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
@@ -81,6 +89,14 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return changeSetConfig(ctx, s, in)
 	case "affected":
 		return predictedAffected(ctx, s, in)
+	case "bgp_diffs":
+		return predictBGPDiffs(ctx, s, in)
+	case "objects":
+		return predictObjects(ctx, s, in)
+	case "checks":
+		return predictChecks(ctx, s, in)
+	case "commands":
+		return predictCommands(ctx, s, in)
 	case "list":
 		return listChangeSets(ctx, s, in.NetworkID)
 	case "scope":

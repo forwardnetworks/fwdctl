@@ -20,3 +20,5 @@ echo '{"network_id": "<network id>", "view": "impact", "before_snapshot_id": "<i
 ```
 
 `commit_id` belongs to views `history` and `config`; `device` to `describe`, `impact` and `config`; `after_snapshot_id` to `affected`.
+
+`object_kind` belongs to view `objects`; `os` and `protocol` to view `commands`; `commit_id` also to `bgp_diffs`; `device` also to `bgp_diffs` and `objects`.

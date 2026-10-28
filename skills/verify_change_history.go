@@ -115,6 +115,7 @@ func predictedAffected(ctx context.Context, s *fwd.Session, in verifyChangeInput
 	if in.AfterSnapshotID == "" {
 		return result.Result{}, fmt.Errorf("%w: view affected needs after_snapshot_id (a predicted snapshot; view describe lists them)", ErrInvalidInput)
 	}
+	done, _, derr := s.Client.Predict.ProtocolModelingDone(ctx, in.AfterSnapshotID)
 	names, _, err := s.Client.Predict.AffectedDevices(ctx, in.AfterSnapshotID)
 	if err != nil {
 		if errors.Is(err, forward.ErrNoAffectedDevices) {
@@ -131,5 +132,13 @@ func predictedAffected(ctx context.Context, s *fwd.Session, in verifyChangeInput
 	finding := fmt.Sprintf("Prediction %s affected %d device(s)", in.AfterSnapshotID, len(names))
 	return result.Build(verifyChangeName, result.OK, finding, result.Deterministic, cx, result.Options{Omitted: om, NextActions: []string{"verify-change"},
 		Limits:   []string{"affected means the protocol-modelling job re-computed the device, which can be wider than the devices the change set edits; Preview route, source-read, not run on a live Forward"},
-		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "predictedAffected", nil, map[string]any{"snapshot_id": in.AfterSnapshotID, "count": len(names), "devices": shown}, finding)}})
+		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "predictedAffected", nil, map[string]any{"snapshot_id": in.AfterSnapshotID, "count": len(names), "devices": shown, "protocol_modeling_done": modelingDone(done, derr)}, finding)}})
+}
+
+// modelingDone is the protocol-modelling flag, or nil when the status read failed (a failed job also reads false, so false is not proof of failure).
+func modelingDone(done bool, err error) any {
+	if err != nil {
+		return nil
+	}
+	return done
 }

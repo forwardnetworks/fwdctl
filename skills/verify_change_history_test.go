@@ -108,3 +108,48 @@ func TestEditChangeSetDirectoryOpIsDryRunAndDeletingChangeSetsNeedsConfirm(t *te
 		t.Fatalf("deleting the change sets too must need confirm: %v %s", calls, r.Finding)
 	}
 }
+
+func TestVerifyChangeReadsBGPDiffsObjectsChecksAndCommands(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets/c1/draft/devices/r1/bgp-advertisements": fwdtest.Const(200, []any{map[string]any{"change": "ADDED"}}),
+		"GET /api/nqe/verificationQueries":                                        fwdtest.Const(200, []any{map[string]any{"queryId": "Q_1", "presentInHead": true}}),
+		"GET /api/predict-oses":                                                   fwdtest.Const(200, map[string]any{"oses": []any{"IOS_XE", "EOS"}}),
+	}
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"bgp_diffs","change_set_id":"c1","device":"r1"}`)
+	if b := jsonOf(r); !strings.Contains(b, `"count":1`) {
+		t.Errorf("bgp_diffs: %s", b)
+	}
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"checks","change_set_id":"c1"}`)
+	if b := jsonOf(r); !strings.Contains(b, "Q_1") {
+		t.Errorf("checks: %s", b)
+	}
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"commands"}`)
+	if b := jsonOf(r); !strings.Contains(b, "EOS") || !strings.Contains(b, "IOS_XE") {
+		t.Errorf("commands lists the OSes: %s", b)
+	}
+	if _, _, err := runSkill(t, "verify-change", routes, `{"network_id":"n1","view":"objects","change_set_id":"c1","device":"fw1","object_kind":"bogus"}`); err == nil {
+		t.Errorf("an unknown object_kind should be refused")
+	}
+}
+
+func TestEditChangeSetBulkDeleteNeedsTheCountAsConfirm(t *testing.T) {
+	var calls []string
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, []any{map[string]any{"id": "c1", "name": "a"}, map[string]any{"id": "c2", "name": "b"}}),
+	}
+	for _, k := range []string{"POST", "DELETE"} {
+		routes[k+" /api/networks/n1/change-sets"] = func(*http.Request, []byte) (int, any) { calls = append(calls, "write"); return 204, nil }
+	}
+	r, _ := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","bulk_delete":["c1","c2"]}`)
+	if len(calls) != 0 || !strings.Contains(r.Finding, "Dry run") {
+		t.Fatalf("dry run wrote: %v %s", calls, r.Finding)
+	}
+	r, _ = mustRun(t, "edit-change-set", routes, `{"network_id":"n1","apply":true,"bulk_delete":["c1","c2"]}`)
+	if len(calls) != 0 || !strings.Contains(r.Finding, `confirm="2"`) {
+		t.Fatalf("needs confirm: %v %s", calls, r.Finding)
+	}
+	r, _ = mustRun(t, "edit-change-set", routes, `{"network_id":"n1","bulk_delete":["c1","nope"]}`)
+	if r.Status != "unknown" {
+		t.Errorf("a missing id must give unknown, got %s", r.Status)
+	}
+}

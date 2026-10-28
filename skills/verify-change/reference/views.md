@@ -57,3 +57,8 @@ Each read stands alone: one that is refused (VIEW_ARP_DIFFS, VIEW_MAC_DIFFS, VIE
 - `config` (`change_set_id`, `device`; optional `commit_id`): that device's configuration in the draft (default) or in one saved version, as lines (the first 300). A device the change set does not edit has none of its own.
 - `affected` (`after_snapshot_id`, a predicted snapshot): the devices Forward's protocol-modelling job re-computed for the prediction. This can be wider than the devices the change set edits, and Forward keeps no list for a base snapshot (unknown).
 All three are Preview routes read from Forward's source and its Go SDK; not run on a live Forward.
+- `bgp_diffs` (`change_set_id`, `device`; optional `commit_id`): what the staged BGP advertisements change on the device against the base snapshot, in the draft or one version. Zero diffs means no staged advertisement change on that device, not that the device is unaffected.
+- `objects` (`change_set_id`, `device`, `object_kind`): a firewall's address/application/url/service/user objects, groups or zones as the change set holds them, in Forward's own JSON.
+- `checks` (`change_set_id`): the NQE checks added to the change set (their results are in `describe`).
+- `commands`: without `os`, the vendor OSes Predict models and the protocols; with `os` (and `protocol`, default CONFIG), the commands Predict accepts, as Forward renders its command tree. Check it before staging a command Predict may not model.
+- `affected` also returns `protocol_modeling_done`; a failed modelling job reads false too, so bound any wait.

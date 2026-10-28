@@ -94,12 +94,16 @@ type draftLifecycle struct {
 	BaseSnapshotID  string   `json:"base_snapshot_id"`
 	Tags            []string `json:"tags"`
 	Directory       string   `json:"directory"`
+	// Commands belongs to op prettify; Path to op export_zip.
+	Commands string `json:"commands"`
+	Path     string `json:"path"`
 }
 
 type draftChangeSetInput struct {
 	ChangeSetID string              `json:"change_set_id"`
 	Lifecycle   *draftLifecycle     `json:"lifecycle"`
 	DirectoryOp *draftDirectoryOp   `json:"directory_op"`
+	BulkDelete  []string            `json:"bulk_delete"`
 	Confirm     string              `json:"confirm"`
 	NetworkID   string              `json:"network_id"`
 	SnapshotID  string              `json:"snapshot_id"`
@@ -123,6 +127,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			return result.Result{}, fmt.Errorf("%w: %v. In a firewall rule the address, user, application and service fields are OBJECTS, not lists: sourceAddresses and destinationAddresses {\"subnets\":[\"8.8.8.8/32\"]} (objects and groups by id; {} means any), sourceUsers, applications and services objects too ({} means any); sourceZones and destinationZones are plain lists (empty means any); action is DENY, DROP or PERMIT", ErrInvalidInput, err)
 		}
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	if len(in.BulkDelete) > 0 {
+		return changeSetBulkDelete(ctx, s, in)
 	}
 	if in.DirectoryOp != nil {
 		return changeSetDirectoryOp(ctx, s, in)
