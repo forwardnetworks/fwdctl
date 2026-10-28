@@ -25,6 +25,8 @@ so where they come from (a person, an approved ticket) is on the caller.
 
 What each input means, and the fields per object and action: `fwdctl run edit-change-set --help`, or `reference/inputs.md`.
 
+An EXISTING change set is managed with `lifecycle` (rename, duplicate, commit and the versions, tags, directory, predict, checks), the directories with `directory_op`, and several at once with `bulk_delete`; the same dry run and confirm rules apply. Read versions, config, objects and diffs with `verify-change` first (views `history`, `config`, `objects`, `bgp_diffs`).
+
 ## Dry run
 
 Without `apply: true` nothing is created. The skill returns `mode: dry_run` with the change set it would build (name, base snapshot,
