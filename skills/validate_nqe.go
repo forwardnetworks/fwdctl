@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
+
+	forward "github.com/forwardnetworks/forward-go-sdk"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/nqelint"
@@ -157,6 +160,8 @@ func validateNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		}
 		omitted = append(omitted, result.Omission{What: "rows", Total: int(out.Total), Shown: len(rows), From: in.Offset, Paged: true, Next: next})
 	}
+	sizes, sizeLimits := nqeFieldSizes(out.Items, in.Offset)
+	limits = append(limits, sizeLimits...)
 	status, finding := result.OK, fmt.Sprintf("The query runs and returned %d row(s)", out.Total)
 	if len(synth) > 0 {
 		status, finding = result.Failed, fmt.Sprintf("The query runs and returned %d row(s), but they are not valid %s connections: %s", out.Total, in.SyntheticKind, synth[0].Message)
@@ -164,7 +169,7 @@ func validateNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	return result.Build(validateNQEName, status, finding,
 		result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"check-network-compliance"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "runNqeQuery", sid,
-				map[string]any{"rows": out.Total, "offset": in.Offset, "sample": fwd.Records(rows)}, fmt.Sprintf("%d row(s)", out.Total))}})
+				map[string]any{"rows": out.Total, "offset": in.Offset, "sample": fwd.Records(rows), "field_sizes": sizes}, fmt.Sprintf("%d row(s)", out.Total))}})
 }
 
 // schemaHints runs the static schema check. A schema that cannot load is not the query's problem, so it
@@ -175,4 +180,59 @@ func schemaHints(query string) []nqeschema.Finding {
 		return nil
 	}
 	return m.Check(query)
+}
+
+// nqeFieldLimit is Forward's cap on one record field ("Record field 'X' max size exceeded: Max size is 1,000,000").
+const nqeFieldLimit = 1000000
+
+type nqeFieldSize struct {
+	Field     string `json:"field"`
+	MaxBytes  int    `json:"max_bytes"`
+	Row       int    `json:"row"`
+	Headroom  int    `json:"headroom_bytes"`
+	PctOfCap  int    `json:"percent_of_limit"`
+	RowsSized int    `json:"rows_sized"`
+}
+
+// nqeFieldSizes measures each record field over the rows the run returned: the largest encoded size per field, the row it was in (0-based, in the whole result) and the room left under
+// Forward's 1,000,000-byte field limit. It sees only the returned rows, and the encoding is the JSON Forward sent, not necessarily Forward's own size measure, so it is an estimate; a field over
+// 50% of the limit is flagged. Only the five largest fields are listed.
+func nqeFieldSizes(items []forward.NQERecord, offset int) ([]nqeFieldSize, []string) {
+	best := map[string]*nqeFieldSize{}
+	for i, it := range items {
+		for k, v := range it {
+			f := best[k]
+			if f == nil {
+				f = &nqeFieldSize{Field: k}
+				best[k] = f
+			}
+			f.RowsSized++
+			if len(v) > f.MaxBytes {
+				f.MaxBytes, f.Row = len(v), offset+i
+			}
+		}
+	}
+	out := make([]nqeFieldSize, 0, len(best))
+	for _, f := range best {
+		f.Headroom = nqeFieldLimit - f.MaxBytes
+		f.PctOfCap = f.MaxBytes * 100 / nqeFieldLimit
+		out = append(out, *f)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].MaxBytes != out[j].MaxBytes {
+			return out[i].MaxBytes > out[j].MaxBytes
+		}
+		return out[i].Field < out[j].Field
+	})
+	shown, _ := result.CapRow(out, 5)
+	var limits []string
+	for _, f := range shown {
+		if f.PctOfCap >= 50 {
+			limits = append(limits, fmt.Sprintf("record field %q reaches %d bytes (%d%% of Forward's 1,000,000-byte limit) in row %d of the returned rows; a larger device or snapshot can push it over and fail the whole query. Bound the list that builds it", f.Field, f.MaxBytes, f.PctOfCap, f.Row))
+		}
+	}
+	if len(shown) > 0 {
+		limits = append(limits, "field sizes are measured on the returned rows only, as the JSON Forward sent, so they are an estimate; rows not returned (sample_rows, offset) are not measured")
+	}
+	return shown, limits
 }

@@ -216,3 +216,28 @@ func TestValidateNQEFindingCarriesTheGroupFormHint(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateNQEReportsTheLargestFieldPerColumnAndFlagsOneNearTheLimit(t *testing.T) {
+	big := strings.Repeat("x", 600000)
+	rows := []map[string]any{{"Name": "r0", "Big": "small"}, {"Name": "r1", "Big": big}}
+	r, _ := nqeRun(t, ready("s1"), fwdtest.Const(200, map[string]any{"items": rows, "totalNumItems": 2}), ``)
+	b := jsonOf(r)
+	if !strings.Contains(b, `"field":"Big"`) || !strings.Contains(b, `"row":1`) || !strings.Contains(b, `"percent_of_limit":60`) {
+		t.Errorf("field_sizes should name Big, row 1, 60%%: %.400s", b)
+	}
+	flagged := false
+	for _, l := range r.Limits {
+		flagged = flagged || (strings.Contains(l, `"Big"`) && strings.Contains(l, "1,000,000"))
+	}
+	if !flagged {
+		t.Errorf("a field over half the limit should be flagged in limits: %v", r.Limits)
+	}
+	// a small result flags nothing but still says what was measured
+	small := []map[string]any{{"Name": "r0"}}
+	r, _ = nqeRun(t, ready("s1"), fwdtest.Const(200, map[string]any{"items": small, "totalNumItems": 1}), ``)
+	for _, l := range r.Limits {
+		if strings.Contains(l, "reaches") {
+			t.Errorf("nothing near the limit should be flagged: %s", l)
+		}
+	}
+}
