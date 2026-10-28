@@ -23,6 +23,7 @@ A secret (an S3 secret key, a ServiceNow or Infoblox password, a license key) is
 | `collection_settings` | `set` | a collector id or name | `concurrency`, `snmp_collection_concurrency` | set back |
 | `saml` | `set` | | `custom_name`, `enabled`, `name`, `entity_id`, `sso_redirect_url`, `verification_cert` (PEM), `disable_authn_request_signing` | set back; `confirm` = `saml`; can lock users out |
 | `licensing` | `apply` | | | secret = the signed license key; **none**; `confirm` = `license` |
+| `licensing` | `activate` | the organization id | `license_id`; `fingerprint` only for an on-prem licence | **none**; `confirm` = the organization id; SaaS only, platform role |
 | `organizations` | `create` | | `name`, `type`, `on_prem` | disable it |
 | `organizations` | `rename` | the organization | `name` | rename back |
 | `organizations` | `enable`, `disable` | the organization | | the opposite; `disable` needs `confirm` = the name |
