@@ -76,8 +76,10 @@ func editPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		plan, err = planPlatformCollector(ctx, s, in)
 	case "endpoint_profiles":
 		plan, err = planEndpointProfile(ctx, s, in)
+	case "performance":
+		plan, err = planPerformance(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: area must be banners, webhooks, certificates, access_labels, backups, integrations, collection_settings, saml, api_tokens, licensing, organizations, cve_index, collectors or endpoint_profiles", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: area must be banners, webhooks, certificates, access_labels, backups, integrations, collection_settings, saml, api_tokens, licensing, organizations, cve_index, collectors, endpoint_profiles or performance", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err
@@ -680,6 +682,8 @@ func platformTakesSecret(in editPlatformInput) bool {
 	switch in.Area {
 	case "licensing":
 		return in.Action == "apply"
+	case "performance":
+		return in.Action == "upload"
 	case "backups":
 		return in.Action == "s3_storage"
 	case "webhooks":

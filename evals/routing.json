@@ -593,6 +593,11 @@
     "rival": "edit-endpoint-profile"
   },
   {
+    "query": "Turn off Forward's own SNMP performance polling and upload device performance stats from our telemetry platform",
+    "expect": "edit-platform",
+    "rival": "inspect-performance"
+  },
+  {
     "query": "Show me the saved network maps and which devices one of them covers in the latest snapshot",
     "expect": "inspect-topology",
     "rival": "inspect-inventory"
