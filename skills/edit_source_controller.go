@@ -147,6 +147,15 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 		for _, o := range omitted {
 			lim = append(lim, o.Text())
 		}
+		var off []string
+		for _, m := range def.ManagedDevices {
+			if m.Collect != nil && !*m.Collect {
+				off = append(off, m.Name)
+			}
+		}
+		if len(off) > 0 {
+			lim = append(lim, fmt.Sprintf("%d managed device(s) are sent with collect:false (%s). A field report says a migrate produced a setup that read collect true for every device, so Forward may not keep the flag (unverified: the request does carry it). After applying, read inspect-collection view config for these devices; any that read true will be collected at the next collection until restored with controller_setup update (managedDevices restated, collect false)", len(off), strings.Join(off, ", ")))
+		}
 		return &networkPlan{target: fmt.Sprintf("migrate into new controller-managed setup %q on network %s, deleting %d classic device(s)", def.Name, in.NetworkID, len(gone)), action: "migrate_controller_setup",
 			before: map[string]any{"classic_devices_to_delete": shown}, after: def, reversible: false, confirm: def.Name,
 			undo: "none: this cannot be undone by update. Recreate the classic devices from the before list (edit-source object classic_device action create), and note their device tags and connectivity test results are gone",
@@ -165,15 +174,22 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 			return nil, nil
 		}
 		var def struct {
-			ManagedDevices []forward.ManagedDevice `json:"managedDevices"`
-			CollectorID    string                  `json:"collector_id"`
-			ClearCollector bool                    `json:"clear_collector"`
+			ManagedDevices []forward.ManagedDevice    `json:"managedDevices"`
+			CollectorID    string                     `json:"collector_id"`
+			ClearCollector bool                       `json:"clear_collector"`
+			Controllers    []forward.ControllerDevice `json:"controllers"`
+			Controller     string                     `json:"controller"`
+			ManagedDevice  string                     `json:"managed_device"`
+			Set            forward.ClassicDevicePatch `json:"set"`
 		}
-		if err := decodeDefinition(in.Definition, &def, "managedDevices (REPLACES the managed device list), collector_id (move the whole setup to that collector), clear_collector (unpin it: the network's default collector applies)"); err != nil {
+		if err := decodeDefinition(in.Definition, &def, "controller or managed_device (the name of ONE member) with set {name, host, type, port, cliCredentialId, cliCredential2Id, cliCredential3Id, httpCredentialId, collect, note, ...} changes just that member in place (a rename keeps its test result); or controllers (REPLACES the whole controller list: read the live list first and restate it, Forward refuses an empty one) or managedDevices (REPLACES the managed device list), collector_id (move the whole setup to that collector), clear_collector (unpin it: the network's default collector applies)"); err != nil {
 			return nil, err
 		}
-		if def.ManagedDevices == nil && def.CollectorID == "" && !def.ClearCollector {
-			return nil, fmt.Errorf("%w: update sets managedDevices (the whole list), collector_id or clear_collector", ErrInvalidInput)
+		if def.Controller != "" || def.ManagedDevice != "" {
+			return planControllerMemberPatch(ctx, s, in, c, def.Controller, def.ManagedDevice, def.Set, def.ManagedDevices != nil || def.Controllers != nil || def.CollectorID != "" || def.ClearCollector)
+		}
+		if def.ManagedDevices == nil && def.Controllers == nil && def.CollectorID == "" && !def.ClearCollector {
+			return nil, fmt.Errorf("%w: update sets controllers or managedDevices (the whole list), collector_id or clear_collector, or changes one member (controller or managed_device with set)", ErrInvalidInput)
 		}
 		if def.CollectorID != "" && def.ClearCollector {
 			return nil, fmt.Errorf("%w: collector_id and clear_collector cannot both be given", ErrInvalidInput)
@@ -184,6 +200,13 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 			patch.ManagedDevices = &def.ManagedDevices
 			what = append(what, "the managed devices")
 		}
+		if def.Controllers != nil {
+			if len(def.Controllers) == 0 {
+				return nil, fmt.Errorf("%w: controllers cannot be empty: Forward refuses an empty controller list", ErrInvalidInput)
+			}
+			patch.Controllers = &def.Controllers
+			what = append(what, "the whole controller list")
+		}
 		if def.CollectorID != "" {
 			what = append(what, "its collector to "+def.CollectorID)
 		}
@@ -192,7 +215,7 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 		}
 		before, _ := fwd.Generic(c)
 		return &networkPlan{target: "change " + strings.Join(what, " and ") + " of controller setup " + c.Name, action: "update_controller_setup", before: before, after: patch, reversible: true, undo: "update again with the before values",
-			limits: []string{"managedDevices REPLACES the list: restate every device you keep", "a setup has ONE collector for all its controllers and guests; Forward checks only that the collector belongs to the organization, not that it is assigned to this network, and a collector that does not exist answers 404 that reads like a missing setup"},
+			limits: []string{"managedDevices and controllers each REPLACE their whole list: read the live list first and restate every entry you keep (a stale list undoes a change made elsewhere, such as a rename); to change ONE member use controller or managed_device with set", "a setup has ONE collector for all its controllers and guests; Forward checks only that the collector belongs to the organization, not that it is assigned to this network, and a collector that does not exist answers 404 that reads like a missing setup"},
 			do: func(ctx context.Context) error {
 				_, _, err := s.Client.ControllerManagedSetups.Patch(ctx, in.NetworkID, c.Name, patch)
 				return err
@@ -327,4 +350,53 @@ func waitForSetupTests(ctx context.Context, s *fwd.Session, networkID, setup str
 		case <-time.After(setupTestPollEvery):
 		}
 	}
+}
+
+// planControllerMemberPatch changes one controller or one managed device of a setup in place (name, host, collect and the rest of
+// ClassicDevicePatch), the route Forward gives for it: the other members, their tags and test results are untouched, and a rename
+// keeps the test result.
+func planControllerMemberPatch(ctx context.Context, s *fwd.Session, in editSourceInput, c *forward.ControllerManagedSetup, controller, managed string, set forward.ClassicDevicePatch, mixed bool) (*networkPlan, error) {
+	if (controller != "") == (managed != "") {
+		return nil, fmt.Errorf("%w: give controller or managed_device (one member name), not both", ErrInvalidInput)
+	}
+	if mixed {
+		return nil, fmt.Errorf("%w: a member change (controller or managed_device with set) cannot be combined with managedDevices, collector_id or clear_collector: run them separately", ErrInvalidInput)
+	}
+	if set.CollectorID != nil {
+		return nil, fmt.Errorf("%w: a member has no collector of its own: set collector_id on the setup", ErrInvalidInput)
+	}
+	kind, name := "controller", controller
+	var before any
+	if controller != "" {
+		for _, d := range c.Controllers {
+			if strings.EqualFold(d.Name, controller) {
+				name = d.Name
+				before, _ = fwd.Generic(d)
+			}
+		}
+	} else {
+		kind, name = "managed device", managed
+		for _, d := range c.ManagedDevices {
+			if strings.EqualFold(d.Name, managed) {
+				name = d.Name
+				before, _ = fwd.Generic(d)
+			}
+		}
+	}
+	if before == nil {
+		return nil, fmt.Errorf("%w: setup %q has no %s named %q", ErrInvalidInput, c.Name, kind, name)
+	}
+	return &networkPlan{target: fmt.Sprintf("change %s %s of controller setup %s in place", kind, name, c.Name), action: "patch_controller_setup_member", before: before, after: set, reversible: true,
+		undo: "patch the member again with the before values (a rename: patch the new name back to the old)",
+		limits: []string{"only the properties in set change; the other members, per-device tags and test results are untouched, and a rename keeps the test result",
+			"a rename is not idempotent: the old name answers 404 afterwards, so a retry after a success fails (read the setup first)",
+			"read from Forward's source through the SDK; the route is Preview and was not run against a live Forward by this skill"},
+		do: func(ctx context.Context) error {
+			if controller != "" {
+				_, _, err := s.Client.ControllerManagedSetups.PatchController(ctx, in.NetworkID, c.Name, name, set)
+				return err
+			}
+			_, _, err := s.Client.ControllerManagedSetups.PatchManagedDevice(ctx, in.NetworkID, c.Name, name, set)
+			return err
+		}}, nil
 }

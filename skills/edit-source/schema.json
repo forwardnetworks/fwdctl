@@ -36,7 +36,7 @@
         "schedule": "a collection schedule",
         "cloud_account": "a cloud account: add, rotate, test, delete",
         "rapid7_source": "a Rapid7 vulnerability source",
-        "controller_setup": "a controller-managed setup (SD-WAN, ACI): create, migrate classic devices into it, test it, move its collector",
+        "controller_setup": "a controller-managed setup (SD-WAN, ACI): create, migrate classic devices into it, test it, change one controller or managed device in place, move its collector",
         "mist_setup": "a Juniper Mist cloud setup",
         "custom_command_group": "commands (or OIDs) a network adds to a device type's collection: create, update, disable, delete",
         "discovery": "device discovery: start or stop a scan (it probes the network), add what it found, schedule it"

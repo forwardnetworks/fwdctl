@@ -89,3 +89,59 @@ func TestMigrateManagedEntryCarriesTheCollectionOptions(t *testing.T) {
 		}
 	}
 }
+
+// A managed entry restates collect:false (a device the customer switched off); the migrate body must carry it, since Forward reads it from the entry.
+func TestMigrateManagedEntryCarriesCollectFalse(t *testing.T) {
+	var posted string
+	in := `{"network_id":"n1","object":"controller_setup","action":"migrate","apply":true,"confirm":"sdwan","definition":{"name":"sdwan","controllers":[{"name":"ctl","host":"192.0.2.10","cliCredentialId":"L1"}],"managedDevices":[{"name":"edge1","cliCredentialId":"L1","collect":false},{"name":"edge2","cliCredentialId":"L1"}]}}`
+	r, _ := mustRun(t, "edit-source", migrateRoutes(&posted), in)
+	if r.Status != result.OK || !strings.Contains(posted, `"collect":false`) {
+		t.Fatalf("the migrate body must carry collect:false: %s %s", r.Finding, posted)
+	}
+}
+
+func memberRoutes(patched *string) map[string]fwdtest.Handler {
+	setup := map[string]any{"name": "sdwan", "controllers": []any{map[string]any{"name": "vsmart-a", "host": "192.0.2.10"}}, "managedDevices": []any{map[string]any{"name": "edge1"}}}
+	return map[string]fwdtest.Handler{
+		"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{setup}),
+		"PATCH /api/networks/n1/controller-managed-setups/sdwan/controllers/vsmart-a": func(r *http.Request, b []byte) (int, any) {
+			*patched = r.URL.Path + " " + string(b)
+			return 200, map[string]any{"name": "vsmart-b", "host": "192.0.2.10"}
+		},
+		"PATCH /api/networks/n1/controller-managed-setups/sdwan/managed-devices/edge1": func(r *http.Request, b []byte) (int, any) {
+			*patched = r.URL.Path + " " + string(b)
+			return 200, map[string]any{"name": "edge1", "collect": false}
+		},
+	}
+}
+
+func TestControllerSetupUpdateRenamesOneControllerInPlace(t *testing.T) {
+	var patched string
+	in := `{"network_id":"n1","object":"controller_setup","action":"update","name":"sdwan","definition":{"controller":"vsmart-a","set":{"name":"vsmart-b"}}`
+	r, srv := mustRun(t, "edit-source", memberRoutes(&patched), in+`}`)
+	if r.Mode != result.ModeDryRun || patched != "" || writes(srv) != 0 {
+		t.Fatalf("a dry run must write nothing: %s %q", r.Mode, patched)
+	}
+	mustRun(t, "edit-source", memberRoutes(&patched), in+`,"apply":true}`)
+	if !strings.Contains(patched, "/controllers/vsmart-a") || !strings.Contains(patched, `"name":"vsmart-b"`) {
+		t.Fatalf("the rename must be one PATCH on the controller: %q", patched)
+	}
+}
+
+func TestControllerSetupUpdateSetsCollectOnOneManagedDevice(t *testing.T) {
+	var patched string
+	in := `{"network_id":"n1","object":"controller_setup","action":"update","name":"sdwan","apply":true,"definition":{"managed_device":"edge1","set":{"collect":false}}}`
+	mustRun(t, "edit-source", memberRoutes(&patched), in)
+	if !strings.Contains(patched, "/managed-devices/edge1") || !strings.Contains(patched, `"collect":false`) {
+		t.Fatalf("collect must be one PATCH on the managed device: %q", patched)
+	}
+}
+
+func TestControllerSetupUpdateRefusesAnEmptyControllerListAndAMixedChange(t *testing.T) {
+	var patched string
+	for _, def := range []string{`{"controllers":[]}`, `{"controller":"vsmart-a","set":{"host":"192.0.2.9"},"managedDevices":[]}`, `{"controller":"nope","set":{"host":"192.0.2.9"}}`} {
+		if _, _, err := runSkill(t, "edit-source", memberRoutes(&patched), `{"network_id":"n1","object":"controller_setup","action":"update","name":"sdwan","definition":`+def+`}`); err == nil {
+			t.Errorf("%s must be refused", def)
+		}
+	}
+}
