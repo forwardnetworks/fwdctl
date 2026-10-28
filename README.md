@@ -20,7 +20,7 @@ Each release carries `fwdctl_<version>_<os>_<arch>` archives (linux/amd64, darwi
 ## Use
 
 ```bash
-fwdctl login --file ~/forward.netrc        # once: URL, username (or API token access key) and password (or secret), one per line, chmod 600
+fwdctl login --file ~/forward.netrc        # once: a netrc file (machine HOST, login KEY, password SECRET; one line or three), chmod 600
 fwdctl whoami                              # who this connects as, and the Forward version
 fwdctl run inspect-networks <<< '{}'       # run any skill with a JSON object on stdin (every skill has a schema)
 fwdctl nqe run --network ID --file q.nqe --format table      # run an NQE query: every row, paged for you

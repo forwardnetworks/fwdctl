@@ -45,7 +45,8 @@
         "s3_storage",
         "trigger",
         "register",
-        "upgrade"
+        "upgrade",
+        "activate"
       ]
     },
     "name": {
@@ -69,7 +70,7 @@
     },
     "confirm": {
       "type": "string",
-      "description": "webhook delete: the exact name; banners delete: the banner id; infoblox delete: the instance id; certificates apply: the word apply; saml set: saml; licensing apply: license; cve_index delete: cve_index; organizations disable or delete: the organization name; backups trigger: backup; backups cancel: cancel; backups delete: the id; access label delete: the name"
+      "description": "webhook delete: the exact name; banners delete: the banner id; infoblox delete: the instance id; certificates apply: the word apply; saml set: saml; licensing apply: license; licensing activate: the organization id (name) and confirm = that id; cve_index delete: cve_index; organizations disable or delete: the organization name; backups trigger: backup; backups cancel: cancel; backups delete: the id; access label delete: the name"
     },
     "apply": {
       "type": "boolean",

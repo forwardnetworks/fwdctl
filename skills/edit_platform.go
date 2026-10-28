@@ -1058,8 +1058,11 @@ func planAPIToken(ctx context.Context, s *fwd.Session, in editPlatformInput) (*n
 
 // planLicense applies a signed license key. The key is read from the secret, decoded first (a read) so the dry run says what it is, and never returned.
 func planLicense(ctx context.Context, s *fwd.Session, in editPlatformInput) (*networkPlan, error) {
+	if in.Action == "activate" {
+		return planLicenseActivate(ctx, s, in)
+	}
 	if in.Action != "apply" {
-		return nil, fmt.Errorf("%w: licensing takes action apply", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: licensing takes action apply or activate", ErrInvalidInput)
 	}
 	if in.SecretFile == "" && in.SecretEnv == "" {
 		return nil, fmt.Errorf("%w: apply needs the license key: secret_file or secret_env", ErrInvalidInput)
