@@ -61,7 +61,7 @@ func TestAlwaysLoadedBudget(t *testing.T) {
 // views should each name their own inputs. The skills below pre-date the rule; each may not grow past the number listed, and none may pass maxInputsEver.
 const (
 	maxReadInputs = 8
-	maxInputsEver = 13 // inspect-bgp-neighbors takes the routing-app option as one nested object (13); every other skill stays at 12 or fewer
+	maxInputsEver = 14 // verify-change takes commit_id, object_kind, os and protocol for its Predict views (14); inspect-bgp-neighbors takes the routing-app option as one nested object (13); every other skill stays at 12 or fewer
 )
 
 var wideReadSkills = map[string]int{
@@ -71,7 +71,7 @@ var wideReadSkills = map[string]int{
 	"inspect-device-files":     11,
 	"investigate-reachability": 13, // return_path asks Forward for the return flow in the same search (a Forward parameter, not a view); no existing input holds it
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.
-	"verify-change":                  11, // view describe and view impact take device; view ai_summary adds summary_kind; views history and config add commit_id
+	"verify-change":                  14, // view describe and view impact take device; view ai_summary adds summary_kind; views history and config add commit_id
 	"inspect-topology":               9,  // kind maps adds map_id (one saved map's coverage)
 	"inspect-edge":                   12, // view exits | public_addresses | trace_sources
 	"inspect-inventory":              11, // kind ip_owner adds ips; kind devices adds compare_to_snapshot_id

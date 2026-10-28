@@ -170,9 +170,11 @@
             "predict",
             "add_check",
             "edit_check",
-            "remove_check"
+            "remove_check",
+            "prettify",
+            "export_zip"
           ],
-          "description": "rename: lifecycle.name and/or description; duplicate: copy it (lifecycle.name optional); delete: confirm = the change set id; discard_device: throw away that device's uncommitted edits (lifecycle.device); restore_commit: make an earlier version current (lifecycle.commit_id); predict: start a prediction of the change set and return the predicted snapshot id at once, without waiting (wait with fwdctl wait snapshot); add_check: attach a check this change set carries (lifecycle.check; name optional, none for NQE), run by Forward on the base; edit_check: lifecycle.check_id with a new name and/or a whole new definition; remove_check: lifecycle.check_id; commit: save the draft as a new version (lifecycle.note); edit_commit_note: lifecycle.commit_id + note; delete_commit: lifecycle.commit_id, confirm = that commit id, no undo; restore_commit_as_new: copy that version into a NEW change set (lifecycle.name, base_snapshot_id optional); duplicate_to_network: copy to lifecycle.target_network_id (name, base_snapshot_id optional; needs the change-set permission on both networks); add_tags / remove_tags: lifecycle.tags; clear_tags: remove every tag; move_to_directory: lifecycle.directory as /a/b"
+          "description": "rename: lifecycle.name and/or description; duplicate: copy it (lifecycle.name optional); delete: confirm = the change set id; discard_device: throw away that device's uncommitted edits (lifecycle.device); restore_commit: make an earlier version current (lifecycle.commit_id); predict: start a prediction of the change set and return the predicted snapshot id at once, without waiting (wait with fwdctl wait snapshot); add_check: attach a check this change set carries (lifecycle.check; name optional, none for NQE), run by Forward on the base; edit_check: lifecycle.check_id with a new name and/or a whole new definition; remove_check: lifecycle.check_id; commit: save the draft as a new version (lifecycle.note); edit_commit_note: lifecycle.commit_id + note; delete_commit: lifecycle.commit_id, confirm = that commit id, no undo; restore_commit_as_new: copy that version into a NEW change set (lifecycle.name, base_snapshot_id optional); duplicate_to_network: copy to lifecycle.target_network_id (name, base_snapshot_id optional; needs the change-set permission on both networks); add_tags / remove_tags: lifecycle.tags; clear_tags: remove every tag; move_to_directory: lifecycle.directory as /a/b; prettify: lifecycle.device + commands, returns Forward's formatting, changes nothing; export_zip: lifecycle.path (a new .zip file) gets the head version"
         },
         "name": {
           "type": "string"
@@ -247,6 +249,12 @@
         },
         "directory": {
           "type": "string"
+        },
+        "commands": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
         }
       },
       "description": "needs change_set_id; does not combine with devices, bgp_advertisements, firewall_rules, snapshot_id or run"
@@ -284,6 +292,13 @@
           "type": "boolean"
         }
       }
+    },
+    "bulk_delete": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "delete several change sets of the network at once (their ids); irreversible, confirm = how many; does not combine with other change-set inputs"
     }
   }
 }

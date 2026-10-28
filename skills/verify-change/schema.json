@@ -26,7 +26,11 @@
         "ai_summary",
         "history",
         "config",
-        "affected"
+        "affected",
+        "bgp_diffs",
+        "objects",
+        "checks",
+        "commands"
       ],
       "default": "verify",
       "x-values": {
@@ -41,7 +45,11 @@
         "ai_summary": "Forward AI explains a difference in words (opt-in; generated text, labelled): summary_kind config, impact (default), failure or overview, on a change set or any two snapshots; unknown when the organization has AI off",
         "history": "a change set's saved versions (note, who, when), its summary and the directory it is filed in",
         "config": "one device's configuration in a change set: the draft, or a saved version (commit_id)",
-        "affected": "the devices a prediction changed, for a predicted snapshot (after_snapshot_id)"
+        "affected": "the devices a prediction changed, for a predicted snapshot (after_snapshot_id)",
+        "bgp_diffs": "what a device's staged BGP advertisements change, in the draft or one saved version (commit_id)",
+        "objects": "a firewall's address/service/application/url/user objects or zones in a change set (object_kind)",
+        "checks": "the NQE checks added to a change set",
+        "commands": "the vendor OSes Predict models; with os (and protocol) the commands it accepts"
       }
     },
     "run_predict": {
@@ -119,6 +127,39 @@
     "commit_id": {
       "type": "string",
       "description": "views history and config: one saved version of the change set (the commit id from view history)"
+    },
+    "object_kind": {
+      "type": "string",
+      "enum": [
+        "address-objects",
+        "address-groups",
+        "application-objects",
+        "application-groups",
+        "url-objects",
+        "service-objects",
+        "service-groups",
+        "user-objects",
+        "zones"
+      ],
+      "description": "view objects: which firewall object list to read"
+    },
+    "os": {
+      "type": "string",
+      "description": "view commands: a vendor OS from the list (omit it to get the list)"
+    },
+    "protocol": {
+      "type": "string",
+      "enum": [
+        "BGP",
+        "OSPF",
+        "IS_IS",
+        "EIGRP",
+        "RIP",
+        "CONFIG",
+        "OMP",
+        "STP"
+      ],
+      "description": "view commands: the protocol (default CONFIG)"
     }
   }
 }

@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -58,12 +59,20 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			return result.Result{}, fmt.Errorf("%w: %s needs lifecycle.tags", ErrInvalidInput, op)
 		}
 	case "clear_tags":
+	case "prettify":
+		if strings.TrimSpace(l.Device) == "" || strings.TrimSpace(l.Commands) == "" {
+			return result.Result{}, fmt.Errorf("%w: prettify needs lifecycle.device and lifecycle.commands", ErrInvalidInput)
+		}
+	case "export_zip":
+		if p := strings.TrimSpace(l.Path); p == "" || !strings.HasSuffix(p, ".zip") {
+			return result.Result{}, fmt.Errorf("%w: export_zip needs lifecycle.path, a local file ending in .zip that does not exist yet", ErrInvalidInput)
+		}
 	case "move_to_directory":
 		if d := strings.TrimSpace(l.Directory); d == "" || !strings.HasPrefix(d, "/") || strings.HasSuffix(d, "/") && d != "/" || strings.Contains(d, "//") {
 			return result.Result{}, fmt.Errorf("%w: move_to_directory needs lifecycle.directory as a path such as /team/wan (no trailing or doubled slash; the directories are listed by verify-change view history)", ErrInvalidInput)
 		}
 	default:
-		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, duplicate_to_network, delete, discard_device, commit, edit_commit_note, delete_commit, restore_commit, restore_commit_as_new, add_tags, remove_tags, clear_tags, move_to_directory, predict, add_check, edit_check or remove_check", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, duplicate_to_network, delete, discard_device, commit, edit_commit_note, delete_commit, restore_commit, restore_commit_as_new, add_tags, remove_tags, clear_tags, move_to_directory, prettify, export_zip, predict, add_check, edit_check or remove_check", ErrInvalidInput)
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	list, err := s.ChangeSets(ctx, in.NetworkID)
@@ -219,6 +228,32 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		do = func() (any, error) {
 			_, e := s.Client.Predict.MoveChangeSetToDirectory(ctx, in.NetworkID, l.Directory, id)
 			return nil, e
+		}
+	case "prettify":
+		ch.Action, verb, ch.Reversible = "prettify_commands", "reformat the commands for "+l.Device+" of", true
+		ch.After = map[string]any{"device": l.Device}
+		ch.Undo = "nothing to undo: the change set is not changed, the reformatted text is only returned"
+		do = func() (any, error) {
+			t, _, e := s.Client.Predict.PrettifyCommands(ctx, in.NetworkID, id, l.Device, l.Commands)
+			return map[string]any{"commands": t}, e
+		}
+	case "export_zip":
+		ch.Action, verb = "export_change_set_zip", "write the head version as a zip to "+l.Path+" for"
+		ch.After = map[string]any{"path": l.Path}
+		ch.Undo = "delete the file"
+		do = func() (any, error) {
+			f, e := os.OpenFile(l.Path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+			if e != nil {
+				return nil, e
+			}
+			_, e = s.Client.Predict.ExportChangeSetZip(ctx, in.NetworkID, id, f)
+			if ce := f.Close(); e == nil {
+				e = ce
+			}
+			if e != nil {
+				os.Remove(l.Path)
+			}
+			return map[string]any{"path": l.Path}, e
 		}
 	case "restore_commit":
 		ch.Action, verb = "restore_commit", "restore version "+l.CommitID+" as the current content of"
