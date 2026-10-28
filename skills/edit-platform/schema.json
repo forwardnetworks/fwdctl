@@ -22,7 +22,8 @@
         "organizations",
         "cve_index",
         "collectors",
-        "endpoint_profiles"
+        "endpoint_profiles",
+        "performance"
       ]
     },
     "action": {

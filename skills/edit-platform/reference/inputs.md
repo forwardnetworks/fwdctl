@@ -34,6 +34,8 @@ A secret (an S3 secret key, a ServiceNow or Infoblox password, a license key) is
 | `endpoint_profiles` | `create` | | `name`, `command_sets` (UNIX), `custom_commands` (CLI profiles only; the dry run says which commands the organization has not approved) | delete it |
 | `endpoint_profiles` | `update` | the CLI profile id or name | `command_sets`, `custom_commands` (each replaces the current list; CLI profiles only; every endpoint using the profile follows) | update back |
 | `endpoint_profiles` | `delete` | the profile id or name | | **none**; `confirm` = the id |
+| `performance` | `disable` | | `network_id` | set it back to enabled in Forward's performance settings (needs an SNMP credential) |
+| `performance` | `upload` | | `network_id`, `devices` (name, vendor_os, time, cpu, memory, uptime_seconds, interfaces), `claimed`, `newest`; secret: the collector key in `secret_file` or `secret_env` | **none**; `confirm` = `upload`; refused while Forward's own polling is on |
 | `api_tokens` | `delete` | the token name (this login's own) | | **none**; `confirm` = the name |
 | `integrations` | `set` | `servicenow` | `instance_url`, `username`, `enabled`, `auto_create`, `auto_create_impact`, `auto_create_urgency`, `auto_update`; secret = the password | set back |
 | `integrations` | `delete` | `servicenow` | | **none**; `confirm` = `servicenow` |
