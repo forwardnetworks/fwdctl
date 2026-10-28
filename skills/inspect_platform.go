@@ -245,7 +245,14 @@ var platformAreas = map[string]platformArea{
 				out = append(out, tag(rr, "integration", "rapid7")...)
 			}
 		}
-		return out, append(lim, "Rapid7 sources belong to a network: give network_id to include them; passwords are never returned"), nil
+		if n != "" {
+			tn, _, e4 := s.Client.Integrations.ListTenableSC(ctx, n)
+			tr, err := rowsOf(tn, e4)
+			if lim = soft(lim, "Tenable Security Center", err); err == nil {
+				out = append(out, tag(tr, "integration", "tenable_sc")...)
+			}
+		}
+		return out, append(lim, "Rapid7 and Tenable Security Center sources belong to a network: give network_id to include them (a Tenable row shows collectionError and lastAttempted); passwords are never returned"), nil
 	}},
 	"licensing": {false, "licenses of the organization", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		v, _, err := s.Client.Licensing.List(ctx)
