@@ -34,7 +34,8 @@
         "scorecards",
         "scorecard_trends",
         "custom_command_groups",
-        "controller_setups"
+        "controller_setups",
+        "license_usage"
       ],
       "description": "what to read; the network areas (credentials, jump_servers, proxies, schedules, cloud_setups, locations, tag_definitions, custom_command_groups) need network_id, the others take none"
     },
@@ -56,6 +57,14 @@
       "type": "string",
       "minLength": 1,
       "description": "org_properties, and licensing (another organization's stored licenses; Forward support, SaaS): the organization to read (default: the organization of network_id, else the only organization this login sees)"
+    },
+    "start": {
+      "type": "string",
+      "description": "license_usage (own organization): the window start for the per-licence CCH series and the device and edge-asset use, RFC 3339 or YYYY-MM-DD (UTC); empty starts at the first usage"
+    },
+    "end": {
+      "type": "string",
+      "description": "license_usage (own organization): the window end, RFC 3339 or YYYY-MM-DD (UTC); empty is now. Device and edge-asset use over time is read only when start and end are both given"
     },
     "command": {
       "type": "string",
