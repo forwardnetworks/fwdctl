@@ -71,6 +71,7 @@ var wideReadSkills = map[string]int{
 	"inspect-device-files":     11,
 	"investigate-reachability": 13, // return_path asks Forward for the return flow in the same search (a Forward parameter, not a view); no existing input holds it
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.
+	"inspect-platform":               10, // area license_usage takes start and end for its per-licence CCH series and use over time (a window, not an area of its own)
 	"verify-change":                  14, // view describe and view impact take device; view ai_summary adds summary_kind; views history and config add commit_id
 	"inspect-topology":               9,  // kind maps adds map_id (one saved map's coverage)
 	"inspect-edge":                   12, // view exits | public_addresses | trace_sources

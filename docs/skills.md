@@ -48,7 +48,7 @@ Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl 
 | `inspect-jobs` | read | Lists Forward's active or completed backend jobs and flags ones running past a threshold as stuck. |
 | `inspect-networks` | read | Lists the networks the login can see, with ids and names; view workspaces summarises change workspaces. |
 | `inspect-performance` | read | Reads device and interface health from performance data: unhealthy devices, highest CPU, memory, utilization, loss or errors, and trends. |
-| `inspect-platform` | read | Reads how Forward is set up, secrets removed: credentials, collectors, endpoint profiles, command groups, settings vs defaults, licensing, SAML. |
+| `inspect-platform` | read | Reads how Forward is set up, secrets removed: credentials, collectors, endpoint profiles, command groups, settings vs defaults, licensing and usage, SAML. |
 | `inspect-snapshots` | read | Lists a network's snapshots, says which is the newest worth reading, which are predictions or drafts, and how complete one is. |
 | `inspect-topology` | read | Reads layout: links, sites, tags, aliases, link overrides (compare_to_snapshot_id diffs two snapshots); kind external shows the internet node, L3 VPNs. |
 | `inspect-vulnerabilities` | read | Finds which CVEs expose the network, which devices a CVE affects, or which CVEs affect a device, from Forward's detection. |

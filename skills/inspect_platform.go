@@ -28,6 +28,8 @@ type inspectPlatformInput struct {
 	Limit     int    `json:"limit"`
 	Offset    int    `json:"offset"`
 	Command   string `json:"command"`
+	Start     string `json:"start"`
+	End       string `json:"end"`
 }
 
 // platformArea is one thing an administrator sets up or looks after. list reads it; network says whether it belongs to a network (true) or to the organization (false). A secret an
@@ -348,6 +350,7 @@ var platformAreas = map[string]platformArea{
 		r, err := rowsOf([]*forward.SAMLSettings{v}, nil)
 		return r, []string{"identity-provider certificates and metadata are shortened or hidden"}, err
 	}},
+	"license_usage":  {false, "licence usage: used against licensed for classic devices, cloud credit hours (per licence) and edge assets, with the tier and its facets", nil},
 	"org_properties": {false, "organization properties: effective value and its source (org setting, global override or compiled default), with the appserver build", nil},
 	"organizations": {false, "organizations this login can see", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
 		v, _, err := s.Client.Organizations.List(ctx)
@@ -479,6 +482,8 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		rows, limits, differ, err = effectiveSettingRows(ctx, s)
 	} else if in.Area == "licensing" && in.OrgID != "" { // another organization's stored licenses (support)
 		rows, limits, err = orgLicenseRows(ctx, s, in.OrgID)
+	} else if in.Area == "license_usage" {
+		rows, limits, err = licenseUsageRows(ctx, s, in)
 	} else if in.Area == "org_properties" { // needs org_id, which the generic list signature does not carry
 		rows, limits, err = orgPropertyRows(ctx, s, in)
 	} else {

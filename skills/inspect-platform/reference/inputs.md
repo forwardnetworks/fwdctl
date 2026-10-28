@@ -27,3 +27,5 @@ Detail and what each area cannot show: `reference/areas.md` (`fwdctl describe in
 `command` (area `custom_command_groups` only): keep the groups whose commands contain this text, ignoring case.
 
 `view: effective` with area `custom_command_groups` takes `name`, the classic device, and lists the custom command groups that apply to it.
+
+`license_usage` (organization): optional `org_id` (another organization, Forward support, SaaS), `start` and `end` (RFC 3339 or YYYY-MM-DD, UTC) for the own-organization CCH series and device and edge-asset use over time.
