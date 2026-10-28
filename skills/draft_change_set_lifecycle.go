@@ -40,8 +40,30 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		if strings.TrimSpace(l.CommitID) == "" {
 			return result.Result{}, fmt.Errorf("%w: restore_commit needs lifecycle.commit_id (the versions are listed by verify-change view describe)", ErrInvalidInput)
 		}
+	case "commit":
+	case "edit_commit_note":
+		if strings.TrimSpace(l.CommitID) == "" || strings.TrimSpace(l.Note) == "" {
+			return result.Result{}, fmt.Errorf("%w: edit_commit_note needs lifecycle.commit_id and lifecycle.note", ErrInvalidInput)
+		}
+	case "delete_commit", "restore_commit_as_new":
+		if strings.TrimSpace(l.CommitID) == "" {
+			return result.Result{}, fmt.Errorf("%w: %s needs lifecycle.commit_id (the versions are listed by verify-change view history)", ErrInvalidInput, op)
+		}
+	case "duplicate_to_network":
+		if strings.TrimSpace(l.TargetNetworkID) == "" {
+			return result.Result{}, fmt.Errorf("%w: duplicate_to_network needs lifecycle.target_network_id", ErrInvalidInput)
+		}
+	case "add_tags", "remove_tags":
+		if len(l.Tags) == 0 {
+			return result.Result{}, fmt.Errorf("%w: %s needs lifecycle.tags", ErrInvalidInput, op)
+		}
+	case "clear_tags":
+	case "move_to_directory":
+		if d := strings.TrimSpace(l.Directory); d == "" || !strings.HasPrefix(d, "/") || strings.HasSuffix(d, "/") && d != "/" || strings.Contains(d, "//") {
+			return result.Result{}, fmt.Errorf("%w: move_to_directory needs lifecycle.directory as a path such as /team/wan (no trailing or doubled slash; the directories are listed by verify-change view history)", ErrInvalidInput)
+		}
 	default:
-		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, delete, discard_device, restore_commit, predict, add_check, edit_check or remove_check", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, duplicate_to_network, delete, discard_device, commit, edit_commit_note, delete_commit, restore_commit, restore_commit_as_new, add_tags, remove_tags, clear_tags, move_to_directory, predict, add_check, edit_check or remove_check", ErrInvalidInput)
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	list, err := s.ChangeSets(ctx, in.NetworkID)
@@ -134,6 +156,70 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			}
 			return map[string]any{"predicted_snapshot_id": string(p.ID), "state": state, "new_prediction": !known[string(p.ID)]}, e
 		}
+	case "commit":
+		ch.Action, verb = "commit_change_set", "save the draft as a new version of"
+		ch.After = map[string]any{"note": firstNonEmpty(strings.TrimSpace(l.Note), "(none)")}
+		ch.Undo = "restore the previous version (restore_commit); versions are kept, so this loses nothing"
+		do = func() (any, error) {
+			_, e := s.Client.Predict.Commit(ctx, in.NetworkID, id, strings.TrimSpace(l.Note))
+			return nil, e
+		}
+	case "edit_commit_note":
+		ch.Action, verb = "edit_commit_note", "change the note of version "+l.CommitID+" of"
+		ch.After = map[string]any{"commit_id": l.CommitID, "note": strings.TrimSpace(l.Note)}
+		ch.Undo = "edit the note again; the old note is not kept by Forward, so it is not in this result unless you read it first (verify-change view history)"
+		do = func() (any, error) {
+			m, _, e := s.Client.Predict.EditCommitNote(ctx, in.NetworkID, id, l.CommitID, strings.TrimSpace(l.Note))
+			return m, e
+		}
+	case "delete_commit":
+		ch.Action, verb, ch.Reversible = "delete_commit", "delete version "+l.CommitID+" of", false
+		ch.Undo = "none: the version is gone (restore_commit_as_new on another version keeps a copy before deleting)"
+		do = func() (any, error) {
+			_, e := s.Client.Predict.DeleteCommit(ctx, in.NetworkID, id, l.CommitID)
+			return nil, e
+		}
+	case "restore_commit_as_new":
+		ch.Action, verb = "restore_commit_as_new", "copy version "+l.CommitID+" of"
+		ch.After = map[string]any{"commit_id": l.CommitID, "new_name": firstNonEmpty(strings.TrimSpace(l.Name), "(Forward picks the name)"), "base_snapshot_id": firstNonEmpty(l.BaseSnapshotID, string(cs.SnapshotID))}
+		ch.Undo = "delete the new change set (lifecycle delete on its id)"
+		do = func() (any, error) {
+			c, _, e := s.Client.Predict.RestoreCommitAsNew(ctx, in.NetworkID, id, l.CommitID, strings.TrimSpace(l.Name), l.BaseSnapshotID)
+			if c != nil {
+				return map[string]any{"new_change_set_id": string(c.ID), "name": c.Name}, e
+			}
+			return nil, e
+		}
+	case "duplicate_to_network":
+		opts := forward.DuplicateChangeSetOptions{TargetName: strings.TrimSpace(l.Name), TargetBaseSnapshotID: l.BaseSnapshotID}
+		ch.Action, verb = "duplicate_change_set_to_network", "copy to network "+l.TargetNetworkID+" the change set"
+		ch.After = map[string]any{"target_network_id": l.TargetNetworkID, "name": firstNonEmpty(opts.TargetName, "(Forward picks the name)"), "base_snapshot_id": firstNonEmpty(opts.TargetBaseSnapshotID, "(the target network's latest)")}
+		ch.Undo = "delete the copy in the target network (lifecycle delete there, on its id)"
+		do = func() (any, error) {
+			c, _, e := s.Client.Predict.DuplicateChangeSetToNetwork(ctx, in.NetworkID, id, l.TargetNetworkID, opts)
+			if c != nil {
+				return map[string]any{"new_change_set_id": string(c.ID), "network_id": l.TargetNetworkID, "name": c.Name}, e
+			}
+			return nil, e
+		}
+	case "add_tags", "remove_tags", "clear_tags":
+		act := map[string]forward.ChangeSetTagAction{"add_tags": forward.ChangeSetTagsAdd, "remove_tags": forward.ChangeSetTagsRemove, "clear_tags": forward.ChangeSetTagsRemoveAll}[op]
+		ch.Action, verb = "tag_change_set", map[string]string{"add_tags": "add tags to", "remove_tags": "remove tags from", "clear_tags": "remove every tag from"}[op]
+		ch.After = map[string]any{"tags_" + strings.TrimSuffix(op, "_tags"): l.Tags}
+		ch.Undo = "the opposite op (add_tags / remove_tags); clear_tags is undone by add_tags with the tags it showed before"
+		before["tags"] = cs.Tags
+		do = func() (any, error) {
+			_, e := s.Client.Predict.PatchChangeSetsTags(ctx, in.NetworkID, []string{id}, act, l.Tags)
+			return nil, e
+		}
+	case "move_to_directory":
+		ch.Action, verb = "move_change_set_to_directory", "file under "+l.Directory+" the change set"
+		ch.After = map[string]any{"directory": l.Directory}
+		ch.Undo = "move it back (move_to_directory with its earlier directory, shown by verify-change view history)"
+		do = func() (any, error) {
+			_, e := s.Client.Predict.MoveChangeSetToDirectory(ctx, in.NetworkID, l.Directory, id)
+			return nil, e
+		}
 	case "restore_commit":
 		ch.Action, verb = "restore_commit", "restore version "+l.CommitID+" as the current content of"
 		ch.After = map[string]any{"commit_id": l.CommitID}
@@ -145,16 +231,20 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 	}
 	limits := []string{"nothing here reaches a device; a change set only feeds Predict", "predicted snapshots a change set already made are not touched here; edit-snapshot action delete removes one (Forward decides whether it allows it)"}
 	need := op == "delete"
+	confirmWith := id
+	if op == "delete_commit" {
+		need, confirmWith = true, l.CommitID
+	}
 	if !in.Apply {
 		msg := fmt.Sprintf("Dry run: would %s change set %s (%s). Nothing was changed; run again with apply=true", verb, id, cs.Name)
 		if need {
-			msg += fmt.Sprintf(" and confirm=%q", id)
+			msg += fmt.Sprintf(" and confirm=%q", confirmWith)
 		}
 		return result.Build(draftChangeSetName, result.OK, msg, result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"verify-change"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "changeSetLifecycle", nil, map[string]any{"mode": result.ModeDryRun, "op": op, "change_set": before}, "")}})
 	}
-	if need && strings.TrimSpace(in.Confirm) != id {
-		return result.Build(draftChangeSetName, result.Failed, fmt.Sprintf("Refused, nothing was changed: deleting change set %s needs confirm=%q", id, id), result.Deterministic, cx,
+	if need && strings.TrimSpace(in.Confirm) != confirmWith {
+		return result.Build(draftChangeSetName, result.Failed, fmt.Sprintf("Refused, nothing was changed: %s on change set %s needs confirm=%q", verb, id, confirmWith), result.Deterministic, cx,
 			result.Options{Mode: result.ModeApplied, Limits: limits, Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "changeSetLifecycle", nil, map[string]any{"mode": result.ModeApplied, "op": op, "change_set": before, "refused": "confirm missing"}, "")}})
 	}
 	detail, err := do()

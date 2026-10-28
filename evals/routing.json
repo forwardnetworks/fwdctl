@@ -593,6 +593,11 @@
     "rival": "edit-endpoint-profile"
   },
   {
+    "query": "Show the saved versions and notes of a Predict change set and which devices a prediction affected",
+    "expect": "verify-change",
+    "rival": "plan-change-review"
+  },
+  {
     "query": "Turn off Forward's own SNMP performance polling and upload device performance stats from our telemetry platform",
     "expect": "edit-platform",
     "rival": "inspect-performance"
