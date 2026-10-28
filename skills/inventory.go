@@ -432,7 +432,9 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	if in.Limit <= 0 {
 		in.Limit = defaultInventoryLimit
 	}
+	var limitCut string
 	if in.Limit > maxInventoryLimit {
+		limitCut = fmt.Sprintf("limit %d was cut to the maximum of %d rows per call: page with offset steps of at most %d (a larger step skips rows)", in.Limit, maxInventoryLimit, maxInventoryLimit)
 		in.Limit = maxInventoryLimit
 	}
 	snap, err := resolveSnapshot(ctx, s, in.NetworkID, in.SnapshotID)
@@ -448,6 +450,9 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			[]string{"no processed snapshot; nothing was read"}, result.Options{NextActions: []string{"investigate-collection-failure"}})
 	}
 	var limits []string
+	if limitCut != "" {
+		limits = append(limits, limitCut)
+	}
 	if cx.State == "predicted" {
 		limits = append(limits, "read from a predicted snapshot: these rows describe a prediction, not collected state")
 	}

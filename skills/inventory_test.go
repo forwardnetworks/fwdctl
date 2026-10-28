@@ -113,6 +113,14 @@ func TestInventoryTheLimitIsCapped(t *testing.T) {
 	}
 }
 
+func TestInventoryACutLimitIsSaidInTheLimits(t *testing.T) {
+	r, _ := inv(t, map[string]fwdtest.Handler{"device.hosts": rowsOf(1, map[string]any{"Host": "h"})}, nil,
+		`{"network_id":"n1","kind":"hosts","limit":1000}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "limit 1000 was cut to the maximum of 200") {
+		t.Errorf("limits %v do not say the limit was cut", r.Limits)
+	}
+}
+
 func TestInventoryZeroRowsIsUnknownNeverAnEmptyAnswer(t *testing.T) {
 	r, _ := inv(t, nil, nil, `{"network_id":"n1","kind":"vlans","device":"atl-core-pe01"}`)
 	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "matched exactly") {
