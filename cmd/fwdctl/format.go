@@ -345,6 +345,16 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 		fmt.Fprintf(stderr, "Forward answered with a gateway error (%v); retrying in %s (attempt %d of %d)\n", err, wait, attempts+1, o.retryTransient+1)
 		transientSleep(wait)
 	}
+	// a count over a truncated result would read as complete once piped (stdout carries no marker), so --count-by reads the whole result, or refuses
+	if err == nil && *countBy != "" && truncated && !paged {
+		const countAllCap = 2000000
+		if total > countAllCap {
+			fmt.Fprintf(stderr, "error: --count-by would cover only %d of %d rows (more than the %d it will read), so nothing was counted. Count inside the query (group by) or narrow it\n", len(rows), total, countAllCap)
+			return 1
+		}
+		fmt.Fprintf(stderr, "note: --count-by reads all %d rows (the --max of %d would have cut the counts)\n", total, *max)
+		rows, total, truncated, err = sess.RunNQEAllWith(context.Background(), *network, run, int(total))
+	}
 	if o.retryTransient > 0 {
 		clean := attempts == 1
 		meta.Attempts, meta.TransportClean = attempts, &clean

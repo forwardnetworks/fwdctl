@@ -186,7 +186,7 @@ Exit status: 0 ok, 1 the query does not compile, 2 no processed snapshot, 3 erro
 	f.StringVar(&o.file, "file", "", "file with the NQE query (default: stdin)")
 	f.StringVar(&o.snapshot, "snapshot", "", "snapshot id (default: the latest processed)")
 	f.StringVar(&o.format, "format", "json", "json, jsonl, table or csv")
-	f.StringVar(&o.countBy, "count-by", "", "print how many rows have each value of this field instead of the rows")
+	f.StringVar(&o.countBy, "count-by", "", "print how many rows have each value of this field instead of the rows (counts every row: it reads past --max, up to 2,000,000, or refuses)")
 	f.IntVar(&o.max, "max", 50000, "stop after this many rows (stated on stderr when more exist)")
 	f.StringVar(&o.queryID, "query-id", "", "run a saved query by id instead of a file (a library query: see fwdctl run find-nqe-query)")
 	f.StringVar(&o.commitID, "commit-id", "", "with --query-id: the library commit to run it at (default: the head)")

@@ -94,3 +94,25 @@ func TestNQERunSaysWhyAnExecutionEndedWithAUserError(t *testing.T) {
 		}
 	}
 }
+
+// --count-by over a result larger than --max must count every row (the JSON on stdout carries no truncation marker), not the first --max.
+func TestNQERunCountByCountsAllRowsEvenWhenMaxIsSmaller(t *testing.T) {
+	code, out, errb := call(t, []string{"nqe", "run", "--network", "n1", "--snapshot", "s1", "--max", "2", "--count-by", "n"}, "foreach d in network.devices select {n: d.name}", pagedRoutes())
+	if code != 0 {
+		t.Fatalf("exit %d %s", code, errb)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("not JSON: %v: %s", err, out)
+	}
+	sum := 0
+	for _, g := range got {
+		sum += int(g["count"].(float64))
+	}
+	if sum != 5 {
+		t.Errorf("counts cover %d of 5 rows: %s", sum, out)
+	}
+	if !strings.Contains(errb, "reads all 5 rows") {
+		t.Errorf("stderr should say it read past --max: %s", errb)
+	}
+}

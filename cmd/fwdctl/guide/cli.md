@@ -668,7 +668,7 @@ Flags:
       --allow-large           write a result of more than 100 MB (by default it is refused before anything is written, so a redirect cannot fill the disk)
       --async                 (the default) run through Forward's asynchronous execution API (the default; the execution key, outcome and times are in --meta)
       --commit-id string      with --query-id: the library commit to run it at (default: the head)
-      --count-by string       print how many rows have each value of this field instead of the rows
+      --count-by string       print how many rows have each value of this field instead of the rows (counts every row: it reads past --max, up to 2,000,000, or refuses)
       --file string           file with the NQE query (default: stdin)
       --format string         json, jsonl, table or csv (default "json")
       --fresh                 EXPERIMENTAL: add an always-true filter after the first loop so Forward's result cache sees a new program (a cold timing, or a retry of a cached failure); rows are identical
