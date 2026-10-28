@@ -123,7 +123,7 @@ func vulnDevices(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Co
 		limits = append(limits, fmt.Sprintf("internet_addressable is unknown on %d of the %d devices with matching CVEs: Forward gave no value, which is not 'no' (%s)", unknown, addressable+notAddressable+unknown, exposureWhy("", in.adv)))
 	}
 	limits = append(limits,
-		"only devices with at least one CVE matching the filters are listed: a device Forward flags addressable that has none is not here, so this counts addressable devices with CVEs, not every addressable device",
+		"only devices with at least one CVE matching the filters are listed (Forward leaves the others out): a device with none has NO row here, so its internet_addressable flag is unknown to this view, which is not 'not addressable'. This counts addressable devices with CVEs, not every addressable device; total_devices_analysed counts devices across all CVEs before the filters, so it cannot be subtracted to get the devices left out. To see which devices have a public address at all, use inspect-edge view public_addresses",
 		addressableCaveat)
 	if l := inertInternetNodeLimit(ctx, s, in.NetworkID); l != "" {
 		limits = append(limits, l)

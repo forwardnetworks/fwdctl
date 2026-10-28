@@ -61,4 +61,4 @@ All three are Preview routes read from Forward's source and its Go SDK; not run 
 - `objects` (`change_set_id`, `device`, `object_kind`): a firewall's address/application/url/service/user objects, groups or zones as the change set holds them, in Forward's own JSON.
 - `checks` (`change_set_id`): the NQE checks added to the change set (their results are in `describe`).
 - `commands`: without `os`, the vendor OSes Predict models and the protocols; with `os` (and `protocol`, default CONFIG), the commands Predict accepts, as Forward renders its command tree. Check it before staging a command Predict may not model.
-- `affected` also returns `protocol_modeling_done`; a failed modelling job reads false too, so bound any wait.
+- `affected` also returns `protocol_modeling_done` (null when the status cannot be read: Forward's status route needs the network ADMIN role, so a lower role gets the devices without it); a failed modelling job reads false too, so bound any wait.
