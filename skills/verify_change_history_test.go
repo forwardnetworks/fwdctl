@@ -83,3 +83,28 @@ func TestEditChangeSetVersionOpsAreDryRunAndDeleteCommitNeedsItsCommitIDAsConfir
 		t.Errorf("a directory path without a leading slash should be refused")
 	}
 }
+
+func TestEditChangeSetDirectoryOpIsDryRunAndDeletingChangeSetsNeedsConfirm(t *testing.T) {
+	var calls []string
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-set-directories": fwdtest.Const(200, map[string]any{"/team": []any{"c1", "c2"}}),
+	}
+	rec := func(*http.Request, []byte) (int, any) { calls = append(calls, "write"); return 204, nil }
+	for _, k := range []string{"POST", "PUT", "PATCH", "DELETE"} {
+		routes[k+" /api/networks/n1/change-set-directories/team"] = rec
+	}
+	run := func(extra string) (string, string) {
+		r, _ := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","directory_op":{`+extra+`}`+`}`)
+		return string(r.Status), r.Finding
+	}
+	if _, f := run(`"op":"delete","path":"/team","also_delete_change_sets":true`); len(calls) != 0 || !strings.Contains(f, "Dry run") {
+		t.Fatalf("dry run wrote: %v %s", calls, f)
+	}
+	if _, _, err := runSkill(t, "edit-change-set", routes, `{"network_id":"n1","directory_op":{"op":"delete","path":"team"}}`); err == nil {
+		t.Errorf("a path without a leading slash should be refused")
+	}
+	r, _ := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","apply":true,"directory_op":{"op":"delete","path":"/team","also_delete_change_sets":true}}`)
+	if len(calls) != 0 || !strings.Contains(r.Finding, `confirm="/team"`) {
+		t.Fatalf("deleting the change sets too must need confirm: %v %s", calls, r.Finding)
+	}
+}

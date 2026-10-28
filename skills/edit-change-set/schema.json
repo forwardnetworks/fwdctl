@@ -253,7 +253,37 @@
     },
     "confirm": {
       "type": "string",
-      "description": "lifecycle delete: the change set id again; lifecycle delete_commit: the commit id"
+      "description": "lifecycle delete: the change set id again; lifecycle delete_commit: the commit id; directory_op delete with also_delete_change_sets: the path"
+    },
+    "directory_op": {
+      "type": "object",
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false,
+      "description": "organise the directories change sets are filed under; does not combine with a change set or lifecycle. add: path (the parent, / for the top) + name; rename: path + name; move: path + to (the new parent); delete: path (keeps its change sets, unfiled) or also_delete_change_sets true (deletes them too, no undo, confirm = the path)",
+      "properties": {
+        "op": {
+          "enum": [
+            "add",
+            "rename",
+            "move",
+            "delete"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "also_delete_change_sets": {
+          "type": "boolean"
+        }
+      }
     }
   }
 }
