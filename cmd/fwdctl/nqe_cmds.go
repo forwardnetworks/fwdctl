@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -340,7 +342,7 @@ func join(s []string) string {
 
 // featuresFlagHelp is the help of --features on every command that reads the data model.
 const featuresFlagHelp = "turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). " +
-	"Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with `fwdctl nqe features`. Also FORWARD_NQE_FEATURES"
+	"Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with `fwdctl nqe features`. Also FORWARD_NQE_FEATURES, or a .fwdctl.json in the project: {\"nqe\": {\"features\": [\"security-rules-panos\"]}} (the nearest one above the working directory; flag, then environment, then file)"
 
 // applyNQEFeatures puts the --features flag and FORWARD_NQE_FEATURES (the flag first) into effect for the schema the offline checker reads. An unknown name is a usage error that lists the known ones.
 func (a *app) applyNQEFeatures(cmd *cobra.Command) error {
@@ -351,6 +353,9 @@ func (a *app) applyNQEFeatures(cmd *cobra.Command) error {
 	}
 	if env := strings.TrimSpace(os.Getenv("FORWARD_NQE_FEATURES")); env != "" && len(names) == 0 {
 		names = strings.Split(env, ",")
+	}
+	if len(names) == 0 {
+		names = projectNQEFeatures()
 	}
 	if len(names) == 0 {
 		nqelint.ResetFeatures()
@@ -438,4 +443,31 @@ func (a *app) nqeFeatures() *cobra.Command {
 	addFeaturesFlag(c)
 	addExperimentalFlag(c)
 	return c
+}
+
+// projectNQEFeatures reads the features a project says its organizations have, from the nearest .fwdctl.json at or above the working directory ({"nqe": {"features": [...]}}), so an editor's language
+// server and `fwdctl nqe lint` pick them up with no flag. A file that cannot be read or parsed gives none (the flag and the environment variable are the loud routes).
+func projectNQEFeatures() []string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+	for {
+		if b, err := os.ReadFile(filepath.Join(dir, ".fwdctl.json")); err == nil {
+			var f struct {
+				NQE struct {
+					Features []string `json:"features"`
+				} `json:"nqe"`
+			}
+			if json.Unmarshal(b, &f) != nil {
+				return nil
+			}
+			return f.NQE.Features
+		}
+		up := filepath.Dir(dir)
+		if up == dir {
+			return nil
+		}
+		dir = up
+	}
 }

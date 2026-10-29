@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -140,5 +142,26 @@ func TestNQEFeaturesMarksTheSecurityRulesFeaturesExperimental(t *testing.T) {
 	_, help, _ := call(t, []string{"nqe", "features", "--help"}, "", nil)
 	if n != 2 || !strings.Contains(help, "EXPERIMENTAL") || !strings.Contains(help, "NQE_SECURITY_RULES_PANOS") || !strings.Contains(help, "26.10") {
 		t.Errorf("help: %s", help)
+	}
+}
+
+// A project's .fwdctl.json says which NQE features its organizations have, so lint and the language server need no flag; the nearest file above the working directory wins, and a flag still overrides it.
+func TestProjectFileSetsNQEFeatures(t *testing.T) {
+	const q = "foreach device in network.devices select {p: device.securityPolicy}"
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "queries", "deep")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".fwdctl.json"), []byte(`{"nqe": {"features": ["security-rules-panos"]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FORWARD_NQE_FEATURES", "")
+	t.Chdir(sub)
+	if code, out, _ := call(t, []string{"nqe", "lint", "-"}, q, nil); code != 0 || !strings.Contains(out, `"valid": true`) {
+		t.Errorf("the project file two levels up turns the feature on: %d %s", code, out)
+	}
+	if code, out, _ := call(t, []string{"nqe", "lint", "--features", "none", "-"}, q, nil); code != 1 {
+		t.Errorf("--features overrides the project file: %d %s", code, out)
 	}
 }
