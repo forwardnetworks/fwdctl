@@ -113,7 +113,7 @@ func (a *app) nqeLSP() *cobra.Command {
 	c := &cobra.Command{
 		Use: "lsp", Short: "a language server for NQE (editors: diagnostics, completion, hover, quick fixes)",
 		Example: "  fwdctl nqe lsp   # an editor launches this over stdin/stdout",
-		Long:    "A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch.",
+		Long:    "A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch. Hover and completion mark a field that exists only for an experimental feature (the PAN-OS and FortiOS security rules, device.securityPolicy) as EXPERIMENTAL; it is hidden unless the server starts with --features security-rules-panos or security-rules-fortios, as for fwdctl nqe lint.",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := a.applyNQEFeatures(cmd); err != nil {
