@@ -77,6 +77,33 @@ func compareDeviceConfig(ctx context.Context, s *fwd.Session, raw json.RawMessag
 		}
 	}
 	if dev == nil {
+		// a name that is no device in a snapshot has no changed file either: that is not "unchanged", so say which snapshot lacks it
+		var missing []string
+		for _, side := range []struct{ label, id string }{{"before", in.BeforeSnapshotID}, {"after", in.AfterSnapshotID}} {
+			files, ferr := s.DeviceFiles(ctx, in.NetworkID, in.Device, side.id)
+			if ferr == nil && len(files) == 0 || ferr != nil && fwd.Status(ferr) == 404 {
+				missing = append(missing, side.label)
+			}
+		}
+		if len(missing) > 0 {
+			var near []string
+			prefix := strings.ToLower(in.Device) + "_"
+			for _, c := range changed {
+				if strings.HasPrefix(strings.ToLower(c.Device), prefix) {
+					near = append(near, c.Device)
+				}
+			}
+			lim := append(limits, fmt.Sprintf("%s is not a device in the %s snapshot, so nothing was compared and this is not 'unchanged'; names must match exactly", in.Device, strings.Join(missing, " or ")))
+			if len(near) > 0 {
+				shown, cut := result.Cap(near, 20, "devices whose name starts with the one given", "check inspect-inventory for the exact names")
+				lim = append(lim, "devices of that name plus an underscore suffix (for example a firewall's virtual systems) DO have changed files: "+strings.Join(shown, ", "))
+				for _, o := range cut {
+					lim = append(lim, o.Text())
+				}
+			}
+			return result.NewUnknown(configDiffName, fmt.Sprintf("%s is not a device in the %s snapshot, so no comparison was made", in.Device, strings.Join(missing, " or ")), cx, lim,
+				result.Options{NextActions: []string{"inspect-inventory"}})
+		}
 		return result.Build(configDiffName, result.OK, fmt.Sprintf("No %s file of %s changed between the snapshots", in.FileType, in.Device), result.Deterministic, cx,
 			result.Options{Limits: append(limits, "Forward lists no changed file for this device; a device absent from a snapshot also appears this way (check with inspect-inventory)"),
 				NextActions: []string{"inspect-inventory"}, Evidence: []result.Evidence{result.NewEvidence(result.EvConfig, "diffFiles", fwd.SnapshotIDPtr(after),

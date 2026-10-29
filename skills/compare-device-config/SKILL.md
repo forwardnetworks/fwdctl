@@ -36,7 +36,7 @@ Optional: `file_type` (`CONFIG` default, `STATE`, `CUSTOM`), `max_lines` (defaul
    - Device not in the changed list: **ok**, no changed file; a device missing from a snapshot looks the same, so
      the limits point at `inspect-inventory`.
    - Neither side could be read: **unknown**.
-5. Lines are compared as a set: a line that only moved is not reported. Secrets are redacted best effort, so a
+5. A `device` that is not in a snapshot (for example a firewall host whose virtual systems are the devices) gives unknown, naming the snapshot that lacks it and any devices with that name plus an underscore suffix; it is never reported as unchanged. Lines are compared as a set: a line that only moved is not reported. Secrets are redacted best effort, so a
    changed secret shows as identical text on both sides.
 
 ## Evidence

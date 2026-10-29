@@ -104,3 +104,17 @@ func TestRefusedRequestIsRetriedOnceAndAServerErrorOnAReadIsRetriedAtMostFourTim
 		t.Fatalf("a 500 on a read is retried, bounded at 4 attempts, then reported: err %v calls %d", err, calls)
 	}
 }
+
+// A name that is no device in a snapshot has no changed file, which is not "unchanged": the result is unknown, says which snapshot lacks it, and names
+// the devices that carry the name plus an underscore suffix (a firewall host and its virtual systems).
+func TestConfigDiffAnAbsentDeviceIsUnknownNotUnchanged(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: twoSnaps(),
+		diffFilesPath:                            fwdtest.Const(200, []any{map[string]any{"name": "fw1_vsys1", "hasConfigChange": true, "files": []any{map[string]any{"name": "fw1_vsys1,CONFIGURATION.txt"}}}}),
+		"GET /api/networks/n1/devices/fw1/files": fwdtest.Const(404, map[string]any{"message": "no such device"}),
+	}
+	r, _ := mustRun(t, "compare-device-config", routes, cdIn+`,"device":"fw1"}`)
+	b := jsonOf(r)
+	if r.Status != result.Unknown || !strings.Contains(b, "not a device in the before or after snapshot") && !strings.Contains(b, "not a device in the before snapshot") || !strings.Contains(b, "fw1_vsys1") {
+		t.Fatalf("an absent device must be unknown and name the suffixed devices: %s %s", r.Status, b)
+	}
+}

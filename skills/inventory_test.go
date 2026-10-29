@@ -565,3 +565,30 @@ func TestInventoryCompareWithAVendorCountsOnlyThatVendor(t *testing.T) {
 		t.Errorf("finding %q, limits %v", r.Finding, r.Limits)
 	}
 }
+
+// Devices added and removed that share a parent name (the text before _vsys or _sg) are grouped as likely renames, splits or merges of one host.
+func TestInventoryCompareGroupsRenamesByParentName(t *testing.T) {
+	lists := map[string][]map[string]any{
+		"old": {devRow("fw1_vsys2_name", "PALO_ALTO_NETWORKS", "FIREWALL"), devRow("fw2", "PALO_ALTO_NETWORKS", "FIREWALL"), devRow("sw9", "CISCO", "SWITCH")},
+		"new": {devRow("fw1_vsys2", "PALO_ALTO_NETWORKS", "FIREWALL"), devRow("fw2_vsys1", "PALO_ALTO_NETWORKS", "FIREWALL"), devRow("fw2_vsys2", "PALO_ALTO_NETWORKS", "FIREWALL"), devRow("new1", "CISCO", "SWITCH")},
+	}
+	routes := map[string]fwdtest.Handler{snapsPath: compareSnaps(), nqePath: devicesBySnapshot(lists)}
+	r, _ := mustRun(t, "inspect-inventory", routes, `{"network_id":"n1","snapshot_id":"new","kind":"devices","compare_to_snapshot_id":"old"}`)
+	g, ok := r.Evidence[0].Detail["likely_renamed_by_parent"].(map[string]any)
+	if !ok || g["parents"] != 2 || g["added_devices"] != 3 || g["removed_devices"] != 2 {
+		t.Fatalf("the rename groups: %v", r.Evidence[0].Detail["likely_renamed_by_parent"])
+	}
+	if !strings.Contains(r.Finding, "share a parent name") || strings.Contains(strings.Join(namesOfGroups(g["groups"]), " "), "new1") {
+		t.Errorf("finding %q groups %v", r.Finding, g["groups"])
+	}
+}
+
+func namesOfGroups(v any) []string {
+	var out []string
+	if gs, ok := v.([]map[string]any); ok {
+		for _, g := range gs {
+			out = append(out, g["parent"].(string))
+		}
+	}
+	return out
+}

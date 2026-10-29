@@ -224,6 +224,52 @@ func inventoryCompare(ctx context.Context, s *fwd.Session, in inventoryInput, cx
 		detail["likely_renamed_or_rescoped"] = churn
 		finding += "; LIKELY RENAMED, not new hardware: " + strings.Join(churnNames, ", ") + " (about as many removed as added of the same type)"
 	}
+	// a firewall host and its virtual systems share the text before "_vsys" or "_sg" (Forward's PanOsDeviceNameParts): a parent with devices both added and removed is a rename, a split or a merge
+	parentOf := func(name string) string {
+		l := strings.ToLower(name)
+		cut := -1
+		for _, m := range []string{"_vsys", "_sg"} {
+			if i := strings.Index(l, m); i > 0 && (cut < 0 || i < cut) {
+				cut = i
+			}
+		}
+		if cut > 0 {
+			return name[:cut]
+		}
+		return name
+	}
+	addedBy, removedBy := map[string][]string{}, map[string][]string{}
+	for _, d := range added {
+		addedBy[parentOf(d.name)] = append(addedBy[parentOf(d.name)], d.name)
+	}
+	for _, d := range removed {
+		removedBy[parentOf(d.name)] = append(removedBy[parentOf(d.name)], d.name)
+	}
+	var groups []map[string]any
+	pairedAdded, pairedRemoved := 0, 0
+	var parents []string
+	for p := range addedBy {
+		if _, ok := removedBy[p]; ok {
+			parents = append(parents, p)
+		}
+	}
+	sort.Strings(parents)
+	for _, p := range parents {
+		a, r := addedBy[p], removedBy[p]
+		sort.Strings(a)
+		sort.Strings(r)
+		pairedAdded += len(a)
+		pairedRemoved += len(r)
+		sa, _ := result.CapRow(a, 5)
+		sr, _ := result.CapRow(r, 5)
+		groups = append(groups, map[string]any{"parent": p, "removed": len(r), "added": len(a), "removed_names": sr, "added_names": sa})
+	}
+	if len(groups) > 0 {
+		shown, total := result.CapRow(groups, 20)
+		detail["likely_renamed_by_parent"] = map[string]any{"parents": total, "removed_devices": pairedRemoved, "added_devices": pairedAdded, "groups": shown}
+		finding += fmt.Sprintf("; %d of the added and %d of the removed devices share a parent name (the text before _vsys/_sg), so they are likely renames, splits or merges of %d hosts, not new or lost hardware (likely_renamed_by_parent)", pairedAdded, pairedRemoved, total)
+		limits = append(limits, "likely_renamed_by_parent groups by name only: it does not read the device signature or the OS version, so confirm a pair with compare-device-config or inspect-inventory before calling it a rename")
+	}
 	if len(added) == 0 && len(removed) == 0 {
 		finding = fmt.Sprintf("the same %d devices in %s and %s", len(cur), baseID, curID)
 	}
