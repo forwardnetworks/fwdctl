@@ -303,7 +303,12 @@ func notReadySnapshot(skill string, cx result.Context, sn *forward.Snapshot, wha
 	case state == "FAILED":
 		msg = fmt.Sprintf("%s %s FAILED processing, so nothing can be read from it", subject, id)
 		limits = append(limits, "investigate-collection-failure says why; edit-snapshot retries it (dry run first)")
-		next = []string{"investigate-collection-failure", "edit-snapshot"}
+		if sn.TotalDevices > 0 {
+			limits = append(limits, fmt.Sprintf("Forward's snapshot list records %d devices for it (inspect-snapshots shows it as devices), but not what they are; investigate-collection-failure view history shows each collection's device count", sn.TotalDevices))
+		} else {
+			limits = append(limits, "Forward's snapshot list records no device count for it; investigate-collection-failure view history shows each collection's device count")
+		}
+		next = []string{"investigate-collection-failure", "inspect-snapshots", "edit-snapshot"}
 	}
 	return result.NewUnknown(skill, msg, cx, limits, result.Options{NextActions: next})
 }
