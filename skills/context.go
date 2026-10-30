@@ -31,6 +31,10 @@ func Context(ctx context.Context, topic, term string, k int, sess *fwd.Session) 
 			fields = []nqeschema.Field{}
 		}
 		out := map[string]any{"topic": "schema", "term": term, "fields": fields, "source": source}
+		// enumeration values (command types such as VXLAN_STATE, device types, protocols) are not fields, so they are searched on their own
+		if vals := m.SearchEnumValues(term, k); len(vals) > 0 {
+			out["enum_values"] = vals
+		}
 		var enums []map[string]any
 		shown := map[string]bool{}
 		for _, f := range fields {

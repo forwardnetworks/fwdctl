@@ -49,8 +49,19 @@ func Available() bool { return false }
 
 // Search and Check have nothing to search.
 func (*Model) Search(string, int) []Field { return nil }
-func (*Model) Check(string) []Finding     { return nil }
-func (*Model) Children(string) []Field    { return nil }
+
+// EnumHit is one enumeration value that matches a search (never produced here).
+type EnumHit struct {
+	Enum   string   `json:"enum"`
+	Value  string   `json:"value"`
+	Doc    string   `json:"doc,omitempty"`
+	Fields []string `json:"fields,omitempty"`
+}
+
+// SearchEnumValues has nothing to search.
+func (*Model) SearchEnumValues(string, int) []EnumHit { return nil }
+func (*Model) Check(string) []Finding                 { return nil }
+func (*Model) Children(string) []Field                { return nil }
 
 // Feature is one NQE feature flag; the public source tree has none.
 type Feature struct {

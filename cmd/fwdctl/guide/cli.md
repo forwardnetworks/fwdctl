@@ -93,7 +93,7 @@ Flags:
 
 ## fwdctl context schema
 
-real NQE field names (and enum values) matching a term; a record is expanded one level
+real NQE field names (and enum values) matching a term; a record is expanded one level; enum_values lists matching values such as command types (VXLAN_STATE), with where they are used and their documentation
 
 ```
 fwdctl context schema <term> [flags]
@@ -103,6 +103,7 @@ Examples:
 
 ```
   fwdctl context schema vrf
+  fwdctl context schema vxlan   # finds the command types CommandType.VXLAN_STATE and VXLAN_MAC_TABLE too
 ```
 
 Flags:

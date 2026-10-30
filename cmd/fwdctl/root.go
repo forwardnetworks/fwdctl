@@ -265,10 +265,10 @@ func (a *app) contextCmd() *cobra.Command {
 	for _, kind := range []string{"nqe", "schema"} {
 		kind := kind
 		k := 3
-		short := map[string]string{"nqe": "NQE worked examples closest to a question", "schema": "real NQE field names (and enum values) matching a term; a record is expanded one level"}[kind]
+		short := map[string]string{"nqe": "NQE worked examples closest to a question", "schema": "real NQE field names (and enum values) matching a term; a record is expanded one level; enum_values lists matching values such as command types (VXLAN_STATE), with where they are used and their documentation"}[kind]
 		sub := &cobra.Command{
 			Use: kind + " <" + map[string]string{"nqe": "question", "schema": "term"}[kind] + ">", Short: short, Args: cobra.ExactArgs(1),
-			Example: map[string]string{"nqe": "  fwdctl context nqe \"bgp neighbors that are down\" -k 2", "schema": "  fwdctl context schema vrf"}[kind],
+			Example: map[string]string{"nqe": "  fwdctl context nqe \"bgp neighbors that are down\" -k 2", "schema": "  fwdctl context schema vrf\n  fwdctl context schema vxlan   # finds the command types CommandType.VXLAN_STATE and VXLAN_MAC_TABLE too"}[kind],
 			RunE: func(cmd *cobra.Command, args []string) error {
 				// context needs no login (it is read offline from this binary's sealed corpus); schema uses one when the
 				// environment has it configured, to search the organization's own live data model instead of the static one.
