@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -136,9 +137,9 @@ func predictCommands(ctx context.Context, s *fwd.Session, in verifyChangeInput) 
 	}
 	text, _, err := s.Client.Predict.AllowedCommands(ctx, in.OS, forward.PredictProtocol(proto))
 	if err != nil {
-		if forward.IsStatus(err, 500) {
+		if errors.Is(err, forward.ErrAllowedCommandsUnavailable) {
 			return result.NewUnknown(verifyChangeName, fmt.Sprintf("Forward failed to build the command list for %s (HTTP 500)", in.OS), cx,
-				[]string{"Forward answered 500 for this OS on the 1.0.0-261031 build (EOS, IOS and NX-OS), cause unknown: its command tree may have failed to load. This is not an empty list and not a statement that the OS has no commands; the change set's own validation (edit-change-set command_errors) still runs, and is advisory. " + predictPreviewLimit}, result.Options{NextActions: []string{"edit-change-set"}})
+				[]string{"Forward answers 500 for the command list of every protocol on cisco_ios, cisco_ios_xe, cisco_ios_xr, cisco_nxos, cisco_asa and arista_eos: a Forward bug (its command-tree printer has no cycle guard and overflows the stack), found by running Forward's code on its trees, present in the primary, stable and master source we checked; only juniper_srx answers. This is not an empty list and not a statement that the OS has no commands. Do not rely on this view for those OSes; the change set's own validation (edit-change-set command_errors) still runs, and is advisory. " + predictPreviewLimit}, result.Options{NextActions: []string{"edit-change-set"}})
 		}
 		if r, ok := denialResult(verifyChangeName, err, cx, "reading the commands Predict accepts"); ok {
 			return r, nil
