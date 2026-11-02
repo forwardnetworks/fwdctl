@@ -20,6 +20,10 @@ everything is fine and when performance was never collected; this skill tells th
 
 What each input means, and the fields per object and action: `fwdctl run inspect-performance --help`, or `reference/inputs.md`.
 
+Read before relying on a result (printed by `fwdctl run inspect-performance --help`): When there are no samples.
+
+**An empty answer is unknown, never health: with no raw samples say so, and the limits say what stops polling.**
+
 ## Procedure
 
 1. Ask Forward for the view.
@@ -46,9 +50,3 @@ The envelope in `schema/skill-result.schema.json`.
 
 Run `fwdctl run inspect-performance --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run inspect-performance < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
 
-## When there are no samples
-
-An empty answer is `unknown`, never health. The limits say what the API shows about why: whether the organization's `performance_data`
-feature is on, what stops SNMP polling (the network's performance setting, whether an SNMP credential exists, each source's collection and SNMP-collection flags, with the reason a source is excluded; necessary, not sufficient, because the device's vendor OS and the collector that serves it are not checked), and the SNMP state of the network's sources: how many have SNMP collection enabled and a credential, and the last collection's result by error type (NO_RESPONSE, NOT_AUTHORIZED, ...). Forward reports a status only for a source with SNMP enabled. `unhealthy_interfaces`
-has no network-wide form because Forward answers it per device: for the worst interfaces across the network use view `interfaces` with
-`PACKET_LOSS`, `ERROR` or `UTILIZATION`.

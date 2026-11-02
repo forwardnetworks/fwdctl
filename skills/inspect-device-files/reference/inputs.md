@@ -11,3 +11,11 @@
 Always `list` first if you do not know the file name, or search with no `file` to find which of a device's files mention a setting. State the model does not hold (VXLAN and EVPN: remote VTEPs, the VNI map; route-maps and communities; vendor-only commands) is read from the device's own files this way, one device at a time. Prefer `search` to `read`: a config runs to thousands of
 lines and every line returned costs tokens. Optional: `snapshot_id` (default newest processed). `pattern` is a Go
 (RE2) regular expression.
+
+## Read before relying on a result
+
+- No matching line is **unknown**, never "not configured": the setting may be absent, spelled differently in this vendor's syntax, or in another file.
+- Unknown device or file, or an empty file: **unknown**, with the reason. The snapshot must be processed.
+- Lines returned: **ok**, with the window and the file's total line count; if more remain, the limits give the `start_line` to continue from.
+- Secret values after keywords such as `password`, `secret`, `community`, `key` are replaced with `<redacted>` on a best-effort basis; the limits say how many lines changed. `no_redact` turns it off.
+- A file is downloaded to 4 MiB at most before it is read or searched.

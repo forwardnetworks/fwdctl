@@ -22,15 +22,15 @@ advertised to it after output policy, for the neighbor's own VRF. With `routing`
 
 What each input means, and the fields per object and action: `fwdctl run inspect-bgp-neighbors --help`, or `reference/inputs.md`, `reference/policy.md`.
 
+Read before relying on a result (printed by `fwdctl run inspect-bgp-neighbors --help`): Limits worth stating.
+
+**An empty `peer_device` means the peer is not a collected device, not that the session is down; for exclude-set work use the distinct Adj-RIB-Out count, not the device's advertised counter.**
+
 ## Procedure
 
 1. Read the snapshot; none ready is **unknown**.
 2. Read every BGP neighbor (paged, bounded) and, unless skipped, the Adj-RIB-Out route and distinct-prefix counts per device, peer, address family and route VRF (null is the default VRF); the row takes IPv4 unicast of the neighbor's own VRF.
 3. Filter, count by state and by peer AS, order unmodelled peers first, page. No match is **unknown** (a wrong filter and no BGP look the same).
-
-## Limits worth stating
-
-State and prefix counts are null where a platform does not report them; an empty `peer_device` means the peer is not a collected device, not that the session is down; `adj_rib_out_*` exists only for Junos, IOS, IOS-XE, NX-OS and IOS-XR. A BGP neighbor in the model is per device, not per VRF, and its Adj-RIB-Out holds routes of several VRFs and families, so counts are joined on device, peer and VRF; `adj_rib_out_other_vrfs_routes` is the remainder for that peer address in other VRFs and families, so nothing is hidden. Which number to trust: `advertised_prefixes` is the device's own session counter (what it reports sending); `adj_rib_out_distinct_prefixes` is the count of distinct prefixes in the Adj-RIB-Out after output policy for that VRF and is the one to use for exclude-set work. They can differ by a few (counter timing, aggregates, multipath duplicates); a large gap means the join or the VRF is wrong. The finding and the evidence name the snapshot read.
 
 ## Evidence
 

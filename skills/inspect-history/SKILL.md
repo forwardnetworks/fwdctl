@@ -17,7 +17,9 @@ The "when did this start" question. Forward holds snapshots, not a timeline, so 
 
 ## Inputs
 
-`network_id` and exactly one of `check_id` (find it with `check-network-compliance` view read) or `device` (a device name). Optional: `snapshots` (how many to read). See `schema.json`.
+Every input: `fwdctl run inspect-history --help` (from `reference/inputs.md`). Read before relying on a result (printed by `fwdctl run inspect-history --help`): Device configuration.
+
+**A snapshot that predates the check is ABSENT, which is not a pass; a result computed against an older definition is outdated and not comparable.**
 
 ## Procedure
 
@@ -27,13 +29,6 @@ The "when did this start" question. Forward holds snapshots, not a timeline, so 
 4. **ok** with the series and the change point; **unknown** when there are no snapshots or the check is not on the newest one.
 
 If the status never differs, the finding says the change, if any, is older than the snapshots read.
-
-## Device configuration (`device`)
-
-Instead of a check, give a `device`: the skill walks adjacent pairs of processed snapshots, newest first (at most N snapshots, one diff read per
-pair), and stops at the first pair whose collected configuration files differ for that device. **ok** with the two snapshots and their times;
-if no pair differs the change is older than the snapshots read. A change is attributed to the interval between two collections, never to a time
-inside it. Fewer than two processed snapshots is **unknown**.
 
 ## Evidence
 

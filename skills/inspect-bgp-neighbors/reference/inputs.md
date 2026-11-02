@@ -18,3 +18,9 @@ A different question from `advertised`; give one. `routing` is `{view, prefix, .
 - `view: installed` with `device` or `vendors` (lowercase vendor-OS names such as `cisco_ios`; not both): the BGP prefixes installed, up to `limit` (default 200).
 
 It is a preview route that reads BGP, needs the network ADMIN role (the operation BGP_PREFIX_SEARCH; an OPERATOR is refused with 403), the organization property PREDICT_MODELING, and a snapshot processed to the creation stage. A node that does not resolve in the snapshot is `unknown`, not an error. The search and trace calls are POSTs that change nothing.
+
+## Read before relying on a result
+
+### Limits worth stating
+
+State and prefix counts are null where a platform does not report them; an empty `peer_device` means the peer is not a collected device, not that the session is down; `adj_rib_out_*` exists only for Junos, IOS, IOS-XE, NX-OS and IOS-XR. A BGP neighbor in the model is per device, not per VRF, and its Adj-RIB-Out holds routes of several VRFs and families, so counts are joined on device, peer and VRF; `adj_rib_out_other_vrfs_routes` is the remainder for that peer address in other VRFs and families, so nothing is hidden. Which number to trust: `advertised_prefixes` is the device's own session counter (what it reports sending); `adj_rib_out_distinct_prefixes` is the count of distinct prefixes in the Adj-RIB-Out after output policy for that VRF and is the one to use for exclude-set work. They can differ by a few (counter timing, aggregates, multipath duplicates); a large gap means the join or the VRF is wrong. The finding and the evidence name the snapshot read.

@@ -1,18 +1,65 @@
 {
   "type": "object",
-  "required": ["network_id", "device", "mode"],
+  "required": [
+    "network_id",
+    "device",
+    "mode"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "snapshot_id": { "type": "string", "minLength": 1 },
-    "device": { "type": "string", "minLength": 1 },
-    "mode": { "enum": ["list", "read", "search"] },
-    "file": { "type": "string", "minLength": 1 },
-    "pattern": { "type": "string", "minLength": 1 },
-    "context": { "type": "integer", "minimum": 0 },
-    "start_line": { "type": "integer", "minimum": 1 },
-    "max_lines": { "type": "integer", "minimum": 1 },
-    "max_matches": { "type": "integer", "minimum": 1 },
-    "no_redact": { "type": "boolean" }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The device's exact name."
+    },
+    "mode": {
+      "enum": [
+        "list",
+        "read",
+        "search"
+      ]
+    },
+    "file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The collected file to read or search (from mode list). With search and no file, every collected file of the device is searched."
+    },
+    "pattern": {
+      "type": "string",
+      "minLength": 1,
+      "description": "search: the pattern to look for."
+    },
+    "context": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "search: lines of context around each match (at most 5)."
+    },
+    "start_line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "read: the first line to return (default 1)."
+    },
+    "max_lines": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "read: lines to return (default 150, at most 500)."
+    },
+    "max_matches": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "search: matches to return (default 10, at most 50)."
+    },
+    "no_redact": {
+      "type": "boolean",
+      "description": "Turn off the best-effort redaction of secret values after password, secret, community and key."
+    }
   }
 }
