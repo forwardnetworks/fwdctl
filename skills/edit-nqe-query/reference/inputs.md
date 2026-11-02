@@ -14,3 +14,18 @@ afterwards). Forward has no optimistic-concurrency check, so a commit landing be
 query needs its enclosing directories: without `create_directory: true` the plan is **failed** and names the missing ones (nothing is changed); with it the plan lists each directory as its own
 change, the apply adds them parents first and commits them with the queries in them, and a failure while staging discards the directory drafts again (deepest first) along with the query drafts.
 To load a whole folder tree, `fwdctl nqe pack DIR` builds this input from it (the counterpart of `fwdctl nqe export`); the skill itself never reads the filesystem.
+
+## Read before applying
+
+### Discarding a stray draft
+
+`discard_draft: true` with `path` drops **your own uncommitted draft at exactly that path** (an add or an edit left in the NQE editor), nothing else, never a bulk discard and never anything committed.
+Dry run by default; the draft's source is recorded in the change so the discard can be undone by saving it again; the apply reads your drafts back and reports failed if one is still listed. On a shared
+login the draft may be a colleague's: check first. A path with no draft is a no-op.
+
+### Directories
+
+A query must sit in a directory that **exists**, and a library directory exists only **while a committed query is under it** (verified live: deleting the last query removes the directory, and a save into it is then refused with a 409). The library has Forward-owned roots
+(for example `/Security`, `/L3`) and the organization's own folders; the root `/` always exists, so a query at the root is `/Name`. A save whose enclosing directory has no committed query under it is **failed** with the directory named (nothing written):
+either save at the root, or run again with `create_directory: true`, which adds the missing directories (parents first) and commits the query with them (the dry run lists each directory as its own change). There is no separate directory delete: the directories
+go with their last query, so the undo of a `create_directory` save is deleting the query.

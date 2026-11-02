@@ -25,6 +25,10 @@ change to it, shows the whole list before and after, writes the result and reads
 
 What each input means, and the fields per object and action: `fwdctl run edit-internet-exclusions --help`, or `reference/inputs.md`.
 
+Read before applying (printed by `fwdctl run edit-internet-exclusions --help`, from `reference/inputs.md`): Backdate, Limits worth stating.
+
+**A backdate invalidates that snapshot and every later one (UNPROCESSED, not reprocessed for you) and cannot be undone: get approval of the backdate separately from the change.**
+
 ## Reading the list first
 
 `inspect-topology` with `kind: external` and `device: internet` shows the current `excluded_subnets`; no dry run is needed to read it.
@@ -39,12 +43,6 @@ Without `apply: true` nothing is changed. The skill reads the internet node and 
 2. Compute the new list from the current one. Identical to the current list: **ok**, nothing changed.
 3. Dry run: return the plan. With `apply: true`: write the whole list, then read it back; a different list is **failed**, never ok.
 
-## Backdate (optional): apply it now
-
-By default a change reaches the **next** processed snapshot. With `backdate_snapshot_id` the internet node's configuration is re-dated to that snapshot: that snapshot and **every later one are invalidated**, set to
-UNPROCESSED. Forward does **not** reprocess them by itself: run `edit-snapshot` (action reprocess) for each one, then `edit-advanced-reachability` if internet exposure is needed (it only runs after a snapshot is PROCESSED). The
-dry run lists them. Ask for it only when the person wants it applied now, and get approval of the backdate separately. It cannot be undone; the list change can.
-
 ## Undo
 
 The change's `undo`: run this skill with `set` = the change's `before` (the whole prior list).
@@ -56,10 +54,6 @@ One `topology` item: `before`, `after`, `added`, `removed`, `mode`, `backdate` a
 ## Output
 
 The envelope in `schema/skill-result.schema.json`, with `mode` and `changes`.
-
-## Limits worth stating
-
-The skill cannot show how paths change: trace the flow before and after. Exclusions are **prefix-based** (no per-interface or per-device exclusion): an address that a collected interface carries is located on that interface before the internet node is considered, so excluding it does not hide it from an internet-addressable result (`plan-synthetic-device`, `reference/exposure.md`). An exclusion keeps a prefix off the internet node, it does not make it reachable. Clearing the list gives every kept-off prefix back to the internet node.
 
 ## Next actions
 

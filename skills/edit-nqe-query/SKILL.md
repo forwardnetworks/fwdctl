@@ -24,18 +24,9 @@ by path or by its query id. This skill adds, replaces or removes one entry and c
 
 What each input means, and the fields per object and action: `fwdctl run edit-nqe-query --help`, or `reference/inputs.md`.
 
-## Discarding a stray draft
+Read before applying (printed by `fwdctl run edit-nqe-query --help`, from `reference/inputs.md`): Discarding a stray draft, Directories.
 
-`discard_draft: true` with `path` drops **your own uncommitted draft at exactly that path** (an add or an edit left in the NQE editor), nothing else, never a bulk discard and never anything committed.
-Dry run by default; the draft's source is recorded in the change so the discard can be undone by saving it again; the apply reads your drafts back and reports failed if one is still listed. On a shared
-login the draft may be a colleague's: check first. A path with no draft is a no-op.
-
-## Directories
-
-A query must sit in a directory that **exists**, and a library directory exists only **while a committed query is under it** (verified live: deleting the last query removes the directory, and a save into it is then refused with a 409). The library has Forward-owned roots
-(for example `/Security`, `/L3`) and the organization's own folders; the root `/` always exists, so a query at the root is `/Name`. A save whose enclosing directory has no committed query under it is **failed** with the directory named (nothing written):
-either save at the root, or run again with `create_directory: true`, which adds the missing directories (parents first) and commits the query with them (the dry run lists each directory as its own change). There is no separate directory delete: the directories
-go with their last query, so the undo of a `create_directory` save is deleting the query.
+**`discard_draft` drops the draft at that path, which on a shared login may be a colleague's: check first. A save needs an existing directory (one exists only while a committed query is under it).**
 
 ## Dry run
 

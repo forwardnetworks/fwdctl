@@ -23,8 +23,9 @@ It never writes the connections themselves, and it creates no node (the node mus
 
 ## Inputs
 
-`network_id`, `kind` (`internet`, `intranet`, `l3vpn`, `l2vpn` or `adjacent-network`) and, for every kind but `internet`, the node `name`. Then one of: `query_id` (`Q_...` from the
-organization's library, or `FQ_...` from Forward's), `detach: true`, or neither (lists the queries that fit the kind). Optional: `backdate_snapshot_id` (apply it to an existing snapshot now, see below) and `apply` (default false). See `schema.json`.
+Every input, what it means and what to read before applying: `fwdctl run edit-synthetic-query --help` (from `reference/inputs.md`). Read before applying: Backdate, Limits to state.
+
+**A backdate invalidates that snapshot and every later one (UNPROCESSED, not reprocessed for you) and cannot be undone: get approval of the backdate separately from the change.**
 
 ## Dry run
 
@@ -40,22 +41,10 @@ Without `apply: true` nothing is changed. The skill reads the node, then asks Fo
    Offline, `fwdctl nqe lint --synthetic <kind>` finds the row problems first (and `fwdctl nqe template <kind>` gives the starter query).
 5. Dry run: return the plan. With `apply: true`: set the query (or detach), then read the node back. The new query id must be there and its result error-free; anything else is **failed**, never ok.
 
-## Backdate (optional): apply it now
-
-By default a change reaches the **next** processed snapshot. With `backdate_snapshot_id` the skill, after attaching, backdates the node kind's configuration to that snapshot: that snapshot and **every later one are
-invalidated**, set to UNPROCESSED. Forward does **not** reprocess them by itself: run `edit-snapshot` (action reprocess) for each one, then `edit-advanced-reachability` if internet exposure is needed (it only runs after a
-snapshot is PROCESSED). The dry run lists the snapshots affected. Ask for it only when the person wants the change applied now; get approval of the backdate itself, separately from the query change. The backdate cannot
-be undone (reprocessing recomputes the same data from what was collected); the query change still can.
-
 ## Undo
 
 The change's `undo` says what to run: this skill again with the previous `query_id` (or `detach: true` if there was none). A zero-row result is not an error and attaches fine, but it means the
 node has no dynamic connections: check the query before relying on it.
-
-## Limits to state
-
-Forward recomputes when the node is saved or the query is committed or deleted (deleting the query detaches it from every node that used it). Whether it also recomputes on each new
-snapshot is not verified. Connections apply to the next processed snapshot. WAN circuits and encryptors cannot be defined by a query through the API.
 
 ## Evidence
 
