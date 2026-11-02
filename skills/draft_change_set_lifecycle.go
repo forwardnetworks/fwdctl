@@ -127,7 +127,7 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		}
 	case "delete":
 		ch.Action, verb, ch.Reversible = "delete_change_set", "delete", false
-		ch.Undo = "none: the change set and its versions are gone (duplicate it first to keep a copy); predicted snapshots it made stay"
+		ch.Undo = "none: the change set and its versions are gone (duplicate it first to keep a copy); its predicted snapshots were deleted with it in a live run reported by another session (read what you need from them first)"
 		do = func() (any, error) { return nil, s.DeleteChangeSet(ctx, in.NetworkID, id) }
 	case "discard_device":
 		ch.Action, verb = "discard_draft_device", "throw away the uncommitted edits of "+l.Device+" in"
@@ -264,7 +264,7 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			return m, e
 		}
 	}
-	limits := []string{"nothing here reaches a device; a change set only feeds Predict", "predicted snapshots a change set already made are not touched here; edit-snapshot action delete removes one (Forward decides whether it allows it)"}
+	limits := []string{"nothing here reaches a device; a change set only feeds Predict", "this skill does not delete predicted snapshots itself, but a live run reported by another session saw deleting a change set make its predicted snapshots 404 afterwards: read what you need from them first; edit-snapshot action delete removes one on its own (Forward decides whether it allows it)"}
 	need := op == "delete"
 	confirmWith := id
 	if op == "delete_commit" {
