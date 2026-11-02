@@ -6,7 +6,7 @@ metadata:
   cluster: "security"
   summary: "security review"
   maturity: "2"
-  tools: "inspect-snapshots, check-network-compliance, inspect-vulnerabilities, investigate-reachability, inspect-topology, inspect-device-files, plan-vulnerability-response"
+  tools: "inspect-snapshots, check-network-compliance, inspect-vulnerabilities, investigate-reachability, inspect-topology, inspect-device-files, plan-vulnerability-response, plan-synthetic-device"
 ---
 
 # plan-security-posture

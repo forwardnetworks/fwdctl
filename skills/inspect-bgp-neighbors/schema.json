@@ -11,43 +11,53 @@
     },
     "device": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Keep the neighbors of this device (exact name)."
     },
     "vrf": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Keep this VRF's neighbors; required for advertised in a non-default VRF."
     },
     "peer": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Keep the neighbor with this peer address."
     },
     "peer_as": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "Keep neighbors with this remote AS number."
     },
     "unmodelled_only": {
       "type": "boolean",
-      "default": false
+      "default": false,
+      "description": "Keep only neighbors whose peer is not a collected device."
     },
     "state": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Keep neighbors in this session state, for example ESTABLISHED."
     },
     "skip_adj_rib_out": {
       "type": "boolean",
-      "default": false
+      "default": false,
+      "description": "Skip the Adj-RIB-Out counts (faster on a large network)."
     },
     "limit": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "Rows per page (default 50, at most 200)."
     },
     "offset": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "description": "Rows to skip, to page."
     },
     "snapshot_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "The snapshot to read (default: the newest processed one)."
     },
     "advertised": {
       "type": "object",

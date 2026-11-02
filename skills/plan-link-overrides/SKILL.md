@@ -6,7 +6,7 @@ metadata:
   cluster: "edge-synthetic"
   summary: "missing or drifted overrides"
   maturity: "1"
-  tools: "inspect-snapshots, inspect-topology, inspect-inventory, edit-link-overrides"
+  tools: "inspect-snapshots, inspect-topology, inspect-inventory, edit-link-overrides, edit-snapshot"
 ---
 
 # plan-link-overrides

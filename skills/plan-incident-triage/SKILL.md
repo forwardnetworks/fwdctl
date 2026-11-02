@@ -6,7 +6,7 @@ metadata:
   cluster: "investigate"
   summary: "health check, outage triage"
   maturity: "2"
-  tools: "inspect-snapshots, inspect-collection, inspect-performance, check-network-compliance, inspect-history, investigate-reachability, plan-what-changed, plan-troubleshoot-connectivity"
+  tools: "inspect-snapshots, inspect-collection, inspect-performance, check-network-compliance, inspect-history, investigate-reachability, plan-what-changed, plan-troubleshoot-connectivity, plan-snapshot-recovery, investigate-collection-failure"
 ---
 
 # plan-incident-triage

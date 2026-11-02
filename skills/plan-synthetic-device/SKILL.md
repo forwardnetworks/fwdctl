@@ -6,7 +6,7 @@ metadata:
   cluster: "edge-synthetic"
   summary: "model an uncollected segment"
   maturity: "1"
-  tools: "inspect-snapshots, investigate-reachability, inspect-vulnerabilities, edit-advanced-reachability, inspect-topology, inspect-inventory, author-nqe-query, validate-nqe-query, edit-nqe-query, edit-synthetic-query, edit-wan-circuit"
+  tools: "inspect-snapshots, investigate-reachability, inspect-vulnerabilities, edit-advanced-reachability, inspect-topology, inspect-inventory, author-nqe-query, validate-nqe-query, edit-nqe-query, edit-synthetic-query, edit-wan-circuit, inspect-device-files, inspect-edge, plan-snapshot-recovery, edit-collection"
 ---
 
 # plan-synthetic-device

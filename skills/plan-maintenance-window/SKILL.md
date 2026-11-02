@@ -6,7 +6,7 @@ metadata:
   cluster: "change"
   summary: "before and after a change"
   maturity: "2"
-  tools: "inspect-snapshots, edit-snapshot, edit-change-set, verify-change, edit-collection, inspect-history, compare-device-config, check-network-compliance"
+  tools: "inspect-snapshots, edit-snapshot, edit-change-set, verify-change, edit-collection, inspect-history, compare-device-config, check-network-compliance, plan-change-review, plan-troubleshoot-connectivity"
 ---
 
 # plan-maintenance-window
