@@ -50,3 +50,11 @@ A secret (an S3 secret key, a ServiceNow or Infoblox password, a license key) is
 | `backups` | `delete` | the numeric backup id | | **none**; `confirm` = the id |
 
 Detail: `reference/areas.md`.
+
+## Read before applying
+
+### Limits
+
+Backups need the system administrator role (Forward answers 403 otherwise) and exist only on Kubernetes deployments (elsewhere the result says the deployment does not serve the route). A trigger does not wait. Restore is not here; Rapid7 sources are in `edit-source` (they belong to a network); an uploaded CVE index is applied in the background and not waited for; licensing, SAML and organizations are for a system or platform administrator; a token cannot be created here because its secret would be returned; a trigger starts the backup and does not wait. Deleting an access label widens the access of every group that used it.
+
+Webhook credentials and templates are not set here (webhook schemas are unpublished by Forward). A certificate is not trusted by collectors until `apply` pushes it, and a push does not wait for the collectors, so completion is not proven.

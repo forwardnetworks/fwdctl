@@ -23,6 +23,10 @@ Change what an administrator sets up for the whole organization, not for one net
 
 What each input means, and the fields per object and action: `fwdctl run edit-platform --help`, or `reference/inputs.md`, `reference/areas.md`. Standing up a new collector (register, run, wait, attach): `reference/collectors.md`.
 
+Read before applying (printed by `fwdctl run edit-platform --help`, from `reference/inputs.md`): Limits.
+
+**Backups need the system administrator role and Kubernetes; a trigger does not wait; a pushed certificate is not proven trusted by collectors.**
+
 ## Dry run
 
 Without `apply: true` nothing changes. The result shows before, after and the undo, and names the exact `confirm` an irreversible action needs.
@@ -31,12 +35,6 @@ Without `apply: true` nothing changes. The result shows before, after and the un
 
 1. Read the current object. A missing one is **unknown**, nothing changed; a name that exists is refused.
 2. Dry run returns the plan. With `apply: true`: one call, then read back; a read-back that does not show the change is **failed**.
-
-## Limits
-
-Backups need the system administrator role (Forward answers 403 otherwise) and exist only on Kubernetes deployments (elsewhere the result says the deployment does not serve the route). A trigger does not wait. Restore is not here; Rapid7 sources are in `edit-source` (they belong to a network); an uploaded CVE index is applied in the background and not waited for; licensing, SAML and organizations are for a system or platform administrator; a token cannot be created here because its secret would be returned; a trigger starts the backup and does not wait. Deleting an access label widens the access of every group that used it.
-
-Webhook credentials and templates are not set here (webhook schemas are unpublished by Forward). A certificate is not trusted by collectors until `apply` pushes it, and a push does not wait for the collectors, so completion is not proven.
 
 ## Evidence
 

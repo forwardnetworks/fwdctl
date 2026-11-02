@@ -26,6 +26,10 @@ the extra OIDs, point one endpoint at it, and later point it back and delete the
 
 What each input means, and the fields per object and action: `fwdctl run edit-endpoint-profile --help`, or `reference/inputs.md`.
 
+Read before applying (printed by `fwdctl run edit-endpoint-profile --help`, from `reference/inputs.md`): What it does not do.
+
+**A profile is organization-wide, and its OIDs appear in NQE only after a new collection snapshot.**
+
 ## Reading the profiles first
 
 `inspect-platform` with `area: endpoint_profiles` lists every profile (SNMP, CLI, HTTP); `inspect-collection` view `config` shows the ones endpoints use. No dry run is needed to read.
@@ -46,11 +50,6 @@ number of OIDs, the ones added), each endpoint's current and new profile, and th
 
 Reassign each endpoint to the profile it had (the change's `undo` and the finding name them), then delete the new profile: run this skill with `assign` back, and then `delete_profile` alone.
 A delete cannot be undone (its stored connectivity test results go with it): recreate the profile with `create_profile`. Deleting a profile an endpoint still uses is refused by Forward.
-
-## What it does not do
-
-It does not collect: the new OIDs appear in NQE `network.endpoints[*].snmpOutputs[*].rawOidEntries` only after a **new collection snapshot** (`edit-collection` starts one, with approval). Whether Forward
-walks a custom OID as a subtree is shown by the collected rows, not asserted. CLI profiles are not created here: a profile is collected only if ALL its commands (custom, detector, name detector) match the organization's approved-command patterns; if any one fails, the whole endpoint is excluded from collection. The approved list can be replaced only by a Forward-signed file, so a custom list cannot be self-authored (`inspect-collection` config shows the approved-command state).
 
 ## Evidence
 

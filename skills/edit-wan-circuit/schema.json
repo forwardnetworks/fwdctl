@@ -1,16 +1,84 @@
 {
   "type": "object",
-  "required": ["network_id", "name"],
+  "required": [
+    "network_id",
+    "name"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "name": { "type": "string", "minLength": 1 },
-    "delete": { "type": "boolean", "default": false },
-    "connection1": { "type": "object", "required": ["device", "port"], "additionalProperties": false,
-      "properties": { "device": { "type": "string", "minLength": 1 }, "port": { "type": "string", "minLength": 1 }, "vlan": { "type": "integer", "minimum": 1 }, "name": { "type": "string" } } },
-    "connection2": { "type": "object", "required": ["device", "port"], "additionalProperties": false,
-      "properties": { "device": { "type": "string", "minLength": 1 }, "port": { "type": "string", "minLength": 1 }, "vlan": { "type": "integer", "minimum": 1 }, "name": { "type": "string" } } },
-    "backdate_snapshot_id": { "type": "string", "minLength": 1 },
-    "apply": { "type": "boolean", "default": false }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "delete": {
+      "type": "boolean",
+      "default": false,
+      "description": "Delete the named circuit (the undo is to run this skill again with the circuit's prior definition)."
+    },
+    "connection1": {
+      "type": "object",
+      "required": [
+        "device",
+        "port"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vlan": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "description": "One end of the circuit: a device, its port, optionally a VLAN (1 to 4095) and a name. A circuit has exactly two connections, defined by hand; a query cannot generate one, and it is a statement you make, not something Forward observed."
+    },
+    "connection2": {
+      "type": "object",
+      "required": [
+        "device",
+        "port"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vlan": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "description": "The other end of the circuit, same shape as connection1."
+    },
+    "backdate_snapshot_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Apply the change to this existing snapshot and every later one now: they are invalidated, set UNPROCESSED, and not reprocessed for you. Cannot be undone; approve it separately."
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    }
   }
 }
