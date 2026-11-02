@@ -153,3 +153,22 @@ func TestEditChangeSetBulkDeleteNeedsTheCountAsConfirm(t *testing.T) {
 		t.Errorf("a missing id must give unknown, got %s", r.Status)
 	}
 }
+
+// An empty command list is explained per OS (PAN-OS and Junos have no command tree), and a 500 from Forward is unknown, not an empty list.
+func TestVerifyChangeCommandsExplainsAnEmptyListAndAFailedOne(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/predict-oses/pan_os/allowed-commands":        fwdtest.Const(200, []byte("")),
+		"GET /api/predict-oses/juniper_junos/allowed-commands": fwdtest.Const(200, []byte("")),
+		"GET /api/predict-oses/arista_eos/allowed-commands":    fwdtest.Const(500, map[string]any{"message": "boom"}),
+	}
+	for os, want := range map[string]string{"pan_os": "security rules", "juniper_junos": "no command tree"} {
+		r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"commands","os":"`+os+`"}`)
+		if r.Status != "unknown" || !strings.Contains(strings.Join(r.Limits, " "), want) {
+			t.Errorf("%s: an empty list should be unknown and say why (%q): %s %v", os, want, r.Status, r.Limits)
+		}
+	}
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"commands","os":"arista_eos"}`)
+	if r.Status != "unknown" || !strings.Contains(r.Finding, "HTTP 500") || !strings.Contains(strings.Join(r.Limits, " "), "not an empty list") {
+		t.Errorf("a 500 is unknown and says it is not an empty list: %s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}
