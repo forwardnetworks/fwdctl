@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -115,13 +113,21 @@ func (a *app) nqeLSP() *cobra.Command {
 	c := &cobra.Command{
 		Use: "lsp", Short: "a language server for NQE (editors: diagnostics, completion, hover, quick fixes)",
 		Example: "  fwdctl nqe lsp   # an editor launches this over stdin/stdout",
-		Long:    "A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch. Hover and completion mark a field that exists only for an experimental feature (the PAN-OS and FortiOS security rules, device.securityPolicy) as EXPERIMENTAL; it is hidden unless the server starts with --features security-rules-panos or security-rules-fortios, as for fwdctl nqe lint.",
+		Long:    "A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch. Hover and completion mark a field that exists only for an experimental feature (the PAN-OS and FortiOS security rules, device.securityPolicy) as EXPERIMENTAL; it is hidden unless that feature is on. Features, first that applies: --features or FORWARD_NQE_FEATURES; the editor's initializationOptions {\"features\": [...]}; the nearest .fwdctl.json at or above the editor's workspace folder; the one above the working directory; Forward's defaults. The server says on stderr which it used.",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := a.applyNQEFeatures(cmd); err != nil {
 				return err
 			}
-			return a.exit(nqeTool([]string{"lsp"}, a.in, a.out, a.err))
+			// features given on the command line or in the environment win over what the editor or its workspace names
+			v, _ := cmd.Flags().GetStringSlice("features")
+			fixed := len(v) > 0 || strings.TrimSpace(os.Getenv("FORWARD_NQE_FEATURES")) != ""
+			errw := a.err
+			if err := nqelint.ServeLSPWith(a.in, a.out, nqelint.LSPOptions{FeaturesFixed: fixed, Log: func(s string) { fmt.Fprintln(errw, s) }}); err != nil {
+				fmt.Fprintf(a.err, "error: %v\n", err)
+				return a.exit(1)
+			}
+			return a.exit(0)
 		},
 	}
 	addFeaturesFlag(c)
@@ -445,29 +451,12 @@ func (a *app) nqeFeatures() *cobra.Command {
 	return c
 }
 
-// projectNQEFeatures reads the features a project says its organizations have, from the nearest .fwdctl.json at or above the working directory ({"nqe": {"features": [...]}}), so an editor's language
-// server and `fwdctl nqe lint` pick them up with no flag. A file that cannot be read or parsed gives none (the flag and the environment variable are the loud routes).
+// projectNQEFeatures reads the features a project says its organizations have, from the nearest .fwdctl.json at or above the working directory (see nqelint.ProjectFeatures).
 func projectNQEFeatures() []string {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil
 	}
-	for {
-		if b, err := os.ReadFile(filepath.Join(dir, ".fwdctl.json")); err == nil {
-			var f struct {
-				NQE struct {
-					Features []string `json:"features"`
-				} `json:"nqe"`
-			}
-			if json.Unmarshal(b, &f) != nil {
-				return nil
-			}
-			return f.NQE.Features
-		}
-		up := filepath.Dir(dir)
-		if up == dir {
-			return nil
-		}
-		dir = up
-	}
+	names, _ := nqelint.ProjectFeatures(dir)
+	return names
 }

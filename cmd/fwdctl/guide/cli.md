@@ -570,7 +570,7 @@ Flags:
 
 ## fwdctl nqe lsp
 
-A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch. Hover and completion mark a field that exists only for an experimental feature (the PAN-OS and FortiOS security rules, device.securityPolicy) as EXPERIMENTAL; it is hidden unless the server starts with --features security-rules-panos or security-rules-fortios, as for fwdctl nqe lint.
+A language server for NQE over stdin/stdout (diagnostics, completion, hover, quick fixes), for an editor to launch. Hover and completion mark a field that exists only for an experimental feature (the PAN-OS and FortiOS security rules, device.securityPolicy) as EXPERIMENTAL; it is hidden unless that feature is on. Features, first that applies: --features or FORWARD_NQE_FEATURES; the editor's initializationOptions {"features": [...]}; the nearest .fwdctl.json at or above the editor's workspace folder; the one above the working directory; Forward's defaults. The server says on stderr which it used.
 
 ```
 fwdctl nqe lsp [flags]

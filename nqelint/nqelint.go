@@ -115,6 +115,18 @@ func Format(string) (string, error) { return "", ErrNotInThisBuild }
 // ServeLSP is not available in this build.
 func ServeLSP(io.Reader, io.Writer) error { return ErrNotInThisBuild }
 
+// LSPOptions tunes the language server (it does not run in this build).
+type LSPOptions struct {
+	FeaturesFixed bool
+	Log           func(string)
+}
+
+// ServeLSPWith is ServeLSP with options; the language server is not in this build.
+func ServeLSPWith(io.Reader, io.Writer, LSPOptions) error { return ErrNotInThisBuild }
+
+// ProjectFeatures names no features in this build (it has no data model to gate).
+func ProjectFeatures(string) ([]string, string) { return nil, "" }
+
 // CompletionItem is one editor completion.
 type CompletionItem struct {
 	Label      string `json:"label"`
