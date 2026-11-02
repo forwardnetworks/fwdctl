@@ -41,23 +41,28 @@
       "enum": [
         "INGRESS",
         "EGRESS"
-      ]
+      ],
+      "description": "interfaces view: INGRESS (default) or EGRESS."
     },
     "days": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "History window in days (default 1, at most 30)."
     },
     "device": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "The device (exact name); needed by unhealthy_interfaces, device_history and interface_history."
     },
     "interface": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "The interface; needed by interface_history."
     },
     "limit": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "Rows to return (default 15, at most 100)."
     }
   }
 }

@@ -6,7 +6,7 @@ metadata:
   cluster: "environment"
   summary: "router: question to skill"
   maturity: "3"
-  tools: "investigate-reachability, verify-change, investigate-collection-failure, check-network-compliance, validate-nqe-query, plan-change-review, plan-what-changed, plan-snapshot-recovery, plan-link-overrides, plan-device-audit, plan-safe-write, plan-troubleshoot-connectivity, plan-incident-triage, plan-security-posture, plan-vulnerability-response, plan-segmentation-check, plan-compliance-audit, plan-maintenance-window, author-nqe-query"
+  tools: "investigate-reachability, verify-change, investigate-collection-failure, check-network-compliance, validate-nqe-query, plan-change-review, plan-what-changed, plan-snapshot-recovery, plan-link-overrides, plan-device-audit, plan-safe-write, plan-troubleshoot-connectivity, plan-incident-triage, plan-security-posture, plan-vulnerability-response, plan-segmentation-check, plan-compliance-audit, plan-maintenance-window, author-nqe-query, plan-synthetic-device, inspect-device-files"
 ---
 
 # plan-investigation

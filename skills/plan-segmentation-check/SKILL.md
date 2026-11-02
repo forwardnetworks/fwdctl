@@ -6,7 +6,7 @@ metadata:
   cluster: "security"
   summary: "zone isolation"
   maturity: "2"
-  tools: "inspect-snapshots, inspect-inventory, investigate-reachability, verify-change, check-network-compliance, edit-checks"
+  tools: "inspect-snapshots, inspect-inventory, investigate-reachability, verify-change, check-network-compliance, edit-checks, inspect-topology"
 ---
 
 # plan-segmentation-check

@@ -6,7 +6,7 @@ metadata:
   cluster: "investigate"
   summary: "why A cannot reach B"
   maturity: "2"
-  tools: "inspect-snapshots, inspect-inventory, investigate-reachability, inspect-topology, inspect-device-files, investigate-collection-failure, plan-what-changed"
+  tools: "inspect-snapshots, inspect-inventory, investigate-reachability, inspect-topology, inspect-device-files, investigate-collection-failure, plan-what-changed, plan-snapshot-recovery, plan-synthetic-device, author-nqe-query"
 ---
 
 # plan-troubleshoot-connectivity

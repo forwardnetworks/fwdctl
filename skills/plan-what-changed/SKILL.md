@@ -6,7 +6,7 @@ metadata:
   cluster: "change"
   summary: "what changed and when"
   maturity: "2"
-  tools: "inspect-snapshots, inspect-history, compare-device-config, find-nqe-query, compare-nqe-results, verify-change, inspect-inventory, investigate-collection-failure, inspect-collection"
+  tools: "inspect-snapshots, inspect-history, compare-device-config, find-nqe-query, compare-nqe-results, verify-change, inspect-inventory, investigate-collection-failure, inspect-collection, edit-snapshot, inspect-access, investigate-reachability"
 ---
 
 # plan-what-changed
