@@ -68,6 +68,9 @@ type draftAdvert struct {
 	Communities  []string `json:"communities"`
 }
 
+// firewallActions are the rule actions Forward models (DeviceSecurityRuleAction; the SDK's SecurityAction* names).
+var firewallActions = map[string]bool{forward.SecurityActionPermit: true, forward.SecurityActionDeny: true, forward.SecurityActionDrop: true, forward.SecurityActionResetClient: true, forward.SecurityActionResetClientAndServer: true, forward.SecurityActionResetServer: true}
+
 // draftFirewallRule stages a firewall security rule change (PAN-OS and similar) in the change set: add a rule after a predecessor, or remove one by its id.
 type draftFirewallRule struct {
 	Op          string                          `json:"op"`
@@ -210,6 +213,13 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d] (edit) needs rule: the rule's WHOLE new definition, with name and action", ErrInvalidInput, i)
 		case f.Op != "add" && f.Op != "remove" && f.Op != "edit" && f.Op != "move" && f.Op != "discard":
 			return result.Result{}, fmt.Errorf("%w: firewall_rules[%d].op must be add, remove, edit, move or discard", ErrInvalidInput, i)
+		}
+		if f.Rule != nil && f.Rule.Action != "" {
+			a := strings.ToUpper(strings.TrimSpace(f.Rule.Action))
+			if !firewallActions[a] {
+				return result.Result{}, fmt.Errorf("%w: firewall_rules[%d].rule.action %q is not one Forward models: PERMIT, DENY, DROP, RESET_CLIENT, RESET_CLIENT_AND_SERVER or RESET_SERVER (DENY blocks and sends the default rejection, DROP blocks silently, the RESET_ actions block and reset the client, the server or both)", ErrInvalidInput, i, f.Rule.Action)
+			}
+			f.Rule.Action = a
 		}
 		touched[f.Device] = true
 	}
