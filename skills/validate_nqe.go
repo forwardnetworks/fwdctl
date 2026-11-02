@@ -21,8 +21,11 @@ const validateNQEName = "validate-nqe-query"
 func init() { Register(validateNQEName, validateNQEQuery) }
 
 type validateNQEInput struct {
-	NetworkID  string         `json:"network_id"`
-	Query      string         `json:"query"`
+	NetworkID string `json:"network_id"`
+	Query     string `json:"query"`
+	// QueryID and CommitID validate a SAVED library query instead of text: the query runs by id at that commit (empty is the head), and its source is read for the offline checks.
+	QueryID    string         `json:"query_id"`
+	CommitID   string         `json:"commit_id"`
 	SnapshotID string         `json:"snapshot_id"`
 	Parameters map[string]any `json:"parameters"`
 	SampleRows int            `json:"sample_rows"`
@@ -38,6 +41,12 @@ func validateNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	var in validateNQEInput
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	if (strings.TrimSpace(in.Query) == "") == (in.QueryID == "") {
+		return result.Result{}, fmt.Errorf("%w: give exactly one of query (the text) and query_id (a saved library query, with an optional commit_id)", ErrInvalidInput)
+	}
+	if in.CommitID != "" && in.QueryID == "" {
+		return result.Result{}, fmt.Errorf("%w: commit_id goes with query_id", ErrInvalidInput)
 	}
 	snap, err := resolveSnapshot(ctx, s, in.NetworkID, in.SnapshotID)
 	if err != nil {
@@ -56,7 +65,20 @@ func validateNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	}
 	// Rows cost tokens (about 130 each), so the cap is modest; page with offset to read a larger result.
 	sample = min(sample, maxNQERows)
-	out, err := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: in.Query, Parameters: in.Parameters,
+	// a saved query runs by id; its source is read (best effort) so the offline checks and the diagnostics' source lines work on it too
+	var savedNote string
+	if in.QueryID != "" {
+		src, found, serr := s.OrgQuerySourceByID(ctx, in.CommitID, in.QueryID)
+		switch {
+		case serr != nil:
+			savedNote = "the saved query's source could not be read (" + serr.Error() + "), so the offline checks were skipped"
+		case !found:
+			savedNote = "Forward lists no source for that query id at that commit, so the offline checks were skipped"
+		default:
+			in.Query = src
+		}
+	}
+	out, err := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: queryTextOrEmpty(in), QueryID: in.QueryID, CommitID: in.CommitID, Parameters: in.Parameters,
 		SnapshotID: fwd.SnapshotID(cx), Limit: sample, Offset: in.Offset})
 	if errors.Is(err, fwd.ErrSnapshotNotReady) {
 		return result.NewUnknown(validateNQEName, "The snapshot became unavailable; the query was not run", cx,
@@ -115,6 +137,12 @@ func validateNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		return result.Result{}, err
 	}
 	var limits []string
+	if savedNote != "" {
+		limits = append(limits, savedNote)
+	}
+	if in.QueryID != "" {
+		limits = append(limits, "validated the saved query "+in.QueryID+" at commit "+firstNonEmpty(in.CommitID, "head")+": it was run by id, not as text")
+	}
 	var synth []nqelint.Diagnostic
 	if in.SyntheticKind != "" {
 		var serr error
@@ -235,4 +263,12 @@ func nqeFieldSizes(items []forward.NQERecord, offset int) ([]nqeFieldSize, []str
 		limits = append(limits, "field sizes are measured on the returned rows only, as the JSON Forward sent, so they are an estimate; rows not returned (sample_rows, offset) are not measured")
 	}
 	return shown, limits
+}
+
+// queryTextOrEmpty is the text to send: none for a saved query (it runs by id, and in.Query then holds only its source for the offline checks).
+func queryTextOrEmpty(in validateNQEInput) string {
+	if in.QueryID != "" {
+		return ""
+	}
+	return in.Query
 }

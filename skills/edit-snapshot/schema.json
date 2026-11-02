@@ -48,7 +48,7 @@
     },
     "definition": {
       "type": "object",
-      "description": "retention_policy: {enabled, lastWeek, lastMonth, lastQuarter, lastYear, older}; export: {path, only_config, include_devices, exclude_devices, obfuscate_names}; import: {files, exclude_failed_devices, skip_processing}"
+      "description": "retention_policy: {enabled, lastWeek, lastMonth, lastQuarter, lastYear, older}; export: {path, only_config, include_devices, exclude_devices, select ({vendor, os} or {query} or {query_id, commit_id}, as include|exclude), obfuscate_names}; import: {files, exclude_failed_devices, skip_processing}"
     },
     "apply": {
       "type": "boolean",

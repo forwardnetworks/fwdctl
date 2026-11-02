@@ -264,3 +264,49 @@ func TestEditSnapshotExportAndImportReportProgress(t *testing.T) {
 		t.Errorf("import progress: %v", got)
 	}
 }
+
+// An export can select its devices by platform or by an NQE query: the names are resolved on the snapshot, glob characters are escaped so each matches only itself, the result shows a count
+// and a bounded sample, and an empty selection exports nothing (an empty include list would mean every device).
+func TestEditSnapshotExportSelectsDevicesByPlatformOrQuery(t *testing.T) {
+	var sent, asked string
+	var rows []map[string]any
+	routes := snapWorld("PROCESSED", map[string]fwdtest.Handler{
+		"POST /api/snapshots/s1": func(_ *http.Request, b []byte) (int, any) { sent = string(b); return 200, []byte("PK\x03\x04 fake") },
+		"POST /api/nqe": func(_ *http.Request, b []byte) (int, any) {
+			asked = string(b)
+			return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
+		},
+	})
+	dir := t.TempDir()
+	rows = []map[string]any{{"name": "fw1"}, {"name": "fw[2]"}}
+	body := func(sel, file string) string {
+		return `{"network_id":"n1","snapshot_id":"s1","action":"export","definition":{"path":"` + dir + `/` + file + `","select":` + sel + `}`
+	}
+	r, srv := mustRun(t, "edit-snapshot", routes, body(`{"vendor":"fortinet"}`, "a.zip")+`}`)
+	if writes(srv) != 0 || r.Mode != result.ModeDryRun || !strings.Contains(jsonOf(r), `"selected_devices":2`) || !strings.Contains(jsonOf(r), "related devices") {
+		t.Fatalf("dry run: the count and the related-devices note: %s", jsonOf(r))
+	}
+	if !strings.Contains(asked, "FORTINET") {
+		t.Errorf("the vendor is sent upper-cased as a parameter: %s", asked)
+	}
+	if _, err := os.Stat(dir + "/a.zip"); err == nil {
+		t.Fatalf("a dry run writes no file")
+	}
+	r, _ = mustRun(t, "edit-snapshot", routes, body(`{"vendor":"fortinet"}`, "a.zip")+`,"apply":true}`)
+	if r.Status != result.OK || !strings.Contains(sent, `fw1`) || !strings.Contains(sent, `fw\\[2]`) {
+		t.Fatalf("the selected names are sent as exact globs (a bracket escaped): %s %s", r.Status, sent)
+	}
+	rows = nil
+	r, _ = mustRun(t, "edit-snapshot", routes, body(`{"vendor":"nonesuch"}`, "b.zip")+`,"apply":true}`)
+	if r.Status != result.Unknown {
+		t.Errorf("an empty selection must not export every device: %s %s", r.Status, r.Finding)
+	}
+	if _, err := os.Stat(dir + "/b.zip"); err == nil {
+		t.Errorf("an empty selection wrote a file")
+	}
+	for _, sel := range []string{`{"vendor":"x","query":"select {name: 1}"}`, `{}`, `{"query_id":"Q_1","query":"select {name: 1}"}`, `{"vendor":"x","as":"sideways"}`} {
+		if _, _, err := runSkill(t, "edit-snapshot", routes, body(sel, "c.zip")+`}`); err == nil {
+			t.Errorf("select %s must be refused", sel)
+		}
+	}
+}

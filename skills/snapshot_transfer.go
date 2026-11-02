@@ -27,13 +27,14 @@ func snapshotExport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 		return result.Result{}, fmt.Errorf("%w: export needs network_id and snapshot_id", ErrInvalidInput)
 	}
 	var def struct {
-		Path           string   `json:"path"`
-		OnlyConfig     bool     `json:"only_config"`
-		IncludeDevices []string `json:"include_devices"`
-		ExcludeDevices []string `json:"exclude_devices"`
-		ObfuscateNames bool     `json:"obfuscate_names"`
+		Path           string        `json:"path"`
+		OnlyConfig     bool          `json:"only_config"`
+		IncludeDevices []string      `json:"include_devices"`
+		ExcludeDevices []string      `json:"exclude_devices"`
+		ObfuscateNames bool          `json:"obfuscate_names"`
+		Select         *exportSelect `json:"select"`
 	}
-	if err := decodeDefinition(in.Definition, &def, "path (a new .zip file), only_config, include_devices, exclude_devices, obfuscate_names (the obfuscation key comes from secret_file or secret_env)"); err != nil {
+	if err := decodeDefinition(in.Definition, &def, "path (a new .zip file), only_config, include_devices, exclude_devices, select ({vendor, os} or {query} or {query_id, commit_id}, as include|exclude), obfuscate_names (the obfuscation key comes from secret_file or secret_env)"); err != nil {
 		return result.Result{}, err
 	}
 	if def.Path == "" {
@@ -62,14 +63,50 @@ func snapshotExport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 			[]string{"no such snapshot in this network; nothing was written"}, result.Options{NextActions: []string{"inspect-snapshots"}})
 	}
 	cx = fwd.Context(in.NetworkID, sn)
+	var selectedHow string
+	var selectedCount int
+	if def.Select != nil {
+		if !fwd.IsReady(sn) {
+			return result.NewUnknown(editSnapshotName, fmt.Sprintf("Snapshot %s is %s, so the devices select picks cannot be read from it; nothing was exported", in.SnapshotID, fwd.StateOf(sn)), cx,
+				[]string{"select reads the snapshot with an NQE query, which needs a processed snapshot; export by include_devices or exclude_devices instead"}, result.Options{NextActions: []string{"inspect-snapshots"}})
+		}
+		names, how, err := resolveExportSelect(ctx, s, in.NetworkID, in.SnapshotID, def.Select)
+		if err != nil {
+			return result.Result{}, err
+		}
+		if len(names) == 0 {
+			return result.NewUnknown(editSnapshotName, fmt.Sprintf("The selection (%s) matched no device in snapshot %s; nothing was exported", how, in.SnapshotID), cx,
+				[]string{"an empty include list would export every device, so an empty selection is refused rather than exported"}, result.Options{NextActions: []string{"inspect-inventory"}})
+		}
+		selectedHow, selectedCount = how, len(names)
+		if def.Select.As == "exclude" {
+			def.ExcludeDevices = append(def.ExcludeDevices, names...)
+		} else {
+			def.IncludeDevices = append(def.IncludeDevices, names...)
+		}
+		if len(def.IncludeDevices) > 0 && len(def.ExcludeDevices) > 0 {
+			return result.Result{}, fmt.Errorf("%w: give include_devices or exclude_devices, not both (select adds to the one it names)", ErrInvalidInput)
+		}
+	}
 	mode := result.ModeDryRun
 	if in.Apply {
 		mode = result.ModeApplied
 	}
 	after := map[string]any{"path": def.Path, "only_config": def.OnlyConfig, "include_devices": def.IncludeDevices, "exclude_devices": def.ExcludeDevices, "obfuscated": withKey}
+	var selectedOmitted []result.Omission
+	if selectedHow != "" {
+		// the selected names can be thousands: the result shows a bounded sample and the count, and the full list is what is sent
+		sample, om := result.Cap(append(append([]string(nil), def.IncludeDevices...), def.ExcludeDevices...), 100, "selected devices", "the first 100 are shown; the whole selection is exported")
+		after["selected_by"], after["selected_devices"], after["selected_sample"] = selectedHow, selectedCount, sample
+		after["include_devices"], after["exclude_devices"] = len(def.IncludeDevices), len(def.ExcludeDevices)
+		selectedOmitted = om
+	}
 	ch := result.Change{Action: "export_snapshot", Target: fmt.Sprintf("snapshot %s to %s", in.SnapshotID, def.Path), After: after, Reversible: true, Undo: "delete the file (nothing changes in Forward)"}
 	limits := []string{"the file holds the network's configuration: keep it private" + map[bool]string{true: "; it is obfuscated with the key you gave, and un-obfuscating needs that key", false: "; it is NOT obfuscated"}[withKey],
 		"Forward may reject a snapshot that is still processing"}
+	if selectedHow != "" {
+		limits = append(limits, fmt.Sprintf("select (%s) picked %d device(s) on snapshot %s; Forward also adds a selected device's related devices (a cloud account's devices, a parent and its virtual contexts), so the file can hold more", selectedHow, selectedCount, in.SnapshotID))
+	}
 	ev := func(extra map[string]any) []result.Evidence {
 		d := map[string]any{"action": "export", "mode": mode, "snapshot_id": in.SnapshotID, "state": sn.State, "after": after}
 		for k, v := range extra {
@@ -79,7 +116,7 @@ func snapshotExport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 	}
 	if !in.Apply {
 		return result.Build(editSnapshotName, result.OK, fmt.Sprintf("Dry run: would write snapshot %s to %s. Nothing was written; run again with apply=true", in.SnapshotID, def.Path), result.Deterministic, cx,
-			result.Options{Mode: mode, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: limits, NextActions: []string{"inspect-snapshots"}})
+			result.Options{Omitted: selectedOmitted, Mode: mode, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: limits, NextActions: []string{"inspect-snapshots"}})
 	}
 	opts := forward.SnapshotExportOptions{IncludeDevices: def.IncludeDevices, ExcludeDevices: def.ExcludeDevices, ObfuscateNames: def.ObfuscateNames, Timeout: -1}
 	if def.OnlyConfig {
@@ -116,7 +153,7 @@ func snapshotExport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 	ch.Applied = true
 	ch.After = map[string]any{"path": def.Path, "bytes": n, "sha256": hex.EncodeToString(h.Sum(nil))}
 	return result.Build(editSnapshotName, result.OK, fmt.Sprintf("Wrote snapshot %s to %s (%d bytes)", in.SnapshotID, def.Path, n), result.Deterministic, cx,
-		result.Options{Mode: mode, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"bytes": n, "sha256": hex.EncodeToString(h.Sum(nil))}), Limits: limits, NextActions: []string{"inspect-snapshots"}})
+		result.Options{Omitted: selectedOmitted, Mode: mode, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"bytes": n, "sha256": hex.EncodeToString(h.Sum(nil))}), Limits: limits, NextActions: []string{"inspect-snapshots"}})
 }
 
 func snapshotImport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (result.Result, error) {

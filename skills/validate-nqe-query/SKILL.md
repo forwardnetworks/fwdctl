@@ -19,7 +19,7 @@ or the rows it produced. It exists so an agent loops on real diagnostics instead
 
 ## Inputs
 
-`network_id`, `query` (NQE source). Optional `snapshot_id` (default: newest processed, collected
+`network_id` and exactly one of `query` (NQE source text) and `query_id` (a saved library query, Q_..., run by id at the optional `commit_id`, default the head; its source is read so the offline checks still run). Optional `snapshot_id` (default: newest processed, collected
 snapshot), `parameters`, `sample_rows` (default 5, at most 200) and `offset`, so any query can be read in pages. See `schema.json`.
 
 ## Writing the query (what the harness should do first)
