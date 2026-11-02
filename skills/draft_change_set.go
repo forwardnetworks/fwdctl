@@ -219,6 +219,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			if !firewallActions[a] {
 				return result.Result{}, fmt.Errorf("%w: firewall_rules[%d].rule.action %q is not one Forward models: PERMIT, DENY, DROP, RESET_CLIENT, RESET_CLIENT_AND_SERVER or RESET_SERVER (DENY blocks and sends the default rejection, DROP blocks silently, the RESET_ actions block and reset the client, the server or both)", ErrInvalidInput, i, f.Rule.Action)
 			}
+			if strings.HasPrefix(a, "RESET_") {
+				return result.Result{}, fmt.Errorf("%w: firewall_rules[%d].rule.action %s is not staged: on PAN-OS (the only firewall whose rules a change set edits) a RESET_ rule stages but breaks the prediction, emptying the predicted rulebase so every flow is permitted (observed on a live PAN-OS run, reported by the Skyforge session; not reproduced here). Use DENY or DROP (DROP predicts as DENY there)", ErrInvalidInput, i, a)
+			}
 			f.Rule.Action = a
 		}
 		touched[f.Device] = true

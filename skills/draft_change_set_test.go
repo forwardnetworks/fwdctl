@@ -498,7 +498,7 @@ func TestEditChangeSetFirewallRuleActionsAreTheSixForwardModels(t *testing.T) {
 	rule := func(a string) string {
 		return `{"network_id":"n1","name":"x","firewall_rules":[{"op":"add","device":"fw1","rule":{"name":"r","action":"` + a + `","enabled":true}}]}`
 	}
-	for _, a := range []string{"permit", "DENY", "DROP", "RESET_CLIENT", "RESET_CLIENT_AND_SERVER", "reset_server"} {
+	for _, a := range []string{"permit", "DENY", "drop"} {
 		if _, _, err := runSkill(t, "edit-change-set", map[string]fwdtest.Handler{}, rule(a)); err != nil && strings.Contains(err.Error(), "not one Forward models") {
 			t.Errorf("%s is a modelled action: %v", a, err)
 		}
@@ -506,5 +506,15 @@ func TestEditChangeSetFirewallRuleActionsAreTheSixForwardModels(t *testing.T) {
 	_, _, err := runSkill(t, "edit-change-set", map[string]fwdtest.Handler{}, rule("ALLOW"))
 	if err == nil || !strings.Contains(err.Error(), "RESET_CLIENT_AND_SERVER") {
 		t.Errorf("ALLOW is not a Forward action and the message names the six: %v", err)
+	}
+}
+
+// A RESET_ action stages but breaks the prediction on PAN-OS (observed live by the Skyforge session), so it is refused with the reason.
+func TestEditChangeSetRefusesResetActions(t *testing.T) {
+	for _, a := range []string{"RESET_CLIENT", "reset_client_and_server", "RESET_SERVER"} {
+		_, _, err := runSkill(t, "edit-change-set", map[string]fwdtest.Handler{}, `{"network_id":"n1","name":"x","firewall_rules":[{"op":"add","device":"fw1","rule":{"name":"r","action":"`+a+`","enabled":true}}]}`)
+		if err == nil || !strings.Contains(err.Error(), "breaks the prediction") {
+			t.Errorf("%s must be refused with the reason: %v", a, err)
+		}
 	}
 }

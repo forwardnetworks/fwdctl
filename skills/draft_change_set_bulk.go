@@ -53,7 +53,7 @@ func changeSetBulkDelete(ctx context.Context, s *fwd.Session, in draftChangeSetI
 			[]string{"missing ids: " + strings.Join(missing, ", ") + "; verify-change view list shows the ids"}, result.Options{NextActions: []string{"verify-change"}})
 	}
 	confirmWith := strconv.Itoa(len(found))
-	ch := result.Change{Action: "delete_change_sets", Target: "change sets of network " + in.NetworkID, Before: map[string]any{"change_sets": rows}, After: map[string]any{"deleted": len(found)}, Reversible: false, Undo: "none: the change sets and their versions are gone (predicted snapshots they made stay; edit-snapshot deletes those)"}
+	ch := result.Change{Action: "delete_change_sets", Target: "change sets of network " + in.NetworkID, Before: map[string]any{"change_sets": rows}, After: map[string]any{"deleted": len(found)}, Reversible: false, Undo: "none: the change sets and their versions are gone (deleting a change set also deleted its predicted snapshots in a live run reported by another session, so read what you need from them first)"}
 	limits := []string{"nothing here reaches a device; Preview route, source-read, not run on a live Forward"}
 	if !in.Apply {
 		return result.Build(draftChangeSetName, result.OK, fmt.Sprintf("Dry run: would delete %d change sets. Nothing was changed; run again with apply=true and confirm=%q", len(found), confirmWith), result.Deterministic, cx,
