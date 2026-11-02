@@ -1,12 +1,12 @@
 ---
 name: plan-change-review
-description: Sequences read, predict, check and reach for a change. Use when asked whether a change is safe or will break anything.
+description: Sequences predict, check and reach for a change, and the evidence around a maintenance window. Use when asked if a change is safe.
 compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "change"
-  summary: "is a change safe"
+  summary: "change safety, window evidence"
   maturity: "3"
-  tools: "edit-change-set, verify-change, investigate-reachability, check-network-compliance, inspect-snapshots"
+  tools: "edit-change-set, verify-change, investigate-reachability, check-network-compliance, inspect-snapshots, edit-snapshot, edit-collection, compare-device-config, plan-troubleshoot-connectivity"
 ---
 
 # plan-change-review
@@ -23,11 +23,21 @@ A procedure, not a skill that runs. It orders other skills; each still returns i
 6. **Check policy.** `check-network-compliance` with `view: read` to see which checks got worse; evaluate a specific policy if one was named.
 7. **Explain any surprise.** `investigate-reachability` on a flow that changed.
 
+## Around a maintenance window
+
+When the change is made on the devices in a window (Forward does not push it), bracket it with evidence.
+
+- **Before.** Steps 1 to 4, plus: if the base is old, `edit-collection` for a fresh snapshot and wait until it is processed; label it with `edit-snapshot` (action note, "before change X") so it is findable later; write down the flows that must keep working and the ones that must stay blocked: they are the `expectations` for after.
+- **After.** `edit-collection` and wait until `inspect-snapshots` shows the new snapshot processed, not merely started. `compare-device-config` between the baseline and the new snapshot: only the devices the window planned to touch should differ, and anything else is a finding. `verify-change` with the saved expectations (before and after snapshot ids) and `check-network-compliance` for checks that got worse. Close with `edit-snapshot` (action note, "after change X, verified"), or `plan-troubleshoot-connectivity` for what failed.
+- **Answer** per expectation: held or violated, with the snapshots compared, and name the flows nobody listed. An unprocessed or missing after-snapshot makes the window's result **unknown**.
+
+A finished run: [reference/maintenance-window-example.md](reference/maintenance-window-example.md) (`fwdctl describe plan-change-review reference/maintenance-window-example.md`).
+
 ## Freedom
 
 How much room each step gives (levels are defined in `plan-investigation`):
 
-- **Fixed** (steps 2, 3): staging with `edit-change-set` and running the predict follow `plan-safe-write`; say the predicted snapshot cannot be deleted before you run it; stage only what the person supplied.
+- **Fixed** (steps 2, 3): staging with `edit-change-set` and running the predict follow `plan-safe-write`, and so do the window's collecting and labelling; say the predicted snapshot cannot be deleted before you run it; stage only what the person supplied.
 - **Guided** (steps 1, 4, 5, 6): keep the order; choose the flows, expectations and checks from what the person said.
 - **Open** (steps 7): explaining a surprise is judgment: pick the flow that changed and the skill that shows why.
 

@@ -42,6 +42,12 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			return result.Result{}, fmt.Errorf("%w: restore_commit needs lifecycle.commit_id (the versions are listed by verify-change view describe)", ErrInvalidInput)
 		}
 	case "commit":
+		switch m := strings.ToUpper(strings.TrimSpace(l.AnalysisMode)); m {
+		case "", forward.AnalysisModeBehavioral, forward.AnalysisModeConfigOnly:
+			l.AnalysisMode = m
+		default:
+			return result.Result{}, fmt.Errorf("%w: lifecycle.analysis_mode is BEHAVIORAL (the default) or CONFIG_ONLY", ErrInvalidInput)
+		}
 	case "edit_commit_note":
 		if strings.TrimSpace(l.CommitID) == "" || strings.TrimSpace(l.Note) == "" {
 			return result.Result{}, fmt.Errorf("%w: edit_commit_note needs lifecycle.commit_id and lifecycle.note", ErrInvalidInput)
@@ -169,9 +175,17 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		ch.Action, verb = "commit_change_set", "save the draft as a new version of"
 		ch.After = map[string]any{"note": firstNonEmpty(strings.TrimSpace(l.Note), "(none)")}
 		ch.Undo = "restore the previous version (restore_commit); versions are kept, so this loses nothing"
+		if l.AnalysisMode != "" {
+			ch.After.(map[string]any)["analysis_mode"] = l.AnalysisMode
+			ch.Undo += "; the analysis mode cannot be undone: the first commit fixes it for the change set, and a different one later is a 409"
+		}
 		do = func() (any, error) {
-			_, e := s.Client.Predict.Commit(ctx, in.NetworkID, id, strings.TrimSpace(l.Note))
-			return nil, e
+			if l.AnalysisMode == "" {
+				_, e := s.Client.Predict.Commit(ctx, in.NetworkID, id, strings.TrimSpace(l.Note))
+				return nil, e
+			}
+			m, _, e := s.Client.Predict.CommitWithOptions(ctx, in.NetworkID, id, forward.CommitOptions{Note: strings.TrimSpace(l.Note), AnalysisMode: l.AnalysisMode})
+			return m, e
 		}
 	case "edit_commit_note":
 		ch.Action, verb = "edit_commit_note", "change the note of version "+l.CommitID+" of"

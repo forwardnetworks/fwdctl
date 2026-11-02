@@ -235,6 +235,16 @@
         "note": {
           "type": "string"
         },
+        "analysis_mode": {
+          "type": "string",
+          "enum": [
+            "BEHAVIORAL",
+            "CONFIG_ONLY",
+            "behavioral",
+            "config_only"
+          ],
+          "description": "op commit: BEHAVIORAL (Forward's default) or CONFIG_ONLY (compare configuration only; needs the org property PREDICT_CONFIG_ONLY). The first commit fixes it for the change set and cannot be undone."
+        },
         "target_network_id": {
           "type": "string"
         },

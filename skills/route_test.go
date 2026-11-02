@@ -10,7 +10,7 @@ func TestRouteFindsTheRightSkillOrPlaybook(t *testing.T) {
 		"Which CVEs affect our devices?":                              "inspect-vulnerabilities",
 		"Is the network healthy?":                                     "plan-incident-triage",
 		"What changed since last week?":                               "plan-what-changed",
-		"Are the PCI and corporate zones isolated?":                   "plan-segmentation-check",
+		"Are the PCI and corporate zones isolated?":                   "plan-security-posture",
 		"Do we comply with the logging policy? I need audit evidence": "plan-compliance-audit",
 		"Tag these devices as edge":                                   "edit-device-tags",
 		"How many devices per vendor?":                                "inspect-inventory",

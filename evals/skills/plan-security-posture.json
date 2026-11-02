@@ -41,6 +41,30 @@
    "query": "Tag r1 as edge",
    "should_trigger": false,
    "note": "edit-device-tags"
+  },
+  {
+   "query": "Are the PCI and corporate zones isolated?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "states the must-block and must-work flows",
+    "tests both",
+    "names the rule behind a violation"
+   ]
+  },
+  {
+   "query": "Does the firewall policy actually block guest to servers?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses investigate-reachability per flow",
+    "reports untested zones"
+   ]
+  },
+  {
+   "query": "Confirm isolation still holds after the firewall change",
+   "should_trigger": true,
+   "expected_behavior": [
+    "uses verify-change with expectations"
+   ]
   }
  ],
  "measure": [

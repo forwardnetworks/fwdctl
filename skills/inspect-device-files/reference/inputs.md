@@ -19,3 +19,4 @@ lines and every line returned costs tokens. Optional: `snapshot_id` (default new
 - Lines returned: **ok**, with the window and the file's total line count; if more remain, the limits give the `start_line` to continue from.
 - Secret values after keywords such as `password`, `secret`, `community`, `key` are replaced with `<redacted>` on a best-effort basis; the limits say how many lines changed. `no_redact` turns it off.
 - A file is downloaded to 4 MiB at most before it is read or searched.
+- On a predicted snapshot, a read or a search of one file also says how many lines of it the prediction changed (`predicted_modified_lines`, with the `change_set_id` and `base_snapshot_id`), when Forward gives it (the org property `PREDICT_MODELING` on). Read from Forward's source via the SDK, not run live.

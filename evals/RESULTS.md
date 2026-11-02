@@ -135,3 +135,7 @@ Not re-run after the scoring rule changed; the count above applies the rule to t
 - **Real failures that remain.** Haiku's verbosity on the register task (117 to 170 words for "just the names"; register is a soft check). One Sonnet run without skills gave up on the OSPF task: my canned NQE rows do not follow the columns the model asked for, it noticed and distrusted them: a fixture limitation, not a finding about the model.
 - **Caveats.** Synthetic fixtures and substring checks; one run of the fake per run; the register and endpoint checks are heuristics; no judge model. Grounding and investigate failures would be blockers, register failures are soft.
 
+
+## Routing after the playbook merges, 2026-11-02 (subset, Sonnet, no judge, $3.24)
+
+`plan-maintenance-window` folded into `plan-change-review`, `plan-segmentation-check` into `plan-security-posture`. Only the routing cases whose expected or rival skill is one of the two changed descriptions were run (10 of 144), on the Craig-Demo network. First run: 8 of 10 ($2.11). One miss traced to the new `plan-change-review` description ("safe or worked" pulled "Did this change set do what we intended?" away from `verify-change`); the other ("Is it safe to make this ACL change?") used no skill, the question names no change. With "worked" removed from the description the six change-set cases re-ran 6 of 6 ($1.13). The security and segmentation cases were 4 of 4 in the first run. The offline router (`fwdctl which`) is unchanged on these questions.

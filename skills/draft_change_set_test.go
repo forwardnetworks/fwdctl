@@ -518,3 +518,27 @@ func TestEditChangeSetRefusesResetActions(t *testing.T) {
 		}
 	}
 }
+
+// A commit can fix the change set's analysis mode (CONFIG_ONLY needs the org property PREDICT_CONFIG_ONLY); the dry run says it cannot be undone, and an unknown mode is refused.
+func TestEditChangeSetCommitTakesAnAnalysisMode(t *testing.T) {
+	const cs = "/api/networks/n1/change-sets/cs9"
+	var query string
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, []any{map[string]any{"id": "cs9", "name": "x", "snapshotId": "s1"}}),
+		"POST " + cs + "/commits": func(r *http.Request, _ []byte) (int, any) {
+			query = r.URL.RawQuery
+			return 200, map[string]any{"commitId": "c1"}
+		},
+	}
+	in := `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"commit","note":"v1","analysis_mode":"config_only"}`
+	r, _ := mustRun(t, "edit-change-set", routes, in+`}`)
+	if r.Mode != result.ModeDryRun || query != "" || !strings.Contains(jsonOf(r), "CONFIG_ONLY") || !strings.Contains(jsonOf(r), "409") {
+		t.Fatalf("dry run: %s", jsonOf(r))
+	}
+	if r, _ = mustRun(t, "edit-change-set", routes, in+`,"apply":true}`); r.Status != result.OK || !strings.Contains(query, "analysisMode=CONFIG_ONLY") {
+		t.Errorf("apply sends the mode: %s %s", r.Status, query)
+	}
+	if _, _, err := runSkill(t, "edit-change-set", routes, `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"commit","analysis_mode":"fast"}}`); err == nil {
+		t.Errorf("an unknown analysis mode must be refused")
+	}
+}

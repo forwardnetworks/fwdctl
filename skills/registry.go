@@ -96,8 +96,10 @@ var aliases = map[string]alias{
 	"analyze-blast-radius":          {"verify-change", map[string]any{"view": "impact"}, nil},
 	"inspect-checks":                {"check-network-compliance", map[string]any{"view": "read"}, nil},
 	"review-change-set":             {"verify-change", map[string]any{"view": "describe"}, nil},
-	"plan-author-query":             {"author-nqe-query", nil, nil},     // a procedure folded into the authoring guide; it has no runner
-	"plan-health-check":             {"plan-incident-triage", nil, nil}, // folded in as its health check section
+	"plan-author-query":             {"author-nqe-query", nil, nil},      // a procedure folded into the authoring guide; it has no runner
+	"plan-health-check":             {"plan-incident-triage", nil, nil},  // folded in as its health check section
+	"plan-maintenance-window":       {"plan-change-review", nil, nil},    // v0.5.270: folded in as its maintenance window section
+	"plan-segmentation-check":       {"plan-security-posture", nil, nil}, // v0.5.270: folded in as its zone segmentation section
 	"find-ip-owner":                 {"inspect-inventory", map[string]any{"kind": "ip_owner"}, nil},
 	"find-public-addresses":         {"inspect-edge", map[string]any{"view": "public_addresses"}, nil},
 	"find-trace-source":             {"inspect-edge", map[string]any{"view": "trace_sources"}, nil},

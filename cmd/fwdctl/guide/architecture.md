@@ -55,7 +55,7 @@ The skills, by area:
 - **Judge and compare (`check-*`, `verify-*`, `compare-*`):** `check-network-compliance`, `compare-device-config`, `compare-nqe-results`, `verify-change`
 - **NQE:** `author-nqe-query`, `find-nqe-query`, `validate-nqe-query`
 - **Edit (write, dry run first):** `edit-access`, `edit-advanced-reachability`, `edit-alias`, `edit-change-set`, `edit-checks`, `edit-collection`, `edit-data-connector`, `edit-data-file`, `edit-device-tags`, `edit-endpoint-profile`, `edit-internet-exclusions`, `edit-jobs`, `edit-link-overrides`, `edit-network`, `edit-nqe-query`, `edit-org-property`, `edit-platform`, `edit-snapshot`, `edit-source`, `edit-synthetic-query`, `edit-wan-circuit`, `edit-workspace`
-- **Playbooks (`plan-*`, procedures that sequence the skills above):** `plan-change-review`, `plan-compliance-audit`, `plan-device-audit`, `plan-incident-triage`, `plan-investigation`, `plan-link-overrides`, `plan-maintenance-window`, `plan-safe-write`, `plan-security-posture`, `plan-segmentation-check`, `plan-snapshot-recovery`, `plan-synthetic-device`, `plan-troubleshoot-connectivity`, `plan-vulnerability-response`, `plan-what-changed`
+- **Playbooks (`plan-*`, procedures that sequence the skills above):** `plan-change-review`, `plan-compliance-audit`, `plan-device-audit`, `plan-incident-triage`, `plan-investigation`, `plan-link-overrides`, `plan-safe-write`, `plan-security-posture`, `plan-snapshot-recovery`, `plan-synthetic-device`, `plan-troubleshoot-connectivity`, `plan-vulnerability-response`, `plan-what-changed`
 
 The result every tool returns is small and structured, so the model spends its attention on the answer:
 - `status`: `ok`, `failed`, `unknown` (could not decide: never a pass) or `error`
@@ -88,9 +88,9 @@ Context is discovered step by step, so it is never loaded in one go:
 
 The playbooks, which carry the order of a task:
 - **Troubleshooting:** `plan-troubleshoot-connectivity`, `plan-incident-triage`, `plan-snapshot-recovery`, `plan-link-overrides`, `plan-what-changed`, `plan-synthetic-device`
-- **Security:** `plan-security-posture`, `plan-vulnerability-response`, `plan-segmentation-check`
+- **Security:** `plan-security-posture`, `plan-vulnerability-response`
 - **Audit:** `plan-compliance-audit`, `plan-device-audit`
-- **Change:** `plan-change-review`, `plan-maintenance-window`
+- **Change:** `plan-change-review`
 - **Health:** `plan-incident-triage`
 - **Authoring:** `author-nqe-query`
 

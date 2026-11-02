@@ -703,7 +703,7 @@ Examples:
 
 ## fwdctl nqe synthesize internet
 
-Derive an internet node's connection query from the model (the inspect-edge analysis), lint it and print it; exit 1 if its own output is not clean.
+Derive an internet node's connection query from the model (the inspect-edge analysis), lint it and print it; exit 1 if its own output is not clean. One row per likely internet edge: the parent port as the uplink, the subinterface as the gateway, the VLAN read from its name. A comment header names the snapshot, the reasons each edge was chosen, what the --discovery choice means and the claimants that would make it a double claim. Save it with edit-nqe-query and attach it with edit-synthetic-query (dry run first for both).
 
 ```
 fwdctl nqe synthesize internet [flags]

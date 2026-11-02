@@ -157,3 +157,17 @@ func TestDeviceFilesSearchWithoutAFileSearchesEveryFileAndSaysWhichHadMatches(t 
 		t.Errorf("read without file is an error result, not a crash: %v", err)
 	}
 }
+
+// On a predicted snapshot, a read also says how many lines of the file the prediction changed, and from which change set and base (Forward's predictedFileInfo).
+func TestDeviceFilesOnAPredictedSnapshotSaysHowManyLinesThePredictionChanged(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		snapsPath: fwdtest.Snapshots(fwdtest.Snap("p1", "PROCESSED", "PREDICT", "2026-09-05T00:00:00.000Z")),
+		filePath:  fwdtest.Const(200, cfg(20)),
+		"GET /api/snapshots/p1/files/r1,config.txt": fwdtest.Const(200, map[string]any{"lineCount": 20, "excerpts": []any{},
+			"predictedFileInfo": map[string]any{"numModifiedLines": 3, "changeSetId": "cs9", "baseSnapshotId": "s1", "commitId": "c2"}}),
+	}
+	r, _ := mustRun(t, "inspect-device-files", routes, `{"network_id":"n1","device":"r1","mode":"read","file":"config.txt","snapshot_id":"p1"}`)
+	if b := jsonOf(r); r.Status != result.OK || !strings.Contains(b, `"predicted_modified_lines":3`) || !strings.Contains(b, `"change_set_id":"cs9"`) {
+		t.Fatalf("the read of a predicted file should carry the changed-line count: %s", b)
+	}
+}
