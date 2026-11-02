@@ -23,7 +23,7 @@ type editSyntheticQueryInput struct {
 	Name      string `json:"name"`
 	QueryID   string `json:"query_id"`
 	Detach    bool   `json:"detach"`
-	// BackdateSnapshotID, when set, applies the change to that existing snapshot and every later one now (they are invalidated and reprocess)
+	// BackdateSnapshotID, when set, applies the change to that existing snapshot and every later one now (they are invalidated, set UNPROCESSED, and are not reprocessed for you)
 	// instead of from the next snapshot on.
 	BackdateSnapshotID string `json:"backdate_snapshot_id"`
 	Apply              bool   `json:"apply"`
@@ -186,7 +186,7 @@ func editSyntheticQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage
 	}
 	if plan != nil {
 		extra["backdate"] = plan
-		ch.Undo += "; the backdate itself cannot be undone (the snapshots it invalidated are reprocessed), but reprocessing recomputes the same data from what was collected"
+		ch.Undo += "; the backdate itself cannot be undone (the snapshots it invalidated stay UNPROCESSED until each is reprocessed), but reprocessing recomputes the same data from what was collected"
 		limits = append(limits, plan.Note)
 	}
 	if !in.Apply {
@@ -201,7 +201,7 @@ func editSyntheticQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage
 			count = fmt.Sprintf(" (it generates %d connection(s))", len(computed.Connections))
 		}
 		if plan != nil {
-			count += fmt.Sprintf(", then backdate to snapshot %s (invalidating %d snapshot(s) so they reprocess now)", plan.Snapshot, len(plan.Affected))
+			count += fmt.Sprintf(", then backdate to snapshot %s (invalidating %d snapshot(s): they become UNPROCESSED and are not reprocessed for you; run edit-snapshot for each)", plan.Snapshot, len(plan.Affected))
 		}
 		return result.Build(editSyntheticQueryName, result.OK, fmt.Sprintf("Dry run: would %s the %s node %q%s. Nothing was changed; run again with apply=true to make it", what, in.Kind, node.Name, count),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Evidence: ev(extra), Limits: limits, NextActions: next})

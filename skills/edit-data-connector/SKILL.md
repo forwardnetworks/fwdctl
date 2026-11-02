@@ -68,6 +68,11 @@ One `state` item per action, named `dataConnectors`.
 
 ## Running this skill
 
-`echo '{"action":"add","network_id":"<id>","name":"weather-feed","base_url":"https://api.example.com","endpoints":[{"name":"current","path":"/v1/current"}]}' | fwdctl run edit-data-connector`
-is the dry run; add `"apply": true` after it is accepted. `echo '{"action":"test","network_id":"<id>","name":"weather-feed"}' | fwdctl run edit-data-connector`
-runs a connectivity test.
+Run `fwdctl run edit-data-connector --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-data-connector < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"action":"add","network_id":"<id>","name":"weather-feed","base_url":"https://api.example.com","endpoints":[{"name":"current","path":"/v1/current"}]}' | fwdctl run edit-data-connector
+echo '{"action":"test","network_id":"<id>","name":"weather-feed"}' | fwdctl run edit-data-connector
+```

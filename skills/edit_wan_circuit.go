@@ -129,13 +129,13 @@ func editWanCircuit(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		action, undo = "delete_wan_circuit", "run edit-wan-circuit again with the prior circuit (this change's before: its two connections) and apply=true"
 	}
 	if plan != nil {
-		undo += "; the backdate itself cannot be undone (the snapshots it invalidated are reprocessed, recomputing the same data)"
+		undo += "; the backdate itself cannot be undone (the snapshots it invalidated stay UNPROCESSED until each is reprocessed, which recomputes the same data)"
 	}
 	ch := result.Change{Action: action, Target: "WAN circuit " + in.Name, Before: wanText(prior), After: wanText(want), Reversible: true, Undo: undo}
 	if !in.Apply {
 		extra := ""
 		if plan != nil {
-			extra = fmt.Sprintf(", then backdate to snapshot %s (invalidating %d snapshot(s) so they reprocess now)", plan.Snapshot, len(plan.Affected))
+			extra = fmt.Sprintf(", then backdate to snapshot %s (invalidating %d snapshot(s): they become UNPROCESSED and are not reprocessed for you; run edit-snapshot for each)", plan.Snapshot, len(plan.Affected))
 		}
 		return result.Build(editWanCircuitName, result.OK, fmt.Sprintf("Dry run: would %s the WAN circuit %q%s. Nothing was changed; run again with apply=true to make it",
 			map[bool]string{true: "delete", false: map[bool]string{true: "replace", false: "create"}[prior != nil]}[in.Delete], in.Name, extra),

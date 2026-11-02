@@ -53,9 +53,7 @@ The envelope in `schema/skill-result.schema.json`.
 
 ## Running this skill
 
-Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run check-network-compliance`. It needs the
-`fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
-(`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+Run `fwdctl run check-network-compliance --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run check-network-compliance < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
 
 ## Reference
 

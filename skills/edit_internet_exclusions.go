@@ -226,7 +226,7 @@ func editInternetExclusions(ctx context.Context, s *fwd.Session, raw json.RawMes
 	afterJ, _ := json.Marshal(after)
 	undo := "run edit-internet-exclusions with set = this change's before (the whole prior list) and apply=true"
 	if plan != nil {
-		undo += "; the backdate itself cannot be undone (the snapshots it invalidated are reprocessed, recomputing the same data)"
+		undo += "; the backdate itself cannot be undone (the snapshots it invalidated stay UNPROCESSED until each is reprocessed, which recomputes the same data)"
 	}
 	ch := result.Change{Action: "set_internet_excluded_subnets", Target: "internet node excluded subnets", Before: string(beforeJ), After: string(afterJ), Reversible: true, Undo: undo}
 	summary := fmt.Sprintf("%d subnet(s) now, %d after (+%d, -%d)", len(before), len(after), len(minus(after, before)), len(minus(before, after)))
@@ -236,7 +236,7 @@ func editInternetExclusions(ctx context.Context, s *fwd.Session, raw json.RawMes
 	if !in.Apply {
 		extra := ""
 		if plan != nil {
-			extra = fmt.Sprintf(", then backdate to snapshot %s (invalidating %d snapshot(s) so they reprocess now)", plan.Snapshot, len(plan.Affected))
+			extra = fmt.Sprintf(", then backdate to snapshot %s (invalidating %d snapshot(s): they become UNPROCESSED and are not reprocessed for you; run edit-snapshot for each)", plan.Snapshot, len(plan.Affected))
 		}
 		return result.Build(editInternetExclusionsName, result.OK, fmt.Sprintf("Dry run: would replace the internet node's excluded subnets (%s)%s. Nothing was changed; run again with apply=true to make it", summary, extra),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: limits, NextActions: next})

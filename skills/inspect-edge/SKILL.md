@@ -75,6 +75,10 @@ The envelope in `schema/skill-result.schema.json`.
 
 ## Running this skill
 
-Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>", "vrf": "INET"}' | fwdctl run inspect-edge`; with a view, for example `{"network_id": "<id>", "view": "public_addresses", "role": "management"}` or `{"network_id": "<id>", "view": "trace_sources", "target_ip": "203.0.113.1"}`.
-It needs the `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
-(`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
+Run `fwdctl run inspect-edge --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run inspect-edge < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"network_id": "<id>", "vrf": "INET"}' | fwdctl run inspect-edge
+```

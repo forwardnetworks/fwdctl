@@ -43,7 +43,7 @@
     "backdate_snapshot_id": {
       "type": "string",
       "minLength": 1,
-      "description": "Apply the change to this existing snapshot and every later one now (they are invalidated and reprocess) instead of from the next snapshot"
+      "description": "Apply the change to this existing snapshot and every later one now (they are invalidated, set UNPROCESSED, and are not reprocessed for you: run edit-snapshot reprocess for each) instead of from the next snapshot"
     },
     "apply": {
       "type": "boolean",

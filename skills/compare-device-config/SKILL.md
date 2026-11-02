@@ -15,7 +15,7 @@ metadata:
 
 Answer "what changed in the configuration" from the text the devices produced. Forward has no route that returns a
 diff, so this skill asks Forward which files changed, downloads both versions and compares them. Use
-`analyze-blast-radius` for the size of a change and `compare-nqe-results` for modeled data; use this for the lines.
+`verify-change` (view `impact`) for the size of a change and `compare-nqe-results` for modeled data; use this for the lines.
 
 ## Inputs
 
@@ -53,9 +53,7 @@ The envelope in `schema/skill-result.schema.json`.
 
 ## Running this skill
 
-Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run compare-device-config`. It needs the
-`fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
-(`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+Run `fwdctl run compare-device-config --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run compare-device-config < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
 
 ## Reference
 

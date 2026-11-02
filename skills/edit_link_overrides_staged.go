@@ -165,7 +165,7 @@ func stagedBackdate(ctx context.Context, s *fwd.Session, in editLinkOverridesInp
 	}
 	ev := []result.Evidence{result.NewEvidence(result.EvTopology, "backdateLinkOverrides", nil, d, "")}
 	ch := result.Change{Action: "backdate_link_overrides", Target: fmt.Sprintf("apply the staged link overrides of network %s from snapshot %s onward", in.NetworkID, in.BackdateTo),
-		Before: fmt.Sprintf("%d snapshot(s) at or after it", len(hit)), After: "those snapshots invalidated and reprocessing", Reversible: false,
+		Before: fmt.Sprintf("%d snapshot(s) at or after it", len(hit)), After: "those snapshots invalidated (UNPROCESSED until you reprocess each)", Reversible: false,
 		Undo: "none: the staged set is consumed; restore the earlier overrides by staging them again and backdating again (each backdate invalidates again)"}
 	if !in.Apply {
 		return result.Build(editLinkOverridesName, result.OK, fmt.Sprintf("Dry run: would backdate the staged overrides onto snapshot %s, invalidating %d snapshot(s) per Forward's rule. Nothing was changed; run again with apply=true and confirm=%q", in.BackdateTo, len(hit), in.BackdateTo),

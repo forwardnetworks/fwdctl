@@ -12,7 +12,7 @@
 | `maps` | the network's saved Network Maps (custom diagrams Forward redraws for every snapshot): each map's id, name, directory, pinned flag and who created and last changed it, plus the directories. With `map_id` (from the list), one map instead: the devices placed on it, how many the snapshot has, the placed devices the snapshot lacks, and those the snapshot has with a collection or processing error. Needs the VIEW_NETWORK_MAPS permission (Preview routes); an empty list from a successful read means no maps are saved, a refused read means nothing | `map_id` (one map's coverage in `snapshot_id`) |
 | `aliases` | alias name, type (hosts, devices, interfaces, headers, logical network) and its definition | nothing |
 | `link_overrides` | a snapshot's manual (present) and suppressed (absent) links: a summary and one page of rows with `ports_exist` and `link_in_topology`; with `compare_to_snapshot_id`, the added, removed and changed overrides between two snapshots | `device` (either end), `limit` (default 50; 25 examples per list when comparing), `offset` (not with `compare_to_snapshot_id`) |
-| `external` | how the edge is modelled (see below) | `device` (one synthetic node by name) |
+| `external` | how the edge is modelled (see `reference/kinds.md`) | `device` (one synthetic node by name) |
 
 Optional: `snapshot_id` (default newest processed), `limit` (default 40, at most 200), `offset`, and, for kind `link_overrides` only, `compare_to_snapshot_id` (the earlier snapshot; `snapshot_id` is then the later one). An input that belongs to another kind is rejected by name. Locations and tags are
 defined per network, not per snapshot, and the limits say so.

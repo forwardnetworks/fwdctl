@@ -71,13 +71,11 @@ incomplete; `plan-synthetic-device` and `inspect-edge` when the last hop is a Mi
 
 ## Next actions
 
-`verify-change`, `investigate-collection-failure`, `analyze-blast-radius`.
+`verify-change`, `investigate-collection-failure`, `verify-change` (view `impact`).
 
 ## Running this skill
 
-Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run investigate-reachability`. It needs the
-`fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
-(`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+Run `fwdctl run investigate-reachability --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run investigate-reachability < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
 
 ## Reference
 

@@ -45,11 +45,9 @@ The envelope in `schema/skill-result.schema.json`.
 
 ## Next actions
 
-`verify-change` and `analyze-blast-radius` to compare two snapshots, `investigate-collection-failure` for one that looks
+`verify-change` and `verify-change` (view `impact`) to compare two snapshots, `investigate-collection-failure` for one that looks
 incomplete.
 
 ## Running this skill
 
-Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run inspect-snapshots`. It needs the
-`fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
-(`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+Run `fwdctl run inspect-snapshots --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run inspect-snapshots < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.

@@ -10,14 +10,14 @@ metadata:
   effect: "network"
   secrets: "false"
   reversible: "false"
-  tools: "networks, locations, clusters, device tags"
+  tools: "networks, locations, clusters, device tags, collectors, threat exposure"
 ---
 
 # edit-network
 
 ## Intent
 
-Manage the objects around a network: the network itself, its locations and device clusters, and its device tag definitions. Putting tags on devices is `edit-device-tags`; this changes the definitions. It touches no device.
+Manage the objects around a network: the network itself, its locations and device clusters, its device tag definitions (rename or delete; a tag is created by putting it on a device), attaching a registered collector, and, experimental, threat exposure definitions and asset criticality. Putting tags on devices is `edit-device-tags`; this changes the definitions. It touches no device.
 
 ## Inputs
 
@@ -46,4 +46,10 @@ One `state` item: `object`, `action`, `mode`, `before`, `after`.
 
 ## Running this skill
 
-`echo '{"object":"network","action":"create","name":"lab"}' | fwdctl run edit-network` is the dry run; add `"apply": true` after it is accepted.
+Run `fwdctl run edit-network --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-network < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"object":"network","action":"create","name":"lab"}' | fwdctl run edit-network
+```
