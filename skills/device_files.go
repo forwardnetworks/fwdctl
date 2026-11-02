@@ -1,6 +1,8 @@
 package skills
 
 import (
+	forward "github.com/forwardnetworks/forward-go-sdk"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -132,6 +134,19 @@ func inspectDeviceFiles(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		return clipLine(l)
 	}
 	base := map[string]any{"device": in.Device, "file": in.File, "total_lines": len(lines)}
+	if cx.State == "predicted" {
+		// on a predicted snapshot Forward says how many lines of this file the prediction changed (and from which change set and base); one line is read to get it
+		ex, _, perr := s.Client.Snapshots.FileExcerpts(ctx, sid, in.Device, in.File, []forward.FileLines{{Start: 0, End: 0}})
+		switch {
+		case perr != nil:
+			limits = append(limits, "how many lines the prediction changed could not be read ("+perr.Error()+")")
+		case ex.PredictedFileInfo == nil:
+			limits = append(limits, "Forward gave no count of the lines the prediction changed in this file (it gives one only when the org property PREDICT_MODELING is on and the file is in the predicted snapshot or its base)")
+		default:
+			pi := ex.PredictedFileInfo
+			base["predicted_modified_lines"], base["change_set_id"], base["base_snapshot_id"] = pi.NumModifiedLines, string(pi.ChangeSetID), string(pi.BaseSnapshotID)
+		}
+	}
 	var finding string
 	if in.Mode == "search" {
 		finding = searchLines(lines, re, in, show, base, &limits)

@@ -211,23 +211,18 @@
   },
   {
     "query": "Are the PCI and corporate zones actually isolated?",
-    "expect": "plan-segmentation-check",
+    "expect": "plan-security-posture",
     "rival": "investigate-reachability"
   },
   {
     "query": "Can the guest network reach the servers on tcp/443?",
     "expect": "investigate-reachability",
-    "rival": "plan-segmentation-check"
+    "rival": "plan-security-posture"
   },
   {
     "query": "We have a maintenance window tonight; how do we prove the change worked?",
-    "expect": "plan-maintenance-window",
-    "rival": "plan-change-review"
-  },
-  {
-    "query": "Is it safe to make this ACL change?",
     "expect": "plan-change-review",
-    "rival": "plan-maintenance-window"
+    "rival": "verify-change"
   },
   {
     "query": "Tell me everything you know about atl-ce01",

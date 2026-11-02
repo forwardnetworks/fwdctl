@@ -97,6 +97,9 @@ type draftLifecycle struct {
 	BaseSnapshotID  string   `json:"base_snapshot_id"`
 	Tags            []string `json:"tags"`
 	Directory       string   `json:"directory"`
+	// AnalysisMode belongs to op commit: BEHAVIORAL (Forward's default) or CONFIG_ONLY (compare configuration only; Forward honours it only when the
+	// org property PREDICT_CONFIG_ONLY is on, the first commit fixes it for the change set, and a different one later is a 409).
+	AnalysisMode string `json:"analysis_mode"`
 	// Commands belongs to op prettify; Path to op export_zip.
 	Commands string `json:"commands"`
 	Path     string `json:"path"`

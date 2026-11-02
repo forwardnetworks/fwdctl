@@ -309,7 +309,7 @@ func (a *app) nqeSynth() *cobra.Command {
 	var o nqeSynthOpts
 	internet := &cobra.Command{
 		Use: "internet", Short: "derive an internet node's connection query (the inspect-edge analysis)", Args: cobra.NoArgs,
-		Long:    "Derive an internet node's connection query from the model (the inspect-edge analysis), lint it and print it; exit 1 if its own output is not clean.",
+		Long:    "Derive an internet node's connection query from the model (the inspect-edge analysis), lint it and print it; exit 1 if its own output is not clean. One row per likely internet edge: the parent port as the uplink, the subinterface as the gateway, the VLAN read from its name. A comment header names the snapshot, the reasons each edge was chosen, what the --discovery choice means and the claimants that would make it a double claim. Save it with edit-nqe-query and attach it with edit-synthetic-query (dry run first for both).",
 		Example: "  fwdctl nqe synthesize internet --network 123 --vrf default",
 		RunE:    func(cmd *cobra.Command, args []string) error { return a.exit(nqeSynthesizeCmd(a, o)) },
 	}

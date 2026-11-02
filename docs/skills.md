@@ -54,16 +54,14 @@ Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl 
 | `inspect-vulnerabilities` | read | Finds which CVEs expose the network, which devices a CVE affects, or which CVEs affect a device, from Forward's detection. |
 | `investigate-collection-failure` | read | Finds why Forward could not collect or model devices: causes, platforms, changes, slow collections, logs. |
 | `investigate-reachability` | read | Explains whether traffic from a source to a destination is delivered and where it first fails, from Forward's path search. |
-| `plan-change-review` | playbook | Sequences read, predict, check and reach for a change. |
+| `plan-change-review` | playbook | Sequences predict, check and reach for a change, and the evidence around a maintenance window. |
 | `plan-compliance-audit` | playbook | Sequences the skills that audit policy: checks, findings, new rules, history. |
 | `plan-device-audit` | playbook | Sequences the skills that profile a device or group: identity, links, config, CVEs, performance. |
 | `plan-incident-triage` | playbook | Sequences the skills that check network health or triage an outage of unknown cause. |
 | `plan-investigation` | playbook | Maps a network question to the right skill and states what Forward cannot answer. |
 | `plan-link-overrides` | playbook | Sequences the skills that diagnose and fix missing or drifted link overrides. |
-| `plan-maintenance-window` | playbook | Sequences before snapshot, change, after data and comparison around a window. |
 | `plan-safe-write` | playbook | States the protocol every edit skill follows: plan, show, approve, apply once, verify, keep the undo. |
-| `plan-security-posture` | playbook | Sequences the skills that assess security posture: failing checks, CVEs, internet exposure. |
-| `plan-segmentation-check` | playbook | Sequences the skills that verify zone segmentation and change impact. |
+| `plan-security-posture` | playbook | Sequences security posture skills: failing checks, CVEs, internet exposure, zone isolation. |
 | `plan-snapshot-recovery` | playbook | Sequences the skills that decide why a snapshot is bad and how to recover. |
 | `plan-synthetic-device` | playbook | Sequences the skills that model an uncollected segment as a synthetic device. |
 | `plan-troubleshoot-connectivity` | playbook | Sequences the skills that find why traffic does not reach a destination. |
@@ -97,9 +95,8 @@ Why can't A reach B, what is down, what changed.
 
 Posture, vulnerabilities, internet exposure, segmentation.
 
-- **Playbook** `plan-security-posture`: Security review: failing checks, CVEs, internet exposure, risky configuration.
+- **Playbook** `plan-security-posture`: Security review: failing checks, CVEs, internet exposure, risky configuration; and zone isolation: flows that must be blocked and that must work.
 - **Playbook** `plan-vulnerability-response`: A CVE or advisory: who is affected, how exposed, what to patch first.
-- **Playbook** `plan-segmentation-check`: Verify zone isolation: flows that must be blocked and that must work, before and after a change.
 - `inspect-vulnerabilities`: Which CVEs expose the network, which devices are affected by one, and what is wrong with a device?
 - `check-network-compliance`: Does the network satisfy a policy (Forward checks and/or an NQE query)? view read: which checks exist and fail, what one found, which predefined checks exist.
 - `investigate-reachability`: Is this flow delivered, and where does it first fail?
@@ -108,8 +105,7 @@ Posture, vulnerabilities, internet exposure, segmentation.
 
 Is it safe, did it work, bracket a maintenance window.
 
-- **Playbook** `plan-change-review`: The order of skills that decide whether a change is safe
-- **Playbook** `plan-maintenance-window`: Bracket a change with a labelled baseline, a collection after, and a verified comparison.
+- **Playbook** `plan-change-review`: The order of skills that decide whether a change is safe, and the before-and-after evidence around a maintenance window
 - `verify-change`: Did a change (a Predict change set, or two snapshots) do what was intended, and break nothing? view impact: how far did it reach, judged not at all. view describe: what does a Predict change set edit, has it been predicted, and which checks got worse?
 - `edit-change-set` *(writes, dry run first)*: Stage a change set from commands you supply, validate it, and optionally predict it. Touches no device.
 

@@ -6,7 +6,7 @@ metadata:
   cluster: "environment"
   summary: "router: question to skill"
   maturity: "3"
-  tools: "investigate-reachability, verify-change, investigate-collection-failure, check-network-compliance, validate-nqe-query, plan-change-review, plan-what-changed, plan-snapshot-recovery, plan-link-overrides, plan-device-audit, plan-safe-write, plan-troubleshoot-connectivity, plan-incident-triage, plan-security-posture, plan-vulnerability-response, plan-segmentation-check, plan-compliance-audit, plan-maintenance-window, author-nqe-query, plan-synthetic-device, inspect-device-files"
+  tools: "investigate-reachability, verify-change, investigate-collection-failure, check-network-compliance, validate-nqe-query, plan-change-review, plan-what-changed, plan-snapshot-recovery, plan-link-overrides, plan-device-audit, plan-safe-write, plan-troubleshoot-connectivity, plan-incident-triage, plan-security-posture, plan-vulnerability-response, plan-compliance-audit, author-nqe-query, plan-synthetic-device, inspect-device-files"
 ---
 
 # plan-investigation
@@ -32,7 +32,7 @@ A playbook is a procedure (it does not run): it names the skills to call, their 
 | Area | The question looks like | Read |
 |---|---|---|
 | Change | "Is it safe to make this change", "will it break anything" | `plan-change-review` |
-| Change | A maintenance window, a cutover, a migration: "prove the change worked" | `plan-maintenance-window` |
+| Change | A maintenance window, a cutover, a migration: "prove the change worked" | `plan-change-review` (its maintenance window section) |
 | Change | **Any** request to change something in Forward (an `edit-*` skill) | `plan-safe-write`, before the first call |
 | Troubleshooting | "Why can't A reach B", a dropped flow, an unreachable site, "is there a path" | `plan-troubleshoot-connectivity` |
 | Troubleshooting | "Something is down", "users are complaining", an incident with an unknown cause | `plan-incident-triage` |
@@ -42,7 +42,7 @@ A playbook is a procedure (it does not run): it names the skills to call, their 
 | Troubleshooting | "What changed", "since when", "did that change cause this" | `plan-what-changed` |
 | Security | "Is the network secure or exposed", a security review, "what can an attacker reach" | `plan-security-posture` |
 | Security | A CVE or advisory, "is device X vulnerable", "what do we patch first" | `plan-vulnerability-response` |
-| Security | "Are zones isolated", "does this rule set enforce segmentation" | `plan-segmentation-check` |
+| Security | "Are zones isolated", "does this rule set enforce segmentation" | `plan-security-posture` (its zone segmentation section) |
 | Audit | "Do we comply with policy or standard X", evidence for an audit, "add a standing rule" | `plan-compliance-audit` |
 | Audit | "Tell me about this device", everything you know about a device, "audit this site or tag group" | `plan-device-audit` |
 | Health | "Is the network healthy", a morning check, "is anything wrong" | `plan-incident-triage` |

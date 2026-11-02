@@ -37,6 +37,31 @@
    "query": "Write the config to open port 443",
    "should_trigger": false,
    "note": "refused: no configuration is authored"
+  },
+  {
+   "query": "We have a maintenance window tonight; how do we prove the change did what we wanted?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "labels a baseline",
+    "collects after",
+    "compares and verifies against expectations"
+   ]
+  },
+  {
+   "query": "Close out the cutover: what changed and did anything break?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "compare-device-config between baseline and after",
+    "reports unplanned differences as findings"
+   ]
+  },
+  {
+   "query": "Plan the before and after checks for migrating the DC firewall",
+   "should_trigger": true,
+   "expected_behavior": [
+    "records the flows that must hold",
+    "treats a missing after-snapshot as unknown"
+   ]
   }
  ],
  "measure": [
