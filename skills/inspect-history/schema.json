@@ -1,12 +1,29 @@
 {
   "type": "object",
-  "required": ["network_id"],
+  "required": [
+    "network_id"
+  ],
   "description": "Give exactly one of check_id (a check's history) or device (when its configuration last changed)",
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "check_id": { "type": "string", "minLength": 1 },
-    "device": { "type": "string", "minLength": 1 },
-    "snapshots": { "type": "integer", "minimum": 1 }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "check_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The check whose status to follow across snapshots. Give exactly one of check_id and device."
+    },
+    "device": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The device whose configuration to follow across snapshots (when its config last changed). Give exactly one of check_id and device."
+    },
+    "snapshots": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How many of the newest processed, collected snapshots to read (default 8, at most 20)."
+    }
   }
 }

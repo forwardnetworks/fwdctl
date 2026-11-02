@@ -19,7 +19,9 @@ when the question is about the literal text (a specific line, a vendor command o
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run inspect-device-files --help`, or `reference/inputs.md`.
+What each input means, and what to read before relying on a result: `fwdctl run inspect-device-files --help`, or `reference/inputs.md`.
+
+**A line that does not match is unknown, never "not configured" (it may be spelled differently in this vendor's syntax, or be in another file); secrets after password, secret, community and key are redacted (best effort; `no_redact` turns it off); a file is read to 4 MiB at most.**
 
 ## Procedure
 
