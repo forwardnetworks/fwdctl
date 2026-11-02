@@ -1,14 +1,51 @@
 {
   "type": "object",
-  "required": ["network_id", "query"],
+  "required": [
+    "network_id"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "query": { "type": "string", "minLength": 1 },
-    "snapshot_id": { "type": "string", "minLength": 1 },
-    "parameters": { "type": "object" },
-    "sample_rows": { "type": "integer", "minimum": 1 },
-    "offset": { "type": "integer", "minimum": 0 },
-    "synthetic_kind": { "enum": ["internet", "intranet", "l3vpn", "adjacent-network", "l2vpn"], "description": "Also check the rows as the connections of this synthetic device kind" }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "description": "NQE source text to validate. Give exactly one of query and query_id."
+    },
+    "query_id": {
+      "type": "string",
+      "description": "A SAVED library query to validate by id (Q_...) instead of text. Give exactly one of query and query_id. It runs by id; its source is read for the offline checks."
+    },
+    "commit_id": {
+      "type": "string",
+      "description": "With query_id: the library commit to run it at (default: the head)."
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "sample_rows": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "synthetic_kind": {
+      "enum": [
+        "internet",
+        "intranet",
+        "l3vpn",
+        "adjacent-network",
+        "l2vpn"
+      ],
+      "description": "Also check the rows as the connections of this synthetic device kind"
+    }
   }
 }

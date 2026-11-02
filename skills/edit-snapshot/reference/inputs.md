@@ -10,7 +10,7 @@
 | `favorite` | | marks it a favorite, which retention never thins | `unfavorite` |
 | `unfavorite` | | clears the favorite flag, so retention may thin it | `favorite` |
 | `delete` | `confirm` = `snapshot_id` | removes the snapshot and its model | **none** |
-| `export` | `snapshot_id`, `definition` {`path`, `only_config`, `include_devices`, `exclude_devices`, `obfuscate_names`}, `secret_file` or `secret_env` (obfuscation key) | writes the snapshot (or some devices) to a new ZIP file here; never overwrites; nothing changes in Forward | delete the file |
+| `export` | `snapshot_id`, `definition` {`path`, `only_config`, `include_devices`, `exclude_devices`, `select` {`vendor`, `os`} or {`query`} or {`query_id`, `commit_id`} with `as`, `obfuscate_names`}, `secret_file` or `secret_env` (obfuscation key) | writes the snapshot (or some devices) to a new ZIP file here; never overwrites; nothing changes in Forward | delete the file |
 | `import` | `definition` {`files`, `exclude_failed_devices`, `skip_processing`}, `note` (no `snapshot_id`) | uploads ZIP files as a new snapshot of the network | `delete` the new snapshot |
 | `retention_policy` | `definition`, `confirm` = `network_id` | sets how Forward thins the network's snapshots (on-premises only) | set the old values back; snapshots already cleaned are gone |
 

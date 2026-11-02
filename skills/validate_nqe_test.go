@@ -241,3 +241,33 @@ func TestValidateNQEReportsTheLargestFieldPerColumnAndFlagsOneNearTheLimit(t *te
 		}
 	}
 }
+
+// A saved query is validated by id at a commit: the request carries queryId and commitId and no query text, and the result says so; text and id together, or neither, are refused.
+func TestValidateNQEBySavedQueryID(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), nqePath: fwdtest.Const(200, map[string]any{"items": []map[string]any{{"Name": "r0"}}, "totalNumItems": 1})}
+	r, srv := mustRun(t, "validate-nqe-query", routes, `{"network_id":"n1","query_id":"Q_1","commit_id":"c1"}`)
+	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "saved query Q_1 at commit c1") {
+		t.Fatalf("a saved query is validated and the result says by id: %s %v", r.Status, r.Limits)
+	}
+	var sent map[string]any
+	for _, c := range srv.Calls() {
+		if c.Method == "POST" && c.Path == "/api/nqe" {
+			sent = c.Body
+		}
+	}
+	if sent["queryId"] != "Q_1" || sent["commitId"] != "c1" {
+		t.Errorf("the request must carry queryId and commitId: %v", sent)
+	}
+	if q, present := sent["query"]; present && q != "" {
+		t.Errorf("a saved query must not also send text: %v", sent["query"])
+	}
+	for _, in := range []string{
+		`{"network_id":"n1"}`,
+		`{"network_id":"n1","query":"select {a: 1}","query_id":"Q_1"}`,
+		`{"network_id":"n1","query":"select {a: 1}","commit_id":"c1"}`,
+	} {
+		if _, _, err := runSkill(t, "validate-nqe-query", routes, in); err == nil || !strings.Contains(err.Error(), "exactly one") && !strings.Contains(err.Error(), "commit_id goes with") {
+			t.Errorf("%s: want a refusal naming query and query_id, got %v", in, err)
+		}
+	}
+}
