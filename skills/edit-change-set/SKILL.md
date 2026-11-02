@@ -51,6 +51,8 @@ An empty validation result is not proof the commands are right: the validator on
 
 ## Evidence
 
+Before staging, know what Predict can take: only IOS, IOS-XE, NX-OS, IOS-XR, ASA, EOS, Junos and SRX accept CLI (`verify-change` view `commands` lists them and the commands), PAN-OS changes are security rules only, validation is advisory, and what is modelled depends on org properties: read `verify-change`'s `reference/predict-limits.md` (from Forward's source, not live-confirmed).
+
 One `predict` item: the plan, the `change_set_id`, any `command_errors`, and the `predicted_snapshot_id` when run.
 
 ## Output

@@ -136,6 +136,10 @@ func predictCommands(ctx context.Context, s *fwd.Session, in verifyChangeInput) 
 	}
 	text, _, err := s.Client.Predict.AllowedCommands(ctx, in.OS, forward.PredictProtocol(proto))
 	if err != nil {
+		if forward.IsStatus(err, 500) {
+			return result.NewUnknown(verifyChangeName, fmt.Sprintf("Forward failed to build the command list for %s (HTTP 500)", in.OS), cx,
+				[]string{"Forward answered 500 for this OS on the 1.0.0-261031 build (EOS, IOS and NX-OS), cause unknown: its command tree may have failed to load. This is not an empty list and not a statement that the OS has no commands; the change set's own validation (edit-change-set command_errors) still runs, and is advisory. " + predictPreviewLimit}, result.Options{NextActions: []string{"edit-change-set"}})
+		}
 		if r, ok := denialResult(verifyChangeName, err, cx, "reading the commands Predict accepts"); ok {
 			return r, nil
 		}
@@ -143,7 +147,7 @@ func predictCommands(ctx context.Context, s *fwd.Session, in verifyChangeInput) 
 	}
 	if strings.TrimSpace(text) == "" {
 		return result.NewUnknown(verifyChangeName, fmt.Sprintf("Predict lists no %s commands for %s", proto, in.OS), cx,
-			[]string{"Forward answers an empty text for an OS Predict does not model or a protocol it has no commands for; run without os to list the modelled OSes"}, result.Options{})
+			[]string{noCommandTreeReason(in.OS)}, result.Options{})
 	}
 	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
 	shown, om := result.Cap(lines, 300, "command lines", "the first 300 lines are shown")
@@ -151,4 +155,16 @@ func predictCommands(ctx context.Context, s *fwd.Session, in verifyChangeInput) 
 	return result.Build(verifyChangeName, result.OK, finding, result.Deterministic, cx, result.Options{Omitted: om, NextActions: []string{"edit-change-set"},
 		Limits:   []string{"Forward's rendering of its command tree; a command missing here is not modelled and edit-change-set will refuse it. " + predictPreviewLimit},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "predictCommands", nil, map[string]any{"os": in.OS, "protocol": proto, "lines_total": len(lines), "commands": shown}, finding)}})
+}
+
+// noCommandTreeReason says why Forward answers an empty command list for an OS. Read from Forward's source (not confirmed on a live Forward): PAN-OS is edited through security rules, not
+// commands, and Junos has no command tree (its commands are checked in code).
+func noCommandTreeReason(os string) string {
+	switch strings.ToLower(strings.TrimSpace(os)) {
+	case "pan_os", "panos", "pan-os":
+		return "PAN-OS has no command tree: its changes are staged as security rules (local rulebase only), never as CLI, and a CLI change set for it fails with 'OS not supported'. An empty list here does not mean nothing can be changed"
+	case "juniper_junos", "junos":
+		return "Junos has no command tree: Forward checks its commands in code, not against a grammar, so there is no list to read. An empty list here does not mean Junos is unmodelled; validation of a Junos change set is advisory"
+	}
+	return "Forward answers an empty text for an OS Predict does not model or a protocol it has no commands for; run without os to list the modelled OSes (read from Forward's source: only IOS, IOS-XE, NX-OS, IOS-XR, ASA, EOS, Junos and SRX take CLI changes)"
 }
