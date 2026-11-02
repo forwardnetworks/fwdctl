@@ -17,7 +17,7 @@ metadata:
 
 ## Intent
 
-The one place to change a snapshot, or how a network keeps its snapshots. It replaces `edit-snapshot` (action note) and `edit-snapshot` (action reprocess) (both still work as names for two releases). It collects nothing and touches no device.
+The one place to change a snapshot, or how a network keeps its snapshots. It replaces the retired `annotate-snapshot`, `edit-snapshot-note` and `edit-snapshot-reprocess` (all still work as names for two releases). It collects nothing and touches no device.
 
 ## Inputs
 
@@ -47,4 +47,10 @@ One `state` item: `action`, `mode`, `before`, and `after` once applied.
 
 ## Running this skill
 
-`echo '{"network_id":"N","snapshot_id":"S","action":"note","note":"before change X"}' | fwdctl run edit-snapshot` is the dry run; add `"apply": true` once accepted.
+Run `fwdctl run edit-snapshot --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-snapshot < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"network_id":"N","snapshot_id":"S","action":"note","note":"before change X"}' | fwdctl run edit-snapshot
+```

@@ -66,9 +66,14 @@ One `state` item (upload) or two (attach/detach: before and read-back).
 
 ## Running this skill
 
-`echo '{"action":"upload","name":"sites.csv","file_type":"CSV","content":"site,owner\nnyc,ops\n"}' | fwdctl run edit-data-file` is the dry run;
-add `"apply": true` after it is accepted. `echo '{"action":"attach","name":"sites.csv","network_id":"<id>","apply":true}' | fwdctl run edit-data-file`
-attaches it.
+Run `fwdctl run edit-data-file --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-data-file < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"action":"upload","name":"sites.csv","file_type":"CSV","content":"site,owner\nnyc,ops\n"}' | fwdctl run edit-data-file
+echo '{"action":"attach","name":"sites.csv","network_id":"<id>","apply":true}' | fwdctl run edit-data-file
+```
 
 ## Large files and nightly replacement
 

@@ -57,5 +57,11 @@ actually running, so a threshold on it alone would never catch an orphaned queue
 
 ## Running this skill
 
-`echo '{}' | fwdctl run inspect-jobs` lists active jobs. `echo '{"state": "completed", "network_id": "4610"}' | fwdctl run inspect-jobs` lists one network's
-finished jobs.
+Run `fwdctl run inspect-jobs --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run inspect-jobs < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{}' | fwdctl run inspect-jobs
+echo '{"state": "completed", "network_id": "4610"}' | fwdctl run inspect-jobs
+```

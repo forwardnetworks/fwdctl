@@ -43,4 +43,11 @@ Status ok or unknown, a finding ("N credentials"), the rows, and limits that say
 
 ## Running this skill
 
-`echo '{"network_id":"<id>","area":"credentials"}' | fwdctl run inspect-platform`, or `echo '{"area":"webhooks"}' | fwdctl run inspect-platform` for an organization area.
+Run `fwdctl run inspect-platform --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run inspect-platform < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"network_id":"<id>","area":"credentials"}' | fwdctl run inspect-platform
+echo '{"area":"webhooks"}' | fwdctl run inspect-platform
+```

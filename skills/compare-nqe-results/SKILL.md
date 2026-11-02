@@ -14,7 +14,7 @@ metadata:
 ## Intent
 
 Answer "what changed in X between these two snapshots" as exact added, deleted and modified rows, for any data an
-NQE query can express. `analyze-blast-radius` counts differences by area; this skill shows the rows.
+NQE query can express. `verify-change` (view `impact`) counts differences by area; this skill shows the rows.
 
 ## Inputs
 
@@ -43,10 +43,8 @@ The envelope in `schema/skill-result.schema.json`.
 
 ## Next actions
 
-`analyze-blast-radius`, `verify-change`, `validate-nqe-query`.
+`verify-change` (view `impact`), `verify-change`, `validate-nqe-query`.
 
 ## Running this skill
 
-Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>"}' | fwdctl run compare-nqe-results`. It needs the
-`fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
-(`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass. Inputs are listed above and in `schema.json`.
+Run `fwdctl run compare-nqe-results --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run compare-nqe-results < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.

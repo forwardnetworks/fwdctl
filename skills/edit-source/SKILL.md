@@ -45,4 +45,10 @@ One `state` item: `object`, `action`, `mode`, `before`, `after` (secrets as `<se
 
 ## Running this skill
 
-`echo '{"network_id":"N","object":"credential","action":"create","definition":{"type":"CLI","name":"ops","username":"admin"},"secret_file":"/path/to/pw"}' | fwdctl run edit-source` is the dry run; add `"apply": true` after it is accepted.
+Run `fwdctl run edit-source --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-source < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"network_id":"N","object":"credential","action":"create","definition":{"type":"CLI","name":"ops","username":"admin"},"secret_file":"/path/to/pw"}' | fwdctl run edit-source
+```

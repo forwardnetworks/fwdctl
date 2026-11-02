@@ -63,4 +63,10 @@ One `state` item: the action, the target, before and after, whether confirm is n
 
 ## Running this skill
 
-`echo '{"action":"set_network_role","user":"alice","network_id":"N","role":"OPERATOR"}' | fwdctl run edit-access` is the dry run; add `"apply": true` after it is accepted.
+Run `fwdctl run edit-access --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-access < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"action":"set_network_role","user":"alice","network_id":"N","role":"OPERATOR"}' | fwdctl run edit-access
+```

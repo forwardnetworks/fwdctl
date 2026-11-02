@@ -48,4 +48,10 @@ One `state` item: `object`, `action`, `mode`, `before`, `after`.
 
 ## Running this skill
 
-`echo '{"area":"webhooks","action":"update","name":"ops","definition":{"enabled":false}}' | fwdctl run edit-platform` is the dry run; add `"apply": true` after it is accepted.
+Run `fwdctl run edit-platform --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-platform < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"area":"webhooks","action":"update","name":"ops","definition":{"enabled":false}}' | fwdctl run edit-platform
+```

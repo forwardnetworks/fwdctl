@@ -54,5 +54,10 @@ not carried over for added endpoints.
 
 ## Running this skill
 
-`echo '{"network_id": "<parent>", "create_workspace": {"name": "zz-test", "note": "temporary", "devices": ["<small device>"], "omissions": ["NQE_CHECKS"]}}' | fwdctl run edit-workspace`.
-Read `status`, `mode`, the `changes` and the `limits`; `unknown` is never a pass. Add `"apply": true` only after the dry run was accepted.
+Run `fwdctl run edit-workspace --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-workspace < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"network_id": "<parent>", "create_workspace": {"name": "zz-test", "note": "temporary", "devices": ["<small device>"], "omissions": ["NQE_CHECKS"]}}' | fwdctl run edit-workspace
+```

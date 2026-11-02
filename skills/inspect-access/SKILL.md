@@ -56,7 +56,14 @@ One `state` item per view: the session, the explanation, the users or the groups
 
 ## Running this skill
 
-`echo '{}' | fwdctl run inspect-access` is `me`. `echo '{"view":"explain","error":"Missing permission: NetworkOperation.EDIT_CHECKS","network_id":"N"}' | fwdctl run inspect-access`.
+Run `fwdctl run inspect-access --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run inspect-access < input.json`. Read `status` (`ok`, `failed`, `unknown`, `error`) and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{}' | fwdctl run inspect-access
+echo '{"view":"explain","error":"Missing permission: NetworkOperation.EDIT_CHECKS","network_id":"N"}' | fwdctl run inspect-access
+```
 
 ## Refusal wordings (any skill)
 

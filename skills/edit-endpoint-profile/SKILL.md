@@ -62,5 +62,10 @@ The envelope with `mode` and `changes`. Read the profiles and endpoints back wit
 
 ## Running this skill
 
-`echo '{"network_id": "<id>", "create_profile": {"name": "try_vendor", "copy_from": "SNMP-10", "add_oids": [{"name": "vendor_root", "oid": "1.3.6.1.4.1.10418.26"}]}, "assign": {"endpoints": ["<endpoint>"], "profile": "new"}}' | fwdctl run edit-endpoint-profile`.
-Read `status`, `mode`, the `changes` and the `limits`; `unknown` is never a pass. Add `"apply": true` only after the dry run was accepted.
+Run `fwdctl run edit-endpoint-profile --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-endpoint-profile < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"network_id": "<id>", "create_profile": {"name": "try_vendor", "copy_from": "SNMP-10", "add_oids": [{"name": "vendor_root", "oid": "1.3.6.1.4.1.10418.26"}]}, "assign": {"endpoints": ["<endpoint>"], "profile": "new"}}' | fwdctl run edit-endpoint-profile
+```

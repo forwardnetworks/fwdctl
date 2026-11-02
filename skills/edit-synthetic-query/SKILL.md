@@ -71,6 +71,10 @@ The envelope in `schema/skill-result.schema.json`, with `mode` and `changes`.
 
 ## Running this skill
 
-Give the inputs as one JSON object on stdin: `echo '{"network_id": "<id>", "kind": "l3vpn", "name": "dir", "query_id": "Q_..."}' | fwdctl run edit-synthetic-query`.
-It needs the `fwdctl` binary and `FORWARD_URL`, `FORWARD_USERNAME`, `FORWARD_PASSWORD` in the environment. Read `status`
-(`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass. Add `"apply": true` only after the dry run was accepted.
+Run `fwdctl run edit-synthetic-query --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-synthetic-query < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{"network_id": "<id>", "kind": "l3vpn", "name": "dir", "query_id": "Q_..."}' | fwdctl run edit-synthetic-query
+```

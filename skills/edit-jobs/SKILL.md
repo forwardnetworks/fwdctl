@@ -47,7 +47,7 @@ reported as canceled.
 
 ## Procedure
 
-1. `GET /api/jobs/active`. Filter to `network_id` (if given) and `longest_running_time_seconds >= older_than_minutes*60`.
+1. `GET /api/jobs/active`. Filter to `network_id` (if given) and jobs whose `longest_running_time_seconds >= older_than_minutes*60`, or, for a job at `running: 0` (queued the whole time), whose `duration_seconds` is at least that.
 2. Nothing matched: **ok**, "nothing is stuck".
 3. More than `limit` matched: cancel (or plan) only the first `limit`, and say so in the omission.
 4. Dry run: return the plan. `apply: true`: `DELETE /api/jobs/{cancelLink}` for each, per-job success or failure.
@@ -62,5 +62,12 @@ One `state` item: the threshold, how many matched, and the canceled/failed lists
 
 ## Running this skill
 
-`echo '{}' | fwdctl run edit-jobs` is the dry run (20-minute threshold, every network). `echo '{"apply": true}' | fwdctl run edit-jobs` cancels them.
-`echo '{"network_id": "4610", "older_than_minutes": 20, "apply": true}' | fwdctl run edit-jobs` scopes it to one network, for a scheduled check.
+Run `fwdctl run edit-jobs --help` for the inputs and an example, then give them as one JSON object on stdin: `fwdctl run edit-jobs < input.json`. It is a dry run unless the input has `"apply": true`; add that only after the dry run was accepted. Read `status` (`ok`, `failed`, `unknown`, `error`), `mode` and the `limits`; `unknown` is never a pass.
+
+## Examples
+
+```bash
+echo '{}' | fwdctl run edit-jobs
+echo '{"apply": true}' | fwdctl run edit-jobs
+echo '{"network_id": "4610", "older_than_minutes": 20, "apply": true}' | fwdctl run edit-jobs
+```
