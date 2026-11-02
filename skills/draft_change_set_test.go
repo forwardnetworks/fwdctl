@@ -110,7 +110,7 @@ func TestDraftChangeSetStagesFirewallRulesAndReadsTheRuleDiffBack(t *testing.T) 
 		},
 		"GET /api/networks/n1/change-sets/cs1/devices/fw1/security-rules-diff": fwdtest.Const(200, map[string]any{"rulebases": []any{}, "entries": []any{map[string]any{"diffType": "ADDED"}}}),
 	}
-	in := `{"network_id":"n1","name":"allow web","firewall_rules":[{"op":"add","device":"fw1","predecessor":"r0","rule":{"name":"allow-web","action":"ALLOW","enabled":true}}]`
+	in := `{"network_id":"n1","name":"allow web","firewall_rules":[{"op":"add","device":"fw1","predecessor":"r0","rule":{"name":"allow-web","action":"PERMIT","enabled":true}}]`
 	r, srv := mustRun(t, "edit-change-set", routes, in+`}`)
 	if r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(jsonOf(r), `"firewall_rules":1`) {
 		t.Fatalf("dry run: %s", jsonOf(r))
@@ -224,7 +224,7 @@ func TestDraftChangeSetStagesAWholeConfigAndEditsMovesAndDiscardsFirewallRules(t
 		"GET /api/networks/n1/change-sets/cs1/devices/fw1/security-rules-diff": fwdtest.Const(200, map[string]any{"rulebases": []any{}, "entries": []any{}}),
 	}
 	in := `{"network_id":"n1","name":"cfg","devices":[{"device":"r1","config":"hostname r1\ninterface lo0\n"}],"firewall_rules":[` +
-		`{"op":"edit","device":"fw1","rule_id":"rule1","rule":{"name":"allow-web","action":"ALLOW","enabled":true}},` +
+		`{"op":"edit","device":"fw1","rule_id":"rule1","rule":{"name":"allow-web","action":"PERMIT","enabled":true}},` +
 		`{"op":"move","device":"fw1","rule_id":"rule1","predecessor":"r0"},` +
 		`{"op":"discard","device":"fw1","rule_id":"rule2"}]`
 	r, srv := mustRun(t, "edit-change-set", routes, in+`}`)
@@ -490,5 +490,21 @@ func TestDraftChangeSetNotPredictedYetSaysWhereProcessingStands(t *testing.T) {
 	r, _ := mustRun(t, "edit-change-set", routes, dcIn+`,"apply":true,"run":true}`)
 	if !strings.Contains(r.Finding, "NOT predicted yet") || !strings.Contains(r.Finding, "stage CREATION COMPUTING") || !strings.Contains(r.Finding, "estimate 5m0s") {
 		t.Errorf("finding: %s", r.Finding)
+	}
+}
+
+// The six rule actions Forward models are accepted (any case), anything else is refused before Forward is called and the message names the six.
+func TestEditChangeSetFirewallRuleActionsAreTheSixForwardModels(t *testing.T) {
+	rule := func(a string) string {
+		return `{"network_id":"n1","name":"x","firewall_rules":[{"op":"add","device":"fw1","rule":{"name":"r","action":"` + a + `","enabled":true}}]}`
+	}
+	for _, a := range []string{"permit", "DENY", "DROP", "RESET_CLIENT", "RESET_CLIENT_AND_SERVER", "reset_server"} {
+		if _, _, err := runSkill(t, "edit-change-set", map[string]fwdtest.Handler{}, rule(a)); err != nil && strings.Contains(err.Error(), "not one Forward models") {
+			t.Errorf("%s is a modelled action: %v", a, err)
+		}
+	}
+	_, _, err := runSkill(t, "edit-change-set", map[string]fwdtest.Handler{}, rule("ALLOW"))
+	if err == nil || !strings.Contains(err.Error(), "RESET_CLIENT_AND_SERVER") {
+		t.Errorf("ALLOW is not a Forward action and the message names the six: %v", err)
 	}
 }
