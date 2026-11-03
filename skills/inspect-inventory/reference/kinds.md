@@ -51,3 +51,13 @@ The snapshot's network endpoints (Linux hosts, SNMP and HTTP devices) rolled up 
 
 Each device's OS support dates from Forward's lifecycle data (`platform.osSupport`), rolled up: support **ended**, **ending within 12 months**, **later**, and **no record**, by vendor and OS, with the oldest 25 devices past their last support date. A device with no record is its own count and is not "supported". Dates are as of the day it runs. Hardware (component) support dates are not included.
 
+## devices: management address and virtual contexts
+
+Each device row carries three fields from Forward's data model:
+
+- `Management IPs` (`device.platform.managementIps`): the addresses Forward records as the device's management addresses. It is a set, and a virtual context can show the same addresses as its chassis or HA peer.
+- `Collection IP` (`device.snapshotInfo.collectionIp`): the address Forward collected from. A virtual context (a partition of a physical device) carries its PARENT's collection IP, by Forward's own definition, so it is never a per-context address.
+- `Physical device` (`device.system.physicalName`): the containing physical device. It differs from the device name only for a virtual context (PAN-OS vsys, FortiGate VDOM, ASA context and the like): each context is its own device row, and `physicalName` names the chassis.
+
+What the model does not have: an interface type for management (`IfaceType` has no management value; `fwdctl context schema IfaceType` lists the real ones), a field marking a context as such other than `physicalName`, or a per-context management address distinct from the chassis. HA pairs are in `device.ha` (`mlagPeer`, `vpc`, `clusterHa.peerDevices`), not in the context fields. So for a context whose only addresses are shared with its chassis or peer, Forward gives no basis to pick an owner: say so rather than choose one.
+
