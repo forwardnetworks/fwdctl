@@ -479,8 +479,8 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	var limits []string
 	var err error
 	differ := -1
-	if in.View != "" && (in.View != "effective" || (in.Area != "collection_settings" && in.Area != "custom_command_groups")) {
-		return result.Result{}, fmt.Errorf("%w: view %q is not offered here; the only view is effective, for area collection_settings (every setting against its default) or custom_command_groups (the groups that apply to one device: name)", ErrInvalidInput, in.View)
+	if in.View != "" && !(in.View == "effective" && (in.Area == "collection_settings" || in.Area == "custom_command_groups")) && !(in.View == "overrides" && in.Area == "org_properties") {
+		return result.Result{}, fmt.Errorf("%w: view %q is not offered here; view effective is for area collection_settings (every setting against its default) or custom_command_groups (the groups that apply to one device: name), and view overrides for area org_properties (one property, name, across every organization)", ErrInvalidInput, in.View)
 	}
 	if in.View == "effective" && in.Area == "custom_command_groups" {
 		return effectiveCustomCommands(ctx, s, in.NetworkID, in.Name, cx)
@@ -491,6 +491,8 @@ func inspectPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 		rows, limits, err = orgLicenseRows(ctx, s, in.OrgID)
 	} else if in.Area == "license_usage" {
 		rows, limits, err = licenseUsageRows(ctx, s, in)
+	} else if in.Area == "org_properties" && in.View == "overrides" {
+		rows, limits, err = orgPropertyOverrides(ctx, s, in)
 	} else if in.Area == "org_properties" { // needs org_id, which the generic list signature does not carry
 		rows, limits, err = orgPropertyRows(ctx, s, in)
 	} else {
