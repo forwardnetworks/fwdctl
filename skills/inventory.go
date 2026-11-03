@@ -89,7 +89,10 @@ select {
   Model: device.platform.model,
   Type: device.platform.deviceType,
   Location: device.locationName,
-  Tags: device.tagNames
+  Tags: device.tagNames,
+  "Management IPs": device.platform.managementIps,
+  "Collection IP": device.snapshotInfo.collectionIp,
+  "Physical device": device.system.physicalName
 }
 order by Device asc natural;
 `
