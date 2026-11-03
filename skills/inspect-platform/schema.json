@@ -42,11 +42,13 @@
     "view": {
       "type": "string",
       "enum": [
-        "effective"
+        "effective",
+        "overrides"
       ],
-      "description": "collection_settings: every setting with Forward's default, set or default, and whether it differs, for the organization and each collector; custom_command_groups: the groups that apply to the one device named in name",
+      "description": "collection_settings: every setting with Forward's default, set or default, and whether it differs, for the organization and each collector; custom_command_groups: the groups that apply to the one device named in name; org_properties: overrides lists, for one property (name), the value every organization this login can see overrides it to (Forward support).",
       "x-values": {
-        "effective": "collection_settings: every setting against its default for the organization and each collector; custom_command_groups: the groups that apply to the device in name"
+        "effective": "collection_settings: every setting against its default for the organization and each collector; custom_command_groups: the groups that apply to the device in name",
+        "overrides": "org_properties: one property (name) and its override in every organization the login can see (Forward support)"
       }
     },
     "network_id": {
@@ -74,7 +76,7 @@
     "name": {
       "type": "string",
       "minLength": 1,
-      "description": "a substring of the object's name"
+      "description": "a substring of the object's name; org_properties: keeps the properties whose name contains it (case-insensitive); with view overrides, the one property to read across organizations"
     },
     "limit": {
       "type": "integer",

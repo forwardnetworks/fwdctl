@@ -253,3 +253,26 @@ func TestInspectPlatformLicensingForAnOrgPreviewsTheTierRule(t *testing.T) {
 		t.Errorf("the signed key was returned: %s", b)
 	}
 }
+
+// Area org_properties with view overrides reads ONE property across every organization the login can see (one read), and a row now says
+// whether the value differs from the built-in default when Forward's layers could be read.
+func TestPlatformOrgPropertyOverridesAcrossOrganizations(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/global-config/COPY_CREDENTIALS": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("view") != "overrides" {
+				return 400, map[string]any{"message": "want view=overrides"}
+			}
+			return 200, map[string]any{"o2": "ENABLED", "o1": "DISABLED"}
+		},
+	}
+	r, srv := mustRun(t, "inspect-platform", routes, `{"area":"org_properties","view":"overrides","name":"copy_credentials"}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || writes(srv) != 0 || !strings.Contains(b, `"org_id":"o1"`) || !strings.Contains(b, `"org_value":"ENABLED"`) || !strings.Contains(strings.Join(r.Limits, " "), "not listed has no override") {
+		t.Fatalf("overrides across organizations: %s %s", r.Status, b)
+	}
+	for _, in := range []string{`{"area":"org_properties","view":"overrides"}`, `{"area":"org_properties","view":"overrides","name":"x","org_id":"o1"}`, `{"area":"credentials","view":"overrides","name":"x"}`} {
+		if _, _, err := runSkill(t, "inspect-platform", routes, in); err == nil {
+			t.Errorf("%s must be refused", in)
+		}
+	}
+}
