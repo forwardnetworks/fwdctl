@@ -72,6 +72,19 @@ func createCheck(ctx context.Context, s *fwd.Session, in manageChecksInput, sn *
 	if in.Persistent {
 		scope = "persistent: every later snapshot of the network and every Predict run will inherit and evaluate it"
 	}
+	// a persistent intent check is screened the same way as a change set's: one Forward would accept and fail at run time is refused here
+	if ct, _ := in.Definition["checkType"].(string); ct != "" {
+		if f, ok := in.Definition["filters"]; ok {
+			raw, _ := json.Marshal(f)
+			canon := map[string]string{"reachability": forward.ChangeSetCheckReachability, "isolation": forward.ChangeSetCheckIsolation, "existential": forward.ChangeSetCheckExists}[strings.ToLower(ct)]
+			if canon != "" {
+				rp, _ := in.Definition["returnPath"].(string)
+				if err := checkIntentFilters(forward.ChangeSetCheckDefinition{CheckType: canon, Filters: raw, ReturnPath: rp}); err != nil {
+					return result.Result{}, err
+				}
+			}
+		}
+	}
 	if ct, _ := in.Definition["checkType"].(string); strings.EqualFold(ct, "Predefined") && in.Name != "" {
 		return result.Result{}, fmt.Errorf("%w: a predefined check is named by Forward from its predefinedCheckType, and Forward answers 400 when a name is sent: leave name out (note, tags and priority are allowed)", ErrInvalidInput)
 	}

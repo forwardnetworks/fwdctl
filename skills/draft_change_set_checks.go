@@ -50,6 +50,9 @@ func changeSetCheck(ctx context.Context, s *fwd.Session, in draftChangeSetInput,
 		if err := def.Validate(); err != nil {
 			return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 		}
+		if err := checkIntentFilters(def); err != nil {
+			return result.Result{}, err
+		}
 		if def.CheckType == forward.ChangeSetCheckNQE && strings.TrimSpace(l.Name) != "" {
 			return result.Result{}, fmt.Errorf("%w: an NQE check takes no name (Forward names it after the query)", ErrInvalidInput)
 		}
@@ -65,6 +68,9 @@ func changeSetCheck(ctx context.Context, s *fwd.Session, in draftChangeSetInput,
 				def = l.Check.definition()
 				if err := def.Validate(); err != nil {
 					return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+				}
+				if err := checkIntentFilters(def); err != nil {
+					return result.Result{}, err
 				}
 			}
 		}
@@ -198,4 +204,29 @@ func rawOf(c *forward.ChangeSetCheckResult) json.RawMessage {
 		return nil
 	}
 	return c.Definition
+}
+
+// checkIntentFilters runs an intent check's filters through the SDK's typed builders, which refuse what Forward accepts at staging and then
+// throws on when the check runs (a Reachability check with headers on its "to" end, a bypass or flowTypes): such a check would come back
+// only as ERROR. Filters the SDK cannot read (a key or filter type newer than it) are passed through unchanged, never refused for that.
+func checkIntentFilters(def forward.ChangeSetCheckDefinition) error {
+	if !isIntentCheck(def.CheckType) || len(def.Filters) == 0 {
+		return nil
+	}
+	q, err := forward.ParseIntentQuery(def.Filters)
+	if err != nil {
+		return nil
+	}
+	switch def.CheckType {
+	case forward.ChangeSetCheckReachability:
+		_, err = forward.NewReachabilityCheck("", q)
+	case forward.ChangeSetCheckIsolation:
+		_, err = forward.NewIsolationCheck("", q)
+	case forward.ChangeSetCheckExists:
+		_, err = forward.NewExistentialCheck("", q, def.ReturnPath)
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %v (Forward would accept this check and then fail it at run time, reporting only ERROR)", ErrInvalidInput, err)
+	}
+	return nil
 }
