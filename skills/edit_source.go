@@ -114,6 +114,8 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 		plan, err = planRapid7(ctx, s, in)
 	case "tenable_source":
 		plan, err = planTenable(ctx, s, in)
+	case "sase_setup":
+		plan, err = planSase(ctx, s, in)
 	case "controller_setup":
 		plan, err = planControllerSetup(ctx, s, in)
 	case "mist_setup":
@@ -123,7 +125,7 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 	case "discovery":
 		plan, err = planDiscovery(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, endpoint, schedule, cloud_account, rapid7_source, tenable_source, controller_setup, mist_setup, custom_command_group or discovery", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, endpoint, schedule, cloud_account, rapid7_source, tenable_source, sase_setup, controller_setup, mist_setup, custom_command_group or discovery", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err

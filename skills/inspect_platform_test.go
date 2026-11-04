@@ -276,3 +276,21 @@ func TestPlatformOrgPropertyOverridesAcrossOrganizations(t *testing.T) {
 		}
 	}
 }
+
+// Area sase_setups lists the setups with their latest test results and the connectors ZPA reported that no setup lists yet.
+func TestPlatformSaseSetupsListSetupsAndNewlyDiscoveredConnectors(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/sase-setups": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("view") == "newlyDiscovered" {
+				return 200, map[string]any{"discoveredAppConnectors": []any{map[string]any{"setupName": "zpa1", "connectorId": "c9", "name": "ac-9", "host": "192.0.2.9"}}}
+			}
+			return 200, []any{map[string]any{"type": "ZSCALER", "name": "zpa1", "baseUrl": "https://zpa.example.test", "appConnectorSetups": []any{},
+				"testResult": map[string]any{"savedAt": "2026-11-04T00:00:00Z", "discoveredConnectors": []any{map[string]any{"connectorId": "c9", "name": "ac-9", "host": "192.0.2.9"}}}}}
+		},
+	}
+	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"sase_setups","network_id":"n1"}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || !strings.Contains(b, `"row":"setup"`) || !strings.Contains(b, `"row":"newly_discovered"`) || !strings.Contains(b, "ac-9") {
+		t.Fatalf("sase setups: %s %s", r.Status, b)
+	}
+}
