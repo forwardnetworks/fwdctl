@@ -43,7 +43,7 @@
         "mist_setup": "a Juniper Mist cloud setup",
         "custom_command_group": "commands (or OIDs) a network adds to a device type's collection: create, update, disable, delete",
         "discovery": "device discovery: start or stop a scan (it probes the network), add what it found, schedule it",
-        "sase_setup": "a Zscaler SASE setup: action test only (the tenant, every App Connector, or one), which queues a collector test"
+        "sase_setup": "a Zscaler SASE setup (tenant, App Connectors, SCIM): create, update, delete (confirm = its name), or test (queues a collector test)"
       }
     },
     "action": {

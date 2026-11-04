@@ -70,10 +70,55 @@ func TestEditSourceSaseSetupTestQueuesAndSaysWhereTheResultLands(t *testing.T) {
 	if r.Status == result.Error || posted == "" || !strings.Contains(strings.Join(r.Limits, " "), "inspect-platform area sase_setups") {
 		t.Errorf("apply queues the test and says where the result lands: %s posted=%q %v", r.Status, posted, r.Limits)
 	}
-	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"sase_setup","action":"delete","definition":{"name":"zpa1"}}`); err == nil {
-		t.Errorf("delete is not offered for a SASE setup")
-	}
 	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"sase_setup","action":"test","definition":{"name":"zpa1","connectorId":"nope"}}`); err == nil {
 		t.Errorf("an unknown connector must be refused")
+	}
+}
+
+// SASE setup create, update and delete: dry runs send nothing; delete needs confirm = the setup's name; an update that replaces the connector list
+// carries a staying connector's saved test result over; a create that Forward answers 400 (no online collector) but saved is read back as created.
+func TestEditSourceSaseSetupCreateUpdateDelete(t *testing.T) {
+	var created, patched string
+	deleted := false
+	exists := false
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/sase-setups/zpa1": func(*http.Request, []byte) (int, any) {
+			if !exists || deleted {
+				return 404, map[string]any{"message": "not found"}
+			}
+			return 200, map[string]any{"type": "ZSCALER", "name": "zpa1", "baseUrl": "https://zpa.example.test",
+				"appConnectorSetups": []any{map[string]any{"connectorId": "c9", "name": "ac-9", "host": "192.0.2.9", "collectionType": "SSH", "testResult": map[string]any{"savedAt": "2026-11-03T00:00:00Z"}}}}
+		},
+		"POST /api/networks/n1/sase-setups": func(_ *http.Request, b []byte) (int, any) {
+			created, exists = string(b), true
+			return 400, map[string]any{"message": "no online collector"}
+		},
+		"PATCH /api/networks/n1/sase-setups/zpa1": func(_ *http.Request, b []byte) (int, any) {
+			patched = string(b)
+			return 200, map[string]any{"name": "zpa1"}
+		},
+		"DELETE /api/networks/n1/sase-setups/zpa1": func(*http.Request, []byte) (int, any) { deleted = true; return 204, nil },
+	}
+	create := `{"network_id":"n1","object":"sase_setup","action":"create","definition":{"name":"ZPA1","baseUrl":"https://zpa.example.test","httpCredId":"cred1"}`
+	if r, _ := mustRun(t, "edit-source", routes, create+`}`); r.Mode != result.ModeDryRun || created != "" {
+		t.Fatalf("create dry run: %s", jsonOf(r))
+	}
+	if r, _ := mustRun(t, "edit-source", routes, create+`,"apply":true}`); r.Status != result.OK || !strings.Contains(created, "zpa1") {
+		t.Errorf("a create Forward saved but answered 400 for (no collector) is read back as created: %s %s", r.Status, r.Finding)
+	}
+	upd := `{"network_id":"n1","object":"sase_setup","action":"update","name":"zpa1","definition":{"appConnectorSetups":[{"connectorId":"c9","name":"ac-9","host":"192.0.2.9","collectionType":"SSH"}]}`
+	if r, _ := mustRun(t, "edit-source", routes, upd+`}`); r.Mode != result.ModeDryRun || !strings.Contains(strings.Join(r.Limits, " "), "REPLACES the whole connector list") {
+		t.Errorf("update dry run must say the connector list is replaced: %v", r.Limits)
+	}
+	mustRun(t, "edit-source", routes, upd+`,"apply":true}`)
+	if !strings.Contains(patched, "2026-11-03") {
+		t.Errorf("the staying connector's saved test result must be carried over: %s", patched)
+	}
+	del := `{"network_id":"n1","object":"sase_setup","action":"delete","name":"zpa1","apply":true`
+	if _, _, err := runSkill(t, "edit-source", routes, del+`}`); deleted || err == nil || !strings.Contains(err.Error(), "confirm") {
+		t.Errorf("delete without confirm must be refused and delete nothing: %v", err)
+	}
+	if r, _ := mustRun(t, "edit-source", routes, del+`,"confirm":"zpa1"}`); !deleted || r.Status != result.OK {
+		t.Errorf("delete with confirm: %s %s", r.Status, r.Finding)
 	}
 }
