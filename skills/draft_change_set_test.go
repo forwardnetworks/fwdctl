@@ -542,3 +542,34 @@ func TestEditChangeSetCommitTakesAnAnalysisMode(t *testing.T) {
 		t.Errorf("an unknown analysis mode must be refused")
 	}
 }
+
+// A Reachability check with flowTypes (or headers on its "to" end, or a bypass) is refused before Forward is called: Forward would stage it and
+// then fail it at run time, reporting only ERROR. The same filters without flowTypes pass, and filters the SDK cannot read are passed through.
+func TestEditChangeSetRefusesAReachabilityCheckForwardWouldFailAtRunTime(t *testing.T) {
+	routes := map[string]fwdtest.Handler{"GET /api/networks/n1/change-sets": fwdtest.Const(200, []any{map[string]any{"id": "cs9", "name": "x", "snapshotId": "s1"}})}
+	const ends = `"from":{"location":{"type":"HostFilter","value":"web-1"}},"to":{"location":{"type":"HostFilter","value":"db-1"}}`
+	in := func(typ, filters string) string {
+		return `{"network_id":"n1","change_set_id":"cs9","lifecycle":{"op":"add_check","check":{"type":"` + typ + `","filters":{` + filters + `}}}}`
+	}
+	if _, _, err := runSkill(t, "edit-change-set", routes, in("Reachability", ends+`,"flowTypes":["VALID"]`)); err == nil || !strings.Contains(err.Error(), "run time") {
+		t.Errorf("a Reachability check with flowTypes must be refused with the reason: %v", err)
+	}
+	if r, _, err := runSkill(t, "edit-change-set", routes, in("Reachability", ends)); err != nil || r.Mode != result.ModeDryRun {
+		t.Errorf("the plain Reachability check is a normal dry run: %v %v", r.Status, err)
+	}
+	if _, _, err := runSkill(t, "edit-change-set", routes, in("Existential", ends+`,"flowTypes":["VALID"]`)); err != nil && strings.Contains(err.Error(), "run time") {
+		t.Errorf("an Existential check may carry flowTypes: %v", err)
+	}
+	if _, _, err := runSkill(t, "edit-change-set", routes, in("Reachability", ends+`,"someNewerKey":true`)); err != nil && strings.Contains(err.Error(), "run time") {
+		t.Errorf("filters the SDK cannot read are passed through, not refused: %v", err)
+	}
+}
+
+// A standing Reachability check with flowTypes is refused by edit-checks for the same reason.
+func TestEditChecksRefusesAReachabilityCheckForwardWouldFailAtRunTime(t *testing.T) {
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1")}
+	in := `{"network_id":"n1","action":"create","definition":{"checkType":"Reachability","filters":{"from":{"location":{"type":"HostFilter","value":"web-1"}},"to":{"location":{"type":"HostFilter","value":"db-1"}},"flowTypes":["VALID"]}}}`
+	if _, _, err := runSkill(t, "edit-checks", routes, in); err == nil || !strings.Contains(err.Error(), "run time") {
+		t.Errorf("a standing Reachability check with flowTypes must be refused: %v", err)
+	}
+}
