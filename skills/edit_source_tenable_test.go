@@ -51,3 +51,29 @@ func TestTenableSourceUpdateIsAPatchAndNeedsAChange(t *testing.T) {
 		t.Errorf("update must be a dry run that says it patches: %s", jsonOf(r))
 	}
 }
+
+// A SASE setup test queues a collector task: the dry run sends nothing, apply posts the test, and the result says to read it back later.
+func TestEditSourceSaseSetupTestQueuesAndSaysWhereTheResultLands(t *testing.T) {
+	posted := ""
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/sase-setups/zpa1": fwdtest.Const(200, map[string]any{"type": "ZSCALER", "name": "zpa1", "baseUrl": "https://zpa.example.test",
+			"appConnectorSetups": []any{map[string]any{"connectorId": "c9", "name": "ac-9", "host": "192.0.2.9", "collectionType": "SSH"}}, "testResult": map[string]any{"savedAt": "2026-11-03T00:00:00Z"}}),
+		"POST /api/networks/n1/sase-setups/zpa1":                   func(r *http.Request, _ []byte) (int, any) { posted = r.URL.RawQuery; return 204, nil },
+		"POST /api/networks/n1/sase-setups/zpa1/app-connectors/c9": func(r *http.Request, _ []byte) (int, any) { posted = "c9 " + r.URL.RawQuery; return 204, nil },
+	}
+	in := `{"network_id":"n1","object":"sase_setup","action":"test","definition":{"name":"zpa1"}`
+	r, _ := mustRun(t, "edit-source", routes, in+`}`)
+	if r.Mode != result.ModeDryRun || posted != "" || !strings.Contains(jsonOf(r), "2026-11-03") {
+		t.Fatalf("dry run: %s posted=%q", jsonOf(r), posted)
+	}
+	r, _ = mustRun(t, "edit-source", routes, in+`,"apply":true}`)
+	if r.Status == result.Error || posted == "" || !strings.Contains(strings.Join(r.Limits, " "), "inspect-platform area sase_setups") {
+		t.Errorf("apply queues the test and says where the result lands: %s posted=%q %v", r.Status, posted, r.Limits)
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"sase_setup","action":"delete","definition":{"name":"zpa1"}}`); err == nil {
+		t.Errorf("delete is not offered for a SASE setup")
+	}
+	if _, _, err := runSkill(t, "edit-source", routes, `{"network_id":"n1","object":"sase_setup","action":"test","definition":{"name":"zpa1","connectorId":"nope"}}`); err == nil {
+		t.Errorf("an unknown connector must be refused")
+	}
+}

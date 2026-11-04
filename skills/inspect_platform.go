@@ -126,6 +126,21 @@ var platformAreas = map[string]platformArea{
 		r, err := rowsOf(v, err)
 		return r, []string{"Forward does not return the next run time"}, err
 	}},
+	"sase_setups": {true, "Zscaler SASE setups (tenant, App Connectors, SCIM, latest test results, discovered connectors) and the connectors ZPA reported that no setup lists yet", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
+		v, _, err := s.Client.SaseSetups.List(ctx, n)
+		rows, err := rowsOf(v, err)
+		if err != nil {
+			return nil, nil, err
+		}
+		out := tag(rows, "row", "setup")
+		lim := []string{"a setup's testResult (and each connector's) is the LATEST test, with its savedAt time; a test only queues a collector task, so a new result appears later (edit-source object sase_setup action test starts one); an error is Forward's enum name", "discoveredConnectors on a setup's test result are the App Connectors ZPA reported in that test (only on a successful test); newly_discovered rows are the ones no setup lists yet"}
+		nd, _, nerr := s.Client.SaseSetups.NewlyDiscovered(ctx, n)
+		nrows, nerr := rowsOf(nd, nerr)
+		if lim = soft(lim, "newly discovered connectors", nerr); nerr == nil {
+			out = append(out, tag(nrows, "row", "newly_discovered")...)
+		}
+		return out, lim, nil
+	}},
 	"cloud_setups": {true, "cloud accounts, controller-managed and Mist setups (no keys)", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
 		var out []any
 		var lim []string

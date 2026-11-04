@@ -35,9 +35,13 @@
         "scorecard_trends",
         "custom_command_groups",
         "controller_setups",
-        "license_usage"
+        "license_usage",
+        "sase_setups"
       ],
-      "description": "what to read; the network areas (credentials, jump_servers, proxies, schedules, cloud_setups, locations, tag_definitions, custom_command_groups) need network_id, the others take none"
+      "description": "what to read; the network areas (credentials, jump_servers, proxies, schedules, cloud_setups, locations, tag_definitions, custom_command_groups) need network_id, the others take none",
+      "x-values": {
+        "sase_setups": "network: Zscaler SASE setups with their latest test results and discovered App Connectors, plus connectors ZPA reported that no setup lists yet"
+      }
     },
     "view": {
       "type": "string",
