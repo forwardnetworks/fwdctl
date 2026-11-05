@@ -77,7 +77,7 @@ func (p Processing) Line() string {
 	case p.Err != nil:
 		return "processing progress could not be read (" + p.Err.Error() + ")"
 	case p.NoStageStarted:
-		return "no stage has started yet (Forward has not begun processing it)"
+		return "no stage has started yet in Forward's stage list (a prediction can be PROCESSING, in protocol modeling, before it shows a stage)"
 	}
 	var parts []string
 	if p.Stage != "" {
