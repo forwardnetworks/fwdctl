@@ -58,7 +58,7 @@ func TestEveryRunnableSkillIsRoutedByPlanInvestigation(t *testing.T) {
 // A retired name keeps working: it must resolve to a real skill and describe it, so no design or harness is broken by a merge. An alias of a
 // runner resolves to a runner; an alias of a procedure (a playbook folded into a skill's guide) resolves to a procedure.
 func TestEveryAliasResolvesToARealRunnableSkill(t *testing.T) {
-	procedureAliases := map[string]bool{"plan-author-query": true, "plan-health-check": true, "plan-maintenance-window": true, "plan-segmentation-check": true}
+	procedureAliases := map[string]bool{"plan-author-query": true, "plan-health-check": true}
 	for old, to := range Aliases() {
 		m, err := Describe(old)
 		if err != nil || m.Name != to || (!m.Runnable && !procedureAliases[old]) {
