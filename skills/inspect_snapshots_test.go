@@ -225,3 +225,18 @@ func TestSnapshotListingExplainsUnprocessedAfterAnUpgrade(t *testing.T) {
 		t.Errorf("limits = %v", r.Limits)
 	}
 }
+
+// A prediction still being processed is listed only under its change set: inspect-snapshots adds it, so its state is visible while it runs.
+func TestInspectSnapshotsShowsAPredictionStillProcessing(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                          ready("s1"),
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, []any{map[string]any{"id": "cs9", "name": "x", "snapshotId": "s1"}}),
+		"GET /api/networks/n1/change-sets/cs9/predicted-snapshots": fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{
+			map[string]any{"id": "p7", "state": "PROCESSING", "parentSnapshotId": "s1", "createdAt": "2026-11-05T00:00:00Z"}}}),
+	}
+	r, _ := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1"}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || !strings.Contains(b, `"p7"`) || !strings.Contains(r.Finding, "1 predicted") {
+		t.Fatalf("the processing prediction must be listed: %s %s", r.Finding, b)
+	}
+}

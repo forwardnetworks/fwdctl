@@ -51,6 +51,25 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	if err != nil {
 		return result.Result{}, err
 	}
+	// a prediction still being processed is listed only under its change set, not with the network's snapshots: add those
+	var predictNote string
+	{
+		listed := map[string]bool{}
+		for _, sn := range all {
+			listed[string(sn.ID)] = true
+		}
+		const maxSets = 40
+		extra, read, total, perr := s.UnlistedPredictions(ctx, in.NetworkID, listed, maxSets)
+		switch {
+		case perr != nil && (forward.IsStatus(perr, 404) || forward.IsStatus(perr, 403)):
+			// no Predict here, or this login cannot read change sets: nothing to add and nothing worth saying
+		case perr != nil:
+			predictNote = "predictions still being processed are not in Forward's network snapshot list, and the change sets could not be read to find them (" + perr.Error() + ")"
+		case read < total:
+			predictNote = fmt.Sprintf("predictions still being processed are listed only under their change set: the first %d of %d change sets were read for them", read, total)
+		}
+		all = append(all, extra...)
+	}
 	if len(all) == 0 {
 		return result.NewUnknown(inspectSnapshotsName, "The network has no snapshots", cx,
 			[]string{"no snapshots: nothing has been collected or uploaded, or the network id is wrong"}, result.Options{NextActions: []string{"investigate-collection-failure"}})
@@ -103,6 +122,9 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		}
 	}
 	limits = append(limits, advancedLimits(ctx, s, win, byID, all)...)
+	if predictNote != "" {
+		limits = append(limits, predictNote)
+	}
 	for _, row := range win {
 		if row["state"] == "UNPROCESSED" {
 			limits = append(limits, staleAfterUpgradeLimit)
