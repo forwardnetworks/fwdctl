@@ -327,3 +327,34 @@ func TestDecoratorsReadCheckAndWrite(t *testing.T) {
 		t.Errorf("Forward's own decorators cannot be edited")
 	}
 }
+
+// Delete removes a user decorator only with its name as confirm, says it is not reversible and keeps the definition as the before; Forward's
+// own decorators are refused (they can only be disabled).
+func TestDecoratorDeleteNeedsConfirmAndRefusesForwardsOwn(t *testing.T) {
+	deleted := 0
+	list := func(*http.Request, []byte) (int, any) {
+		ds := []any{map[string]any{"name": "fwd-cves", "type": "DEVICE", "queryId": "Q_9", "metadataColNames": []any{}, "deviceColName": "device", "enabled": false, "systemManaged": true}}
+		if deleted == 0 {
+			ds = append(ds, map[string]any{"name": "dev-os", "type": "DEVICE", "queryId": "Q_1", "metadataColNames": []any{"os"}, "deviceColName": "deviceName", "enabled": true})
+		}
+		return 200, ds
+	}
+	routes := map[string]fwdtest.Handler{
+		"GET /api/decorators":           list,
+		"DELETE /api/decorators/dev-os": func(*http.Request, []byte) (int, any) { deleted++; return 204, nil },
+	}
+	r, srv := mustRun(t, "edit-platform", routes, `{"area":"decorators","action":"delete","name":"dev-os"}`)
+	if writes(srv) != 0 || r.Mode != result.ModeDryRun || r.Changes[0].Reversible || !strings.Contains(r.Finding, `confirm="dev-os"`) || !strings.Contains(jsonOf(r), "Q_1") {
+		t.Fatalf("dry run: %s %+v", r.Finding, r.Changes)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"decorators","action":"delete","name":"dev-os","apply":true}`); err == nil || deleted != 0 {
+		t.Fatalf("apply without confirm was accepted (deleted %d)", deleted)
+	}
+	r, _ = mustRun(t, "edit-platform", routes, `{"area":"decorators","action":"delete","name":"dev-os","apply":true,"confirm":"dev-os"}`)
+	if deleted != 1 || r.Status != result.OK {
+		t.Fatalf("apply with confirm: deleted %d, %s %s", deleted, r.Status, r.Finding)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"decorators","action":"delete","name":"fwd-cves","confirm":"fwd-cves","apply":true}`); err == nil || !strings.Contains(err.Error(), "only disabled") {
+		t.Errorf("Forward's own decorator must be refused: %v", err)
+	}
+}
