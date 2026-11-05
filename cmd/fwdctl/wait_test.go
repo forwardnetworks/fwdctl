@@ -326,3 +326,17 @@ func TestWaitShowsProgressWhileAdvancedReachabilityRunsAndAtItsEnd(t *testing.T)
 		t.Fatalf("code %d err:\n%s", code, e)
 	}
 }
+
+// A snapshot Forward does not list yet (a prediction still being created) is waited for, not a nil dereference: the wait says it is not
+// listed yet and goes on until it appears and is processed.
+func TestWaitASnapshotNotListedYetKeepsWaiting(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	seq := []*forward.Snapshot{nil, nil, snap("PROCESSING", "UNPROCESSED"), snap("PROCESSED", "UNPROCESSED")}
+	i := 0
+	get := func(context.Context) (*forward.Snapshot, error) { v := seq[min(i, len(seq)-1)]; i++; return v, nil }
+	var out, errb bytes.Buffer
+	code := waitForSnapshotOpts(context.Background(), get, nil, "p1", "PROCESSED", "", time.Hour, time.Minute, clk.sleep, clk.now, &out, &errb, waitOpts{})
+	if code != waitReached || !strings.Contains(errb.String(), "not listed yet") {
+		t.Fatalf("code %d, stderr %s", code, errb.String())
+	}
+}

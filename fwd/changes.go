@@ -497,3 +497,66 @@ func (s *Session) AISummarizeFailures(ctx context.Context, beforeID, afterID str
 	t, _, err := s.Client.AIAssist.SummarizeFailures(forward.WithoutRetry(ctx), beforeID, afterID)
 	return t, err
 }
+
+// FindPredictedSnapshot finds a predicted snapshot among the predictions of a change set (changeSetID, or every change set of the network when
+// empty) and returns it as a snapshot with the change set it belongs to. A prediction still being processed is listed there and not with the
+// network's snapshots. It returns nil when no change set lists it.
+func (s *Session) FindPredictedSnapshot(ctx context.Context, networkID, snapshotID, changeSetID string) (*forward.Snapshot, string, error) {
+	ids := []string{changeSetID}
+	if changeSetID == "" {
+		sets, _, err := s.Client.Predict.ListChangeSets(ctx, networkID)
+		if err != nil {
+			return nil, "", err
+		}
+		ids = ids[:0]
+		for _, c := range sets {
+			ids = append(ids, string(c.ID))
+		}
+	}
+	for _, cs := range ids {
+		list, _, err := s.Client.Predict.ListPredictedSnapshots(ctx, networkID, cs)
+		if err != nil {
+			if changeSetID != "" {
+				return nil, "", err
+			}
+			continue // one change set that cannot be read does not stop the search
+		}
+		for _, p := range list {
+			if string(p.ID) == snapshotID {
+				return &forward.Snapshot{ID: p.ID, State: p.State, AdvancedReachabilityState: p.AdvancedReachabilityState, CreatedAt: p.CreatedAt,
+					ProcessedAt: p.ProcessedAt, ProcessingTrigger: p.ProcessingTrigger, ParentSnapshotID: p.ParentSnapshotID, IsPredicted: true, IsDraft: p.IsDraft, Note: p.Note}, cs, nil
+			}
+		}
+	}
+	return nil, "", nil
+}
+
+// UnlistedPredictions finds predicted snapshots that the network's snapshot list leaves out (Forward lists a prediction still being
+// processed only under its change set), reading the predictions of at most maxSets change sets. It returns them, how many change sets were
+// read and how many exist.
+func (s *Session) UnlistedPredictions(ctx context.Context, networkID string, listed map[string]bool, maxSets int) ([]forward.Snapshot, int, int, error) {
+	sets, _, err := s.Client.Predict.ListChangeSets(ctx, networkID)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	var out []forward.Snapshot
+	read := 0
+	for _, c := range sets {
+		if read >= maxSets {
+			break
+		}
+		read++
+		list, _, err := s.Client.Predict.ListPredictedSnapshots(ctx, networkID, string(c.ID))
+		if err != nil {
+			continue
+		}
+		for _, p := range list {
+			if listed[string(p.ID)] {
+				continue
+			}
+			out = append(out, forward.Snapshot{ID: p.ID, State: p.State, AdvancedReachabilityState: p.AdvancedReachabilityState, CreatedAt: p.CreatedAt, ProcessedAt: p.ProcessedAt,
+				ProcessingTrigger: p.ProcessingTrigger, ParentSnapshotID: p.ParentSnapshotID, IsPredicted: true, IsDraft: p.IsDraft, Note: p.Note, ChangeSetID: c.ID})
+		}
+	}
+	return out, read, len(sets), nil
+}

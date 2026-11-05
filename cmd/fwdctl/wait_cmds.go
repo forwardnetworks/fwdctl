@@ -33,7 +33,7 @@ func (a *app) waitCmd() *cobra.Command {
 }
 
 func (a *app) waitSnapshotCmd() *cobra.Command {
-	var network, snapshot string
+	var network, snapshot, changeSet string
 	var advanced bool
 	var timeout, interval, every time.Duration
 	var follow bool
@@ -61,13 +61,25 @@ func (a *app) waitSnapshotCmd() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout+time.Minute)
 			defer cancel()
-			get := func(ctx context.Context) (*forward.Snapshot, error) { return sess.Snapshot(ctx, network, snapshot) }
+			get := func(ctx context.Context) (*forward.Snapshot, error) {
+				sn, err := sess.Snapshot(ctx, network, snapshot)
+				if err != nil || sn != nil {
+					return sn, err
+				}
+				// a predicted snapshot still processing is listed only under its change set's predictions
+				ps, cs, err := sess.FindPredictedSnapshot(ctx, network, snapshot, changeSet)
+				if ps != nil {
+					changeSet = cs // found once, read it there from now on
+				}
+				return ps, err
+			}
 			progress := func(ctx context.Context) string { return sess.Processing(ctx, snapshot).Line() }
 			return a.exit(waitForSnapshotOpts(ctx, get, progress, snapshot, want, wantAdv, timeout, interval, time.Sleep, time.Now, a.out, a.err, waitOpts{follow: follow, every: every}))
 		},
 	}
 	c.Flags().StringVar(&network, "network", "", "network id")
 	c.Flags().StringVar(&snapshot, "snapshot", "", "snapshot id")
+	c.Flags().StringVar(&changeSet, "change-set", "", "for a predicted snapshot: its change set (found by searching every change set of the network when not given)")
 	c.Flags().BoolVar(&advanced, "advanced-reachability", false, "also wait for the snapshot's advanced reachability to be PROCESSED")
 	c.Flags().DurationVar(&timeout, "timeout", 2*time.Hour, "give up after this long (exit 2)")
 	c.Flags().DurationVar(&interval, "interval", 30*time.Second, "time between polls (at least 1s)")
@@ -111,6 +123,10 @@ func waitForSnapshotOpts(ctx context.Context, get func(context.Context) (*forwar
 				fmt.Fprintf(stderr, "error: Forward could not be read for %d polls in a row; the wait stopped\n", errs)
 				return 3
 			}
+		} else if sn == nil {
+			// not in Forward's listing (yet): a predicted snapshot still being created is not listed with the network's snapshots
+			errs = 0
+			fmt.Fprintf(stderr, "%s snapshot %s: not listed yet (a prediction still being created is not in the network's snapshot list; --change-set finds it faster)\n", elapsed.Round(time.Second), id)
 		} else {
 			errs = 0
 			adv := sn.AdvancedReachabilityState

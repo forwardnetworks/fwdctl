@@ -908,6 +908,7 @@ Flags:
 
 ```
       --advanced-reachability   also wait for the snapshot's advanced reachability to be PROCESSED
+      --change-set string       for a predicted snapshot: its change set (found by searching every change set of the network when not given)
       --every duration          with --follow, the longest time between lines while nothing changes (default 1m0s)
       --follow                  stream progress on stdout like tail -f: a line when the state or stage changes and otherwise every --every, until the snapshot is PROCESSED, FAILED or the timeout; same exit codes and final JSON line; run it in the background and read the log
       --interval duration       time between polls (at least 1s) (default 30s)
