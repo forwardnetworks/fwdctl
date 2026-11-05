@@ -45,6 +45,35 @@ Every hop also carries, when Forward sends them: `behaviors` (Forward's labels f
 
 Not in Forward's path answer, so not here: the matched route or next hop per hop, the matched ACL rule line, NAT or other header rewrites, and the header space that survives each hop. Read them per hop instead: the forwarding entry with an NQE query on the hop's device and VRF (`networkInstances.afts.ipv4Unicast.ipEntries`, see `author-nqe-query`), and the rule with `inspect-device-files` search on the ACL name.
 
+The forwarding entry a hop used for the destination (a longest-prefix match: every entry whose prefix holds the address, then only the longest; take the VRF from the hop's `ingress_vrf` when present). Run with `fwdctl nqe run --network N --file Q.nqe`:
+
+    deviceName = "R1";
+    vrfName = "default";
+    dst = ipAddress("192.0.2.10");
+
+    foreach device in network.devices
+    where device.name == deviceName
+    foreach ni in device.networkInstances
+    where ni.name == vrfName && isPresent(ni.afts) && isPresent(ni.afts.ipv4Unicast)
+    let matches = (foreach e in ni.afts.ipv4Unicast.ipEntries where dst in e.prefix select e)
+    let best = max(foreach e in matches select length(e.prefix))
+    foreach e in matches
+    where length(e.prefix) == best
+    foreach nh in e.nextHops
+    select { device: device.name, vrf: ni.name, prefix: e.prefix, nextHop: nh.ipAddress, interface: nh.interfaceName, nhVrf: nh.vrf, type: nh.nextHopType, protocol: nh.originProtocol }
+
+One row per next hop (ECMP gives several); `type` DROP is a drop entry (often a default route to null); no rows means no entry covers the address (a blackhole) or the VRF name is wrong; an entry without next hops gives no row.
+
+To find a flow that crosses a firewall without guessing addresses, list the subnets on firewall interfaces and pick a source and destination in two of them:
+
+    foreach device in network.devices
+    where device.platform.deviceType == DeviceType.FIREWALL
+    foreach iface in device.interfaces
+    foreach sub in iface.subinterfaces
+    where isPresent(sub.ipv4)
+    foreach a in sub.ipv4.addresses
+    select { device: device.name, vendor: device.platform.vendor, interface: sub.name, ip: a.ip, prefixLength: a.prefixLength }
+
 
 ## A path that leaves the model (DELIVERED_TO_INCORRECT_LOCATION, incomplete_model)
 
