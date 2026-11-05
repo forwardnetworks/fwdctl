@@ -554,6 +554,7 @@ Examples:
 
 ```
   fwdctl nqe lint query.nqe
+  fwdctl nqe lint --file query.nqe
   cat query.nqe | fwdctl nqe lint -
 ```
 
@@ -563,6 +564,7 @@ Flags:
       --errors-only                        report errors only, no warnings or deprecations (the exit status is the same)
       --experimental fwdctl nqe features   turn on fwdctl's experimental lint rules (comma list or repeat; all). They only warn, and each rests on a measurement: see fwdctl nqe features. Also FORWARD_NQE_EXPERIMENTAL
       --features fwdctl nqe features       turn on NQE feature flags for the offline schema, as an organization with those org properties has them (comma list or repeat; names or Forward's org property names; all, none). Forward's defaults apply otherwise (the security-rules features that give device.securityPolicy are EXPERIMENTAL and off by default). List them with fwdctl nqe features. Also FORWARD_NQE_FEATURES, or a .fwdctl.json in the project: {"nqe": {"features": ["security-rules-panos"]}} (the nearest one above the working directory; flag, then environment, then file)
+      --file string                        the query file (the same as the FILE argument; - reads stdin), as nqe run takes it
       --modules string                     where "import" statements are read from (default: the directory of FILE)
       --org                                check against the organization's live schema instead of the embedded one (needs a login)
       --synthetic string                   check the file as a synthetic-device query of this kind (adjacent-network|internet|intranet|l2vpn|l3vpn)

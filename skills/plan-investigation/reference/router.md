@@ -52,6 +52,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Reprocess a snapshot: it failed to process, or its answers are stale after an upgrade | `edit-snapshot` (action reprocess) (dry run first) |
 | Internet exposure (internet_addressable) is unavailable, or a snapshot shows advanced reachability UNPROCESSED: start the analysis for that snapshot | `edit-advanced-reachability` (dry run first) |
 | Save an authored query to the library, or remove a saved one | `edit-nqe-query` (dry run first) |
+| Write an NQE decorator: extra columns shown on Forward's device, host, interface or path views (join columns, their types, a host decorator keyed by IP) | `author-nqe-query` (`reference/decorators.md`); the decorator itself is attached in the Forward UI |
 | Tag devices or take a tag off them | `edit-device-tags` (dry run first) |
 | Try a collection change away from production (a temporary workspace network, endpoints added to it, delete it afterwards) | `edit-workspace` (dry run first) |
 | What can this login do, why was I refused (403, permission denied), who has access, which users or groups exist | `inspect-access` |
