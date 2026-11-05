@@ -480,3 +480,25 @@ func TestReachabilitySaysWhenTheSourceWasLocatedFromRoutes(t *testing.T) {
 		t.Errorf("evidence: %v", r.Evidence[0].Detail)
 	}
 }
+
+// A saved result must stand on its own for a step-through viewer: each hop carries what Forward said it did (behaviors, VRFs, backfill), the hop
+// where the path ends says how it ended, and the first path's evidence echoes the flow that was searched.
+func TestReachabilityHopsCarryBehaviorsVRFsAndTheEndAndTheFlowIsEchoed(t *testing.T) {
+	r1 := hop("r1", "e0", "e1")
+	r1["behaviors"] = []any{"L3"}
+	r1["networkFunctions"] = map[string]any{"ingress": map[string]any{"l3": map[string]any{"vrf": "blue"}}, "egress": map[string]any{"l3": map[string]any{"vrf": "blue"}}}
+	r2 := hop("r2", "e2", "")
+	r2["backfilledFrom"] = "r1"
+	r, _ := reach(t, pathsBody(false, "EXACT", path("BLACKHOLE", "", r1, r2)), nil, reachIn)
+	hops := r.Evidence[0].Detail["hops"].([]map[string]any)
+	if b, _ := hops[0]["behaviors"].([]string); len(b) != 1 || b[0] != "L3" || hops[0]["ingress_vrf"] != "blue" || hops[0]["egress_vrf"] != "blue" {
+		t.Errorf("r1 = %v", hops[0])
+	}
+	if _, has := hops[0]["path_ends_here"]; has || hops[1]["path_ends_here"] != "BLACKHOLE" || hops[1]["backfilled_from"] != "r1" {
+		t.Errorf("end marker / backfill: %v / %v", hops[0], hops[1])
+	}
+	flow, _ := r.Evidence[0].Detail["flow"].(map[string]any)
+	if flow == nil || flow["dst_ip"] == nil || flow["intent"] == nil {
+		t.Errorf("flow not echoed: %v", r.Evidence[0].Detail)
+	}
+}

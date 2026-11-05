@@ -82,6 +82,18 @@ func addNetworkFunctions(row map[string]any, h fwd.Hop) {
 	if h.EgressZone != "" {
 		row["egress_zone"] = h.EgressZone
 	}
+	if len(h.Behaviors) > 0 {
+		row["behaviors"] = h.Behaviors
+	}
+	if h.BackfilledFrom != "" {
+		row["backfilled_from"] = h.BackfilledFrom
+	}
+	if h.IngressVRF != "" {
+		row["ingress_vrf"] = h.IngressVRF
+	}
+	if h.EgressVRF != "" {
+		row["egress_vrf"] = h.EgressVRF
+	}
 }
 
 func pathEvidence(p fwd.Path, class string, snapshot *string) result.Evidence {
@@ -117,6 +129,9 @@ func pathEvidence(p fwd.Path, class string, snapshot *string) result.Evidence {
 		}
 		row := map[string]any{"device": hopName(h), "ingress_interface": nilIfEmpty(h.IngressInterface), "egress_interface": nilIfEmpty(h.EgressInterface)}
 		addNetworkFunctions(row, h)
+		if i == len(p.Hops)-1 { // where the path ends, and how: delivered there or stopped there (no egress interface on a hop that stops it)
+			row["path_ends_here"] = p.ForwardingOutcome
+		}
 		hops = append(hops, row)
 	}
 	// the interface the packet entered the first hop by, so a caller can keep only the paths from the ingress it means without a second query
@@ -327,20 +342,32 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	if retLimit != "" {
 		limits = append(limits, retLimit)
 	}
+	// the first path's evidence also carries the flow searched and how Forward located its ends, so a saved result can be read (and the search repeated) on its own
+	annotateFirst := func(ev []result.Evidence) {
+		if len(ev) == 0 {
+			return
+		}
+		if retFlow != nil {
+			ev[0].Detail["return_flow"] = retFlow
+		}
+		if doc.SrcLocationType != "" {
+			ev[0].Detail["src_location_type"] = doc.SrcLocationType
+		}
+		if doc.DstLocationType != "" {
+			ev[0].Detail["dst_location_type"] = doc.DstLocationType
+		}
+		flow := map[string]any{"dst_ip": in.DstIP, "intent": in.Intent}
+		for k, v := range map[string]string{"src_ip": in.SrcIP, "from": in.From, "protocol": protocolText(in.Protocol), "src_port": in.SrcPort, "dst_port": in.DstPort} {
+			if v != "" {
+				flow[k] = v
+			}
+		}
+		ev[0].Detail["flow"] = flow
+	}
 	var omitted []result.Omission
 	pathEv := func() []result.Evidence {
 		ev := uniquePathEvidence(ordered, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, maxReachabilityEvidence)
-		if retFlow != nil && len(ev) > 0 {
-			ev[0].Detail["return_flow"] = retFlow
-		}
-		if len(ev) > 0 {
-			if doc.SrcLocationType != "" {
-				ev[0].Detail["src_location_type"] = doc.SrcLocationType
-			}
-			if doc.DstLocationType != "" {
-				ev[0].Detail["dst_location_type"] = doc.DstLocationType
-			}
-		}
+		annotateFirst(ev)
 		if distinct := countDistinct(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }); distinct > len(ev) {
 			omitted = append(omitted, result.Omission{What: "distinct paths", Total: distinct, Shown: len(ev), Next: "one path per outcome is shown first; narrow the flow (src_port, dst_port, from) to see the rest"})
 		}
@@ -368,17 +395,7 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 			limits = append(limits, "only incomplete or unclassified outcomes were returned")
 		}
 		ev := uniquePathEvidence(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, 3)
-		if retFlow != nil && len(ev) > 0 {
-			ev[0].Detail["return_flow"] = retFlow
-		}
-		if len(ev) > 0 {
-			if doc.SrcLocationType != "" {
-				ev[0].Detail["src_location_type"] = doc.SrcLocationType
-			}
-			if doc.DstLocationType != "" {
-				ev[0].Detail["dst_location_type"] = doc.DstLocationType
-			}
-		}
+		annotateFirst(ev)
 		finding, next := "The returned paths do not establish whether the flow is delivered", []string{"investigate-collection-failure"}
 		for _, c := range all {
 			if len(real) == 0 && c.path.ForwardingOutcome == "DELIVERED_TO_INCORRECT_LOCATION" {
