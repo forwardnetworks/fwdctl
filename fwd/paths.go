@@ -41,6 +41,12 @@ type Hop struct {
 	ACLs             []HopACL `json:"acls,omitempty"`
 	IngressZone      string   `json:"ingress_zone,omitempty"`
 	EgressZone       string   `json:"egress_zone,omitempty"`
+	// Behaviors are Forward's labels for what the hop did to the packet (as sent: such as L2, L3, PBR, NAT, ACL_PERMIT); BackfilledFrom names the device a hop was
+	// filled in from when Forward had to infer it. IngressVRF and EgressVRF come with the network functions.
+	Behaviors      []string `json:"behaviors,omitempty"`
+	BackfilledFrom string   `json:"backfilled_from,omitempty"`
+	IngressVRF     string   `json:"ingress_vrf,omitempty"`
+	EgressVRF      string   `json:"egress_vrf,omitempty"`
 }
 
 // HopACL is an ACL (or policy) Forward evaluated on a hop: its name, where it applied (INGRESS or EGRESS) and what it did.
@@ -175,12 +181,13 @@ func convertPaths(in []forward.NetworkPathResult) []Path {
 		path := Path{ForwardingOutcome: p.ForwardingOutcome, SecurityOutcome: p.SecurityOutcome}
 		for _, h := range p.Hops {
 			hop := Hop{Device: h.DeviceName, DisplayName: h.DisplayName,
-				IngressInterface: h.IngressInterface, EgressInterface: h.EgressInterface}
+				IngressInterface: h.IngressInterface, EgressInterface: h.EgressInterface, Behaviors: h.Behaviors, BackfilledFrom: h.BackfilledFrom}
 			if nf := h.NetworkFunctions; nf != nil {
 				for _, a := range nf.ACL {
 					hop.ACLs = append(hop.ACLs, HopACL{Name: a.Name, Context: a.Context, Action: a.Action})
 				}
 				hop.IngressZone, hop.EgressZone = nf.Ingress.SecurityZone, nf.Egress.SecurityZone
+				hop.IngressVRF, hop.EgressVRF = nf.Ingress.L3.VRF, nf.Egress.L3.VRF
 			}
 			path.Hops = append(path.Hops, hop)
 		}

@@ -41,6 +41,10 @@ Two paths that both cross one device share its fate: if that device fails, both 
 
 Each hop that Forward evaluated an ACL or a security zone on carries `acls` (each with a `name`, a `context` for where it applied, and an `action`) and `ingress_zone` / `egress_zone`. A hop with none has no such keys: that means Forward reported none for it, not that none exist. An ACL `action` of PERMIT on the last hop does not make the flow delivered: read the forwarding outcome too.
 
+Every hop also carries, when Forward sends them: `behaviors` (Forward's labels for what the hop did, such as `L3`), `ingress_vrf` / `egress_vrf`, and `backfilled_from` (the hop was inferred from that device). The last hop carries `path_ends_here` with the path's forwarding outcome (DELIVERED, DROPPED, BLACKHOLE...): a hop that stops the packet has no `egress_interface`. The first path's evidence echoes the `flow` searched (src_ip or from, dst_ip, protocol, ports, intent), so a saved result can be read and the search repeated on its own.
+
+Not in Forward's path answer, so not here: the matched route or next hop per hop, the matched ACL rule line, NAT or other header rewrites, and the header space that survives each hop. Read them per hop instead: the forwarding entry with an NQE query on the hop's device and VRF (`networkInstances.afts.ipv4Unicast.ipEntries`, see `author-nqe-query`), and the rule with `inspect-device-files` search on the ACL name.
+
 
 ## A path that leaves the model (DELIVERED_TO_INCORRECT_LOCATION, incomplete_model)
 

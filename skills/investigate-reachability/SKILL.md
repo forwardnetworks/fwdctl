@@ -39,7 +39,7 @@ What each input means, and the fields per object and action: `fwdctl run investi
    | UNREACHABLE | any | `unreachable` |
    | DELIVERED_TO_INCORRECT_LOCATION | any | `incomplete_model` (a device on the path was probably not collected) |
 
-4. Each hop that Forward evaluated an ACL or a security zone on carries them (`acls` with name, where applied and action; `ingress_zone`, `egress_zone`): they name the rule or zone pair behind a `security_denied`. A hop with none has no such keys: Forward reported none, which is not proof none exist.
+4. Each hop that Forward evaluated an ACL or a security zone on carries them (`acls` with name, where applied and action; `ingress_zone`, `egress_zone`): they name the rule or zone pair behind a `security_denied`. A hop with none has no such keys: Forward reported none, which is not proof none exist. Hops also carry `behaviors`, VRFs and, on the last, `path_ends_here` (reference/reading-paths.md).
 5. Report every distinct outcome: the evidence holds one path per classification first (delivered, failures, then `incomplete_model`), then more distinct paths up to 6; identical paths are counted (`identical_paths`), and the limits say how many paths of each classification Forward returned and how many distinct ones were not shown. Compare two networks by those counts, not by the first path.
 6. Decide:
    - Any `delivered` path: **ok**, deterministic.
