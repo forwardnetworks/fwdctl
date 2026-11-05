@@ -26,7 +26,7 @@ func (a *app) nqeCmd() *cobra.Command {
 }
 
 func (a *app) nqeLint() *cobra.Command {
-	var modules, synthetic string
+	var modules, synthetic, file string
 	var org, errorsOnly bool
 	c := &cobra.Command{
 		Use: "lint [FILE|-]", Short: "check a query: syntax, names, types, deprecations (offline, or against an organization's live schema with --org)",
@@ -41,7 +41,7 @@ func (a *app) nqeLint() *cobra.Command {
 			"The embedded schema is a release's; an organization on a newer build has fields it lacks (and may have dropped fields it still has). --org reads the organization's live schema\n" +
 			"(GET /api/nqe/schema; needs a login) and checks against that, so a field the organization no longer has is reported as an error, and the result says how many field paths the live schema\n" +
 			"has that the embedded one lacks and the reverse (schema.source, fields_added, fields_removed).",
-		Example: "  fwdctl nqe lint query.nqe\n  cat query.nqe | fwdctl nqe lint -",
+		Example: "  fwdctl nqe lint query.nqe\n  fwdctl nqe lint --file query.nqe\n  cat query.nqe | fwdctl nqe lint -",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tool := []string{}
@@ -74,9 +74,17 @@ func (a *app) nqeLint() *cobra.Command {
 			if errorsOnly {
 				tool = append(tool, "--errors-only")
 			}
+			// --file is accepted too, as nqe run takes it; it and a positional FILE together are refused
+			if file != "" {
+				if len(args) > 0 {
+					return a.fail("give the file once: as --file or as the argument, not both")
+				}
+				args = []string{file}
+			}
 			return a.exit(nqeTool(append(append(tool, "lint"), args...), a.in, a.out, a.err))
 		},
 	}
+	c.Flags().StringVar(&file, "file", "", "the query file (the same as the FILE argument; - reads stdin), as nqe run takes it")
 	addFeaturesFlag(c)
 	addExperimentalFlag(c)
 	c.Flags().StringVar(&modules, "modules", "", "where \"import\" statements are read from (default: the directory of FILE)")
