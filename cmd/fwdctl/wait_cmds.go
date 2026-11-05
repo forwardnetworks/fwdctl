@@ -26,7 +26,7 @@ func (a *app) waitCmd() *cobra.Command {
 		Example: "  fwdctl wait snapshot --network N --snapshot S --advanced-reachability --timeout 3h",
 		Long: "Blocks, printing one progress line per poll on stderr, until Forward reaches the state asked for. For the work that takes an hour (a reprocess after a backdate, advanced\n" +
 			"reachability) so it does not need a polling loop that dies with the session. Exit 0: reached. 1: Forward ended in a failed, canceled or timed-out state that will not change\n" +
-			"by itself. 2: --timeout passed first (the work may still be running; run the wait again). 3: an error (bad input, Forward unreachable for several polls in a row).",
+			"by itself. 2: --timeout passed first (the work may still be running; run the wait again), or the state was reached but the snapshot is not readable (status unknown). 3: an error (bad input, Forward unreachable for several polls in a row).",
 	})
 	c.AddCommand(a.waitSnapshotCmd(), a.waitCollectorCmd())
 	return c
@@ -42,7 +42,8 @@ func (a *app) waitSnapshotCmd() *cobra.Command {
 		Long: "While the snapshot is PROCESSING, or its advanced reachability is (the ADVANCED_REACHABILITY stage), each poll line also says where it stands: the stage computing now, its object count, elapsed time against Forward's own estimate, and when elapsed is past the estimate (a stuck run looks like this). With --follow the progress goes to stdout like tail -f (a line when the state or stage changes, otherwise every --every), so a background run can be read from its log.\n" +
 			"Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.\n" +
 			"A FAILED, CANCELED or TIMED_OUT state ends the wait with exit 1: Forward does not retry those by itself (a reprocess clears them). The last line on stdout is a JSON object: status,\n" +
-			"snapshot_id, state, advanced_reachability, waited_seconds. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.\n" +
+			"snapshot_id, state, advanced_reachability, waited_seconds. A predicted snapshot found only under its change set counts as reached only once the network's snapshot list holds it too (that is what NQE reads):\n" +
+			"a prediction whose record says PROCESSED but which the list never shows ends with status unknown, exit 2, after a few polls. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.\n" +
 			"Nothing here starts the work: a reprocess or advanced reachability that was never started (edit-snapshot, edit-advanced-reachability) stays UNPROCESSED, and the wait says so after a few polls and ends at --timeout.",
 		Example: "  fwdctl wait snapshot --network N --snapshot S --advanced-reachability --timeout 3h",
 		Args:    cobra.NoArgs,
@@ -61,8 +62,10 @@ func (a *app) waitSnapshotCmd() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout+time.Minute)
 			defer cancel()
+			listed := false // the last poll found the snapshot in the network's snapshot list (what NQE and the other reads use), not only in its change set's prediction record
 			get := func(ctx context.Context) (*forward.Snapshot, error) {
 				sn, err := sess.Snapshot(ctx, network, snapshot)
+				listed = sn != nil
 				if err != nil || sn != nil {
 					return sn, err
 				}
@@ -74,7 +77,12 @@ func (a *app) waitSnapshotCmd() *cobra.Command {
 				return ps, err
 			}
 			progress := func(ctx context.Context) string { return sess.Processing(ctx, snapshot).Line() }
-			return a.exit(waitForSnapshotOpts(ctx, get, progress, snapshot, want, wantAdv, timeout, interval, time.Sleep, time.Now, a.out, a.err, waitOpts{follow: follow, every: every}))
+			return a.exit(waitForSnapshotOpts(ctx, get, progress, snapshot, want, wantAdv, timeout, interval, time.Sleep, time.Now, a.out, a.err, waitOpts{follow: follow, every: every, unreadable: func(*forward.Snapshot) string {
+				if listed {
+					return ""
+				}
+				return "its change set's prediction record says PROCESSED, but the network's snapshot list does not hold it, so NQE and the other reads cannot use it yet"
+			}}))
 		},
 	}
 	c.Flags().StringVar(&network, "network", "", "network id")
@@ -99,7 +107,13 @@ func waitForSnapshot(ctx context.Context, get func(context.Context) (*forward.Sn
 type waitOpts struct {
 	follow bool
 	every  time.Duration
+	// unreadable, when set, is asked once the wanted state is reached: a non-empty reason means the snapshot cannot be read yet, so the wait keeps polling
+	// (a few polls, or until --timeout) and then ends unknown instead of ok
+	unreadable func(*forward.Snapshot) string
 }
+
+// unreadablePolls is how many polls a reached-but-unreadable snapshot gets to become readable before the wait ends unknown.
+const unreadablePolls = 3
 
 func waitForSnapshotOpts(ctx context.Context, get func(context.Context) (*forward.Snapshot, error), progress func(context.Context) string, id, want, wantAdv string, timeout, interval time.Duration,
 	sleep func(time.Duration), now func() time.Time, stdout, stderr io.Writer, opts waitOpts) int {
@@ -107,7 +121,7 @@ func waitForSnapshotOpts(ctx context.Context, get func(context.Context) (*forwar
 	lastProgress := "" // the last progress text seen while the work ran, printed when it ends badly
 	final := map[string]bool{"FAILED": true, "CANCELED": true, "TIMED_OUT": true}
 	start := now()
-	errs, idle := 0, 0
+	errs, idle, notReadable := 0, 0, 0
 	emit := func(status, state, adv string, code int) int {
 		b, _ := json.Marshal(map[string]any{"status": status, "snapshot_id": id, "state": state, "advanced_reachability": adv, "waited_seconds": int(now().Sub(start).Seconds())})
 		fmt.Fprintln(stdout, string(b))
@@ -173,7 +187,21 @@ func waitForSnapshotOpts(ctx context.Context, get func(context.Context) (*forwar
 				}
 				return emit("failed", sn.State, adv, waitFailed)
 			case sn.State == want && (wantAdv == "" || adv == wantAdv):
-				return emit("ok", sn.State, adv, waitReached)
+				why := ""
+				if opts.unreadable != nil {
+					why = opts.unreadable(sn)
+				}
+				if why == "" {
+					return emit("ok", sn.State, adv, waitReached)
+				}
+				notReadable++
+				fmt.Fprintf(stderr, "snapshot %s: %s\n", id, why)
+				if notReadable >= unreadablePolls || elapsed >= timeout {
+					fmt.Fprintf(stderr, "snapshot %s reached %s but is still not readable after %d polls; the wait ends unknown, not ok: check inspect-snapshots, and if Forward never lists it, recreate the prediction\n", id, sn.State, notReadable)
+					return emit("unknown", sn.State, adv, waitTimedOut)
+				}
+			default:
+				notReadable = 0
 			}
 		}
 		if elapsed >= timeout {

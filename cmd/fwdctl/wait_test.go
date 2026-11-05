@@ -340,3 +340,37 @@ func TestWaitASnapshotNotListedYetKeepsWaiting(t *testing.T) {
 		t.Fatalf("code %d, stderr %s", code, errb.String())
 	}
 }
+
+// A prediction whose change-set record says PROCESSED while the network's snapshot list never holds it is not readable (NQE says the snapshot
+// is not ready): the wait must not end ok. It polls a few times and ends unknown, exit 2.
+func TestWaitAPredictionProcessedButNeverListedEndsUnknown(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	get := func(context.Context) (*forward.Snapshot, error) { return snap("PROCESSED", "UNPROCESSED"), nil }
+	var out, errb bytes.Buffer
+	code := waitForSnapshotOpts(context.Background(), get, nil, "p1", "PROCESSED", "", time.Hour, time.Minute, clk.sleep, clk.now, &out, &errb,
+		waitOpts{unreadable: func(*forward.Snapshot) string { return "not in the snapshot list" }})
+	if code != waitTimedOut || !strings.Contains(out.String(), `"status":"unknown"`) || strings.Count(errb.String(), "not in the snapshot list") != unreadablePolls {
+		t.Fatalf("code %d, stdout %s, stderr %s", code, out.String(), errb.String())
+	}
+}
+
+// The same prediction that shows up in the snapshot list a poll later is reached: exit 0.
+func TestWaitAPredictionProcessedThenListedIsReached(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	polls := 0
+	get := func(context.Context) (*forward.Snapshot, error) {
+		polls++
+		return snap("PROCESSED", "UNPROCESSED"), nil
+	}
+	unreadable := func(*forward.Snapshot) string {
+		if polls < 2 {
+			return "not in the snapshot list"
+		}
+		return ""
+	}
+	var out, errb bytes.Buffer
+	code := waitForSnapshotOpts(context.Background(), get, nil, "p1", "PROCESSED", "", time.Hour, time.Minute, clk.sleep, clk.now, &out, &errb, waitOpts{unreadable: unreadable})
+	if code != waitReached || !strings.Contains(out.String(), `"status":"ok"`) {
+		t.Fatalf("code %d, stdout %s, stderr %s", code, out.String(), errb.String())
+	}
+}
