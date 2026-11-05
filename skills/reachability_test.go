@@ -509,6 +509,8 @@ func TestReachabilityExplainRoutesAddsEachHopsEntryAndChecksItAgainstThePath(t *
 	r1 := hop("r1", "e0", "e1")
 	r1["networkFunctions"] = map[string]any{"ingress": map[string]any{"l3": map[string]any{"vrf": "blue"}}}
 	r2 := hop("r2", "e2", "e3")
+	sw := hop("sw1", "e4", "et3") // routed to SVI vlan10, switched out member port et3
+	ar := hop("ar1", "e5", "e6")  // a recursive BGP next hop: no interface in the table
 	nh := func(ip, iface, typ string) map[string]any {
 		return map[string]any{"ip": ip, "interface": iface, "vrf": nil, "type": typ, "protocol": "BGP"}
 	}
@@ -518,9 +520,15 @@ func TestReachabilityExplainRoutesAddsEachHopsEntryAndChecksItAgainstThePath(t *
 		{"device": "r1", "vrf": "default", "interfaces": []any{"e9"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("", "", "DROP")}},
 		{"device": "r2", "vrf": "default", "interfaces": []any{"e2"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("", "", "DROP")}},
 		{"device": "r2", "vrf": "red", "interfaces": []any{"e2.5"}, "prefix": "10.0.1.0/24", "nextHops": []any{nh("192.0.2.9", "e3", "REMOTE")}},
+		{"device": "sw1", "vrf": "default", "interfaces": []any{"e4"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("192.0.2.17", "vlan10", "REMOTE")}},
+		{"device": "ar1", "vrf": "default", "interfaces": []any{"e5"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("192.0.2.33", "", "REMOTE")}},
 	}
-	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), pathsPath: fwdtest.Const(200, pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED", r1, r2))),
+	sviRows := []map[string]any{{"device": "sw1", "svi": "vlan10", "member": "et3"}}
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), pathsPath: fwdtest.Const(200, pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED", r1, r2, sw, ar))),
 		"POST /api/nqe": func(_ *http.Request, b []byte) (int, any) {
+			if strings.Contains(string(b), "hopSVIs") {
+				return 200, map[string]any{"items": sviRows, "totalNumItems": len(sviRows)}
+			}
 			asked = string(b)
 			return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
 		}}
@@ -533,6 +541,12 @@ func TestReachabilityExplainRoutesAddsEachHopsEntryAndChecksItAgainstThePath(t *
 	b, _ := hops[1]["route"].(map[string]any)
 	if b["vrf"] != "default" || b["vrf_from"] != "ingress_interface" || b["agrees_with_path"] != false || fmt.Sprint(b["vrfs_agreeing_with_path"]) != "[red]" {
 		t.Errorf("r2 route = %v", b)
+	}
+	if c, _ := hops[2]["route"].(map[string]any); c["path_check"] != "svi_member_port" || c["agrees_with_path"] != true {
+		t.Errorf("sw1 route (SVI then member port) = %v", c)
+	}
+	if c, _ := hops[3]["route"].(map[string]any); c["path_check"] != "not_comparable" || c["agrees_with_path"] != nil {
+		t.Errorf("ar1 route (recursive next hop) = %v", c)
 	}
 	if !strings.Contains(asked, "10.0.1.1") || !strings.Contains(asked, `"r1"`) || !strings.Contains(strings.Join(r.Limits, " "), "agrees_with_path false") {
 		t.Errorf("query params %s, limits %v", asked, r.Limits)

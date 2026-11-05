@@ -29,6 +29,20 @@ select {
              select { ip: nh.ipAddress, interface: nh.interfaceName, vrf: nh.vrf, type: nh.nextHopType, protocol: nh.originProtocol })
 };`
 
+// hopSVIsQuery reads each routed VLAN interface (SVI) of the named devices with the ports of its VLAN, so a route out an SVI can be checked against a
+// path that leaves by a member port (Forward routes to the SVI, then forwards at L2 out the port).
+const hopSVIsQuery = `@query
+hopSVIs(deviceNames: List<String>) =
+foreach device in network.devices
+where device.name in deviceNames
+foreach iface in device.interfaces
+where isPresent(iface.routedVlan) && isPresent(iface.routedVlan.vlan)
+foreach ni in device.networkInstances
+foreach v in ni.vlans
+where v.vlanId == iface.routedVlan.vlan
+foreach m in v.memberNames
+select { device: device.name, svi: iface.name, member: m };`
+
 // maxExplainDevices bounds the devices one explain reads.
 const maxExplainDevices = 60
 
@@ -70,6 +84,21 @@ func explainHopRoutes(ctx context.Context, s *fwd.Session, networkID, snapshotID
 		Parameters: map[string]any{"deviceNames": names, "dst": addr.String()}}, 20000)
 	if err != nil {
 		return []string{"explain routes: the forwarding tables could not be read (" + err.Error() + "); no routes were added"}
+	}
+	// device -> SVI -> member ports; a failed read only loses the SVI check
+	svis := map[string]map[string]map[string]bool{}
+	sviRows, _, _, sviErr := s.RunNQEAllWith(ctx, networkID, fwd.NQERun{Query: hopSVIsQuery, SnapshotID: snapshotID, Parameters: map[string]any{"deviceNames": names}}, 20000)
+	for _, r := range sviRows {
+		d, _ := r["device"].(string)
+		v, _ := r["svi"].(string)
+		m, _ := r["member"].(string)
+		if svis[d] == nil {
+			svis[d] = map[string]map[string]bool{}
+		}
+		if svis[d][v] == nil {
+			svis[d][v] = map[string]bool{}
+		}
+		svis[d][v][m] = true
 	}
 	byDevice := map[string]map[string]*hopVRF{}
 	for _, r := range rows {
@@ -151,13 +180,17 @@ func explainHopRoutes(ctx context.Context, s *fwd.Session, networkID, snapshotID
 			// check the entry against the interface Forward's path left by: a disagreement means the VRF (or the route: PBR, a leak) is not the one
 			// the packet used, so say so and name the VRFs whose entry does leave by it
 			if eg, _ := h["egress_interface"].(string); eg != "" && !strings.HasPrefix(eg, "self") {
-				agrees := leavesBy(pick.nextHops, eg)
-				route["agrees_with_path"] = agrees
-				if !agrees {
+				check := pathCheck(pick.nextHops, eg, svis[d])
+				route["path_check"] = check
+				switch check {
+				case "agrees", "svi_member_port":
+					route["agrees_with_path"] = true
+				case "disagrees":
+					route["agrees_with_path"] = false
 					disagree++
 					var others []string
 					for _, hv := range vrfs {
-						if hv != pick && leavesBy(hv.nextHops, eg) {
+						if c := pathCheck(hv.nextHops, eg, svis[d]); hv != pick && (c == "agrees" || c == "svi_member_port") {
 							others = append(others, hv.vrf)
 						}
 					}
@@ -175,6 +208,9 @@ func explainHopRoutes(ctx context.Context, s *fwd.Session, networkID, snapshotID
 	if disagree > 0 {
 		limits = append(limits, fmt.Sprintf("%d hop(s) have a route that does not leave by the interface Forward's path used (agrees_with_path false): the VRF was likely told wrong (Forward names a parent interface where the VRF holds a subinterface) or the packet was policy-routed or leaked; vrfs_agreeing_with_path lists the VRFs whose entry leaves by it", disagree))
 	}
+	if sviErr != nil {
+		limits = append(limits, "explain routes: the VLAN members of routed VLAN interfaces could not be read ("+sviErr.Error()+"), so a route out an SVI whose path leaves by a member port reads as disagreeing")
+	}
 	if truncated {
 		limits = append(limits, "explain routes: the forwarding-table read was cut short; some hops may lack a route")
 	}
@@ -184,16 +220,32 @@ func explainHopRoutes(ctx context.Context, s *fwd.Session, networkID, snapshotID
 	return limits
 }
 
-// leavesBy says whether any next hop leaves by the interface (or its parent, or a subinterface of it).
-func leavesBy(nextHops any, egress string) bool {
+// pathCheck compares a route's next hops with the interface Forward's path left by: "agrees" (a next hop leaves by it, its parent or a subinterface),
+// "svi_member_port" (a next hop is a routed VLAN interface whose VLAN holds that port: routed to the SVI, then switched out the port),
+// "not_comparable" (no next hop names an interface, as for a recursive BGP or OSPF next hop, and none drops), or "disagrees".
+func pathCheck(nextHops any, egress string, svis map[string]map[string]bool) string {
 	l, _ := nextHops.([]any)
 	parent := func(n string) string { return strings.SplitN(n, ".", 2)[0] }
+	named, drops := false, false
 	for _, x := range l {
 		nh, _ := x.(map[string]any)
+		if t, _ := nh["type"].(string); t == "DROP" {
+			drops = true
+		}
 		i, _ := nh["interface"].(string)
-		if i != "" && (i == egress || parent(i) == parent(egress)) {
-			return true
+		if i == "" {
+			continue
+		}
+		named = true
+		if i == egress || parent(i) == parent(egress) {
+			return "agrees"
+		}
+		if m := svis[i]; m[egress] || m[parent(egress)] {
+			return "svi_member_port"
 		}
 	}
-	return false
+	if !named && !drops {
+		return "not_comparable"
+	}
+	return "disagrees"
 }
