@@ -75,6 +75,10 @@ To find a flow that crosses a firewall without guessing addresses, list the subn
     select { device: device.name, vendor: device.platform.vendor, interface: sub.name, ip: a.ip, prefixLength: a.prefixLength }
 
 
+## Equal-cost branches (ECMP)
+
+One flow can take several different paths between the same two points with the same outcome. Such paths form a group: same classification, same first hop and ingress interface, same last hop. Each listed path of a group with two or more different paths carries `ecmp_group` (its number), `ecmp_branches` (how many different paths the group has, listed or not) and, for every branch but the first, `diverges_at` (the hop where it leaves the first branch: the device that chose another egress, or the first device that differs). The first path's evidence lists every group in `ecmp_groups` (classification, from, from_interface, to, branches, listed). Up to 16 different paths are listed (one per outcome first), and the rest are counted in `omitted`. Forward returns at most `max_results` paths and picks which ones by `intent`, so raise `max_results` to see more branches of a wide fan-out. A path repeated exactly is counted once as `identical_paths`.
+
 ## A path that leaves the model (DELIVERED_TO_INCORRECT_LOCATION, incomplete_model)
 
 This pair reads like a failure and is not one. The path ends where the model does not go on, for example out an overlay or tunnel toward something that is not modelled: it is neither a drop in the model nor a delivery. The finding says so (`The flow leaves the modelled network...`) and a matrix row carries `leaves_the_model`. Only a real test, such as Forward's connectivity test, shows whether the flow arrives. A flow that is DROPPED or BLACKHOLEd inside the model is the opposite: the model routes it nowhere, so a real connection from there is unlikely to work.

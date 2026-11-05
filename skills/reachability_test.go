@@ -555,3 +555,30 @@ func TestReachabilityExplainRoutesAddsEachHopsEntryAndChecksItAgainstThePath(t *
 		t.Errorf("an unknown explain value was accepted")
 	}
 }
+
+// Equal-cost branches of one flow (same outcome, same first hop, same last hop, different paths) are numbered as one group: each listed branch says
+// its group, how many branches the group has and where it parts from the first branch, and the first evidence lists the groups.
+func TestReachabilityGroupsECMPBranches(t *testing.T) {
+	a := path("DELIVERED", "PERMITTED", hop("r1", "e0", "e1"), hop("s1", "x1", "x2"), hop("r9", "e8", ""))
+	b := path("DELIVERED", "PERMITTED", hop("r1", "e0", "e2"), hop("s2", "y1", "y2"), hop("r9", "e9", ""))
+	c := path("DELIVERED", "PERMITTED", hop("r1", "e0", "e1"), hop("s1", "x1", "x3"), hop("s3", "z1", "z2"), hop("r9", "e7", ""))
+	r, _ := reach(t, pathsBody(false, "EXACT", a, b, b, c), nil, reachIn)
+	if len(r.Evidence) != 3 {
+		t.Fatalf("%d evidence, want the 3 different branches", len(r.Evidence))
+	}
+	for i, e := range r.Evidence {
+		if e.Detail["ecmp_group"] != 1 || e.Detail["ecmp_branches"] != 3 {
+			t.Errorf("branch %d: %v / %v", i, e.Detail["ecmp_group"], e.Detail["ecmp_branches"])
+		}
+	}
+	if _, has := r.Evidence[0].Detail["diverges_at"]; has || r.Evidence[1].Detail["diverges_at"] != "r1" || r.Evidence[2].Detail["diverges_at"] != "s1" {
+		t.Errorf("diverges_at: %v %v %v", r.Evidence[0].Detail["diverges_at"], r.Evidence[1].Detail["diverges_at"], r.Evidence[2].Detail["diverges_at"])
+	}
+	g, _ := r.Evidence[0].Detail["ecmp_groups"].([]map[string]any)
+	if len(g) != 1 || g[0]["branches"] != 3 || g[0]["listed"] != 3 || g[0]["from"] != "r1" || g[0]["to"] != "r9" {
+		t.Errorf("ecmp_groups = %v", g)
+	}
+	if r.Evidence[1].Detail["identical_paths"] != 2 {
+		t.Errorf("the repeated branch is counted once: %v", r.Evidence[1].Detail["identical_paths"])
+	}
+}
