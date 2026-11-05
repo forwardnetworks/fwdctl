@@ -52,9 +52,10 @@
     },
     "explain": {
       "enum": [
-        "routes"
+        "routes",
+        "trace"
       ],
-      "description": "routes: add to each hop the forwarding entry its device holds for dst_ip (longest prefix in the hop's VRF, from Forward's forwarding table: prefix, next hops, vrf_from); one flow only, IPv4"
+      "description": "routes: add to each hop the forwarding entry its device holds for dst_ip (longest prefix in the hop's VRF, from Forward's forwarding table: prefix, next hops, vrf_from). trace (PREVIEW, undocumented Forward routes): add Forward's GUI flow trace of each distinct path, unchanged (headers per hop, functions by layer with config line ranges, NAT rewrites, processing stages). One flow only, IPv4"
     },
     "intent": {
       "enum": [

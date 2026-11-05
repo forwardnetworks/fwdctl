@@ -610,3 +610,39 @@ func rowN(n int) []map[string]any {
 	}
 	return out
 }
+
+// View flows searches each flow on both snapshots and says what changed: the outcome, the paths only before and only after.
+func TestVerifyChangeFlowsComparesEachFlowOnBothSnapshots(t *testing.T) {
+	routes := changeFix{}.routes()
+	routes[pathsPath] = func(r *http.Request, _ []byte) (int, any) {
+		if r.URL.Query().Get("snapshotId") == "b1" {
+			return 200, pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED", hop("r1", "e0", "e1"), hop("r2", "e2", "")))
+		}
+		return 200, pathsBody(false, "EXACT", path("DROPPED", "", hop("r1", "e0", "")))
+	}
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"flows","before_snapshot_id":"b1","after_snapshot_id":"a1"`+flow("delivered")+`}`)
+	if r.Status != result.OK || len(r.Evidence) != 1 {
+		t.Fatalf("status %s, %d evidence: %s", r.Status, len(r.Evidence), r.Finding)
+	}
+	d := r.Evidence[0].Detail
+	diff, _ := d["diff"].(map[string]any)
+	ob, _ := diff["only_before"].([]map[string]any)
+	oa, _ := diff["only_after"].([]map[string]any)
+	if d["change"] != "outcome_changed" || d["verdict_before"] != "delivered" || d["verdict_after"] != "blocked" || len(ob) != 1 || len(oa) != 1 || diff["same"] != 0 {
+		t.Errorf("flow diff = %v", jsonOf(r))
+	}
+	if !strings.Contains(r.Finding, "1 changed outcome") {
+		t.Errorf("finding %q", r.Finding)
+	}
+	if _, _, err := runSkill(t, "verify-change", routes, `{"network_id":"n1","view":"flows","before_snapshot_id":"b1","after_snapshot_id":"a1"}`); err == nil {
+		t.Errorf("flows without expectations was accepted")
+	}
+}
+
+// expect is optional in the schema (view flows ignores it) but view verify still needs it, and refuses before any request.
+func TestVerifyChangeVerifyStillNeedsExpect(t *testing.T) {
+	_, srv, err := runSkill(t, "verify-change", changeFix{}.routes(), `{"network_id":"n1","before_snapshot_id":"b1","after_snapshot_id":"a1","expectations":[{"dst_ip":"10.0.1.1"}]}`)
+	if err == nil || !strings.Contains(err.Error(), "expect is required") || len(srv.Calls()) != 0 {
+		t.Fatalf("err %v, %d calls", err, len(srv.Calls()))
+	}
+}

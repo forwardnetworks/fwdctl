@@ -30,7 +30,8 @@
         "bgp_diffs",
         "objects",
         "checks",
-        "commands"
+        "commands",
+        "flows"
       ],
       "default": "verify",
       "x-values": {
@@ -49,7 +50,8 @@
         "bgp_diffs": "what a device's staged BGP advertisements change, in the draft or one saved version (commit_id)",
         "objects": "a firewall's address/service/application/url/user objects or zones in a change set (object_kind)",
         "checks": "the NQE checks added to a change set",
-        "commands": "the vendor OSes Predict models; with os (and protocol) the commands it accepts"
+        "commands": "the vendor OSes Predict models; with os (and protocol) the commands it accepts",
+        "flows": "each flow (expectations; expect ignored) searched on the before and the after snapshot: outcome changed, path changed or same, with the paths only before and only after"
       }
     },
     "run_predict": {
@@ -76,8 +78,7 @@
       "items": {
         "type": "object",
         "required": [
-          "dst_ip",
-          "expect"
+          "dst_ip"
         ],
         "additionalProperties": false,
         "properties": {

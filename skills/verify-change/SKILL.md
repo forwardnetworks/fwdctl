@@ -23,6 +23,7 @@ the intended outcome holds and whether anything regressed.
 - `verify` (default; `verdict` is the same): judge a change against checks and stated expectations: ok, failed or unknown.
 - `describe`: read a change set without touching it: its devices and what is staged on each (incl. BGP advertisements), predictions with `finished`, checks that got worse.
 - `impact`: measure how far a change reaches (differences, connectivity, routing; with a change set, each staged advertisement against its forwarding entry, `recorded_but_unchanged`). Never judges.
+- `flows`: each flow in `expectations` (`expect` not needed) searched on the before and the after snapshot (a change set's base and prediction, or two snapshots): `change` is `outcome_changed`, `path_changed` or `same`, with `verdict_before`/`verdict_after`, `diff` (`same` count, `only_before`, `only_after` paths), and both sides' paths in full. It compares and judges nothing.
 - `list`: the network's change sets with their predictions. `scope` and `preflight`: whether Predict fits (license, flags, platforms, features). `paths`: interesting paths on a snapshot.
 - `ai_summary`: Forward's own AI explains a difference in words (`summary_kind` config, impact, failure or overview). Opt-in, labelled generated text, works on any two snapshots; unknown when the organization has AI off. Use it beside `impact`, never instead of it.
 
