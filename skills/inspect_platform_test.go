@@ -294,3 +294,36 @@ func TestPlatformSaseSetupsListSetupsAndNewlyDiscoveredConnectors(t *testing.T) 
 		t.Fatalf("sase setups: %s %s", r.Status, b)
 	}
 }
+
+// NQE decorators: the read lists them and checks each user decorator's columns against its saved query; a create whose join column is
+// missing from the query's rows is refused before anything is sent, a right one is a dry run, and Forward's own can only be enabled.
+func TestDecoratorsReadCheckAndWrite(t *testing.T) {
+	put := ""
+	src := "foreach d in network.devices select {deviceName: d.name, os: d.platform.os}"
+	routes := map[string]fwdtest.Handler{
+		"GET /api/nqe/repos/org/commits/head":  fwdtest.Const(200, "c1"),
+		"GET /api/nqe/queries/Q_1/source-code": fwdtest.Const(200, map[string]any{"sourceCode": src, "queryId": "Q_1"}),
+		"GET /api/decorators": fwdtest.Const(200, []any{
+			map[string]any{"name": "fwd-cves", "type": "DEVICE", "queryId": "Q_9", "metadataColNames": []any{}, "deviceColName": "device", "enabled": false, "systemManaged": true},
+			map[string]any{"name": "dev-os", "type": "DEVICE", "queryId": "Q_1", "metadataColNames": []any{"os"}, "deviceColName": "deviceName", "enabled": true},
+			map[string]any{"name": "dev-bad", "type": "DEVICE", "queryId": "Q_1", "metadataColNames": []any{}, "deviceColName": "device", "enabled": true}}),
+		"PATCH /api/decorators/new-os": func(_ *http.Request, b []byte) (int, any) {
+			put = string(b)
+			return 200, map[string]any{"name": "new-os"}
+		},
+	}
+	r, _ := mustRun(t, "inspect-platform", routes, `{"area":"decorators"}`)
+	b := jsonOf(r)
+	if r.Status != result.OK || !strings.Contains(b, `"column_check":"ok"`) || !strings.Contains(b, "INVALID_DECORATOR expected") || !strings.Contains(b, "Forward's own decorator") {
+		t.Fatalf("decorators read: %s", b)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"decorators","action":"create","name":"new-os","definition":{"type":"DEVICE","queryId":"Q_1","deviceColName":"device"}}`); err == nil || !strings.Contains(err.Error(), "INVALID_DECORATOR") {
+		t.Errorf("a create whose join column is not in the rows must be refused: %v", err)
+	}
+	if r, _ := mustRun(t, "edit-platform", routes, `{"area":"decorators","action":"create","name":"new-os","definition":{"type":"DEVICE","queryId":"Q_1","deviceColName":"deviceName","metadataColNames":["os"]}}`); r.Mode != result.ModeDryRun || put != "" {
+		t.Errorf("a right create is a dry run that sends nothing: %s %q", r.Mode, put)
+	}
+	if _, _, err := runSkill(t, "edit-platform", routes, `{"area":"decorators","action":"update","name":"fwd-cves","definition":{"description":"x"}}`); err == nil {
+		t.Errorf("Forward's own decorators cannot be edited")
+	}
+}

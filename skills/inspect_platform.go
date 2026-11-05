@@ -126,6 +126,38 @@ var platformAreas = map[string]platformArea{
 		r, err := rowsOf(v, err)
 		return r, []string{"Forward does not return the next run time"}, err
 	}},
+	"decorators": {false, "NQE decorators: the extra columns Forward shows on device, host, interface and path views (query, join columns, enabled), each user decorator's columns checked against its query offline", func(ctx context.Context, s *fwd.Session, _ string) ([]any, []string, error) {
+		ds, _, err := s.Client.Decorators.List(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		var out []any
+		for i, d := range ds {
+			row, _ := fwd.Generic(d)
+			m, _ := row.(map[string]any)
+			if m == nil {
+				continue
+			}
+			switch {
+			case d.SystemManaged || systemManagedDecorator(d.Name):
+				m["column_check"] = "Forward's own decorator: not checked"
+			case i >= 40:
+				m["column_check"] = "not checked: only the first 40 decorators are checked in one read"
+			default:
+				cols := decoratorColumns(d.Type, d.DeviceColName, d.InterfaceColName, d.IPAddressColName, d.HostColName, d.MACAddressColName, d.MetadataColNames)
+				if problems, note := checkDecoratorQuery(ctx, s, d.Type, d.QueryID, cols); note != "" {
+					m["column_check"] = note
+				} else if len(problems) > 0 {
+					m["column_check"], m["column_problems"] = "INVALID_DECORATOR expected", problems
+				} else {
+					m["column_check"] = "ok"
+				}
+			}
+			out = append(out, m)
+		}
+		return out, []string{"saving a decorator never checks its query: Forward reports a bad one only when it decorates, per entity (INVALID_DECORATOR for a device, interface or host decorator whose join or shown column is missing or whose join column has the wrong type; INVALID_QUERY when the query does not compile). column_check reads each user decorator's saved query (head commit) and checks it offline the same way; the type check is gradual, so ok is not a run",
+			"a user decorator runs whether or not it is enabled; Forward's own (fwd-...) run only when enabled, and can be enabled or disabled, never edited or deleted (edit-platform area decorators)"}, nil
+	}},
 	"sase_setups": {true, "Zscaler SASE setups (tenant, App Connectors, SCIM, latest test results, discovered connectors) and the connectors ZPA reported that no setup lists yet", func(ctx context.Context, s *fwd.Session, n string) ([]any, []string, error) {
 		v, _, err := s.Client.SaseSetups.List(ctx, n)
 		rows, err := rowsOf(v, err)
