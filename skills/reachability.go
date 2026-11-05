@@ -31,6 +31,8 @@ type reachabilityInput struct {
 	ReturnPath bool `json:"return_path"`
 	// Intent is how Forward orders the paths it returns: PREFER_DELIVERED (default), PREFER_VIOLATIONS or VIOLATIONS_ONLY. With a result cap, the intent decides which paths exist in the answer at all.
 	Intent string `json:"intent"`
+	// Explain "routes" adds to each hop the forwarding entry its device holds for the destination (longest prefix match over Forward's forwarding table, in the hop's VRF).
+	Explain string `json:"explain"`
 }
 
 const maxReachabilityEvidence = 6
@@ -260,7 +262,15 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	default:
 		return result.Result{}, fmt.Errorf("%w: intent must be PREFER_DELIVERED, PREFER_VIOLATIONS or VIOLATIONS_ONLY", ErrInvalidInput)
 	}
+	switch in.Explain {
+	case "", "routes":
+	default:
+		return result.Result{}, fmt.Errorf("%w: explain takes \"routes\" (each hop's forwarding entry for the destination)", ErrInvalidInput)
+	}
 	mx, mgroups, merr := parseMatrix(raw, in) // validated before any request
+	if mx != nil && in.Explain != "" {
+		return result.Result{}, fmt.Errorf("%w: explain applies to one flow, not to a matrix", ErrInvalidInput)
+	}
 	if merr != nil {
 		return result.Result{}, merr
 	}
@@ -363,6 +373,9 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 			}
 		}
 		ev[0].Detail["flow"] = flow
+		if in.Explain == "routes" {
+			limits = append(limits, explainHopRoutes(ctx, s, in.NetworkID, fwd.SnapshotID(cx), in.DstIP, ev)...)
+		}
 	}
 	var omitted []result.Omission
 	pathEv := func() []result.Evidence {
@@ -374,6 +387,7 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		return ev
 	}
 	if delivered > 0 {
+		ev := pathEv()
 		finding := fmt.Sprintf("Traffic is delivered (%d of %d returned paths)", delivered, len(doc.Paths))
 		next := []string{"verify-change"}
 		if in.ReturnPath { // a both-ways question: the status is about both directions
@@ -382,13 +396,13 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 				finding += "; the return flow is delivered too"
 			case "blocked":
 				return result.Build(reachabilityName, result.Failed, finding+", but the return flow is blocked: the connection cannot complete both ways",
-					result.Deterministic, cx, result.Options{Limits: limits, Evidence: pathEv(), Omitted: omitted, NextActions: []string{"plan-troubleshoot-connectivity", "inspect-device-files"}})
+					result.Deterministic, cx, result.Options{Limits: limits, Evidence: ev, Omitted: omitted, NextActions: []string{"plan-troubleshoot-connectivity", "inspect-device-files"}})
 			default:
 				return result.NewUnknown(reachabilityName, finding+", but the return flow could not be determined, so the connection is not established as working both ways",
-					cx, limits, result.Options{Evidence: pathEv(), Omitted: omitted, NextActions: []string{"plan-troubleshoot-connectivity", "inspect-topology"}})
+					cx, limits, result.Options{Evidence: ev, Omitted: omitted, NextActions: []string{"plan-troubleshoot-connectivity", "inspect-topology"}})
 			}
 		}
-		return result.Build(reachabilityName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Evidence: pathEv(), Omitted: omitted, NextActions: next})
+		return result.Build(reachabilityName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Evidence: ev, Omitted: omitted, NextActions: next})
 	}
 	if len(real) == 0 || doc.TimedOut {
 		if len(real) == 0 {

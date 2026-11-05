@@ -502,3 +502,42 @@ func TestReachabilityHopsCarryBehaviorsVRFsAndTheEndAndTheFlowIsEchoed(t *testin
 		t.Errorf("flow not echoed: %v", r.Evidence[0].Detail)
 	}
 }
+
+// explain routes adds each hop's forwarding entry for the destination, in the hop's VRF, from one NQE read: the VRF is Forward's ingress_vrf, else
+// the VRF holding the ingress interface; an entry that does not leave by the interface Forward's path used is marked, with the VRFs that do.
+func TestReachabilityExplainRoutesAddsEachHopsEntryAndChecksItAgainstThePath(t *testing.T) {
+	r1 := hop("r1", "e0", "e1")
+	r1["networkFunctions"] = map[string]any{"ingress": map[string]any{"l3": map[string]any{"vrf": "blue"}}}
+	r2 := hop("r2", "e2", "e3")
+	nh := func(ip, iface, typ string) map[string]any {
+		return map[string]any{"ip": ip, "interface": iface, "vrf": nil, "type": typ, "protocol": "BGP"}
+	}
+	var asked string
+	rows := []map[string]any{
+		{"device": "r1", "vrf": "blue", "interfaces": []any{"e0"}, "prefix": "10.0.1.0/24", "nextHops": []any{nh("192.0.2.1", "e1", "REMOTE")}},
+		{"device": "r1", "vrf": "default", "interfaces": []any{"e9"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("", "", "DROP")}},
+		{"device": "r2", "vrf": "default", "interfaces": []any{"e2"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("", "", "DROP")}},
+		{"device": "r2", "vrf": "red", "interfaces": []any{"e2.5"}, "prefix": "10.0.1.0/24", "nextHops": []any{nh("192.0.2.9", "e3", "REMOTE")}},
+	}
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), pathsPath: fwdtest.Const(200, pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED", r1, r2))),
+		"POST /api/nqe": func(_ *http.Request, b []byte) (int, any) {
+			asked = string(b)
+			return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
+		}}
+	r, _ := mustRun(t, "investigate-reachability", routes, strings.TrimSuffix(reachIn, "}")+`,"explain":"routes"}`)
+	hops := r.Evidence[0].Detail["hops"].([]map[string]any)
+	a, _ := hops[0]["route"].(map[string]any)
+	if a["vrf"] != "blue" || a["vrf_from"] != "forward" || a["prefix"] != "10.0.1.0/24" || a["agrees_with_path"] != true {
+		t.Errorf("r1 route = %v", a)
+	}
+	b, _ := hops[1]["route"].(map[string]any)
+	if b["vrf"] != "default" || b["vrf_from"] != "ingress_interface" || b["agrees_with_path"] != false || fmt.Sprint(b["vrfs_agreeing_with_path"]) != "[red]" {
+		t.Errorf("r2 route = %v", b)
+	}
+	if !strings.Contains(asked, "10.0.1.1") || !strings.Contains(asked, `"r1"`) || !strings.Contains(strings.Join(r.Limits, " "), "agrees_with_path false") {
+		t.Errorf("query params %s, limits %v", asked, r.Limits)
+	}
+	if _, _, err := runSkill(t, "investigate-reachability", routes, strings.TrimSuffix(reachIn, "}")+`,"explain":"acls"}`); err == nil {
+		t.Errorf("an unknown explain value was accepted")
+	}
+}

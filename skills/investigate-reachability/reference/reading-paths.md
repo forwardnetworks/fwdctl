@@ -45,7 +45,7 @@ Every hop also carries, when Forward sends them: `behaviors` (Forward's labels f
 
 Not in Forward's path answer, so not here: the matched route or next hop per hop, the matched ACL rule line, NAT or other header rewrites, and the header space that survives each hop. Read them per hop instead: the forwarding entry with an NQE query on the hop's device and VRF (`networkInstances.afts.ipv4Unicast.ipEntries`, see `author-nqe-query`), and the rule with `inspect-device-files` search on the ACL name.
 
-The forwarding entry a hop used for the destination (a longest-prefix match: every entry whose prefix holds the address, then only the longest; take the VRF from the hop's `ingress_vrf` when present). Run with `fwdctl nqe run --network N --file Q.nqe`:
+`explain: routes` does this lookup for every hop in one read and checks it against the path (reference/inputs.md). By hand, the forwarding entry a hop used for the destination (a longest-prefix match: every entry whose prefix holds the address, then only the longest; take the VRF from the hop's `ingress_vrf` when present). Run with `fwdctl nqe run --network N --file Q.nqe`:
 
     deviceName = "R1";
     vrfName = "default";
