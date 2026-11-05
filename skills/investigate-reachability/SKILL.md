@@ -19,7 +19,7 @@ guessed from device output.
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run investigate-reachability --help`, or `reference/inputs.md`. For several endpoints at once, `matrix` searches every ordered pair in one bulk request and names the pairs whose two directions take different paths (asymmetric routing). `explain: routes` adds each hop's forwarding entry for the destination, checked against the path.
+What each input means, and the fields per object and action: `fwdctl run investigate-reachability --help`, or `reference/inputs.md`. For several endpoints at once, `matrix` searches every ordered pair in one bulk request and names the pairs whose two directions take different paths (asymmetric routing). `explain: routes` adds each hop's forwarding entry for the destination, checked against the path. Equal-cost branches are grouped (`ecmp_group`, `ecmp_branches`, `diverges_at`; reference/reading-paths.md).
 
 ## Procedure
 
@@ -40,7 +40,7 @@ What each input means, and the fields per object and action: `fwdctl run investi
    | DELIVERED_TO_INCORRECT_LOCATION | any | `incomplete_model` (a device on the path was probably not collected) |
 
 4. Each hop that Forward evaluated an ACL or a security zone on carries them (`acls` with name, where applied and action; `ingress_zone`, `egress_zone`): they name the rule or zone pair behind a `security_denied`. A hop with none has no such keys: Forward reported none, which is not proof none exist. Hops also carry `behaviors`, VRFs and, on the last, `path_ends_here` (reference/reading-paths.md).
-5. Report every distinct outcome: the evidence holds one path per classification first (delivered, failures, then `incomplete_model`), then more distinct paths up to 6; identical paths are counted (`identical_paths`), and the limits say how many paths of each classification Forward returned and how many distinct ones were not shown. Compare two networks by those counts, not by the first path.
+5. Report every distinct outcome: the evidence holds one path per classification first (delivered, failures, then `incomplete_model`), then more distinct paths up to 16; identical paths are counted (`identical_paths`), and the limits say how many paths of each classification Forward returned and how many distinct ones were not shown. Compare two networks by those counts, not by the first path.
 6. Decide:
    - Any `delivered` path: **ok**, deterministic.
    - No `delivered` path and the search completed: **failed**, with the classification of

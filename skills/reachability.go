@@ -35,7 +35,7 @@ type reachabilityInput struct {
 	Explain string `json:"explain"`
 }
 
-const maxReachabilityEvidence = 6
+const maxReachabilityEvidence = 16 // enough for every branch of a few ECMP groups; the rest are counted in omitted
 
 var reachabilityExplain = map[string]string{
 	"security_denied": "Traffic reaches the destination but is denied by security policy",
@@ -187,7 +187,84 @@ func uniquePathEvidence[T any](items []T, path func(T) fwd.Path, class func(T) s
 			ev[i].Detail["identical_paths"] = n
 		}
 	}
+	markECMP(items, path, class, ev, index)
 	return ev
+}
+
+// ecmpKey groups different paths that one flow can take between the same two points with the same outcome: the classification, the first hop
+// (device and ingress interface) and the last hop device. Two or more different paths in a group are equal-cost (or otherwise parallel) branches.
+func ecmpKey(p fwd.Path, class string) string {
+	if len(p.Hops) == 0 {
+		return class
+	}
+	f, l := p.Hops[0], p.Hops[len(p.Hops)-1]
+	return class + "|" + hopName(f) + ">" + f.IngressInterface + "|" + hopName(l)
+}
+
+// markECMP numbers the branch groups: each listed path of a group with several different paths gets ecmp_group, ecmp_branches (different paths in
+// the group, listed or not) and, but for the group's first path, diverges_at (the hop where it parts from that first path), and the first evidence lists every group.
+func markECMP[T any](items []T, path func(T) fwd.Path, class func(T) string, ev []result.Evidence, index map[string]int) {
+	type group struct {
+		first  fwd.Path
+		sigs   map[string]bool
+		listed int
+		class  string
+	}
+	groups := map[string]*group{}
+	var order []string
+	for _, it := range items {
+		p, c := path(it), class(it)
+		k := ecmpKey(p, c)
+		g := groups[k]
+		if g == nil {
+			g = &group{first: p, sigs: map[string]bool{}, class: c}
+			groups[k] = g
+			order = append(order, k)
+		}
+		g.sigs[pathSignature(p, c)] = true
+	}
+	var list []map[string]any
+	n := 0
+	for _, k := range order {
+		g := groups[k]
+		if len(g.sigs) < 2 {
+			continue
+		}
+		n++
+		for _, it := range items {
+			p, c := path(it), class(it)
+			sig := pathSignature(p, c)
+			i, shown := index[sig]
+			if !shown || ecmpKey(p, c) != k || ev[i].Detail["ecmp_group"] != nil {
+				continue
+			}
+			ev[i].Detail["ecmp_group"] = n
+			ev[i].Detail["ecmp_branches"] = len(g.sigs)
+			if common := sharedPrefix(g.first, p); common < len(p.Hops) && sig != pathSignature(g.first, g.class) {
+				ev[i].Detail["diverges_at"] = hopName(p.Hops[common]) // where this branch leaves the group's first path (same device, other egress; or a different device)
+			}
+			g.listed++
+		}
+		f, l := g.first.Hops[0], g.first.Hops[len(g.first.Hops)-1]
+		list = append(list, map[string]any{"ecmp_group": n, "classification": g.class, "from": hopName(f), "from_interface": nilIfEmpty(f.IngressInterface), "to": hopName(l),
+			"branches": len(g.sigs), "listed": g.listed})
+	}
+	if len(list) > 0 && len(ev) > 0 {
+		ev[0].Detail["ecmp_groups"] = list
+	}
+}
+
+// sharedPrefix is how many leading hops two paths share (same device and interfaces).
+func sharedPrefix(a, b fwd.Path) int {
+	n := 0
+	for n < len(a.Hops) && n < len(b.Hops) {
+		x, y := a.Hops[n], b.Hops[n]
+		if hopName(x) != hopName(y) || x.IngressInterface != y.IngressInterface || x.EgressInterface != y.EgressInterface {
+			break
+		}
+		n++
+	}
+	return n
 }
 
 const missingPeerSuffix = "-missing-peer"
