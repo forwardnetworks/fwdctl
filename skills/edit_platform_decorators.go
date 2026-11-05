@@ -97,8 +97,8 @@ func planDecorator(ctx context.Context, s *fwd.Session, in editPlatformInput) (*
 			DeviceColName: def.DeviceColName, InterfaceColName: def.InterfaceColName, IPAddressColName: def.IPAddressColName, HostColName: def.HostColName,
 			MACAddressColName: def.MACAddressColName, HopIndexColName: def.HopIndexColName, DirectionColName: def.DirectionColName}
 		return &networkPlan{target: fmt.Sprintf("create %s decorator %q on query %s", typ, name, def.QueryID), action: "create_decorator", after: put, reversible: true,
-			undo:   "disable it (update with enabled false); delete is not offered here",
-			limits: append(limits, "a new decorator is created disabled unless enabled is given; a user decorator runs whether or not it is enabled"),
+			undo:   "to remove one: disable it (action disable), or delete it in the Forward UI (NQE > Decorators); delete is not offered here",
+			limits: append(limits, "a new decorator is created disabled unless enabled is given", "enabled decides whether the Forward views use it: the UI asks only for enabled decorators of the entity type, so a disabled one is stored but never computed by page loads; an API decorate call that names it runs it anyway (only Forward's own fwd- decorators are skipped there when disabled)", "cost and scope: a device, host or interface decorator's query runs once for the WHOLE snapshot (not per device or per page); Forward indexes the result and reuses it on every page, and rebuilds it for a new snapshot, a new commit of the query, or a change to the decorator's columns; Forward gives the query 5 minutes. A large result is held whole: size it first with `fwdctl nqe run --query-id <id> --network <n> --limit 1 --meta -` (the meta's total is the row count) and narrow the query to the rows that matter", "metadataColNames empty (or left out) means every column of the query's rows is shown"),
 			do: func(ctx context.Context) error {
 				_, _, err := s.Client.Decorators.Put(ctx, name, put)
 				return err
@@ -133,7 +133,7 @@ func planDecorator(ctx context.Context, s *fwd.Session, in editPlatformInput) (*
 		before, _ := fwd.Generic(*cur)
 		return &networkPlan{target: fmt.Sprintf("change decorator %q", cur.Name), action: "update_decorator", before: before, after: put, reversible: true,
 			undo:   "update again with the before values",
-			limits: append(limits, "only the fields given change; the description and a host decorator's optional columns cannot be cleared here, only set to another value"),
+			limits: append(limits, "only the fields given change; the description and a host decorator's optional columns cannot be cleared here, only set to another value", "cost and scope: a device, host or interface decorator's query runs once for the WHOLE snapshot (not per device or per page); Forward indexes the result and reuses it on every page, and rebuilds it for a new snapshot, a new commit of the query, or a change to the decorator's columns; Forward gives the query 5 minutes. A large result is held whole: size it first with `fwdctl nqe run --query-id <id> --network <n> --limit 1 --meta -` (the meta's total is the row count) and narrow the query to the rows that matter", "to remove one: disable it (action disable), or delete it in the Forward UI (NQE > Decorators); delete is not offered here"),
 			do: func(ctx context.Context) error {
 				_, _, err := s.Client.Decorators.Put(ctx, cur.Name, put)
 				return err
@@ -148,7 +148,7 @@ func planDecorator(ctx context.Context, s *fwd.Session, in editPlatformInput) (*
 			return &networkPlan{target: fmt.Sprintf("%s decorator %q", in.Action, cur.Name), action: in.Action + "_decorator", noop: fmt.Sprintf("decorator %q is already %sd", cur.Name, in.Action)}, nil
 		}
 		managed := cur.SystemManaged || systemManagedDecorator(cur.Name)
-		lim := []string{"a user decorator runs whether or not it is enabled (Forward's decorate call runs it when named); enabled is what the Forward views show"}
+		lim := []string{"enabled decides whether the Forward views use it: the UI asks only for enabled decorators of the entity type, so a disabled one is stored but never computed by page loads; an API decorate call that names it runs it anyway (only Forward's own fwd- decorators are skipped there when disabled)", "cost and scope: a device, host or interface decorator's query runs once for the WHOLE snapshot (not per device or per page); Forward indexes the result and reuses it on every page, and rebuilds it for a new snapshot, a new commit of the query, or a change to the decorator's columns; Forward gives the query 5 minutes. A large result is held whole: size it first with `fwdctl nqe run --query-id <id> --network <n> --limit 1 --meta -` (the meta's total is the row count) and narrow the query to the rows that matter"}
 		if managed {
 			lim = []string{"Forward's own decorators run only when enabled"}
 		}
