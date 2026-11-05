@@ -53,6 +53,7 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	}
 	// a prediction still being processed is listed only under its change set, not with the network's snapshots: add those
 	var predictNote string
+	unlisted := map[string]bool{} // predictions found only under their change set, not in the network's snapshot list (which NQE and the other reads use)
 	{
 		listed := map[string]bool{}
 		for _, sn := range all {
@@ -68,6 +69,9 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		case read < total:
 			predictNote = fmt.Sprintf("predictions still being processed are listed only under their change set: the first %d of %d change sets were read for them", read, total)
 		}
+		for _, p := range extra {
+			unlisted[string(p.ID)] = true
+		}
 		all = append(all, extra...)
 	}
 	if len(all) == 0 {
@@ -75,7 +79,7 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			[]string{"no snapshots: nothing has been collected or uploaded, or the network id is wrong"}, result.Options{NextActions: []string{"investigate-collection-failure"}})
 	}
 	if in.SnapshotID != "" {
-		return snapshotDetail(ctx, s, in, all, cx)
+		return snapshotDetail(ctx, s, in, all, unlisted, cx)
 	}
 	// newest processed collected snapshot (what the other skills read by default), and newest of any kind
 	sort.SliceStable(all, func(i, j int) bool { return snapCreated(all[i]) > snapCreated(all[j]) })
@@ -142,11 +146,17 @@ func inspectSnapshots(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "listSnapshots", nil, detail, finding)}})
 }
 
-func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInput, all []forward.Snapshot, cx result.Context) (result.Result, error) {
+func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInput, all []forward.Snapshot, unlisted map[string]bool, cx result.Context) (result.Result, error) {
 	var sn *forward.Snapshot
 	for i := range all {
 		if string(all[i].ID) == in.SnapshotID {
 			sn = &all[i]
+		}
+	}
+	if sn == nil { // the list above reads the first change sets only: search every change set for this one id
+		if p, cs, err := s.FindPredictedSnapshot(ctx, in.NetworkID, in.SnapshotID, ""); err == nil && p != nil {
+			p.ChangeSetID = forward.Identifier(cs)
+			sn, unlisted[in.SnapshotID] = p, true
 		}
 	}
 	if sn == nil {
@@ -162,6 +172,14 @@ func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInpu
 	}
 	if sn.State == "UNPROCESSED" {
 		limits = append(limits, staleAfterUpgradeLimit)
+	}
+	if unlisted[sid] {
+		detail["listed_with_network_snapshots"] = false
+		if sn.State == "PROCESSED" {
+			limits = append(limits, "this prediction is PROCESSED by its change set's record, but the network's snapshot list does not hold it, so NQE and the other reads cannot use it (they say the snapshot is not ready); if a later read still does not list it, recreate the prediction (verify-change)")
+		} else {
+			limits = append(limits, "this prediction is listed only under its change set until Forward lists it with the network's snapshots; NQE cannot read it before then")
+		}
 	}
 	if !finalState(sn.State) || sn.State == "FAILED" { // a FAILED snapshot has no stored reason string: the failed stage is the closest answer
 		p, more := processingDetail(ctx, s, *sn)

@@ -852,7 +852,7 @@ Examples:
 
 Blocks, printing one progress line per poll on stderr, until Forward reaches the state asked for. For the work that takes an hour (a reprocess after a backdate, advanced
 reachability) so it does not need a polling loop that dies with the session. Exit 0: reached. 1: Forward ended in a failed, canceled or timed-out state that will not change
-by itself. 2: --timeout passed first (the work may still be running; run the wait again). 3: an error (bad input, Forward unreachable for several polls in a row).
+by itself. 2: --timeout passed first (the work may still be running; run the wait again), or the state was reached but the snapshot is not readable (status unknown). 3: an error (bad input, Forward unreachable for several polls in a row).
 
 ```
 fwdctl wait
@@ -891,7 +891,8 @@ Flags:
 While the snapshot is PROCESSING, or its advanced reachability is (the ADVANCED_REACHABILITY stage), each poll line also says where it stands: the stage computing now, its object count, elapsed time against Forward's own estimate, and when elapsed is past the estimate (a stuck run looks like this). With --follow the progress goes to stdout like tail -f (a line when the state or stage changes, otherwise every --every), so a background run can be read from its log.
 Polls the snapshot every --interval until it is PROCESSED and, with --advanced-reachability, its advanced reachability is PROCESSED too.
 A FAILED, CANCELED or TIMED_OUT state ends the wait with exit 1: Forward does not retry those by itself (a reprocess clears them). The last line on stdout is a JSON object: status,
-snapshot_id, state, advanced_reachability, waited_seconds. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.
+snapshot_id, state, advanced_reachability, waited_seconds. A predicted snapshot found only under its change set counts as reached only once the network's snapshot list holds it too (that is what NQE reads):
+a prediction whose record says PROCESSED but which the list never shows ends with status unknown, exit 2, after a few polls. Typical durations on a 1,400-device network: processing about an hour, advanced reachability 15 to 30 minutes.
 Nothing here starts the work: a reprocess or advanced reachability that was never started (edit-snapshot, edit-advanced-reachability) stays UNPROCESSED, and the wait says so after a few polls and ends at --timeout.
 
 ```

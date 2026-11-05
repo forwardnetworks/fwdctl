@@ -240,3 +240,39 @@ func TestInspectSnapshotsShowsAPredictionStillProcessing(t *testing.T) {
 		t.Fatalf("the processing prediction must be listed: %s %s", r.Finding, b)
 	}
 }
+
+// A prediction its change set calls PROCESSED but that the network's snapshot list does not hold cannot be read by NQE: the detail says so
+// instead of presenting it as a usable snapshot.
+func TestInspectSnapshotsDetailFlagsAProcessedPredictionNotListed(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                          ready("s1"),
+		"GET /api/networks/n1/change-sets": fwdtest.Const(200, []any{map[string]any{"id": "cs9", "name": "x", "snapshotId": "s1"}}),
+		"GET /api/networks/n1/change-sets/cs9/predicted-snapshots": fwdtest.Const(200, map[string]any{"predictedSnapshots": []any{
+			map[string]any{"id": "p7", "state": "PROCESSED", "parentSnapshotId": "s1", "createdAt": "2026-11-05T00:00:00Z", "processedAt": "2026-11-05T01:00:00Z"}}}),
+	}
+	r, _ := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1","snapshot_id":"p7"}`)
+	all := strings.Join(r.Limits, " ")
+	if !strings.Contains(all, "does not hold it") || !strings.Contains(all, "NQE") || !strings.Contains(jsonOf(r), `"listed_with_network_snapshots":false`) {
+		t.Fatalf("status %s, limits %v", r.Status, r.Limits)
+	}
+}
+
+// The listing reads the first 40 change sets; asking for one snapshot id searches all of them, so a prediction under the 41st is still found.
+func TestInspectSnapshotsDetailSearchesEveryChangeSet(t *testing.T) {
+	var sets []any
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1")}
+	for i := 0; i < 41; i++ {
+		id := fmt.Sprintf("cs%d", i)
+		sets = append(sets, map[string]any{"id": id, "name": id, "snapshotId": "s1"})
+		var preds []any
+		if i == 40 {
+			preds = []any{map[string]any{"id": "p41", "state": "PROCESSING", "parentSnapshotId": "s1", "createdAt": "2026-11-05T00:00:00Z"}}
+		}
+		routes["GET /api/networks/n1/change-sets/"+id+"/predicted-snapshots"] = fwdtest.Const(200, map[string]any{"predictedSnapshots": preds})
+	}
+	routes["GET /api/networks/n1/change-sets"] = fwdtest.Const(200, sets)
+	r, _ := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1","snapshot_id":"p41"}`)
+	if strings.Contains(r.Finding, "holds no snapshot") || !strings.Contains(jsonOf(r), `"p41"`) {
+		t.Fatalf("the prediction under the 41st change set must be found: %s %v", r.Finding, r.Limits)
+	}
+}
