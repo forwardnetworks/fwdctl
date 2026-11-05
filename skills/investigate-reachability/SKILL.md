@@ -19,7 +19,7 @@ guessed from device output.
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run investigate-reachability --help`, or `reference/inputs.md`. For several endpoints at once, `matrix` searches every ordered pair in one bulk request and names the pairs whose two directions take different paths (asymmetric routing). `explain: routes` adds each hop's forwarding entry for the destination, checked against the path. Equal-cost branches are grouped (`ecmp_group`, `ecmp_branches`, `diverges_at`; reference/reading-paths.md).
+What each input means, and the fields per object and action: `fwdctl run investigate-reachability --help`, or `reference/inputs.md`. For several endpoints at once, `matrix` searches every ordered pair in one bulk request and names the pairs whose two directions take different paths (asymmetric routing). `explain: routes` adds each hop's forwarding entry for the destination, checked against the path. Equal-cost branches are grouped (`ecmp_group`, `ecmp_branches`, `diverges_at`; reference/reading-paths.md). `explain: trace` (preview) adds Forward's GUI trace of each path: headers, NAT rewrites, the functions each hop ran with config line ranges. To compare one flow before and after a change: `verify-change` view `flows`.
 
 ## Procedure
 

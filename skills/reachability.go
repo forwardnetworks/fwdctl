@@ -340,9 +340,9 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		return result.Result{}, fmt.Errorf("%w: intent must be PREFER_DELIVERED, PREFER_VIOLATIONS or VIOLATIONS_ONLY", ErrInvalidInput)
 	}
 	switch in.Explain {
-	case "", "routes":
+	case "", "routes", "trace":
 	default:
-		return result.Result{}, fmt.Errorf("%w: explain takes \"routes\" (each hop's forwarding entry for the destination)", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: explain takes \"routes\" (each hop's forwarding entry for the destination) or \"trace\" (Forward's GUI flow trace per path, preview)", ErrInvalidInput)
 	}
 	mx, mgroups, merr := parseMatrix(raw, in) // validated before any request
 	if mx != nil && in.Explain != "" {
@@ -430,9 +430,9 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		limits = append(limits, retLimit)
 	}
 	// the first path's evidence also carries the flow searched and how Forward located its ends, so a saved result can be read (and the search repeated) on its own
-	annotateFirst := func(ev []result.Evidence) {
+	annotateFirst := func(ev []result.Evidence) []result.Evidence {
 		if len(ev) == 0 {
-			return
+			return ev
 		}
 		if retFlow != nil {
 			ev[0].Detail["return_flow"] = retFlow
@@ -453,11 +453,19 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 		if in.Explain == "routes" {
 			limits = append(limits, explainHopRoutes(ctx, s, in.NetworkID, fwd.SnapshotID(cx), in.DstIP, ev)...)
 		}
+		if in.Explain == "trace" { // the trace follows the path-search evidence
+			te, tl := explainTrace(ctx, s, in, fwd.SnapshotID(cx), sid)
+			limits = append(limits, tl...)
+			if te != nil {
+				ev = append(ev, *te)
+			}
+		}
+		return ev
 	}
 	var omitted []result.Omission
 	pathEv := func() []result.Evidence {
 		ev := uniquePathEvidence(ordered, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, maxReachabilityEvidence)
-		annotateFirst(ev)
+		ev = annotateFirst(ev)
 		if distinct := countDistinct(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }); distinct > len(ev) {
 			omitted = append(omitted, result.Omission{What: "distinct paths", Total: distinct, Shown: len(ev), Next: "one path per outcome is shown first; narrow the flow (src_port, dst_port, from) to see the rest"})
 		}
@@ -486,7 +494,7 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 			limits = append(limits, "only incomplete or unclassified outcomes were returned")
 		}
 		ev := uniquePathEvidence(all, func(c classified) fwd.Path { return c.path }, func(c classified) string { return c.class }, sid, 3)
-		annotateFirst(ev)
+		ev = annotateFirst(ev)
 		finding, next := "The returned paths do not establish whether the flow is delivered", []string{"investigate-collection-failure"}
 		for _, c := range all {
 			if len(real) == 0 && c.path.ForwardingOutcome == "DELIVERED_TO_INCORRECT_LOCATION" {

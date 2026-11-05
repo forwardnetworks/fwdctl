@@ -511,12 +511,14 @@ func TestReachabilityExplainRoutesAddsEachHopsEntryAndChecksItAgainstThePath(t *
 	r2 := hop("r2", "e2", "e3")
 	sw := hop("sw1", "e4", "et3") // routed to SVI vlan10, switched out member port et3
 	ar := hop("ar1", "e5", "e6")  // a recursive BGP next hop: no interface in the table
+	l2 := hop("l2sw", "p1", "p2")
+	l2["behaviors"] = []any{"L2"}
 	nh := func(ip, iface, typ string) map[string]any {
 		return map[string]any{"ip": ip, "interface": iface, "vrf": nil, "type": typ, "protocol": "BGP"}
 	}
 	var asked string
 	rows := []map[string]any{
-		{"device": "r1", "vrf": "blue", "interfaces": []any{"e0"}, "prefix": "10.0.1.0/24", "nextHops": []any{nh("192.0.2.1", "e1", "REMOTE")}},
+		{"device": "r1", "deviceType": "ROUTER", "vendor": "CISCO", "vrf": "blue", "interfaces": []any{"e0"}, "prefix": "10.0.1.0/24", "nextHops": []any{nh("192.0.2.1", "e1", "REMOTE")}},
 		{"device": "r1", "vrf": "default", "interfaces": []any{"e9"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("", "", "DROP")}},
 		{"device": "r2", "vrf": "default", "interfaces": []any{"e2"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("", "", "DROP")}},
 		{"device": "r2", "vrf": "red", "interfaces": []any{"e2.5"}, "prefix": "10.0.1.0/24", "nextHops": []any{nh("192.0.2.9", "e3", "REMOTE")}},
@@ -524,7 +526,7 @@ func TestReachabilityExplainRoutesAddsEachHopsEntryAndChecksItAgainstThePath(t *
 		{"device": "ar1", "vrf": "default", "interfaces": []any{"e5"}, "prefix": "0.0.0.0/0", "nextHops": []any{nh("192.0.2.33", "", "REMOTE")}},
 	}
 	sviRows := []map[string]any{{"device": "sw1", "svi": "vlan10", "member": "et3"}}
-	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), pathsPath: fwdtest.Const(200, pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED", r1, r2, sw, ar))),
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), pathsPath: fwdtest.Const(200, pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED", r1, r2, sw, ar, l2))),
 		"POST /api/nqe": func(_ *http.Request, b []byte) (int, any) {
 			if strings.Contains(string(b), "hopSVIs") {
 				return 200, map[string]any{"items": sviRows, "totalNumItems": len(sviRows)}
@@ -547,6 +549,12 @@ func TestReachabilityExplainRoutesAddsEachHopsEntryAndChecksItAgainstThePath(t *
 	}
 	if c, _ := hops[3]["route"].(map[string]any); c["path_check"] != "not_comparable" || c["agrees_with_path"] != nil {
 		t.Errorf("ar1 route (recursive next hop) = %v", c)
+	}
+	if c, _ := hops[4]["route"].(map[string]any); c["lookup"] != false || !strings.Contains(fmt.Sprint(c["note"]), "L2") {
+		t.Errorf("an L2 hop makes no route lookup: %v", c)
+	}
+	if hops[0]["device_type"] != "ROUTER" || hops[0]["vendor"] != "CISCO" {
+		t.Errorf("r1 platform: %v / %v", hops[0]["device_type"], hops[0]["vendor"])
 	}
 	if !strings.Contains(asked, "10.0.1.1") || !strings.Contains(asked, `"r1"`) || !strings.Contains(strings.Join(r.Limits, " "), "agrees_with_path false") {
 		t.Errorf("query params %s, limits %v", asked, r.Limits)
@@ -580,5 +588,42 @@ func TestReachabilityGroupsECMPBranches(t *testing.T) {
 	}
 	if r.Evidence[1].Detail["identical_paths"] != 2 {
 		t.Errorf("the repeated branch is counted once: %v", r.Evidence[1].Detail["identical_paths"])
+	}
+}
+
+// explain trace adds one preview evidence holding Forward's GUI trace of each distinct path, its body passed through unchanged; a path whose trace
+// fails says so on its own row, and the answer says the routes are preview and undocumented.
+func TestReachabilityExplainTracePassesEachPathsTraceThroughAndSaysItIsPreview(t *testing.T) {
+	facets := map[string]any{"facets": map[string]any{"pathGroups": []any{
+		map[string]any{"traceType": "VALID", "paths": []any{
+			map[string]any{"path": []any{"r1", "r2"}, "behaviorSample": map[string]any{"k": 1}},
+			map[string]any{"path": []any{"r1", "r3"}, "behaviorSample": map[string]any{"k": 2}}}}}}}
+	var traced []string
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), pathsPath: fwdtest.Const(200, pathsBody(false, "EXACT", path("DELIVERED", "PERMITTED"))),
+		"POST /api/networks/n1/trace-facets": fwdtest.Const(200, facets),
+		"POST /api/networks/n1/trace": func(_ *http.Request, b []byte) (int, any) {
+			traced = append(traced, string(b))
+			if strings.Contains(string(b), "r3") {
+				return 500, map[string]any{"message": "boom"}
+			}
+			return 200, map[string]any{"traceType": "VALID", "pathDescriptor": "r1 > r2", "deviceHops": []any{map[string]any{"device": "r1", "outPorts": []any{"e1"}, "unmodelled": "kept"}}}
+		}}
+	r, _ := mustRun(t, "investigate-reachability", routes, strings.TrimSuffix(reachIn, "}")+`,"explain":"trace"}`)
+	var tr *result.Evidence
+	for i := range r.Evidence {
+		if r.Evidence[i].Source.Operation == "trace" {
+			tr = &r.Evidence[i]
+		}
+	}
+	if tr == nil || len(traced) != 2 {
+		t.Fatalf("trace evidence %v, %d traces sent", tr, len(traced))
+	}
+	b := jsonOf(r)
+	paths, _ := tr.Detail["paths"].([]map[string]any)
+	if len(paths) != 2 || tr.Detail["traced"] != 1 || !strings.Contains(b, `"unmodelled":"kept"`) || paths[1]["error"] == nil {
+		t.Errorf("paths = %v (the body must pass through unchanged; the failed one carries its error)", b)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "PREVIEW and UNDOCUMENTED") || r.Status != result.OK {
+		t.Errorf("status %s, limits %v", r.Status, r.Limits)
 	}
 }

@@ -61,6 +61,7 @@ var verifyChangeViewInputs = map[string][]string{
 	"objects":    {"change_set_id", "device", "object_kind"},
 	"checks":     {"change_set_id"},
 	"commands":   {"os", "protocol"},
+	"flows":      {"change_set_id", "run_predict", "before_snapshot_id", "after_snapshot_id", "expectations"},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -73,9 +74,9 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected", "bgp_diffs", "objects", "checks", "commands":
+	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected", "bgp_diffs", "objects", "checks", "commands", "flows":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config, affected, bgp_diffs, objects, checks or commands", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config, affected, bgp_diffs, objects, checks, commands or flows", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
@@ -97,6 +98,8 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return predictChecks(ctx, s, in)
 	case "commands":
 		return predictCommands(ctx, s, in)
+	case "flows":
+		return flowDiff(ctx, s, in)
 	case "list":
 		return listChangeSets(ctx, s, in.NetworkID)
 	case "scope":
@@ -109,6 +112,11 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return analyzeBlastRadius(ctx, s, raw)
 	case "describe":
 		return reviewChangeSet(ctx, s, raw)
+	}
+	for i, e := range in.Expectations { // flows takes expectations without expect; verify judges against it
+		if e.Expect != "delivered" && e.Expect != "blocked" {
+			return result.Result{}, fmt.Errorf("%w: expectations[%d].expect is required for view verify: delivered or blocked", ErrInvalidInput, i)
+		}
 	}
 	rc, err := resolveChange(ctx, s, in.changeInput)
 	if err == errNoSelector {

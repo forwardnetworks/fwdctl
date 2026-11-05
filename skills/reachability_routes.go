@@ -22,6 +22,8 @@ let matches = (foreach x in [ni] where isPresent(x.afts) && isPresent(x.afts.ipv
 let best = max(foreach e in matches select length(e.prefix))
 select {
   device: device.name,
+  deviceType: device.platform.deviceType,
+  vendor: device.platform.vendor,
   vrf: ni.name,
   interfaces: (foreach i in ni.interfaces select if isPresent(i.subIfaceName) then i.subIfaceName else i.ifaceName),
   prefix: max(foreach e in matches where length(e.prefix) == best select e.prefix),
@@ -101,8 +103,12 @@ func explainHopRoutes(ctx context.Context, s *fwd.Session, networkID, snapshotID
 		svis[d][v][m] = true
 	}
 	byDevice := map[string]map[string]*hopVRF{}
+	platform := map[string][2]any{} // device -> type, vendor
 	for _, r := range rows {
 		d, _ := r["device"].(string)
+		if r["deviceType"] != nil || r["vendor"] != nil {
+			platform[d] = [2]any{r["deviceType"], r["vendor"]}
+		}
 		v, _ := r["vrf"].(string)
 		hv := &hopVRF{vrf: v, interfaces: map[string]bool{}, prefix: r["prefix"], nextHops: r["nextHops"]}
 		if l, ok := r["interfaces"].([]any); ok {
@@ -121,6 +127,14 @@ func explainHopRoutes(ctx context.Context, s *fwd.Session, networkID, snapshotID
 	for _, hops := range hopLists {
 		for _, h := range hops {
 			d, _ := h["device"].(string)
+			if p, ok := platform[d]; ok {
+				h["device_type"], h["vendor"] = p[0], p[1]
+			}
+			// a hop Forward says did no L3 forwarding (an L2 switch, a VXLAN or other overlay hop) made no route lookup: say so instead of an empty route
+			if b, ok := h["behaviors"].([]string); ok && len(b) > 0 && !hasString(b, "L3") {
+				h["route"] = map[string]any{"lookup": false, "note": "no IPv4 route lookup on this hop: Forward's behaviors are " + strings.Join(b, ", ")}
+				continue
+			}
 			vrfs := byDevice[d]
 			if len(vrfs) == 0 {
 				h["route"] = map[string]any{"note": "no forwarding table for this device in the model (a synthetic or unmodelled device)"}
@@ -248,4 +262,13 @@ func pathCheck(nextHops any, egress string, svis map[string]map[string]bool) str
 		return "not_comparable"
 	}
 	return "disagrees"
+}
+
+func hasString(l []string, v string) bool {
+	for _, x := range l {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
