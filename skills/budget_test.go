@@ -61,7 +61,7 @@ func TestAlwaysLoadedBudget(t *testing.T) {
 // views should each name their own inputs. The skills below pre-date the rule; each may not grow past the number listed, and none may pass maxInputsEver.
 const (
 	maxReadInputs = 8
-	maxInputsEver = 14 // verify-change takes commit_id, object_kind, os and protocol for its Predict views (14); inspect-bgp-neighbors takes the routing-app option as one nested object (13); every other skill stays at 12 or fewer
+	maxInputsEver = 14 // verify-change takes commit_id, object_kind, os and protocol for its Predict views (14); investigate-reachability takes return_path and explain (14); inspect-bgp-neighbors takes the routing-app option as one nested object (13); every other skill stays at 12 or fewer
 )
 
 var wideReadSkills = map[string]int{
@@ -70,7 +70,7 @@ var wideReadSkills = map[string]int{
 	"compare-nqe-results":      9,  // after_network_id, key and ignore compare two networks
 	"inspect-device-files":     11,
 	"validate-nqe-query":       9,  // query_id and commit_id validate a saved library query by id instead of text
-	"investigate-reachability": 13, // return_path asks Forward for the return flow in the same search (a Forward parameter, not a view); no existing input holds it
+	"investigate-reachability": 14, // return_path asks Forward for the return flow in the same search (a Forward parameter, not a view); explain routes adds each hop's forwarding entry, read in one NQE call (an option on the same paths, not a view); no existing input holds either
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.
 	"inspect-platform":               10, // area license_usage takes start and end for its per-licence CCH series and use over time (a window, not an area of its own)
 	"verify-change":                  14, // view describe and view impact take device; view ai_summary adds summary_kind; views history and config add commit_id

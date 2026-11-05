@@ -50,6 +50,12 @@
       "default": false,
       "description": "also ask Forward for the return flow (destination back to source) and summarize it; warns when the forward flow is delivered but the return is not"
     },
+    "explain": {
+      "enum": [
+        "routes"
+      ],
+      "description": "routes: add to each hop the forwarding entry its device holds for dst_ip (longest prefix in the hop's VRF, from Forward's forwarding table: prefix, next hops, vrf_from); one flow only, IPv4"
+    },
     "intent": {
       "enum": [
         "PREFER_DELIVERED",
