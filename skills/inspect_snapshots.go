@@ -223,7 +223,14 @@ func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInpu
 		}
 	}
 	finding := fmt.Sprintf("Snapshot %s is %s (%s)", sid, sn.State, kindOf(*sn))
-	return result.Build(inspectSnapshotsName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	status, conf := result.OK, result.Deterministic
+	if unlisted[sid] { // the headline must not read as a usable snapshot: NQE and the other reads use the network's list
+		finding = fmt.Sprintf("Snapshot %s is %s by its change set's record (%s) but not in the network's snapshot list, so it cannot be read yet", sid, sn.State, kindOf(*sn))
+		if sn.State == "PROCESSED" {
+			status, conf = result.Unknown, result.NoBasis // reached by the record, unusable by the reads: unknown is never a pass
+		}
+	}
+	return result.Build(inspectSnapshotsName, status, finding, conf, cx, result.Options{Limits: limits,
 		NextActions: []string{"investigate-collection-failure", "inspect-inventory"},
 		Evidence:    []result.Evidence{result.NewEvidence(result.EvCollection, "getSnapshot", fwd.SnapshotIDPtr(sn), detail, finding)}})
 }

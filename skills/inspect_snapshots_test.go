@@ -252,7 +252,7 @@ func TestInspectSnapshotsDetailFlagsAProcessedPredictionNotListed(t *testing.T) 
 	}
 	r, _ := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1","snapshot_id":"p7"}`)
 	all := strings.Join(r.Limits, " ")
-	if !strings.Contains(all, "does not hold it") || !strings.Contains(all, "NQE") || !strings.Contains(jsonOf(r), `"listed_with_network_snapshots":false`) {
+	if r.Status != result.Unknown || !strings.Contains(r.Finding, "not in the network's snapshot list") || !strings.Contains(all, "does not hold it") || !strings.Contains(all, "NQE") || !strings.Contains(jsonOf(r), `"listed_with_network_snapshots":false`) {
 		t.Fatalf("status %s, limits %v", r.Status, r.Limits)
 	}
 }
