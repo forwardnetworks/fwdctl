@@ -181,3 +181,11 @@ func BustCache(string, string) (string, error) { return "", ErrNotInThisBuild }
 
 // QueryParams finds nothing in this build.
 func QueryParams(string) []string { return nil }
+
+// DecoratorColumn is one column a decorator joins on or shows (the check does not run in this build).
+type DecoratorColumn struct {
+	Name, Type, Role string
+}
+
+// CheckDecoratorColumns has nothing to check against in this build.
+func CheckDecoratorColumns(string, []DecoratorColumn) []Diagnostic { return nil }

@@ -52,6 +52,8 @@ func editPlatform(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		plan, err = planBanner(ctx, s, in)
 	case "webhooks":
 		plan, err = planWebhook(ctx, s, in)
+	case "decorators":
+		plan, err = planDecorator(ctx, s, in)
 	case "certificates":
 		plan, err = planCertificate(ctx, s, in)
 	case "access_labels":

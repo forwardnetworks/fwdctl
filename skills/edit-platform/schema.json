@@ -23,7 +23,8 @@
         "cve_index",
         "collectors",
         "endpoint_profiles",
-        "performance"
+        "performance",
+        "decorators"
       ]
     },
     "action": {

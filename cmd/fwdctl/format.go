@@ -253,6 +253,13 @@ func nqeRunCmd(a *app, o nqeRunOpts) int {
 		fmt.Fprintln(stderr, "error: usage: fwdctl nqe run --network ID [--file F] [--snapshot ID] [--format json|jsonl|table|csv] [--count-by FIELD] [--max N]")
 		return usage
 	}
+	// the run summary written to the same file the rows are redirected to would overwrite them after the run
+	if *metaOut != "" && *metaOut != "-" {
+		if out, ok := stdout.(*os.File); ok && sameFile(out, *metaOut) {
+			fmt.Fprintf(stderr, "error: --meta %s is the file stdout is redirected to: the run summary would overwrite the rows; give --meta another file, or - for stderr\n", *metaOut)
+			return usage
+		}
+	}
 	var src []byte
 	var err error
 	if *queryID != "" {
@@ -553,4 +560,14 @@ func inlineAnalysisHint(queryID string, queuedMillis *int64) string {
 		return ""
 	}
 	return fmt.Sprintf("queued_millis (%d ms) is mostly Forward analysing this inline query afresh; a saved query run by id (--query-id) has the analysis cached by (query, snapshot, parameters) and avoids that wait", *queuedMillis)
+}
+
+// sameFile reports whether the open file f and the path p are one file (p must already exist, as a shell redirect creates it).
+func sameFile(f *os.File, p string) bool {
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	pi, err := os.Stat(p)
+	return err == nil && os.SameFile(fi, pi)
 }
