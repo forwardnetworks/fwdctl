@@ -21,6 +21,14 @@ import (
 // ErrGuardRefused is the error a guard (Config.ReadOnly or Config.AllowNetworks) returns for a request it stops before it leaves the process.
 var ErrGuardRefused = errors.New("refused by this session's guard")
 
+// permanent is appended to every guard refusal so the SDK does not retry it (a refusal is not transient); it prints as nothing.
+var permanent = quietErr{forward.ErrPermanent}
+
+type quietErr struct{ err error }
+
+func (q quietErr) Error() string { return "" }
+func (q quietErr) Unwrap() error { return q.err }
+
 // guardBypass marks the guard's own snapshot lookups, which must not be checked against the guard that sent them.
 type guardBypass struct{}
 
@@ -31,7 +39,7 @@ type readOnlyGuard struct{ next http.RoundTripper }
 func (t readOnlyGuard) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch r.Method {
 	case http.MethodPut, http.MethodPatch, http.MethodDelete:
-		return nil, fmt.Errorf("%w: this session is read-only (FWDCTL_READONLY); %s %s was not sent", ErrGuardRefused, r.Method, r.URL.Path)
+		return nil, fmt.Errorf("%w: this session is read-only (FWDCTL_READONLY); %s %s was not sent%w", ErrGuardRefused, r.Method, r.URL.Path, permanent)
 	}
 	return t.next.RoundTrip(r)
 }
@@ -70,7 +78,7 @@ func (g *networkGuard) list() string {
 }
 
 func (g *networkGuard) refuse(r *http.Request, why string) error {
-	return fmt.Errorf("%w: %s; this session may reach only networks %s (FWDCTL_ALLOW_NETWORKS), so %s %s was not sent", ErrGuardRefused, why, g.list(), r.Method, r.URL.Path)
+	return fmt.Errorf("%w: %s; this session may reach only networks %s (FWDCTL_ALLOW_NETWORKS), so %s %s was not sent%w", ErrGuardRefused, why, g.list(), r.Method, r.URL.Path, permanent)
 }
 
 func (g *networkGuard) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -297,6 +305,9 @@ func (g *networkGuard) snapshotAllowed(r *http.Request, id string) error {
 	return nil
 }
 
+// maxGuardChangeSets bounds the change sets whose full prediction lists are read per load.
+const maxGuardChangeSets = 200
+
 // snapshotReload is how soon the snapshot lists may be read again after a miss.
 const snapshotReload = 5 * time.Second
 
@@ -315,10 +326,18 @@ func (g *networkGuard) load(ctx context.Context) {
 			}
 		}
 		if cs, _, err := g.sess.Client.Predict.ListChangeSets(ctx, net); err == nil {
-			for _, c := range cs {
+			for i, c := range cs {
 				for _, p := range c.PredictedSnapshots {
 					if n := p.NetworkID.String(); n == "" || n == net {
 						found[p.ID.String()] = net
+					}
+				}
+				// the change-set row names only recent predictions; the change set's own list has every one (bounded, so a large network costs a few hundred reads at most)
+				if i < maxGuardChangeSets {
+					if ps, _, perr := g.sess.Client.Predict.ListPredictedSnapshots(ctx, net, c.ID.String()); perr == nil {
+						for _, p := range ps {
+							found[p.ID.String()] = net
+						}
 					}
 				}
 			}
@@ -341,7 +360,7 @@ func (g *networkGuard) filterNetworkList(resp *http.Response) (*http.Response, e
 	}
 	var items []map[string]any
 	if err := json.Unmarshal(b, &items); err != nil {
-		return nil, fmt.Errorf("%w: the network list could not be read to keep only networks %s", ErrGuardRefused, g.list())
+		return nil, fmt.Errorf("%w: the network list could not be read to keep only networks %s%w", ErrGuardRefused, g.list(), permanent)
 	}
 	kept := make([]map[string]any, 0, len(items))
 	for _, it := range items {

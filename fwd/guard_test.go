@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/fwdtest"
@@ -17,27 +18,29 @@ func guarded(t *testing.T, adjust func(*fwd.Config)) (*fwd.Session, *fwdtest.Ser
 	t.Helper()
 	ok := fwdtest.Const(200, map[string]any{})
 	return fwdtest.NewWith(t, map[string]fwdtest.Handler{
-		"GET /api/networks":                     fwdtest.Const(200, []map[string]any{{"id": "n1", "name": "allowed"}, {"id": "n2", "name": "other"}}),
-		"GET /api/networks/n1/snapshots":        fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
-		"GET /api/networks/n2/snapshots":        fwdtest.Snapshots(fwdtest.Snap("s2", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
-		"GET /api/networks/n1/change-sets":      fwdtest.Const(200, []map[string]any{{"id": "cs1", "predictedSnapshots": []map[string]any{{"id": "p1", "networkId": "n1"}}}}),
-		"GET /api/snapshots/p1/metrics":         ok,
-		"POST /api/networks/n1/change-sets/cs1": ok,
-		"GET /api/snapshots/s1/metrics":         ok,
-		"GET /api/snapshots/s2/metrics":         ok,
-		"GET /api/diffs/s1/s2/devices":          ok,
-		"POST /api/nqe":                         ok,
-		"POST /api/networks/n1/paths-bulk":      ok,
-		"GET /api/users":                        ok,
-		"GET /api/version":                      ok,
-		"DELETE /api/networks/n1/snapshots/x":   ok,
-		"GET /api/integrations/servicenow":      ok,
-		"GET /api/nqe/repos/org/commits/head":   ok,
-		"PATCH /api/networks/n1":                ok,
-		"POST /api/networks":                    ok,
-		"GET /api/users/current":                ok,
-		"GET /api/nqe/schema":                   ok,
-		"GET /api/networks/n1/snapshots/other":  ok,
+		"GET /api/networks":                                        fwdtest.Const(200, []map[string]any{{"id": "n1", "name": "allowed"}, {"id": "n2", "name": "other"}}),
+		"GET /api/networks/n1/snapshots":                           fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+		"GET /api/networks/n2/snapshots":                           fwdtest.Snapshots(fwdtest.Snap("s2", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+		"GET /api/networks/n1/change-sets":                         fwdtest.Const(200, []map[string]any{{"id": "cs1", "predictedSnapshots": []map[string]any{{"id": "p1", "networkId": "n1"}}}}),
+		"GET /api/snapshots/p1/metrics":                            ok,
+		"GET /api/networks/n1/change-sets/cs1/predicted-snapshots": fwdtest.Const(200, map[string]any{"snapshots": []map[string]any{{"id": "p2", "state": "PROCESSED"}}}),
+		"GET /api/snapshots/p2/metrics":                            ok,
+		"POST /api/networks/n1/change-sets/cs1":                    ok,
+		"GET /api/snapshots/s1/metrics":                            ok,
+		"GET /api/snapshots/s2/metrics":                            ok,
+		"GET /api/diffs/s1/s2/devices":                             ok,
+		"POST /api/nqe":                                            ok,
+		"POST /api/networks/n1/paths-bulk":                         ok,
+		"GET /api/users":                                           ok,
+		"GET /api/version":                                         ok,
+		"DELETE /api/networks/n1/snapshots/x":                      ok,
+		"GET /api/integrations/servicenow":                         ok,
+		"GET /api/nqe/repos/org/commits/head":                      ok,
+		"PATCH /api/networks/n1":                                   ok,
+		"POST /api/networks":                                       ok,
+		"GET /api/users/current":                                   ok,
+		"GET /api/nqe/schema":                                      ok,
+		"GET /api/networks/n1/snapshots/other":                     ok,
 	}, adjust)
 }
 
@@ -80,6 +83,7 @@ func TestAllowNetworksRefusesOtherNetworksBeforeSending(t *testing.T) {
 		{"GET", "/api/users/current", ""},
 		{"GET", "/api/nqe/schema", ""},
 		{"GET", "/api/snapshots/p1/metrics", ""}, // a predicted snapshot of an allowed network's change set
+		{"GET", "/api/snapshots/p2/metrics", ""}, // an older prediction, only in the change set's own list
 	}
 	for _, c := range allowed {
 		if err := call(t, s, c.method, c.path, c.body); err != nil {
@@ -240,5 +244,18 @@ func TestErrorKindFromForwardStatus(t *testing.T) {
 	}
 	if got := fwd.ErrorKind(context.DeadlineExceeded); got != fwd.KindTimeout {
 		t.Fatalf("deadline: kind = %q", got)
+	}
+}
+
+// A refusal is permanent: the SDK does not retry it, even for a GET with the production retry delay.
+func TestGuardRefusalIsNotRetried(t *testing.T) {
+	s, _ := guarded(t, func(c *fwd.Config) { c.AllowNetworks = []string{"n1"}; c.RetryDelay = time.Second })
+	start := time.Now()
+	err := call(t, s, "GET", "/api/networks/n2/snapshots", "")
+	if !errors.Is(err, fwd.ErrGuardRefused) {
+		t.Fatalf("err = %v", err)
+	}
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Fatalf("a refused GET took %s: it was retried", d)
 	}
 }

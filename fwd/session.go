@@ -307,7 +307,7 @@ type readOnlyTransport struct{ next http.RoundTripper }
 func (t readOnlyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch r.Method {
 	case http.MethodPut, http.MethodPatch, http.MethodDelete:
-		return nil, fmt.Errorf("%w: this session is impersonating another user and is read-only (%s %s)", ErrGuardRefused, r.Method, r.URL.Path)
+		return nil, fmt.Errorf("%w: this session is impersonating another user and is read-only (%s %s)%w", ErrGuardRefused, r.Method, r.URL.Path, permanent)
 	}
 	return t.next.RoundTrip(r)
 }
