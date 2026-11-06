@@ -77,8 +77,38 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		if d := strings.TrimSpace(l.Directory); d == "" || !strings.HasPrefix(d, "/") || strings.HasSuffix(d, "/") && d != "/" || strings.Contains(d, "//") {
 			return result.Result{}, fmt.Errorf("%w: move_to_directory needs lifecycle.directory as a path such as /team/wan (no trailing or doubled slash; the directories are listed by verify-change view history)", ErrInvalidInput)
 		}
+	case "raise_change_request":
+		cr := l.ChangeRequest
+		if cr == nil || strings.TrimSpace(cr.Summary) == "" {
+			return result.Result{}, fmt.Errorf("%w: raise_change_request needs lifecycle.change_request with summary and impact (HIGH, MEDIUM or LOW)", ErrInvalidInput)
+		}
+		cr.Impact, cr.Priority = strings.ToUpper(strings.TrimSpace(cr.Impact)), strings.ToUpper(strings.TrimSpace(cr.Priority))
+		switch cr.Impact {
+		case forward.ServiceNowImpactHigh, forward.ServiceNowImpactMedium, forward.ServiceNowImpactLow:
+		default:
+			return result.Result{}, fmt.Errorf("%w: lifecycle.change_request.impact is HIGH, MEDIUM or LOW", ErrInvalidInput)
+		}
+		switch cr.Priority {
+		case "", forward.ServiceNowPriorityCritical, forward.ServiceNowPriorityHigh, forward.ServiceNowPriorityModerate, forward.ServiceNowPriorityLow:
+		default:
+			return result.Result{}, fmt.Errorf("%w: lifecycle.change_request.priority is CRITICAL, HIGH, MODERATE or LOW (or left out)", ErrInvalidInput)
+		}
+	case "attach_to_change_request":
+		if strings.TrimSpace(l.SysID) == "" || strings.TrimSpace(l.Path) == "" {
+			return result.Result{}, fmt.Errorf("%w: attach_to_change_request needs lifecycle.sys_id (verify-change view history lists the change set's requests) and lifecycle.path (a local file)", ErrInvalidInput)
+		}
+		if err := checkAttachmentFile(l.Path); err != nil {
+			return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		}
+	case "download_change_request_attachment":
+		if strings.TrimSpace(l.SysID) == "" || strings.TrimSpace(l.FileSysID) == "" || strings.TrimSpace(l.Path) == "" {
+			return result.Result{}, fmt.Errorf("%w: download_change_request_attachment needs lifecycle.sys_id, lifecycle.file_sys_id (both listed by verify-change view history) and lifecycle.path (a local file that does not exist yet)", ErrInvalidInput)
+		}
+		if _, err := os.Stat(l.Path); err == nil {
+			return result.Result{}, fmt.Errorf("%w: lifecycle.path %s already exists; give a new file", ErrInvalidInput, l.Path)
+		}
 	default:
-		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, duplicate_to_network, delete, discard_device, commit, edit_commit_note, delete_commit, restore_commit, restore_commit_as_new, add_tags, remove_tags, clear_tags, move_to_directory, prettify, export_zip, predict, add_check, edit_check or remove_check", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: lifecycle.op is rename, duplicate, duplicate_to_network, delete, discard_device, commit, edit_commit_note, delete_commit, restore_commit, restore_commit_as_new, add_tags, remove_tags, clear_tags, move_to_directory, prettify, export_zip, predict, add_check, edit_check, remove_check, raise_change_request, attach_to_change_request or download_change_request_attachment", ErrInvalidInput)
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	list, err := s.ChangeSets(ctx, in.NetworkID)
@@ -269,6 +299,15 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 			}
 			return map[string]any{"path": l.Path}, e
 		}
+	case "raise_change_request", "attach_to_change_request", "download_change_request_attachment":
+		r, refused, err := changeRequestOp(ctx, s, in, op, &ch, before, cx)
+		if err != nil {
+			return result.Result{}, err
+		}
+		if refused != nil {
+			return *refused, nil
+		}
+		verb, do = r.verb, r.do
 	case "restore_commit":
 		ch.Action, verb = "restore_commit", "restore version "+l.CommitID+" as the current content of"
 		ch.After = map[string]any{"commit_id": l.CommitID}
@@ -279,10 +318,16 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 		}
 	}
 	limits := []string{"nothing here reaches a device; a change set only feeds Predict", "this skill does not delete predicted snapshots itself, but a live run reported by another session saw deleting a change set make its predicted snapshots 404 afterwards: read what you need from them first; edit-snapshot action delete removes one on its own (Forward decides whether it allows it)"}
-	need := op == "delete"
+	need := op == "delete" || op == "raise_change_request"
 	confirmWith := id
-	if op == "delete_commit" {
+	switch op {
+	case "delete_commit":
 		need, confirmWith = true, l.CommitID
+	case "attach_to_change_request":
+		need, confirmWith = true, l.SysID
+	}
+	if strings.Contains(op, "change_request") {
+		limits = append(limits, serviceNowChangeRequestLimit)
 	}
 	if !in.Apply {
 		msg := fmt.Sprintf("Dry run: would %s change set %s (%s). Nothing was changed; run again with apply=true", verb, id, cs.Name)
@@ -307,6 +352,21 @@ func changeSetLifecycle(ctx context.Context, s *fwd.Session, in draftChangeSetIn
 	} else if m, ok := detail.(map[string]any); ok && op == "predict" {
 		finding = fmt.Sprintf("Started a prediction of change set %s (%s) as predicted snapshot %v (state %v); it did NOT wait: wait for it with `fwdctl wait snapshot --network %s --snapshot %v`, then read verify-change view list or describe", id, cs.Name, m["predicted_snapshot_id"], m["state"], in.NetworkID, m["predicted_snapshot_id"])
 	}
-	return result.Build(draftChangeSetName, result.OK, finding, result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"verify-change"},
+	status := result.OK
+	if m, ok := detail.(map[string]any); ok && op == "raise_change_request" {
+		finding = fmt.Sprintf("Raised ServiceNow change request %v for change set %s (%s): %v", m["number"], id, cs.Name, m["url"])
+		if m["linked_to_change_set"] != true {
+			status = result.Unknown
+			finding += fmt.Sprintf("; the change set summary does not show it linked (%v), so keep this number: Forward has no other route that finds it", m["linked_to_change_set"])
+		}
+	} else if ok && op == "attach_to_change_request" && m["attachment_listed"] != true {
+		status = result.Unknown
+		finding += fmt.Sprintf("; Forward accepted the file but the request read back does not list it (%v)", m["attachment_listed"])
+	}
+	conf := result.Deterministic
+	if status == result.Unknown {
+		conf = result.NoBasis
+	}
+	return result.Build(draftChangeSetName, status, finding, conf, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Limits: limits, NextActions: []string{"verify-change"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "changeSetLifecycle", nil, map[string]any{"mode": result.ModeApplied, "op": op, "change_set": before, "result": detail}, finding)}})
 }
