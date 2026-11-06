@@ -18,7 +18,7 @@ Every skill, whatever its area. Start with `plan-investigation`, or run `fwdctl 
 | `edit-advanced-reachability` | edit | Starts advanced reachability for a processed snapshot that never had it, showing cost first. Dry run unless apply is true. |
 | `edit-alias` | edit | Manages a named alias of hosts, devices, interfaces or headers that checks use: put, replace or end. Dry run unless apply is true. |
 | `edit-change-set` | edit | Builds a Predict change set from CLI commands or BGP advertisements and optionally predicts it, touching no device. Dry run unless apply is true. |
-| `edit-checks` | edit | Creates one check on a snapshot from a definition, or deactivates one. Dry run unless apply is true. |
+| `edit-checks` | edit | Creates one check on a snapshot, deactivates one, or raises, links or closes a check's ServiceNow incident. Dry run unless apply. |
 | `edit-collection` | edit | Starts a collection, or stops a running one, after checking none runs and the collector is up. Dry run unless apply is true. |
 | `edit-data-connector` | edit | Manages a network's HTTP data connector (add, update, delete, test), polled each collection. Dry run unless apply is true. |
 | `edit-data-file` | edit | Uploads a CSV/JSON/XML/YAML/TEXT dataset for NQE to join, attaches or detaches it on a network, or deletes it. Dry run unless apply is true. |

@@ -38,7 +38,8 @@ type complianceInput struct {
 	CheckIDs   []string   `json:"check_ids"`
 	NQE        *nqePolicy `json:"nqe"`
 	Limit      int        `json:"limit"`
-	// View is "evaluate" (the default: judge a policy) or "read" (list the checks Forward has, one check, or the catalogue).
+	// View is "evaluate" (the default: judge a policy), "read" (list the checks Forward has, one check, or the catalogue) or "incidents"
+	// (the ServiceNow incidents linked to the snapshot's checks).
 	View string `json:"view"`
 	// Inputs of view read; giving one without a view selects read.
 	CheckID   string   `json:"check_id"`
@@ -71,8 +72,10 @@ func checkNetworkCompliance(ctx context.Context, s *fwd.Session, raw json.RawMes
 	case "", "evaluate":
 	case "read":
 		return inspectChecks(ctx, s, raw)
+	case "incidents":
+		return checkIncidents(ctx, s, raw)
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be evaluate or read", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be evaluate, read or incidents", ErrInvalidInput)
 	}
 	useChecks := in.UseChecks || len(in.CheckIDs) > 0
 	if !useChecks && in.NQE == nil {

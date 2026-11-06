@@ -1,10 +1,10 @@
 ---
 name: edit-checks
-description: Creates one check on a snapshot from a definition, or deactivates one. Dry run unless apply is true. Use when asked to add a policy check, turn a query into a check, or switch one off.
+description: Creates one check on a snapshot, deactivates one, or raises, links or closes a check's ServiceNow incident. Dry run unless apply. Use when asked to add, switch off or ticket a policy check.
 compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
 metadata:
   cluster: "compliance"
-  summary: "create or deactivate a check"
+  summary: "create, deactivate or ticket checks"
   maturity: "3"
   class: write
   effect: "snapshot"
@@ -39,6 +39,9 @@ Show that to the person who asked before applying.
    read what Forward returns (id, status, violations) and report it.
 3. deactivate: read the check first (a missing check is **unknown**). With `apply`, deactivate that one check only. The skill never
    deactivates a snapshot's checks wholesale.
+4. ServiceNow incidents (`raise_incident`, `link_incident`, `unlink_incident`, `close_incident`, `refresh_incidents`): read the
+   check and its linked incidents first (`check-network-compliance` view `incidents`). Raising and closing change the org's
+   ServiceNow and need `confirm`; a link that does not read back afterwards is **unknown**. Details in `reference/inputs.md`.
 
 ## Undo
 

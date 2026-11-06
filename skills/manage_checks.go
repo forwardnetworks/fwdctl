@@ -28,6 +28,9 @@ type manageChecksInput struct {
 	Persistent bool           `json:"persistent"`
 	CheckID    string         `json:"check_id"`
 	Apply      bool           `json:"apply"`
+	// Incident and Confirm belong to the ServiceNow incident actions (check_incidents.go).
+	Incident *checkIncidentInput `json:"incident"`
+	Confirm  string              `json:"confirm"`
 }
 
 // manageChecks creates one check on a snapshot, or deactivates one. By default it is a dry run. A created check is local to its
@@ -47,8 +50,12 @@ func manageChecks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		if in.CheckID == "" {
 			return result.Result{}, fmt.Errorf("%w: deactivate needs check_id", ErrInvalidInput)
 		}
+	case "raise_incident", "link_incident", "unlink_incident", "close_incident", "refresh_incidents":
+		if err := validateIncidentAction(in); err != nil {
+			return result.Result{}, err
+		}
 	default:
-		return result.Result{}, fmt.Errorf("%w: action must be create or deactivate", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: action must be create, deactivate, raise_incident, link_incident, unlink_incident, close_incident or refresh_incidents", ErrInvalidInput)
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
 	sn, err := resolveSnapshot(ctx, s, in.NetworkID, in.SnapshotID)
@@ -62,6 +69,9 @@ func manageChecks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	cx = fwd.Context(in.NetworkID, sn)
 	if in.Action == "create" {
 		return createCheck(ctx, s, in, sn, cx)
+	}
+	if in.Action != "deactivate" {
+		return incidentAction(ctx, s, in, sn, cx)
 	}
 	return deactivateCheck(ctx, s, in, sn, cx)
 }
