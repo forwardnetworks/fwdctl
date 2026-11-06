@@ -268,6 +268,16 @@ func Run(ctx context.Context, name string, s *fwd.Session, in json.RawMessage) (
 			return result.Result{}, fmt.Errorf("%w: %s; %s with apply is refused (a dry run is allowed)", ErrRefused, why, name)
 		}
 	}
+	if s.ForceRedact() {
+		// an input that turns redaction off (no_redact) or returns a data file unredacted (include_content) is refused before anything is read
+		var top map[string]any
+		_ = json.Unmarshal(in, &top)
+		for _, k := range []string{"no_redact", "include_content"} {
+			if v, _ := top[k].(bool); v {
+				return result.Result{}, fmt.Errorf("%w: this session keeps redaction on (FWDCTL_FORCE_REDACT); %s with %s:true is refused, run it without %s", ErrRefused, name, k, k)
+			}
+		}
+	}
 	if allowed := s.AllowedNetworks(); len(allowed) > 0 {
 		// every input that names a network (network_id, target_network_id, after_network_id, ...) must be in the allow-list; the transport
 		// checks every request again, this answers before anything is sent

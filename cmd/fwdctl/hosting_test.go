@@ -151,3 +151,39 @@ func TestNoStateIgnoresTheSavedLogin(t *testing.T) {
 		t.Fatalf("without FWDCTL_NO_STATE the saved login is read: FORWARD_URL = %q", u)
 	}
 }
+
+// FWDCTL_FORCE_REDACT: no_redact:true (device files) and include_content:true (a data file) are refused before anything is read; the same
+// read without them answers, redacted.
+func TestForceRedactRefusesTurningRedactionOff(t *testing.T) {
+	t.Setenv("FWDCTL_FORCE_REDACT", "1")
+	r := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/snapshots":                   fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+		"GET /api/networks/n1/devices/r1/files/config.txt": fwdtest.Const(200, []byte("tacacs-server key 7 SEC1\n")),
+	}
+	for _, in := range []string{
+		`{"network_id":"n1","device":"r1","mode":"read","file":"config.txt","no_redact":true}`,
+		`{"network_id":"n1","view":"config","data_file":"f.csv","include_content":true}`,
+		`{"network_id":"n1","device":"r1","no_redact":true}`,
+	} {
+		name := "inspect-device-files"
+		if strings.Contains(in, "include_content") {
+			name = "inspect-collection"
+		} else if !strings.Contains(in, "mode") {
+			name = "compare-device-config"
+		}
+		code, out, _, srv := hostedCall(t, []string{"run", name}, in, r)
+		if code != usage {
+			t.Fatalf("%s: exit %d, want %d: %s", name, code, usage, out)
+		}
+		if st, kind := errorKind(t, out); st != "error" || kind != "refused" || strings.Contains(out, "SEC1") {
+			t.Fatalf("%s: status %s kind %q: %s", name, st, kind, out)
+		}
+		if srv != nil && len(srv.Calls()) != 0 {
+			t.Fatalf("%s: requests were sent: %+v", name, srv.Calls())
+		}
+	}
+	code, out, _, _ := hostedCall(t, []string{"run", "inspect-device-files"}, `{"network_id":"n1","device":"r1","mode":"read","file":"config.txt"}`, r)
+	if code != 0 || strings.Contains(out, "SEC1") || !strings.Contains(out, `\u003credacted\u003e`) || !strings.Contains(out, "this session keeps redaction on") {
+		t.Fatalf("the redacted read still answers: exit %d %s", code, out)
+	}
+}

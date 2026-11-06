@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -32,6 +33,8 @@ func cell(v any) string {
 		return fmt.Sprint(x)
 	case bool:
 		return fmt.Sprint(x)
+	case json.Number: // a whole number beyond 2^53, kept exact
+		return x.String()
 	}
 	b, _ := json.Marshal(v)
 	return string(b)
@@ -135,13 +138,21 @@ func largestRows(result any) (rows []map[string]any, where string) {
 			}
 		}
 	}
-	var generic any
 	b, _ := json.Marshal(result)
-	_ = json.Unmarshal(b, &generic)
+	generic := decodeExact(b)
 	if m, ok := generic.(map[string]any); ok {
 		walk(m["evidence"], "evidence")
 	}
 	return rows, where
+}
+
+// decodeExact decodes JSON keeping every number as a json.Number, so a whole number beyond 2^53 is printed exactly (cell renders json.Number).
+func decodeExact(b []byte) any {
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	var v any
+	_ = d.Decode(&v)
+	return v
 }
 
 // namedList is a list of objects somewhere in a skill result's evidence: the key it sits under, its path, and its rows.
@@ -180,9 +191,8 @@ func allLists(result any) []namedList {
 			}
 		}
 	}
-	var generic any
 	b, _ := json.Marshal(result)
-	_ = json.Unmarshal(b, &generic)
+	generic := decodeExact(b)
 	if m, ok := generic.(map[string]any); ok {
 		walk(m["evidence"], "evidence", "evidence")
 	}

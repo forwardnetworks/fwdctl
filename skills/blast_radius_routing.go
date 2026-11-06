@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -71,6 +72,9 @@ func routingDelta(ctx context.Context, s *fwd.Session, networkID, beforeID, afte
 			return x
 		case int:
 			return int64(x)
+		case json.Number:
+			i, _ := x.Int64()
+			return i
 		}
 		return 0
 	}

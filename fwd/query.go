@@ -1,6 +1,7 @@
 package fwd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -175,15 +176,54 @@ func Records(items []forward.NQERecord) []map[string]any {
 	for _, it := range items {
 		row := make(map[string]any, len(it))
 		for k, v := range it {
-			var x any
-			if err := json.Unmarshal(v, &x); err != nil {
-				x = string(v)
-			}
-			row[k] = x
+			row[k] = decodeValue(v)
 		}
 		out = append(out, row)
 	}
 	return out
+}
+
+// decodeValue decodes one NQE column. Numbers stay float64 (what every reader expects) except a whole number a float64 cannot hold exactly
+// (beyond 2^53: a 64-bit counter, a large id), which stays a json.Number so it is carried and printed exactly instead of rounded.
+func decodeValue(v json.RawMessage) any {
+	d := json.NewDecoder(bytes.NewReader(v))
+	d.UseNumber()
+	var x any
+	if err := d.Decode(&x); err != nil {
+		return string(v)
+	}
+	return exactNumbers(x)
+}
+
+// maxExactFloat is 2^53: every whole number up to it is held exactly by a float64.
+const maxExactFloat = 1 << 53
+
+func exactNumbers(x any) any {
+	switch t := x.(type) {
+	case json.Number:
+		if i, err := t.Int64(); err == nil && (i > maxExactFloat || i < -maxExactFloat) {
+			return t
+		}
+		if !strings.ContainsAny(string(t), ".eE") {
+			if _, err := t.Int64(); err != nil { // a whole number beyond int64: keep it exact too
+				return t
+			}
+		}
+		f, err := t.Float64()
+		if err != nil {
+			return t
+		}
+		return f
+	case []any:
+		for i := range t {
+			t[i] = exactNumbers(t[i])
+		}
+	case map[string]any:
+		for k := range t {
+			t[k] = exactNumbers(t[k])
+		}
+	}
+	return x
 }
 
 // NQEDiff is a committed query's row differences between two snapshots.
