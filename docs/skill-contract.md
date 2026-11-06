@@ -49,6 +49,7 @@ Every skill returns the envelope in `schema/skill-result.schema.json`, built wit
 | `omitted[]` | every list that was cut or paged: `what`, `total`, `shown`, `from`, `next` (how to see the rest); absent when nothing was cut. Each is also written into `limits` |
 | `next_actions[]` | skills that may follow; a recommendation, never a command |
 | `context` | network, snapshot id/time, current/historical/predicted |
+| `error_kind` | only on `error`: why the run could not complete (`refused`, `invalid_input`, `auth`, `forbidden`, `not_found`, `rate_limited`, `timeout`, `tls`, `connection`, `upstream`, `rejected`, `other`), for a caller that branches without parsing the finding |
 
 Rules the schema enforces mechanically:
 

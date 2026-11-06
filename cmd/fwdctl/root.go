@@ -556,26 +556,46 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 	}
 	sess, err := a.session()
 	if err != nil {
+		// no session (credentials missing, an empty allow-list): a consumer that parses stdout still gets an error result with its kind
+		if format == "json" {
+			e := result.NewError(name, err.Error(), result.Context{NetworkID: networkOf(obj)})
+			if e.ErrorKind = fwd.ErrorKind(err); e.ErrorKind == fwd.KindOther {
+				e.ErrorKind = fwd.KindInvalidInput // missing credentials, an empty allow-list: the configuration given, not Forward
+			}
+			a.emit(e)
+		}
 		return fail("%v", err)
 	}
 	warnInsecure(a.err, sess)
-	if u := os.Getenv("FORWARD_URL"); u != "" {
+	quiet := quietEnv()
+	if quiet {
+		a.quiet = true
+	}
+	if u := os.Getenv("FORWARD_URL"); u != "" && !quiet {
 		// which Forward and login this run uses, so a run against the wrong tenant (customer, Skyforge, support) is seen at once; stderr only, stdout stays the result
 		fmt.Fprintf(a.err, "fwdctl: %s against %s as %s\n", name, u, os.Getenv("FORWARD_USERNAME"))
 	}
-	sess.Progress = func(stage string, done, total int64, elapsed time.Duration) {
-		fmt.Fprintf(a.err, "fwdctl run %s: %s\n", name, fwd.ProgressLine(stage, done, total, elapsed))
+	stop := func() {}
+	if !quiet {
+		sess.Progress = func(stage string, done, total int64, elapsed time.Duration) {
+			fmt.Fprintf(a.err, "fwdctl run %s: %s\n", name, fwd.ProgressLine(stage, done, total, elapsed))
+		}
+		stop = heartbeat(a.err, heartbeatEvery, "fwdctl run "+name)
 	}
-	stop := heartbeat(a.err, heartbeatEvery, "fwdctl run "+name)
 	r, err := skills.Run(context.Background(), name, sess, raw)
 	stop()
-	if r.Mode == result.ModeDryRun {
+	if r.Mode == result.ModeDryRun && !quiet {
 		fmt.Fprintln(a.err, "dry run: nothing was changed (status ok means the plan is valid, not that it was done); add \"apply\": true to do it")
 	}
 	if errors.Is(err, skills.ErrInvalidInput) || errors.Is(err, skills.ErrUnknown) {
 		// a consumer that parses stdout gets the same envelope as for any other failure, with status error; the plain line still goes to stderr and the exit status stays 64
 		if format == "json" {
-			a.emit(result.NewError(name, err.Error(), result.Context{NetworkID: networkOf(obj)}))
+			e := result.NewError(name, err.Error(), result.Context{NetworkID: networkOf(obj)})
+			e.ErrorKind = fwd.KindInvalidInput
+			if errors.Is(err, fwd.ErrGuardRefused) {
+				e.ErrorKind = fwd.KindRefused
+			}
+			a.emit(e)
 		}
 		return fail("%v", err)
 	}
@@ -593,7 +613,9 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 			return usage
 		}
 		if len(rows) > 0 {
-			fmt.Fprintf(a.err, "status: %s; %s (%d rows from %s)\n", r.Status, r.Finding, len(rows), where)
+			if !quiet {
+				fmt.Fprintf(a.err, "status: %s; %s (%d rows from %s)\n", r.Status, r.Finding, len(rows), where)
+			}
 			if len(others) > 0 && !a.quiet {
 				fmt.Fprintf(a.err, "other lists in this result (--list NAME prints one): %s\n", strings.Join(others, ", "))
 			}
@@ -609,6 +631,9 @@ func (a *app) runSkill(name, file, format, list string, withOps bool) int {
 		}
 		fmt.Fprintln(a.err, "note: this result has no list of rows to print as a "+format+"; showing the whole result as JSON")
 	}
+	if r.Status == result.Error && r.ErrorKind == "" {
+		r.ErrorKind = fwd.KindOther // an error result a skill built itself: it gives no cause the CLI could classify
+	}
 	a.emit(r)
 	return exitFor[r.Status]
 }
@@ -623,6 +648,7 @@ func warnInsecure(stderr io.Writer, s *fwd.Session) {
 // errorResult is the `error` result for a skill that could not run (transport, auth, an unexpected Forward answer).
 func errorResult(name string, err error, obj map[string]any, sess *fwd.Session) result.Result {
 	r := result.NewError(name, err.Error(), result.Context{NetworkID: networkOf(obj)})
+	r.ErrorKind = fwd.ErrorKind(err)
 	r.Operations = sess.Operations()
 	return r
 }

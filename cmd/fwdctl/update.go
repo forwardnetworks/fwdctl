@@ -338,7 +338,7 @@ func updateNotice(cmd string, stderr *os.File) {
 	case "lsp", "update", "version", "--version", "help", "-h", "--help", "docs", "guide", "completion", "__complete", "__completeNoDesc", "":
 		return
 	}
-	if os.Getenv("FWDCTL_NO_UPDATE_CHECK") != "" {
+	if os.Getenv("FWDCTL_NO_UPDATE_CHECK") != "" || noStateEnv() {
 		return
 	}
 	if _, _, ok := parseVersion(version); !ok {
@@ -379,7 +379,7 @@ func updateNotice(cmd string, stderr *os.File) {
 
 // autoUpdate applies a newer release before the command runs, when FWDCTL_AUTO_UPDATE=1. A failure is only a warning: the command still runs.
 func autoUpdate(cmd string, stderr io.Writer) {
-	if os.Getenv("FWDCTL_AUTO_UPDATE") != "1" {
+	if os.Getenv("FWDCTL_AUTO_UPDATE") != "1" || noStateEnv() {
 		return
 	}
 	switch cmd {

@@ -63,8 +63,11 @@
       }
     },
     "device": {
-      "type": "string",
-      "minLength": 1
+      "type": ["string", "array"],
+      "minLength": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "one device name (exact), or for kinds devices and interfaces a list of names: the rows of just those devices in one query, such as the hops of a path; with kind devices, a listed name that is not returned is named in not_found"
     },
     "account": {
       "type": "string",

@@ -45,6 +45,57 @@ where v.vlanId == iface.routedVlan.vlan
 foreach m in v.memberNames
 select { device: device.name, svi: iface.name, member: m };`
 
+// hopPlatformQuery reads the device type and vendor of the named devices, for the hops of an explain that does not read the forwarding tables (trace).
+const hopPlatformQuery = `@query
+hopPlatform(deviceNames: List<String>) =
+foreach device in network.devices
+where device.name in deviceNames
+select { device: device.name, deviceType: device.platform.deviceType, vendor: device.platform.vendor };`
+
+// addHopPlatform sets device_type and vendor on every hop of the path evidence, as explain routes does, with one query. A failed read is a limit.
+func addHopPlatform(ctx context.Context, s *fwd.Session, networkID, snapshotID string, ev []result.Evidence) []string {
+	var names []string
+	seen := map[string]bool{}
+	for _, e := range ev {
+		hops, _ := e.Detail["hops"].([]map[string]any)
+		for _, h := range hops {
+			if d, _ := h["device"].(string); d != "" && !seen[d] {
+				seen[d] = true
+				if len(names) < maxExplainDevices {
+					names = append(names, d)
+				}
+			}
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	var limits []string
+	if len(seen) > len(names) {
+		limits = append(limits, fmt.Sprintf("explain trace: device_type and vendor were read for the first %d devices of the paths only", maxExplainDevices))
+	}
+	rows, _, _, err := s.RunNQEAllWith(ctx, networkID, fwd.NQERun{Query: hopPlatformQuery, SnapshotID: snapshotID, Parameters: map[string]any{"deviceNames": names}}, 1000)
+	if err != nil {
+		return append(limits, "explain trace: the device type and vendor of the hops could not be read ("+err.Error()+")")
+	}
+	platform := map[string][2]any{}
+	for _, r := range rows {
+		if d, _ := r["device"].(string); d != "" {
+			platform[d] = [2]any{r["deviceType"], r["vendor"]}
+		}
+	}
+	for _, e := range ev {
+		hops, _ := e.Detail["hops"].([]map[string]any)
+		for _, h := range hops {
+			d, _ := h["device"].(string)
+			if p, ok := platform[d]; ok {
+				h["device_type"], h["vendor"] = p[0], p[1]
+			}
+		}
+	}
+	return limits
+}
+
 // maxExplainDevices bounds the devices one explain reads.
 const maxExplainDevices = 60
 

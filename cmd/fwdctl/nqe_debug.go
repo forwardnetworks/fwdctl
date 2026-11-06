@@ -127,8 +127,8 @@ func (a *app) explainFile(cmd *cobra.Command, file, draftPath, network, snapshot
 	if err != nil {
 		return a.fail("%v", err)
 	}
-	if sess.Impersonating() != "" {
-		return a.fail("--file --apply writes a draft in the workspace of the user being impersonated, which a read-only session must not do; run it as your own login")
+	if sess.ReadOnly() {
+		return a.fail("--file --apply writes a draft in the NQE workspace, which a read-only session (FWDCTL_READONLY or impersonation) must not do; run it as your own login without FWDCTL_READONLY")
 	}
 	ctx := cmd.Context()
 	if d, _, derr := sess.Client.NQERepository.GetDraft(ctx, draftPath); derr != nil {

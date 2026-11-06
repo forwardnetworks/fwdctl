@@ -607,8 +607,19 @@ func TestReachabilityExplainTracePassesEachPathsTraceThroughAndSaysItIsPreview(t
 				return 500, map[string]any{"message": "boom"}
 			}
 			return 200, map[string]any{"traceType": "VALID", "pathDescriptor": "r1 > r2", "deviceHops": []any{map[string]any{"device": "r1", "outPorts": []any{"e1"}, "unmodelled": "kept"}}}
+		},
+		// the path-search hops get each device's type and vendor, as explain routes gives them, so a viewer needs no second call
+		"POST /api/nqe": func(_ *http.Request, b []byte) (int, any) {
+			if !strings.Contains(string(b), "hopPlatform") {
+				return 599, map[string]any{"message": "unexpected query"}
+			}
+			rows := []map[string]any{{"device": "r1", "deviceType": "ROUTER", "vendor": "CISCO"}}
+			return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
 		}}
 	r, _ := mustRun(t, "investigate-reachability", routes, strings.TrimSuffix(reachIn, "}")+`,"explain":"trace"}`)
+	if hops, _ := r.Evidence[0].Detail["hops"].([]map[string]any); len(hops) == 0 || hops[0]["device_type"] != "ROUTER" || hops[0]["vendor"] != "CISCO" {
+		t.Errorf("the path-search hops carry device_type and vendor with explain trace: %v", r.Evidence[0].Detail["hops"])
+	}
 	var tr *result.Evidence
 	for i := range r.Evidence {
 		if r.Evidence[i].Source.Operation == "trace" {
@@ -620,6 +631,9 @@ func TestReachabilityExplainTracePassesEachPathsTraceThroughAndSaysItIsPreview(t
 	}
 	b := jsonOf(r)
 	paths, _ := tr.Detail["paths"].([]map[string]any)
+	if tr.Detail["file_lines_base"] != 0 {
+		t.Errorf("the trace says its fileLines count from 0: %v", tr.Detail["file_lines_base"])
+	}
 	if len(paths) != 2 || tr.Detail["traced"] != 1 || !strings.Contains(b, `"unmodelled":"kept"`) || paths[1]["error"] == nil {
 		t.Errorf("paths = %v (the body must pass through unchanged; the failed one carries its error)", b)
 	}

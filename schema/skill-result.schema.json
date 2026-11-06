@@ -56,6 +56,10 @@
       "description": "What a writing skill plans or did, each change with the value it replaces and how to undo it.",
       "items": { "$ref": "#/$defs/change" }
     },
+    "error_kind": {
+      "enum": ["refused", "invalid_input", "auth", "forbidden", "not_found", "rate_limited", "timeout", "tls", "connection", "upstream", "rejected", "other"],
+      "description": "Set only when status is error: why the run could not complete, for a caller that branches without parsing the finding. refused = this session's guard stopped it before it was sent (read-only, network allow-list)."
+    },
     "operations": {
       "type": "array",
       "description": "Optional operation log: every Forward call the skill made (for audit and API-gap analysis).",
