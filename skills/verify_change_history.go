@@ -13,7 +13,7 @@ import (
 	"github.com/forwardnetworks/fwdctl/result"
 )
 
-// changeSetHistory is verify-change view history: a change set's saved versions (note, who and when, devices edited), its summary (base snapshot, tags, linked ServiceNow requests) and the
+// changeSetHistory is verify-change view history: a change set's saved versions (note, who and when, devices edited), its summary (base snapshot, tags, linked ServiceNow change requests, each read from ServiceNow for state, URL and attachments) and the
 // directory it is filed in. Read only. The routes are Preview and need the change-set permission; the directory is read separately and left out, with a limit saying so, when the
 // organization has directories switched off or the read is refused.
 func changeSetHistory(ctx context.Context, s *fwd.Session, in verifyChangeInput) (result.Result, error) {
@@ -54,7 +54,9 @@ func changeSetHistory(ctx context.Context, s *fwd.Session, in verifyChangeInput)
 		detail["newest_version"] = string(head.CommitID)
 	}
 	if sum, _, e := s.Client.Predict.GetChangeSetSummary(ctx, in.NetworkID, in.ChangeSetID); e == nil && sum != nil {
-		detail["summary"] = map[string]any{"name": sum.Name, "description": sum.Description, "base_snapshot_id": string(sum.SnapshotID), "tags": sum.Tags, "servicenow_change_requests": len(sum.ServiceNowChangeRequests)}
+		rows, crLimits := changeRequestDetails(ctx, s, in.NetworkID, in.ChangeSetID, sum.ServiceNowChangeRequests)
+		detail["summary"] = map[string]any{"name": sum.Name, "description": sum.Description, "base_snapshot_id": string(sum.SnapshotID), "tags": sum.Tags, "servicenow_change_requests": rows}
+		limits = append(limits, crLimits...)
 	} else if e != nil {
 		limits = append(limits, "the change set summary could not be read ("+e.Error()+")")
 	}

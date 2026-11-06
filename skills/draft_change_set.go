@@ -103,6 +103,20 @@ type draftLifecycle struct {
 	// Commands belongs to op prettify; Path to op export_zip.
 	Commands string `json:"commands"`
 	Path     string `json:"path"`
+	// ChangeRequest belongs to op raise_change_request; SysID to attach_to_change_request and download_change_request_attachment (with
+	// Path), FileSysID to download_change_request_attachment.
+	ChangeRequest *draftChangeRequest `json:"change_request"`
+	SysID         string              `json:"sys_id"`
+	FileSysID     string              `json:"file_sys_id"`
+}
+
+// draftChangeRequest is a ServiceNow change request to raise for a change set (Forward's NewServiceNowChangeRequest).
+type draftChangeRequest struct {
+	Summary   string `json:"summary"`
+	Details   string `json:"details"`
+	Impact    string `json:"impact"`
+	Priority  string `json:"priority"`
+	WorkNotes string `json:"work_notes"`
 }
 
 type draftChangeSetInput struct {
