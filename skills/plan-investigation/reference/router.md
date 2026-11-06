@@ -36,6 +36,8 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Show a Predict change set's saved versions, notes and history, the config a version holds, what a prediction affected, which commands Predict accepts for an OS, a change set's firewall objects, BGP advertisement diffs or NQE checks; commit or copy a change set | `verify-change` views `history`, `config`, `affected`; changes with `edit-change-set` lifecycle |
 | Label a snapshot | `edit-snapshot` (action note) (dry run first) |
 | Add a policy check, turn an authored query into a check, or switch a check off | `edit-checks` (dry run first) |
+| Open, raise, link, unlink or close a ServiceNow incident ticket | `edit-checks` (dry run first; list them with `check-network-compliance` view incidents) |
+| Raise a ServiceNow change request (CHG ticket) for a Predict change set, attach a report to it | `edit-change-set` lifecycle raise_change_request (dry run first; read with `verify-change` view history) |
 | Create, change or remove an alias (a named group a check refers to) | `edit-alias` (dry run first) |
 | "What if we made this change": stage or build a change set from CLI lines or BGP advertisements the caller supplies, and predict it | `edit-change-set` (dry run first), then `verify-change` (`view: describe`, then the default view) |
 | Which collection settings differ from Forward's defaults (timeouts, retries, concurrency, rates), what is temporary, a collector's concurrency against its maximum, the effective collection settings | `inspect-platform` area `collection_settings` view `effective` |

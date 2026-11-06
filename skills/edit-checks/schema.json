@@ -1,18 +1,107 @@
 {
   "type": "object",
-  "required": ["network_id", "action"],
+  "required": [
+    "network_id",
+    "action"
+  ],
   "additionalProperties": false,
   "properties": {
-    "network_id": { "type": "string", "minLength": 1 },
-    "snapshot_id": { "type": "string", "minLength": 1 },
-    "action": { "enum": ["create", "deactivate"] },
-    "definition": { "type": "object" },
-    "name": { "type": "string" },
-    "note": { "type": "string" },
-    "tags": { "type": "array", "items": { "type": "string" } },
-    "priority": { "type": "string" },
-    "persistent": { "type": "boolean", "default": false },
-    "check_id": { "type": "string", "minLength": 1 },
-    "apply": { "type": "boolean", "default": false }
+    "network_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "enum": [
+        "create",
+        "deactivate",
+        "raise_incident",
+        "link_incident",
+        "unlink_incident",
+        "close_incident",
+        "refresh_incidents"
+      ],
+      "description": "create or deactivate a check; the ServiceNow incident actions: raise_incident (check_id + incident summary, impact, urgency; confirm = check_id; only for a FAIL check), link_incident / unlink_incident (check_id + incident.number; each undoes the other), close_incident (incident.number; confirm = the number; changes the org's ServiceNow record), refresh_incidents (Forward re-reads every linked incident's state)"
+    },
+    "definition": {
+      "type": "object"
+    },
+    "name": {
+      "type": "string"
+    },
+    "note": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "priority": {
+      "type": "string"
+    },
+    "persistent": {
+      "type": "boolean",
+      "default": false
+    },
+    "check_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "apply": {
+      "type": "boolean",
+      "default": false
+    },
+    "incident": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "the ServiceNow incident of an incident action",
+      "properties": {
+        "number": {
+          "type": "string",
+          "description": "an existing incident (link, unlink, close)"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "details": {
+          "type": "string"
+        },
+        "impact": {
+          "enum": [
+            "HIGH",
+            "MEDIUM",
+            "LOW",
+            "high",
+            "medium",
+            "low",
+            "1",
+            "2",
+            "3"
+          ]
+        },
+        "urgency": {
+          "enum": [
+            "HIGH",
+            "MEDIUM",
+            "LOW",
+            "high",
+            "medium",
+            "low",
+            "1",
+            "2",
+            "3"
+          ]
+        }
+      }
+    },
+    "confirm": {
+      "type": "string",
+      "description": "raise_incident: the check id; close_incident: the incident number"
+    }
   }
 }

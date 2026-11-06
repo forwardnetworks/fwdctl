@@ -36,7 +36,7 @@ What each input means, and the fields per object and action: `fwdctl run check-n
 4. Decide across all policies: any violation is **failed**; otherwise any not-evaluated policy
    is **unknown**; otherwise **ok**.
 
-**view read** reports checks without evaluating a policy (`check_id`, `statuses`, `catalogue`, `limit`, `offset`; the fields and status rules are in `reference/inputs.md`, printed by `fwdctl run check-network-compliance --help`). **ERROR and TIMEOUT are not policy failures: they mean Forward produced no verdict, so they count as not evaluated, and when they are all there is the result is unknown.**
+**view incidents** lists the ServiceNow incidents linked to the snapshot's checks (`check_id` for one check's, read from ServiceNow; `reference/inputs.md`). **view read** reports checks without evaluating a policy (`check_id`, `statuses`, `catalogue`, `limit`, `offset`; the fields and status rules are in `reference/inputs.md`, printed by `fwdctl run check-network-compliance --help`). **ERROR and TIMEOUT are not policy failures: they mean Forward produced no verdict, so they count as not evaluated, and when they are all there is the result is unknown.**
 
 ## Evidence
 

@@ -61,7 +61,7 @@ func TestAlwaysLoadedBudget(t *testing.T) {
 // views should each name their own inputs. The skills below pre-date the rule; each may not grow past the number listed, and none may pass maxInputsEver.
 const (
 	maxReadInputs = 8
-	maxInputsEver = 14 // verify-change takes commit_id, object_kind, os and protocol for its Predict views (14); investigate-reachability takes return_path and explain (14); inspect-bgp-neighbors takes the routing-app option as one nested object (13); every other skill stays at 12 or fewer
+	maxInputsEver = 14 // verify-change takes commit_id, object_kind, os and protocol for its Predict views (14); investigate-reachability takes return_path and explain (14); inspect-bgp-neighbors takes the routing-app option as one nested object (13); edit-checks takes incident and confirm for its ServiceNow incident actions (13); every other skill stays at 12 or fewer
 )
 
 var wideReadSkills = map[string]int{

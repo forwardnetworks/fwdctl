@@ -59,12 +59,14 @@
     "view": {
       "enum": [
         "evaluate",
-        "read"
+        "read",
+        "incidents"
       ],
       "default": "evaluate",
       "x-values": {
         "evaluate": "run a policy (Forward's checks or NQE violation queries) against the snapshot and judge it",
-        "read": "list the checks that already exist and their status"
+        "read": "list the checks that already exist and their status",
+        "incidents": "the ServiceNow incidents linked to the snapshot's checks (state); with check_id, each read from ServiceNow with Forward's update history"
       }
     },
     "check_id": {
