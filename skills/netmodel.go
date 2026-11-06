@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -92,6 +93,9 @@ func num(v any) (int64, bool) {
 		return x, true
 	case int:
 		return int64(x), true
+	case json.Number: // a whole number beyond 2^53, kept exact by fwd.Records
+		i, err := x.Int64()
+		return i, err == nil
 	}
 	return 0, false
 }

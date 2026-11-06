@@ -304,8 +304,7 @@ func compareRows(a, b []map[string]any, keys []string, ignoreOrder bool, show in
 		ca, cb := count(a, false), count(b, false)
 		for k, n := range cb {
 			if d := n - ca[k]; d > 0 {
-				var row map[string]any
-				_ = json.Unmarshal([]byte(k), &row)
+				row, _ := decodeExact([]byte(k)).(map[string]any)
 				for i := 0; i < d; i++ {
 					record(compareDiff{Change: "added", B: row})
 				}
@@ -313,8 +312,7 @@ func compareRows(a, b []map[string]any, keys []string, ignoreOrder bool, show in
 		}
 		for k, n := range ca {
 			if d := n - cb[k]; d > 0 {
-				var row map[string]any
-				_ = json.Unmarshal([]byte(k), &row)
+				row, _ := decodeExact([]byte(k)).(map[string]any)
 				for i := 0; i < d; i++ {
 					record(compareDiff{Change: "removed", A: row})
 				}
@@ -482,7 +480,7 @@ func jsonType(v any) string {
 		return "null"
 	case bool:
 		return "boolean"
-	case float64, int, int64:
+	case float64, int, int64, json.Number:
 		return "number"
 	case string:
 		return "string"

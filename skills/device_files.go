@@ -43,7 +43,12 @@ const (
 )
 
 // redactor hides the value after a secret-bearing keyword. It is best effort: the answer says so.
-var redactor = regexp.MustCompile(`(?i)\b(password|secret|encrypted-password|authentication-key|pre-shared-key|preshared-key|private-key|key-string|md5|sha256|token|passphrase)(\s+(?:\d\s+)?|\s*[:=]\s*)("[^"]*"|\S+)`)
+// The value may follow a key number, an algorithm or encoding word and an encryption type: "authentication-key 1 md5 VALUE 7", "secret sha512 HASH",
+// "pre-shared-key ascii-text VALUE", "pre-shared-key local 6 VALUE".
+var redactor = regexp.MustCompile(`(?i)\b(password|secret|encrypted-password|authentication-key|pre-shared-key|preshared-key|private-key|key-string|md5|sha256|token|passphrase)(\s+(?:\d+\s+)?(?:(?:md5|sha\d*|ascii-text|hexadecimal|local|remote|cleartext|encrypted)\s+)?(?:\d\s+)?|\s*[:=]\s*)("[^"]*"|\S+)`)
+
+// SNMPv3 user passwords: "auth sha AUTHPASS priv aes 128 PRIVPASS" (on snmp lines only).
+var snmpV3Auth = regexp.MustCompile(`(?i)(\b(?:auth\s+(?:md5|sha\d*)|priv\s+(?:(?:des56|3des|des|aes[-\s]*\d*)\s+)?)(?:\s*))(\S+)`)
 
 // An SNMP community is a secret, a BGP community is routing policy. Only redact "community" where it is SNMP: a
 // line that says snmp, or a Junos "community NAME {" block opener.
@@ -52,12 +57,35 @@ var (
 	junosSNMPOpen = regexp.MustCompile(`^\s*community\s+\S+\s*\{\s*$`)
 )
 
+// A bare "key" is a shared secret on AAA and IKE lines (tacacs-server key 7 X, radius-server host H key X, server-private A key X in an aaa
+// group block, crypto isakmp key X address A, pre-shared-key address A key X, IKEv2 "authentication remote pre-share key X", an IS-IS or
+// interface "authentication key 7 X") and on a "key 7 X" line inside a tacacs/radius server block; elsewhere ("key chain NAME", "crypto key
+// generate") it is not, so it is redacted only there.
+var (
+	aaaKey     = regexp.MustCompile(`(?i)(\bkey)(\s+(?:\d\s+)?)("[^"]*"|\S+)`)
+	aaaKeyLine = regexp.MustCompile(`(?i)tacacs|radius|isakmp|ikev[12]|keyring|pre-share|server-private|aaa\b|authentication\s+key\b`)
+	blockKeyRe = regexp.MustCompile(`(?i)^\s*key\s+(\d\s+\S+|"[^"]*"\s*$)`)
+)
+
 func redact(line string) (string, bool) {
 	out := redactor.ReplaceAllString(line, "${1}${2}<redacted>")
+	if aaaKeyLine.MatchString(line) || blockKeyRe.MatchString(line) {
+		out = aaaKey.ReplaceAllString(out, "${1}${2}<redacted>")
+	}
 	if strings.Contains(strings.ToLower(line), "snmp") || junosSNMPOpen.MatchString(line) {
 		out = snmpCommunity.ReplaceAllString(out, "${1}<redacted>")
+		out = snmpV3Auth.ReplaceAllString(out, "${1}<redacted>")
 	}
 	return out, out != line
+}
+
+// redactedNote says how many lines were redacted, and how to see them unless this session keeps redaction on (FWDCTL_FORCE_REDACT).
+func redactedNote(s *fwd.Session, n int) string {
+	how := "set no_redact to see them"
+	if s.ForceRedact() {
+		how = "this session keeps redaction on"
+	}
+	return fmt.Sprintf("%d line(s) had a secret value replaced with <redacted> (best effort; %s)", n, how)
 }
 
 func clipLine(l string) string {
@@ -154,7 +182,7 @@ func inspectDeviceFiles(ctx context.Context, s *fwd.Session, raw json.RawMessage
 		finding = readLines(lines, in, show, base, &limits)
 	}
 	if redacted > 0 {
-		limits = append(limits, fmt.Sprintf("%d line(s) had a secret value replaced with <redacted> (best effort; set no_redact to see them)", redacted))
+		limits = append(limits, redactedNote(s, redacted))
 	} else if !in.NoRedact {
 		limits = append(limits, "secret values are redacted on a best-effort basis; review before sharing")
 	}
@@ -321,7 +349,7 @@ func searchAllFiles(ctx context.Context, s *fwd.Session, in deviceFilesInput, cx
 		limits = append(limits, fmt.Sprintf("%d file(s) could not be read and are not covered", unread))
 	}
 	if redacted > 0 {
-		limits = append(limits, fmt.Sprintf("%d line(s) had a secret value replaced with <redacted> (best effort; set no_redact to see them)", redacted))
+		limits = append(limits, redactedNote(s, redacted))
 	}
 	limits = append(limits, "each file is read up to 4 MiB; a longer file is searched only in its first 4 MiB")
 	base := map[string]any{"device": in.Device, "pattern": in.Pattern, "files_in_device": len(files), "files_searched": read, "matches": total, "files_with_matches": perFile, "hits": hits}

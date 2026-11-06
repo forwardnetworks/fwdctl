@@ -62,6 +62,9 @@ type Config struct {
 	// is scoped to one of them (a snapshot is placed by asking Forward which network it is in), routes that are not scoped to a network are
 	// refused, and the network list holds only these. fwdctl sets it from FWDCTL_ALLOW_NETWORKS (comma separated).
 	AllowNetworks []string
+	// ForceRedact keeps redaction on whatever the caller asks: skills.Run refuses no_redact or include_content set to true, so device
+	// configuration secrets and uploaded data-file content are never returned unredacted. fwdctl sets it from FWDCTL_FORCE_REDACT.
+	ForceRedact bool
 	// Hooks are extra SDK hooks the embedding program wants on every request (an audit logger, for example). They run after the
 	// session's own recorder. fwdctl sets none.
 	Hooks []forward.Hook
@@ -127,6 +130,7 @@ type Session struct {
 
 	impersonated string // the user id this session acts as (FORWARD_IMPERSONATE), or empty
 	readOnly     bool
+	forceRedact  bool
 	allowed      []string
 
 	// NetworkDeleter, when set, performs every network deletion a skill asks for instead of the direct SDK call. A host that must route destructive calls through its own vetted
@@ -211,7 +215,7 @@ func NewSession(cfg Config) (*Session, error) {
 			return nil, err
 		}
 	}
-	s := &Session{insecure: cfg.Insecure && cfg.HTTPClient == nil, NQEMode: cfg.NQEMode, NQEWait: cfg.NQEWait, impersonated: cfg.ImpersonateUserID, readOnly: cfg.ReadOnly}
+	s := &Session{insecure: cfg.Insecure && cfg.HTTPClient == nil, NQEMode: cfg.NQEMode, NQEWait: cfg.NQEWait, impersonated: cfg.ImpersonateUserID, readOnly: cfg.ReadOnly, forceRedact: cfg.ForceRedact}
 	authMode := forward.AuthMode("")
 	if cfg.ImpersonateUserID != "" {
 		authMode = forward.AuthModeBrowser
@@ -272,6 +276,9 @@ func NewSession(cfg Config) (*Session, error) {
 
 // ReadOnly reports whether the session refuses writes (Config.ReadOnly or impersonation).
 func (s *Session) ReadOnly() bool { return s.readOnly || s.impersonated != "" }
+
+// ForceRedact reports whether the session refuses to turn redaction off (Config.ForceRedact).
+func (s *Session) ForceRedact() bool { return s.forceRedact }
 
 // AllowedNetworks returns the network allow-list (Config.AllowNetworks), or nil when the session may reach every network its login sees.
 func (s *Session) AllowedNetworks() []string { return append([]string(nil), s.allowed...) }

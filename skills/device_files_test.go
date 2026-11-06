@@ -171,3 +171,45 @@ func TestDeviceFilesOnAPredictedSnapshotSaysHowManyLinesThePredictionChanged(t *
 		t.Fatalf("the read of a predicted file should carry the changed-line count: %s", b)
 	}
 }
+
+// A shared key on AAA and IKE lines is a secret: tacacs/radius server keys (global, per host, in a server block), crypto isakmp key and a keyring
+// pre-shared-key. A key chain name or "crypto key generate" is not.
+func TestDeviceFilesRedactsAAAAndIKEKeys(t *testing.T) {
+	file := []byte(strings.Join([]string{
+		"tacacs-server key 7 SEC1",
+		"tacacs-server host 192.0.2.10 key 7 SEC2",
+		"radius-server host 192.0.2.11 auth-port 1812 key SEC3",
+		"tacacs server T1",
+		" address ipv4 192.0.2.12",
+		" key 7 SEC4",
+		"crypto isakmp key SEC5 address 192.0.2.13",
+		"crypto keyring KR",
+		" pre-shared-key address 192.0.2.14 key SEC6",
+		"radius-server key \"SEC7 with space\"",
+		" server-private 192.0.2.15 key 7 SEC8",
+		"set security ike policy P pre-shared-key ascii-text \"SEC9\"",
+		" pre-shared-key local 6 SECA",
+		" authentication remote pre-share key SECB",
+		"ntp authentication-key 1 md5 SECC 7",
+		"snmp-server user U G v3 auth sha SECD priv aes 128 SECE",
+		"username admin secret sha512 SECF",
+		"snmp-server user V network-admin auth md5 0xSECH priv aes-128 0xSECI localizedkey",
+		"   authentication key 7 SECG",
+		"key chain KEEPCHAIN",
+		" key 1",
+		"crypto key generate rsa modulus 2048",
+	}, "\n") + "\n")
+	r, _ := devFiles(t, map[string]fwdtest.Handler{filePath: fwdtest.Const(200, file)},
+		`{"network_id":"n1","device":"r1","mode":"read","file":"config.txt"}`)
+	d := fmt.Sprint(r.Evidence[0].Detail)
+	for _, secret := range []string{"SEC1", "SEC2", "SEC3", "SEC4", "SEC5", "SEC6", "SEC7", "SEC8", "SEC9", "SECA", "SECB", "SECC", "SECD", "SECE", "SECF", "SECG", "SECH", "SECI"} {
+		if strings.Contains(d, secret) {
+			t.Errorf("%s leaked: %s", secret, d)
+		}
+	}
+	for _, keep := range []string{"key chain KEEPCHAIN", "key 1", "crypto key generate rsa", "address 192.0.2.13", "address ipv4 192.0.2.12", "server-private 192.0.2.15", "ntp authentication-key 1 md5", "snmp-server user U G v3"} {
+		if !strings.Contains(d, keep) {
+			t.Errorf("%q was redacted but is not a secret: %s", keep, d)
+		}
+	}
+}
