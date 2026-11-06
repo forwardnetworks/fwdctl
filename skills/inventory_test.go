@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -591,4 +592,41 @@ func namesOfGroups(v any) []string {
 		}
 	}
 	return out
+}
+
+// device as a list (kinds devices and interfaces) reads just those devices in one query, as a List parameter; a listed name with no row is named, so a
+// missing hop is not read as none; another kind refuses a list before any call.
+func TestInventoryDeviceListReadsThoseDevicesAndNamesTheMissing(t *testing.T) {
+	r, srv := inv(t, map[string]fwdtest.Handler{"platform.osVersion": rowsOf(2, map[string]any{"Device": "r1", "Vendor": "CISCO"}, map[string]any{"Device": "r2", "Vendor": "ARISTA"})}, nil,
+		`{"network_id":"n1","kind":"devices","device":["r1","r2","r9","r1"]}`)
+	params, _ := lastNQEBody(srv)["parameters"].(map[string]any)
+	if fmt.Sprint(params["deviceNames"]) != "[r1 r2 r9]" || params["deviceName"] != "" {
+		t.Errorf("the list goes as deviceNames (deduplicated), deviceName empty: %v", params)
+	}
+	if q, _ := lastNQEBody(srv)["query"].(string); strings.Contains(q, `"r1"`) || !strings.Contains(q, "deviceNames: List<String>") || !strings.Contains(q, "Physical device") {
+		t.Errorf("the devices query declares the deviceNames list; names are parameters, never query text: %s", q)
+	}
+	nf, _ := r.Evidence[0].Detail["not_found"].([]string)
+	if fmt.Sprint(nf) != "[r9]" || !strings.Contains(strings.Join(r.Limits, " "), "r9") {
+		t.Errorf("r9 was asked for and not returned: not_found %v limits %v", r.Evidence[0].Detail["not_found"], r.Limits)
+	}
+	_, srv = inv(t, map[string]fwdtest.Handler{"Interface: interface.name": rowsOf(1, map[string]any{"Device": "r1", "Interface": "e1", "VLAN mode": "TRUNK"})}, nil,
+		`{"network_id":"n1","kind":"interfaces","device":["r1","r2"]}`)
+	params, _ = lastNQEBody(srv)["parameters"].(map[string]any)
+	if fmt.Sprint(params["deviceNames"]) != "[r1 r2]" {
+		t.Errorf("interfaces take the list too: %v", params)
+	}
+	if q, _ := lastNQEBody(srv)["query"].(string); !strings.Contains(q, "switchedVlan?.trunkVlans") || !strings.Contains(q, "deviceNames: List<String>") {
+		t.Errorf("the interfaces query reads the VLAN mode and trunk VLANs")
+	}
+	_, srv = inv(t, map[string]fwdtest.Handler{"platform.osVersion": rowsOf(0)}, nil, `{"network_id":"n1","kind":"devices","device":"r1"}`)
+	params, _ = lastNQEBody(srv)["parameters"].(map[string]any)
+	if params["deviceName"] != "r1" || fmt.Sprint(params["deviceNames"]) != "[]" {
+		t.Errorf("one name is deviceName and the list parameter is empty, never null: %v", params)
+	}
+	for _, bad := range []string{`{"network_id":"n1","kind":"vlans","device":["r1","r2"]}`, `{"network_id":"n1","kind":"devices","device":[]}`, `{"network_id":"n1","kind":"devices","device":[1]}`} {
+		if _, srv, err := runSkill(t, "inspect-inventory", map[string]fwdtest.Handler{}, bad); err == nil || len(srv.Calls()) != 0 {
+			t.Errorf("%s: refused before any call (err %v)", bad, err)
+		}
+	}
 }

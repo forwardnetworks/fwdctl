@@ -104,6 +104,9 @@ type Result struct {
 	// Omitted lists every list in this result that was cut (a cap or a page), with the total, what is shown and how to see the rest. Empty means nothing was cut. Build also writes
 	// each omission into Limits, so a reader of the text alone is told too.
 	Omitted []Omission `json:"omitted,omitempty"`
+	// ErrorKind is set only on an error result: the machine-readable reason the run could not complete (refused, invalid_input, auth, forbidden,
+	// not_found, rate_limited, timeout, tls, connection, upstream, rejected, other; see fwd.ErrorKind). The finding says the same in words.
+	ErrorKind string `json:"error_kind,omitempty"`
 }
 
 // Modes of a skill that writes.
@@ -136,6 +139,9 @@ func (r Result) Validate() []string {
 	}
 	if !skillName.MatchString(r.Skill) {
 		add("skill: %q is not a kebab-case name", r.Skill)
+	}
+	if r.ErrorKind != "" && r.Status != Error {
+		add("error_kind: set on a %s result; it belongs only to status error", r.Status)
 	}
 	switch r.Status {
 	case OK, Failed, Unknown, Error:

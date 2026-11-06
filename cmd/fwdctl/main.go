@@ -40,6 +40,7 @@ var requestTimeout time.Duration
 func main() {
 	a := &app{in: os.Stdin, out: os.Stdout, err: os.Stderr, session: func() (*fwd.Session, error) {
 		cfg := fwd.ConfigFromEnv()
+		guardFromEnv(&cfg)
 		if requestTimeout > 0 {
 			cfg.Timeout = requestTimeout
 		}

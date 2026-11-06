@@ -23,7 +23,8 @@
     },
     "limit": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "networks per page: 25 by default, at most 200 (one call then covers most logins); view primary leaves the workspaces out"
     },
     "offset": {
       "type": "integer",

@@ -5,8 +5,8 @@
 | `kind` | Returns | Narrow with |
 |---|---|---|
 | `summary` | counts of devices, interfaces, VLANs, VRFs, hosts and cloud accounts; devices by vendor and by device type | nothing (on a very large network the interface, VLAN, VRF, host and cloud-account counts are read within a bounded time and left out, with a limit that says so, if too slow; the device, vendor and type counts always come) |
-| `devices` | name, vendor, OS and version, model, type, location, tags, management IPs, collection IP, physical device | `device` (exact name), `name` (a case-insensitive substring of the name; no `*` or `?`), `vendor` (Forward's vendor name, such as `FORTINET`; also on `security_rules_experimental`) |
-| `interfaces` | device, name, type, admin and oper status, MTU, speed, MAC, IPv4 addresses (subinterfaces **and routed-VLAN/SVI interfaces**), the VRFs, description | `device`, `name` (interface) |
+| `devices` | name, vendor, OS and version, model, type, location, tags, management IPs, collection IP, physical device | `device` (exact name, or a list of names: just those devices in one query, such as the hops of a path; a listed name not returned is in `not_found`), `name` (a case-insensitive substring of the name; no `*` or `?`), `vendor` (Forward's vendor name, such as `FORTINET`; also on `security_rules_experimental`) |
+| `interfaces` | device, name, type, admin and oper status, MTU, speed, MAC, IPv4 addresses (subinterfaces **and routed-VLAN/SVI interfaces**), the VRFs, switchport VLAN mode (ACCESS or TRUNK), access, native and trunk VLANs (a trunk range is `{case: RANGE, from, to}`, one VLAN `{case: ID, ...}`; null on a routed port), description | `device` (a name or a list of names), `name` (interface) |
 | `vlans` | device, VLAN name, VLAN id range | `device`, `name` (VLAN) |
 | `vrfs` | device, VRF name, type, interface count | `device`, `name` (VRF) |
 | `hosts` | device, host name, type, addresses, MAC, interfaces | `device`, `name` (host) |

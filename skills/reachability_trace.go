@@ -89,7 +89,8 @@ func explainTrace(ctx context.Context, s *fwd.Session, in reachabilityInput, sna
 	if len(paths) == 0 {
 		limits = append(limits, "explain trace: Forward's trace listed no paths for this flow")
 	}
-	detail := map[string]any{"preview": true, "paths": paths, "distinct_paths": total, "traced": len(paths) - failed, "truncated": truncated,
+	// file_lines_base: Forward's fileLines count from 0, while inspect-device-files mode read counts from 1 (add 1 to a fileLines line to read it there)
+	detail := map[string]any{"preview": true, "file_lines_base": 0, "paths": paths, "distinct_paths": total, "traced": len(paths) - failed, "truncated": truncated,
 		"timed_out": facets.TimedOut, "results_lower_bound": lowerBound}
 	ev := result.NewEvidence(result.EvPath, "trace", snapshot, detail, fmt.Sprintf("trace (preview): %d distinct path(s), %d traced", total, len(paths)-failed))
 	return &ev, limits

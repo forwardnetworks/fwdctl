@@ -114,7 +114,7 @@ func applyConnectionOptions(o connOptions) error {
 	}
 	file := cfg
 	explicit := cfg != "" && !o.profileMayBeNew
-	if file == "" {
+	if file == "" && !noStateEnv() { // FWDCTL_NO_STATE: the saved login is not read; only flags and the environment count
 		file = defaultConfigPath()
 	}
 	var c connFile

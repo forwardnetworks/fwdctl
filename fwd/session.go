@@ -55,6 +55,13 @@ type Config struct {
 	// login (Username and Password) must be an administrator that Forward allows to impersonate. The session is read-only (PUT, PATCH and
 	// DELETE are refused at the transport, and the skills refuse apply) and every result says it was run as that user.
 	ImpersonateUserID string
+	// ReadOnly makes the session read only: PUT, PATCH and DELETE are refused at the transport and skills.Run refuses a write skill with apply
+	// (a dry run is allowed). fwdctl sets it from FWDCTL_READONLY.
+	ReadOnly bool
+	// AllowNetworks, when not empty, limits the session to these network ids: every request is checked before it is sent and refused unless it
+	// is scoped to one of them (a snapshot is placed by asking Forward which network it is in), routes that are not scoped to a network are
+	// refused, and the network list holds only these. fwdctl sets it from FWDCTL_ALLOW_NETWORKS (comma separated).
+	AllowNetworks []string
 	// Hooks are extra SDK hooks the embedding program wants on every request (an audit logger, for example). They run after the
 	// session's own recorder. fwdctl sets none.
 	Hooks []forward.Hook
@@ -119,6 +126,8 @@ type Session struct {
 	Support *Session
 
 	impersonated string // the user id this session acts as (FORWARD_IMPERSONATE), or empty
+	readOnly     bool
+	allowed      []string
 
 	// NetworkDeleter, when set, performs every network deletion a skill asks for instead of the direct SDK call. A host that must route destructive calls through its own vetted
 	// path sets it (and may return ErrDeletionRefused to forbid deletion); fwdctl leaves it nil and the SDK deletes directly.
@@ -202,11 +211,28 @@ func NewSession(cfg Config) (*Session, error) {
 			return nil, err
 		}
 	}
-	s := &Session{insecure: cfg.Insecure && cfg.HTTPClient == nil, NQEMode: cfg.NQEMode, NQEWait: cfg.NQEWait, impersonated: cfg.ImpersonateUserID}
+	s := &Session{insecure: cfg.Insecure && cfg.HTTPClient == nil, NQEMode: cfg.NQEMode, NQEWait: cfg.NQEWait, impersonated: cfg.ImpersonateUserID, readOnly: cfg.ReadOnly}
 	authMode := forward.AuthMode("")
 	if cfg.ImpersonateUserID != "" {
 		authMode = forward.AuthModeBrowser
 		hc = readOnlyClient(hc)
+	}
+	if cfg.ReadOnly {
+		hc = wrapTransport(hc, func(next http.RoundTripper) http.RoundTripper { return readOnlyGuard{next} })
+	}
+	for _, id := range cfg.AllowNetworks {
+		if id = strings.TrimSpace(id); id != "" {
+			s.allowed = append(s.allowed, id)
+		}
+	}
+	if len(s.allowed) > 0 && cfg.ImpersonateUserID != "" {
+		return nil, fmt.Errorf("the network allow-list (FWDCTL_ALLOW_NETWORKS) cannot be combined with FORWARD_IMPERSONATE: the impersonation login is not scoped to a network; use one")
+	}
+	if len(cfg.AllowNetworks) > 0 && len(s.allowed) == 0 {
+		return nil, fmt.Errorf("the network allow-list (FWDCTL_ALLOW_NETWORKS) is set but names no network id")
+	}
+	if len(s.allowed) > 0 {
+		hc = wrapTransport(hc, func(next http.RoundTripper) http.RoundTripper { return newNetworkGuard(next, s.allowed, s) })
 	}
 	retryDelay, retryMax := time.Second, 30*time.Second
 	if cfg.RetryDelay > 0 {
@@ -244,6 +270,23 @@ func NewSession(cfg Config) (*Session, error) {
 	return s, nil
 }
 
+// ReadOnly reports whether the session refuses writes (Config.ReadOnly or impersonation).
+func (s *Session) ReadOnly() bool { return s.readOnly || s.impersonated != "" }
+
+// AllowedNetworks returns the network allow-list (Config.AllowNetworks), or nil when the session may reach every network its login sees.
+func (s *Session) AllowedNetworks() []string { return append([]string(nil), s.allowed...) }
+
+// wrapTransport returns a copy of hc whose transport is wrap(the current one).
+func wrapTransport(hc *http.Client, wrap func(http.RoundTripper) http.RoundTripper) *http.Client {
+	c := *hc
+	base := c.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	c.Transport = wrap(base)
+	return &c
+}
+
 // Impersonating returns the user id this session acts as through administrator impersonation, or "" when it acts as its own login.
 func (s *Session) Impersonating() string { return s.impersonated }
 
@@ -264,7 +307,7 @@ type readOnlyTransport struct{ next http.RoundTripper }
 func (t readOnlyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch r.Method {
 	case http.MethodPut, http.MethodPatch, http.MethodDelete:
-		return nil, fmt.Errorf("refused: this session is impersonating another user and is read-only (%s %s)", r.Method, r.URL.Path)
+		return nil, fmt.Errorf("%w: this session is impersonating another user and is read-only (%s %s)", ErrGuardRefused, r.Method, r.URL.Path)
 	}
 	return t.next.RoundTrip(r)
 }

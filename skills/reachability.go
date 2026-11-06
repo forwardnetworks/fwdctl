@@ -454,6 +454,7 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 			limits = append(limits, explainHopRoutes(ctx, s, in.NetworkID, fwd.SnapshotID(cx), in.DstIP, ev)...)
 		}
 		if in.Explain == "trace" { // the trace follows the path-search evidence
+			limits = append(limits, addHopPlatform(ctx, s, in.NetworkID, fwd.SnapshotID(cx), ev)...)
 			te, tl := explainTrace(ctx, s, in, fwd.SnapshotID(cx), sid)
 			limits = append(limits, tl...)
 			if te != nil {

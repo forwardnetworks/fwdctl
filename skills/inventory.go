@@ -32,7 +32,50 @@ type inventoryInput struct {
 	CompareToSnapshotID string `json:"compare_to_snapshot_id"`
 	// IPs belongs to kind ip_owner: the IPv4 addresses whose owning interface to find.
 	IPs []string `json:"ips"`
+	// Devices is device given as a list (kinds devices and interfaces): the rows of exactly these devices, in one query. A one-name list is Device.
+	Devices []string `json:"-"`
 }
+
+// UnmarshalJSON reads device as one name or a list of names.
+func (in *inventoryInput) UnmarshalJSON(b []byte) error {
+	type plain inventoryInput
+	var aux struct {
+		plain
+		Device json.RawMessage `json:"device"`
+	}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	*in = inventoryInput(aux.plain)
+	in.Device, in.Devices = "", nil
+	if len(aux.Device) == 0 || string(aux.Device) == "null" {
+		return nil
+	}
+	if err := json.Unmarshal(aux.Device, &in.Device); err == nil {
+		return nil
+	}
+	var names []string
+	if err := json.Unmarshal(aux.Device, &names); err != nil {
+		return fmt.Errorf("device is a device name or a list of names")
+	}
+	seen := map[string]bool{}
+	for _, n := range names {
+		if n = strings.TrimSpace(n); n != "" && !seen[n] {
+			seen[n] = true
+			in.Devices = append(in.Devices, n)
+		}
+	}
+	if len(in.Devices) == 0 {
+		return fmt.Errorf("device lists no name")
+	}
+	if len(in.Devices) == 1 {
+		in.Device, in.Devices = in.Devices[0], nil
+	}
+	return nil
+}
+
+// maxInventoryDevices bounds a device list: it is for the handful of devices on a path, not a way round paging.
+const maxInventoryDevices = 200
 
 // Every filter is a query parameter; "" means no filter. Nothing from the caller is spliced into the query text.
 // summaryHeavyTimeout bounds the interface, VLAN, VRF and host counts of kind summary, which read every device: on a very large network the summary answers without them rather than not at all.
@@ -78,9 +121,9 @@ select {
 order by Rules desc, "Address objects" desc, Device asc natural;`
 
 	invDevices = `@query
-query(deviceName: String, nameGlob: String, vendorName: String) =
+query(deviceName: String, deviceNames: List<String>, nameGlob: String, vendorName: String) =
 foreach device in network.devices
-where (deviceName == "" || device.name == deviceName) && (nameGlob == "" || matches(toLowerCase(device.name), nameGlob)) && (vendorName == "" || toString(device.platform.vendor) == vendorName)
+where (deviceName == "" || device.name == deviceName) && (length(deviceNames) == 0 || device.name in deviceNames) && (nameGlob == "" || matches(toLowerCase(device.name), nameGlob)) && (vendorName == "" || toString(device.platform.vendor) == vendorName)
 select {
   Device: device.name,
   Vendor: device.platform.vendor,
@@ -98,9 +141,9 @@ order by Device asc natural;
 `
 	// invInterfaces lists the addresses on subinterfaces AND on routed-VLAN (SVI) interfaces, which Forward models under routedVlan, not under a subinterface, and the VRFs they are in
 	invInterfaces = `@query
-query(deviceName: String, ifaceName: String) =
+query(deviceName: String, deviceNames: List<String>, ifaceName: String) =
 foreach device in network.devices
-where deviceName == "" || device.name == deviceName
+where (deviceName == "" || device.name == deviceName) && (length(deviceNames) == 0 || device.name in deviceNames)
 foreach interface in device.interfaces
 where ifaceName == "" || interface.name == ifaceName
 let subAddresses = (foreach sub in interface.subinterfaces
@@ -123,6 +166,10 @@ select {
   MAC: interface.ethernet.macAddress,
   "IPv4 addresses": subAddresses + sviAddresses,
   VRFs: subVrfs + sviVrf,
+  "VLAN mode": interface.ethernet?.switchedVlan?.interfaceMode,
+  "Access VLAN": interface.ethernet?.switchedVlan?.accessVlan,
+  "Native VLAN": interface.ethernet?.switchedVlan?.nativeVlan,
+  "Trunk VLANs": interface.ethernet?.switchedVlan?.trunkVlans,
   Description: interface.description
 }
 order by Device asc natural, Interface asc natural;
@@ -414,6 +461,17 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
+	if len(in.Devices) > 0 {
+		if in.Kind != "devices" && in.Kind != "interfaces" {
+			return result.Result{}, fmt.Errorf("%w: device as a list belongs to kinds devices and interfaces; kind %s takes one device name", ErrInvalidInput, in.Kind)
+		}
+		if len(in.Devices) > maxInventoryDevices {
+			return result.Result{}, fmt.Errorf("%w: device lists %d names; at most %d", ErrInvalidInput, len(in.Devices), maxInventoryDevices)
+		}
+		if in.CompareToSnapshotID != "" {
+			return result.Result{}, fmt.Errorf("%w: compare_to_snapshot_id compares the whole network; give it without device", ErrInvalidInput)
+		}
+	}
 	if in.Kind == "ip_owner" {
 		if err := rejectForeignInputs(raw, inventoryName, "kind", "ip_owner", inventoryKindInputs); err != nil {
 			return result.Result{}, err
@@ -494,11 +552,11 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		if gerr != nil {
 			return result.Result{}, gerr
 		}
-		query, params["deviceName"], params["nameGlob"], params["vendorName"] = invDevices, in.Device, glob, vendorParam(in.Vendor)
+		query, params["deviceName"], params["deviceNames"], params["nameGlob"], params["vendorName"] = invDevices, in.Device, nonNilNames(in.Devices), glob, vendorParam(in.Vendor)
 	case "security_rules_experimental":
 		return inventorySecurityRules(ctx, s, in, cx, limits)
 	case "interfaces":
-		query, params["deviceName"], params["ifaceName"] = invInterfaces, in.Device, in.Name
+		query, params["deviceName"], params["deviceNames"], params["ifaceName"] = invInterfaces, in.Device, nonNilNames(in.Devices), in.Name
 	case "vlans":
 		query, params["deviceName"], params["vlanName"] = invVLANs, in.Device, in.Name
 	case "vrfs":
@@ -532,6 +590,9 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 			filters[k] = v
 		}
 	}
+	if len(in.Devices) > 0 {
+		filters["device"] = in.Devices
+	}
 	if out.Total == 0 || (len(out.Items) == 0 && in.Offset == 0) {
 		reason := "none exist in this snapshot"
 		if len(filters) > 0 {
@@ -560,6 +621,25 @@ func inspectInventory(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 		omitted = append(omitted, result.Omission{What: noun(in.Kind), Total: int(out.Total), Shown: len(out.Items), From: in.Offset, Paged: true, Next: pageNext(end, int(out.Total))})
 	}
 	detail := map[string]any{"kind": in.Kind, "filters": filters, "total": out.Total, "offset": in.Offset, "returned": len(out.Items), "rows": fwd.Records(out.Items)}
+	if in.Kind == "devices" && len(in.Devices) > 0 && in.Offset == 0 && int64(end) >= out.Total {
+		// every matching row is on this page, so a listed name with no row is not in the snapshot (or another filter dropped it)
+		found := map[string]bool{}
+		for _, r := range fwd.Records(out.Items) {
+			if n, ok := r["Device"].(string); ok {
+				found[n] = true
+			}
+		}
+		var missing []string
+		for _, n := range in.Devices {
+			if !found[n] {
+				missing = append(missing, n)
+			}
+		}
+		if len(missing) > 0 {
+			detail["not_found"] = missing
+			limits = append(limits, fmt.Sprintf("%d of the %d devices asked for were not returned (names are matched exactly; the device may not be in this snapshot, or vendor or name filtered it out): %s", len(missing), len(in.Devices), strings.Join(missing, ", ")))
+		}
+	}
 	finding := fmt.Sprintf("%d %s returned (%d match)", len(out.Items), noun(in.Kind), out.Total)
 	next := inventoryNext(in.Kind)
 	if in.Kind == "cloud_gateways" {
@@ -869,4 +949,12 @@ func vendorParam(v string) string {
 		return ""
 	}
 	return "Vendor." + strings.TrimPrefix(v, "VENDOR.")
+}
+
+// nonNilNames is names, or an empty list (an NQE List parameter must be a list, never null).
+func nonNilNames(names []string) []string {
+	if names == nil {
+		return []string{}
+	}
+	return names
 }

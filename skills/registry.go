@@ -13,6 +13,7 @@ import (
 	"fmt"
 	forward "github.com/forwardnetworks/forward-go-sdk"
 	"github.com/forwardnetworks/fwdctl/knowledge"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -175,6 +176,9 @@ func Aliases() map[string]string {
 var (
 	ErrUnknown      = fmt.Errorf("no such skill")
 	ErrInvalidInput = fmt.Errorf("invalid input")
+	// ErrRefused is a run the session's guard refuses before anything is sent (read-only, impersonation, a network outside the allow-list). It is
+	// also ErrInvalidInput (the caller asked for something this session may not do) and fwd.ErrGuardRefused.
+	ErrRefused = fmt.Errorf("%w: %w", ErrInvalidInput, fwd.ErrGuardRefused)
 )
 
 // Names lists every skill that has a SKILL.md, sorted.
@@ -252,12 +256,40 @@ func Run(ctx context.Context, name string, s *fwd.Session, in json.RawMessage) (
 		return result.Result{}, err
 	}
 	in = dropIgnoredInputs(name, in)
-	if as := s.Impersonating(); as != "" && m.Class == "write" {
+	if s.ReadOnly() && m.Class == "write" {
 		var ap struct {
 			Apply bool `json:"apply"`
 		}
 		if json.Unmarshal(in, &ap) == nil && ap.Apply {
-			return result.Result{}, fmt.Errorf("%w: this session is impersonating user %s and is read-only; %s with apply is refused (a dry run is allowed)", ErrInvalidInput, as, name)
+			why := "this session is read-only (FWDCTL_READONLY)"
+			if as := s.Impersonating(); as != "" {
+				why = "this session is impersonating user " + as + " and is read-only"
+			}
+			return result.Result{}, fmt.Errorf("%w: %s; %s with apply is refused (a dry run is allowed)", ErrRefused, why, name)
+		}
+	}
+	if allowed := s.AllowedNetworks(); len(allowed) > 0 {
+		// every input that names a network (network_id, target_network_id, after_network_id, ...) must be in the allow-list; the transport
+		// checks every request again, this answers before anything is sent
+		var top map[string]any
+		_ = json.Unmarshal(in, &top)
+		for k, v := range top {
+			if fwd.IDKind(k) != "network" {
+				continue
+			}
+			vals := []any{v}
+			if l, ok := v.([]any); ok {
+				vals = l
+			}
+			for _, x := range vals {
+				id := fmt.Sprint(x)
+				if f, ok := x.(float64); ok {
+					id = fmt.Sprintf("%.0f", f)
+				}
+				if x != nil && id != "" && !slices.Contains(allowed, id) {
+					return result.Result{}, fmt.Errorf("%w: %s %s is not in this session's allow-list (FWDCTL_ALLOW_NETWORKS: %s); nothing was sent", ErrRefused, k, id, strings.Join(allowed, ","))
+				}
+			}
 		}
 	}
 	run, ok := runners[name]
