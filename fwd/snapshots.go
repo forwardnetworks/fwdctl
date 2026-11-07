@@ -50,7 +50,7 @@ func (s *Session) LatestProcessed(ctx context.Context, networkID string) (*forwa
 
 // Snapshot finds one snapshot by id, or nil when the network holds no such snapshot.
 func (s *Session) Snapshot(ctx context.Context, networkID, snapshotID string) (*forward.Snapshot, error) {
-	list, _, err := s.Client.Snapshots.List(ctx, networkID, forward.SnapshotListOptions{})
+	list, _, err := s.Client.Snapshots.List(ctx, networkID, withPredicted())
 	if err != nil {
 		return nil, err
 	}

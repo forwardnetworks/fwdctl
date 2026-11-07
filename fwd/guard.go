@@ -320,7 +320,7 @@ func (g *networkGuard) load(ctx context.Context) {
 	found := map[string]string{}
 	yes := true
 	for net := range g.allowed {
-		if l, _, err := g.sess.Client.Snapshots.List(ctx, net, forward.SnapshotListOptions{IncludeArchived: &yes}); err == nil {
+		if l, _, err := g.sess.Client.Snapshots.List(ctx, net, forward.SnapshotListOptions{IncludeArchived: &yes, IncludePredicted: &yes}); err == nil {
 			for _, sn := range l {
 				found[sn.ID.String()] = net
 			}
