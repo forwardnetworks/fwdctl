@@ -137,7 +137,7 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 					trig = "(none)"
 				}
 				byTrigger[trig]++
-				if at := snapCreated(sn); at >= latest {
+				if at := snapCreated(sn); at >= latest && !sn.Predicted() { // a prediction's device count is not the network's
 					latest, latestDevices = at, sn.TotalDevices
 				}
 			}

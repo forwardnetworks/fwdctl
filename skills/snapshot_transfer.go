@@ -291,7 +291,7 @@ func waitForNewSnapshot(ctx context.Context, s *fwd.Session, networkID string, b
 	for {
 		if list, err := s.Snapshots(ctx, networkID); err == nil {
 			for i := range list {
-				if !before[string(list[i].ID)] {
+				if !before[string(list[i].ID)] && !list[i].Predicted() { // a Predict run finishing meanwhile is not the import
 					return &list[i]
 				}
 			}
