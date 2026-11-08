@@ -9,7 +9,7 @@ An intent definition (`checkType` Reachability, Isolation or Existential with `f
 
 ## ServiceNow incidents of a check
 
-Preview routes, read from Forward's source (SDK v0.8.18), not yet run against a live ServiceNow. Each is a dry run unless `apply`, and reads the check and the incidents already linked to it first.
+Preview routes, read from Forward's source (SDK v0.8.18). A live test against an org whose stored ServiceNow login was rejected (every ServiceNow read answered 409 "Unauthorized") confirmed only the refusals: a non-FAIL check is refused before anything is sent, and Forward refuses a second incident for a check that already has a linked incident with a 400 and creates nothing (seen with an open one; the skill now refuses an open link before sending, in the dry run as well, and lets a closed, resolved or canceled link through on the untested assumption that Forward then accepts a new incident). Raising, linking, closing and refresh have not been seen working against a live ServiceNow. Each is a dry run unless `apply`, and reads the check and the incidents already linked to it first.
 
 - `raise_incident`: `check_id` and `incident: {summary, impact, urgency, details?}`, impact and urgency HIGH, MEDIUM or LOW (ServiceNow's 1, 2, 3; Forward would store any other number as LOW, so others are refused). Needs `confirm` = the check id. Forward raises one only for an enabled check that is FAIL in this snapshot and every later one; a check that is not FAIL here is refused before anything is sent. If the call fails Forward may still have created the incident: list them before retrying.
 - `link_incident` / `unlink_incident`: `check_id` and `incident: {number}`; each is the other's undo. Unlinking leaves the incident in ServiceNow.

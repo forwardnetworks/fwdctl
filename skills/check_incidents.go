@@ -257,6 +257,19 @@ func incidentAction(ctx context.Context, s *fwd.Session, in manageChecksInput, s
 			return result.Build(manageChecksName, result.Failed, fmt.Sprintf("Refused, nothing was sent: check %q is %s, and Forward raises an incident only for a check failing in this snapshot and every later one", check.Name, check.Status),
 				result.Deterministic, cx, result.Options{Mode: modeOf(in.Apply), Limits: limits, Evidence: ev(modeOf(in.Apply), map[string]any{"check": before["check"], "refused": "check not failing"})})
 		}
+		if lerr != nil {
+			limits = append(limits, "the links of this check could not be read, so whether it already has an open incident (Forward then refuses a second) is not known")
+		} else {
+			// Seen live (a ServiceNow write test): the dry run said ok for a check that already had an open incident, and apply was then refused with a 400
+			// ("already linked to incident"), so a linked open incident is refused here, before anything is sent. A linked incident that is resolved,
+			// closed or canceled is not refused: whether Forward then allows a new one has not been seen.
+			for _, r := range rows {
+				if st := strings.ToLower(fmt.Sprint(r["state"])); st != "closed" && st != "resolved" && st != "canceled" {
+					return result.Build(manageChecksName, result.Failed, fmt.Sprintf("Refused, nothing was sent: check %s is already linked to incident %v (%v), and Forward raises one incident per check; unlink it (unlink_incident), or close it in ServiceNow and run refresh_incidents (the state shown is Forward's stored copy)", in.CheckID, r["number"], r["state"]),
+						result.Deterministic, cx, result.Options{Mode: modeOf(in.Apply), Limits: limits, Evidence: ev(modeOf(in.Apply), map[string]any{"check": before["check"], "incidents": rows, "refused": "check already linked to an open incident"})})
+				}
+			}
+		}
 		input := forward.ServiceNowIncidentInput{Summary: strings.TrimSpace(inc.Summary), Details: strings.TrimSpace(inc.Details), Impact: inc.Impact, Urgency: inc.Urgency}
 		ch.Action, verb, confirmWith = "raise_servicenow_incident", "raise a ServiceNow incident for", in.CheckID
 		ch.Target += ", ServiceNow"

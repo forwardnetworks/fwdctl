@@ -226,3 +226,29 @@ func TestViewIncidentsForACheckThatDoesNotExistIsUnknown(t *testing.T) {
 		t.Fatalf("missing check: %s %s", r.Status, r.Finding)
 	}
 }
+
+// Seen live: the dry run said ok for a check that already had an open incident, then apply was refused with a 400. Both modes are refused up
+// front now, and nothing is sent; a linked incident that is closed does not block.
+func TestRaiseIncidentOnACheckWithAnOpenIncidentIsRefusedBeforeAnythingIsSent(t *testing.T) {
+	f := &incFake{links: []map[string]any{{"checkId": "9", "number": "INC0000001", "state": "New"}}}
+	for _, tail := range []string{`}`, `,"apply":true,"confirm":"9"}`} {
+		r, srv := mustRun(t, "edit-checks", f.routes(), raiseInc+tail)
+		if r.Status != result.Failed || !strings.Contains(r.Finding, "already linked to incident INC0000001") || writes(srv) != 0 || len(f.actions) != 0 {
+			t.Fatalf("%s: %s %s writes=%d actions=%v", tail, r.Status, r.Finding, writes(srv), f.actions)
+		}
+	}
+	for name, link := range map[string]map[string]any{
+		"closed":                {"checkId": "9", "number": "INC0000001", "state": "Closed"},
+		"lowercase closed":      {"checkId": "9", "number": "INC0000001", "state": "closed"},
+		"open on a other check": {"checkId": "7", "number": "INC0000001", "state": "New"},
+	} {
+		g := &incFake{links: []map[string]any{link}}
+		if r, _ := mustRun(t, "edit-checks", g.routes(), raiseInc+`,"apply":true,"confirm":"9"}`); r.Status != result.OK || len(g.actions) != 1 {
+			t.Fatalf("%s does not block: %s %s %v", name, r.Status, r.Finding, g.actions)
+		}
+	}
+	h := &incFake{links: []map[string]any{{"checkId": "9", "number": "INC0000001"}}}
+	if r, _ := mustRun(t, "edit-checks", h.routes(), raiseInc+`,"apply":true,"confirm":"9"}`); r.Status != result.Failed || len(h.actions) != 0 {
+		t.Fatalf("a link with no reported state counts as open: %s %s %v", r.Status, r.Finding, h.actions)
+	}
+}
