@@ -278,7 +278,8 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		for _, c := range list {
 			if c.Name == in.Name && string(c.SnapshotID) == base {
 				return result.NewUnknown(draftChangeSetName, fmt.Sprintf("A change set named %q on snapshot %s already exists (id %s); nothing was created", in.Name, base, c.ID), cx,
-					[]string{"an existing change set with this name and base was left alone; review it, or pick another name"}, result.Options{NextActions: []string{"verify-change"}})
+					[]string{"an existing change set with this name and base was left alone; review it, or pick another name"}, result.Options{NextActions: []string{"verify-change"},
+						Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "draftChangeSet", cx.SnapshotID, map[string]any{"refused": "name_exists", "name": in.Name, "base_snapshot_id": base, "existing_change_set_id": string(c.ID)}, "a change set with this name and base already exists; nothing was created")}})
 			}
 		}
 	}

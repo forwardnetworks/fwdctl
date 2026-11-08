@@ -25,3 +25,10 @@ func SetupTestPollHook(every time.Duration) (restore func()) {
 	setupTestPollEvery = every
 	return func() { setupTestPollEvery = o }
 }
+
+// RoutingRowsCap lowers the row cap of a routing read, to test the not-read-whole path.
+func RoutingRowsCap(n int) (restore func()) {
+	old := maxRoutingRows
+	maxRoutingRows = n
+	return func() { maxRoutingRows = old }
+}

@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -34,8 +35,10 @@ foreach n in protocol.bgp.neighbors
 select {device: device.name, vrf: instance.name, peer: n.neighborAddress, state: n.sessionState}`
 )
 
+// maxRoutingRows is how many rows one routing read takes; a var so a test can lower it.
+var maxRoutingRows = 200000
+
 const (
-	maxRoutingRows   = 200000
 	maxRoutingShown  = 25
 	maxPrefixesShown = 50
 )
@@ -196,7 +199,11 @@ foreach instance in device.networkInstances
 where isPresent(instance.afts) && isPresent(instance.afts.ipv4Unicast)
 foreach entry in instance.afts.ipv4Unicast.ipEntries
 select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry.nextHops select hop.ipAddress}`
-	rows, _, _, err := s.RunNQEAll(ctx, networkID, snap, q, maxRoutingRows)
+	rows, _, trunc, err := s.RunNQEAll(ctx, networkID, snap, q, maxRoutingRows)
+	if err == nil && trunc {
+		// a partial table would show every entry past the cap as removed or added, so say it was not read whole instead of diffing it
+		return nil, fmt.Errorf("%s has more than %d IPv4 forwarding entries in snapshot %s, so its route table was not read whole", device, maxRoutingRows, snap)
+	}
 	m := map[string]string{}
 	for _, r := range rows {
 		hops := []string{}
@@ -266,7 +273,7 @@ func stagedAdvertisementEffect(ctx context.Context, s *fwd.Session, networkID, c
 		before, e1 := devicePrefixMap(ctx, s, networkID, beforeID, dev)
 		after, e2 := devicePrefixMap(ctx, s, networkID, afterID, dev)
 		if e1 != nil || e2 != nil {
-			limits = append(limits, "the forwarding entries of "+dev+" could not be read, so its staged advertisements were not checked")
+			limits = append(limits, fmt.Sprintf("the forwarding entries of %s could not be read (%v), so its staged advertisements were not checked", dev, errors.Join(e1, e2)))
 			continue
 		}
 		check := func(action, vrf, prefix string) {
