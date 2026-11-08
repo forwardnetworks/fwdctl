@@ -7,6 +7,7 @@ import (
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 func blast(t *testing.T, f changeFix) (result.Result, *fwdtest.Server) {
@@ -335,5 +336,25 @@ func TestBlastRadiusSaysWhenForwardsL3TableMissesARouteChangeTheCountsFound(t *t
 	r, _ := mustRun(t, "analyze-blast-radius", routes, csInput+"}")
 	if !strings.Contains(strings.Join(r.Limits, " "), "lists no changed device") || !strings.Contains(r.Finding, "routing") {
 		t.Errorf("the disagreement is said: %s | %v", r.Finding, r.Limits)
+	}
+}
+
+// A device whose route table is larger than the read cap is not diffed: a partial table would show every entry past the cap as added or removed. The
+// per-prefix key is absent and a limit says the table was not read whole.
+func TestBlastRadiusDevicePrefixChangesAreNotDiffedWhenTheRouteTableExceedsTheReadCap(t *testing.T) {
+	defer skills.RoutingRowsCap(1)()
+	f := changeFix{}
+	routes := f.routes()
+	routes[nqePath] = func(r *http.Request, b []byte) (int, any) {
+		return invNQE(map[string]fwdtest.Handler{
+			"ipv4NextHops":          rowsOf(0),
+			"sessionState":          rowsOf(0),
+			"nextHops: foreach hop": rowsOf(3, map[string]any{"vrf": "default", "prefix": "0.0.0.0/0", "nextHops": []any{"192.0.2.1"}}),
+		})(r, b)
+	}
+	r, _ := mustRun(t, "analyze-blast-radius", routes, csInput+`,"device":"edge1"}`)
+	b := jsonOf(r)
+	if strings.Contains(b, "prefix_changes_edge1") || !strings.Contains(strings.Join(r.Limits, "|"), "was not read whole") {
+		t.Fatalf("a table over the cap must not be diffed: limits %v\n%s", r.Limits, b)
 	}
 }

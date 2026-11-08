@@ -82,6 +82,10 @@ func TestDraftChangeSetDeletesTheDraftWhenForwardRejectsTheCommands(t *testing.T
 	if !strings.Contains(jsonOf(r), "unknown command") || len(r.Changes) != 2 {
 		t.Errorf("%s", jsonOf(r))
 	}
+	// the other side of the name-collision distinction: a rejected line carries command_errors and no name_exists
+	if b := jsonOf(r); !strings.Contains(b, "command_errors") || strings.Contains(b, "name_exists") {
+		t.Errorf("rejected-line evidence: %s", b)
+	}
 }
 
 func TestDraftChangeSetLeavesAnExistingNameAloneAndRefusesBadInput(t *testing.T) {
@@ -89,6 +93,10 @@ func TestDraftChangeSetLeavesAnExistingNameAloneAndRefusesBadInput(t *testing.T)
 	r, srv := mustRun(t, "edit-change-set", dcRoutes(map[string]any{}, ex), dcIn+`,"apply":true}`)
 	if r.Status != result.Unknown || writes(srv) != 0 {
 		t.Fatalf("%s writes=%d", r.Status, writes(srv))
+	}
+	// a caller can tell a name collision from a rejected line without reading the finding: the evidence says refused name_exists and names the change set
+	if b := jsonOf(r); !strings.Contains(b, `"refused":"name_exists"`) || !strings.Contains(b, `"existing_change_set_id":"cs1"`) || strings.Contains(b, "command_errors") {
+		t.Errorf("collision evidence: %s", b)
 	}
 	for _, in := range []string{`{"network_id":"n1","name":"x"}`, `{"network_id":"n1","devices":[{"device":"r1","commands":"x"}]}`,
 		dcIn + `,"run":true}`, `{"network_id":"n1","name":"x","bgp_advertisements":[{"device":"r1","prefix":"1.1.1.0/24"}]}`} {
