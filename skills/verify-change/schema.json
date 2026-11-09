@@ -46,7 +46,7 @@
         "paths": "the GUI's interesting paths: sampled paths through firewalls and load balancers, ranked by score with their stages and path query; on a snapshot (after_snapshot_id) or a change set's predicted snapshot",
         "ai_summary": "Forward AI explains a difference in words (opt-in; generated text, labelled): summary_kind config, impact (default), failure or overview, on a change set or any two snapshots; unknown when the organization has AI off",
         "history": "a change set's saved versions (note, who, when), its summary and the directory it is filed in",
-        "config": "one device's configuration in a change set: the draft, or a saved version (commit_id)",
+        "config": "one device's configuration in a change set: this login's draft, else the newest saved version (the result says which), or one saved version (commit_id)",
         "affected": "the devices a prediction changed, for a predicted snapshot (after_snapshot_id)",
         "bgp_diffs": "what a device's staged BGP advertisements change, in the draft or one saved version (commit_id)",
         "objects": "a firewall's address/service/application/url/user objects or zones in a change set (object_kind)",

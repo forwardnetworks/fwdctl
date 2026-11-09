@@ -111,6 +111,8 @@ syntax error is not touched (exit 1).
 
 Never guess a field or enum value: look it up.
 
+Enum values come back from `toString` with their type prefix: `device.platform.os` reads `OS.IOS_XE` and a vendor `Vendor.CISCO`, not the bare `IOS_XE` and `CISCO` the schema lists, so compare against the prefixed text or strip it. Interface names were seen in lower case on one lab, in the short form the device configuration used (`gi0/0`, `lo0`); do not assume a name is in Forward's long form or in any one case, and compare case-insensitively. (Seen live on a 26.10 tenant by a field session.) A query that finds no rows prints `[]` with `--format json`, so an empty array means "read, nothing there"; a failed run is a non-zero exit, never `[]`.
+
 ## 3. `validate-nqe-query` (online, authoritative)
 
     echo '{"network_id": "<id>", "query": "foreach d in network.devices select d.name"}' | fwdctl run validate-nqe-query

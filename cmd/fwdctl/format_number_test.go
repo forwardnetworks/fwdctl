@@ -43,3 +43,16 @@ func TestSkillRowsAsCSVKeepALargeWholeNumberExact(t *testing.T) {
 		t.Fatalf("allLists rounded or lost the number: %+v", allLists(res))
 	}
 }
+
+// A query that found no rows prints an empty JSON array, not null, so a consumer that expects a list can tell "read, nothing there" from a bad read.
+func TestNoRowsPrintAsAnEmptyJSONArray(t *testing.T) {
+	for _, rows := range [][]map[string]any{nil, {}} {
+		var b strings.Builder
+		if err := renderRows(&b, rows, "json"); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.TrimSpace(b.String()); got != "[]" {
+			t.Fatalf("json for no rows = %q, want []", got)
+		}
+	}
+}
