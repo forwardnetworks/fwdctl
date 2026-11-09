@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 )
 
@@ -171,4 +172,52 @@ func TestVerifyChangeCommandsExplainsAnEmptyListAndAFailedOne(t *testing.T) {
 	if r.Status != "unknown" || !strings.Contains(r.Finding, "HTTP 500") || !strings.Contains(strings.Join(r.Limits, " "), "not an empty list") {
 		t.Errorf("a 500 is unknown and says it is not an empty list: %s %s %v", r.Status, r.Finding, r.Limits)
 	}
+}
+
+// After edit-change-set applies, this login has no draft (Forward answers 404 for the draft config). View config without commit_id then reads the
+// newest saved version, says so and names its commit id. It falls back ONLY when the draft is truly absent: a draft that exists without a change for
+// the device keeps the 404 (a stale saved version must not stand in for it), an explicit commit_id never falls back, and a device the newest version
+// lacks keeps the original 404.
+func TestChangeSetConfigFallsBackToTheNewestVersionOnlyWhenThereIsNoDraft(t *testing.T) {
+	var applied []string
+	noDraft := func() map[string]fwdtest.Handler {
+		routes := historyRoutes(&applied)
+		routes["GET /api/networks/n1/change-sets/c1/draft"] = fwdtest.Const(200, map[string]any{})
+		routes["GET /api/networks/n1/change-sets/c1/draft/devices/r1/config"] = fwdtest.Const(404, map[string]any{"message": "No draft exists for change set c1"})
+		routes["GET /api/networks/n1/change-sets/c1/draft/devices/r2/config"] = fwdtest.Const(404, map[string]any{"message": "No draft exists for change set c1"})
+		routes["GET /api/networks/n1/change-sets/c1/commits/k2/devices/r1/config"] = func(*http.Request, []byte) (int, any) { return 200, []byte("hostname r1-new\n") }
+		routes["GET /api/networks/n1/change-sets/c1/commits/k2/devices/r2/config"] = fwdtest.Const(404, map[string]any{"message": "no such device in the version"})
+		return routes
+	}
+	r, _ := mustRun(t, "verify-change", noDraft(), `{"network_id":"n1","view":"config","change_set_id":"c1","device":"r1"}`)
+	b := jsonOf(r)
+	if r.Status != "ok" || !strings.Contains(b, "hostname r1-new") || !strings.Contains(b, `"commit_id":"k2"`) || !strings.Contains(b, "newest saved version") || !strings.Contains(strings.Join(r.Limits, "|"), "another user") {
+		t.Fatalf("fallback to the newest version: %s %s", r.Status, b)
+	}
+	// the version lacks the device: the draft's own 404 stands
+	if _, _, err := runSkill(t, "verify-change", noDraft(), `{"network_id":"n1","view":"config","change_set_id":"c1","device":"r2"}`); err == nil || fwd.Status(err) != 404 {
+		t.Errorf("a device the newest version lacks keeps the original 404, got %v", err)
+	}
+	// a draft exists (without this device): no fallback, the 404 stands and no commit is listed
+	withDraft := noDraft()
+	withDraft["GET /api/networks/n1/change-sets/c1/draft"] = fwdtest.Const(200, map[string]any{"draft": map[string]any{"name": "cs"}})
+	_, srv, err := runSkill(t, "verify-change", withDraft, `{"network_id":"n1","view":"config","change_set_id":"c1","device":"r1"}`)
+	if err == nil || fwd.Status(err) != 404 || len(callsMatching(srv, "/commits")) != 0 {
+		t.Errorf("an existing draft must not fall back to a saved version: err %v", err)
+	}
+	// an explicit commit_id reads that version and never looks at drafts
+	r, srv = mustRun(t, "verify-change", noDraft(), `{"network_id":"n1","view":"config","change_set_id":"c1","device":"r1","commit_id":"k2"}`)
+	if r.Status != "ok" || len(callsMatching(srv, "/draft")) != 0 {
+		t.Errorf("an explicit commit_id reads that version only: %s", r.Status)
+	}
+}
+
+func callsMatching(srv *fwdtest.Server, part string) []fwdtest.Call {
+	var out []fwdtest.Call
+	for _, c := range srv.Calls() {
+		if strings.Contains(c.Path, part) {
+			out = append(out, c)
+		}
+	}
+	return out
 }

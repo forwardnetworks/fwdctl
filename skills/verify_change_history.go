@@ -90,11 +90,32 @@ func changeSetConfig(ctx context.Context, s *fwd.Session, in verifyChangeInput) 
 	var text string
 	var err error
 	which := "the uncommitted draft"
+	committed := in.CommitID
 	if in.CommitID != "" {
 		which = "version " + in.CommitID
 		text, _, err = s.Client.Predict.GetCommittedConfig(ctx, in.NetworkID, in.ChangeSetID, in.CommitID, in.Device)
 	} else {
 		text, _, err = s.Client.Predict.GetDraftConfig(ctx, in.NetworkID, in.ChangeSetID, in.Device)
+		if err != nil && fwd.NotFound(err) {
+			// Forward answers 404 both when this login has no draft (as after edit-change-set applies and runs: a run commits the caller's draft
+			// first) and when a draft exists but holds no change for this device. Only the first case falls back, so a stale saved version is never
+			// shown in place of a draft that exists. Drafts are per user, and the newest saved version can be another user's.
+			if d, _, derr := s.Client.Predict.GetDraft(ctx, in.NetworkID, in.ChangeSetID); derr == nil && d != nil && d.Draft == nil {
+				if commits, _, cerr := s.Client.Predict.ListCommits(ctx, in.NetworkID, in.ChangeSetID); cerr == nil && len(commits) > 0 {
+					newest := commits[0]
+					for _, c := range commits {
+						if c.CommittedAt > newest.CommittedAt {
+							newest = c
+						}
+					}
+					if t2, _, e2 := s.Client.Predict.GetCommittedConfig(ctx, in.NetworkID, in.ChangeSetID, string(newest.CommitID), in.Device); e2 == nil {
+						text, err = t2, nil
+						which = "version " + string(newest.CommitID) + " (the newest saved version: this login has no uncommitted draft; the version may have been saved by another user)"
+						committed = string(newest.CommitID)
+					}
+				}
+			}
+		}
 	}
 	if err != nil {
 		if r, ok := denialResult(verifyChangeName, err, cx, "reading the change set's device configuration"); ok {
@@ -105,9 +126,12 @@ func changeSetConfig(ctx context.Context, s *fwd.Session, in verifyChangeInput) 
 	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
 	shown, om := result.Cap(lines, 300, "config lines", "the first 300 lines are shown")
 	detail := map[string]any{"change_set_id": in.ChangeSetID, "device": in.Device, "source": which, "lines_total": len(lines), "config": shown}
+	if committed != "" {
+		detail["commit_id"] = committed
+	}
 	finding := fmt.Sprintf("Configuration of %s in %s of change set %s: %d line(s)", in.Device, which, in.ChangeSetID, len(lines))
 	return result.Build(verifyChangeName, result.OK, finding, result.Deterministic, cx, result.Options{Omitted: om, NextActions: []string{"edit-change-set"},
-		Limits:   []string{"this is the configuration Predict will use for the device after the change set's edits; a device the change set does not edit has no draft or version of its own (Forward answers 404). Preview route, source-read, not run on a live Forward"},
+		Limits:   append(fallbackLimit(in.CommitID, committed), "this is the configuration Predict will use for the device after the change set's edits; a device the change set does not edit has no draft or version of its own (Forward answers 404). Preview route, source-read, not run on a live Forward"),
 		Evidence: []result.Evidence{result.NewEvidence(result.EvPredict, "changeSetConfig", nil, detail, finding)}})
 }
 
@@ -143,4 +167,12 @@ func modelingDone(done bool, err error) any {
 		return nil
 	}
 	return done
+}
+
+// fallbackLimit says so when view config read the newest saved version because this login has no draft (no commit_id was asked for).
+func fallbackLimit(asked, used string) []string {
+	if asked != "" || used == "" {
+		return nil
+	}
+	return []string{"no commit_id was given and this login has no uncommitted draft (Forward keeps drafts per user, and a run saves the caller's draft as a version first), so this is the newest saved version, " + used + ", which may have been saved by another user; it is what the last prediction ran on only if no later version exists"}
 }

@@ -96,6 +96,9 @@ func renderRows(w io.Writer, rows []map[string]any, format string) error {
 		}
 		return nil
 	}
+	if rows == nil {
+		rows = []map[string]any{} // zero rows is an empty array, never null
+	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(rows)
