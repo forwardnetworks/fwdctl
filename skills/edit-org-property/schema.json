@@ -9,7 +9,7 @@
     },
     "org_id": {
       "type": "string",
-      "description": "Change ANOTHER organization through the Forward-support routes (a support login only; the dry run names the target; apply needs confirm \"<property> <org_id>\"). Omit for the login's own organization"
+      "description": "Change ANOTHER organization through the Forward-support routes (a support login only; the dry run names the target; apply needs confirm \"<property> <org_id>\"). Omit for the login's own organization. Find the id: `fwdctl whoami` prints the login's own organization id; inspect-platform area organizations lists the organizations a support login can act on (only those: an organization missing there is not one that login can change)"
     },
     "value": {
       "type": "string",
