@@ -47,7 +47,7 @@ func modelCheck(ctx context.Context, s *fwd.Session, in verifyChangeInput) (resu
 		}
 		if fwd.ErrorKind(verr) == fwd.KindTimeout {
 			return result.NewUnknown(verifyChangeName, fmt.Sprintf("Forward did not answer the model check of snapshot %s in time", sid), cx,
-				[]string{"the comparison recomputes on every call and the first call on a snapshot also builds cached modelling data, so it can take minutes on a large snapshot; raise FORWARD_TIMEOUT (for example 900s) and run it again: " + verr.Error()},
+				[]string{"the comparison recomputes on every call and the first call on a snapshot also builds cached modelling data; the SDK waits up to 30 minutes (Forward itself allows 90), so a snapshot slower than that fails here; a repeat is faster once the cached data exists: " + verr.Error()},
 				result.Options{NextActions: []string{"verify-change"}})
 		}
 		if st := fwd.Status(verr); st == 401 || st == 403 {
@@ -69,7 +69,7 @@ func modelCheck(ctx context.Context, s *fwd.Session, in verifyChangeInput) (resu
 	limits := []string{
 		"experimental: this is Forward's own comparison of Predict's model of this base snapshot with the entries it collected, from a Forward /api/internal/ route that is not in the published API (read from Forward's source by the SDK session); the score fields are shown as Forward returns them",
 		"the scores are percentages from 0 to 100 (precision is matching entries over modelled entries, recall is matching entries over collected entries, f1 their harmonic mean); the overall score covers only the protocols enabled by the PREDICT_MODEL_* organization properties, so a low recall on a default setup can reflect how little of the collected state is modelled rather than model error (not verified: read it next to view scope); the entry counts behind the scores are not returned",
-		"it needs the MANAGE_PROTOCOL_MODELING permission (the network ADMIN role) and the Predict licence; it recomputes on every call, can start Forward's protocol-modelling jobs and cache derived results for the snapshot, and can take minutes on a large snapshot (raise FORWARD_TIMEOUT)",
+		"it needs the MANAGE_PROTOCOL_MODELING permission (the network ADMIN role) and the Predict licence; it recomputes on every call, can start Forward's protocol-modelling jobs and cache derived results for the snapshot, and can take minutes on a large snapshot (the SDK waits up to 30 minutes)",
 	}
 	detail := map[string]any{"view": "model_check", "snapshot_id": sid, "score": overall, "scores_by_protocol": byProto}
 	p, r, f1, numeric := scoreNumbers(overall)
