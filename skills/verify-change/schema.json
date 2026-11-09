@@ -31,7 +31,8 @@
         "objects",
         "checks",
         "commands",
-        "flows"
+        "flows",
+        "model_check"
       ],
       "default": "verify",
       "x-values": {
@@ -51,7 +52,8 @@
         "objects": "a firewall's address/service/application/url/user objects or zones in a change set (object_kind)",
         "checks": "the NQE checks added to a change set",
         "commands": "the vendor OSes Predict models; with os (and protocol) the commands it accepts",
-        "flows": "each flow (expectations; expect ignored) searched on the before and the after snapshot: outcome changed, path changed or same, with the paths only before and only after"
+        "flows": "each flow (expectations; expect ignored) searched on the before and the after snapshot: outcome changed, path changed or same, with the paths only before and only after",
+        "model_check": "EXPERIMENTAL: how well Predict's model of a collected snapshot reproduces what it collected: Forward's own overall and per-protocol score (precision, recall, f1), for after_snapshot_id (default the latest processed). Needs MANAGE_PROTOCOL_MODELING; a zero score is no basis, not a result"
       }
     },
     "run_predict": {

@@ -46,22 +46,23 @@ type verifyChangeInput struct {
 
 // Inputs by view (an input of another view is rejected). describe reads one change set; verify and impact compare a before and an after.
 var verifyChangeViewInputs = map[string][]string{
-	"verify":     {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "expectations"},
-	"impact":     {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
-	"describe":   {"change_set_id", "device"},
-	"list":       {},
-	"scope":      {},
-	"preflight":  {},
-	"paths":      {"change_set_id", "after_snapshot_id", "connectivity_timeout_seconds"},
-	"ai_summary": {"change_set_id", "before_snapshot_id", "after_snapshot_id", "summary_kind"},
-	"history":    {"change_set_id", "commit_id"},
-	"config":     {"change_set_id", "device", "commit_id"},
-	"affected":   {"after_snapshot_id"},
-	"bgp_diffs":  {"change_set_id", "device", "commit_id"},
-	"objects":    {"change_set_id", "device", "object_kind"},
-	"checks":     {"change_set_id"},
-	"commands":   {"os", "protocol"},
-	"flows":      {"change_set_id", "run_predict", "before_snapshot_id", "after_snapshot_id", "expectations"},
+	"verify":      {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "expectations"},
+	"impact":      {"change_set_id", "run_predict", "connectivity_timeout_seconds", "before_snapshot_id", "after_snapshot_id", "device"},
+	"describe":    {"change_set_id", "device"},
+	"list":        {},
+	"scope":       {},
+	"preflight":   {},
+	"paths":       {"change_set_id", "after_snapshot_id", "connectivity_timeout_seconds"},
+	"ai_summary":  {"change_set_id", "before_snapshot_id", "after_snapshot_id", "summary_kind"},
+	"history":     {"change_set_id", "commit_id"},
+	"config":      {"change_set_id", "device", "commit_id"},
+	"affected":    {"after_snapshot_id"},
+	"bgp_diffs":   {"change_set_id", "device", "commit_id"},
+	"objects":     {"change_set_id", "device", "object_kind"},
+	"checks":      {"change_set_id"},
+	"commands":    {"os", "protocol"},
+	"flows":       {"change_set_id", "run_predict", "before_snapshot_id", "after_snapshot_id", "expectations"},
+	"model_check": {"after_snapshot_id"},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -74,9 +75,9 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected", "bgp_diffs", "objects", "checks", "commands", "flows":
+	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected", "bgp_diffs", "objects", "checks", "commands", "flows", "model_check":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config, affected, bgp_diffs, objects, checks, commands or flows", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config, affected, bgp_diffs, objects, checks, commands, flows or model_check", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
@@ -100,6 +101,8 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return predictCommands(ctx, s, in)
 	case "flows":
 		return flowDiff(ctx, s, in)
+	case "model_check":
+		return modelCheck(ctx, s, in)
 	case "list":
 		return listChangeSets(ctx, s, in.NetworkID)
 	case "scope":

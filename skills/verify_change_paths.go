@@ -116,6 +116,7 @@ func interestingPaths(ctx context.Context, s *fwd.Session, raw json.RawMessage) 
 	limits = append(limits,
 		"the paths are SAMPLED (IPv4 host-to-host flows between sampled hosts), ranked by Forward's rudimentary score (one point per device hop plus points per processing stage such as ACL, NAT, MPLS, PBR), so a path not listed is not proven absent",
 		fmt.Sprintf("Forward ran each search for at most %d seconds (a soft limit); it does not say whether a search was cut short, so a short list on a large network may be incomplete (raise connectivity_timeout_seconds, at most 300)", maxSeconds),
+		"the two searches can return the same path (seen live: the top firewall path also came back in the load-balancer search with an identical path_query), so dedupe on the path id or on its from and to before counting or ranking across both",
 		"tags are Forward's processing stages (IN_ACL, OUT_ACL, XLATE_DNAT, MPLS, ...); there is no firewall tag, the search picks paths through devices of that type; path_query is the question to give a path search to reproduce the path")
 	finding := fmt.Sprintf("Interesting paths on %s (%s): %d found; the top %d of each are ranked below", label, strings.Join(kinds, " and "), total, limit)
 	return result.Build(verifyChangeName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"investigate-reachability", "verify-change"},
