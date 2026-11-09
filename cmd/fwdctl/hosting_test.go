@@ -187,3 +187,15 @@ func TestForceRedactRefusesTurningRedactionOff(t *testing.T) {
 		t.Fatalf("the redacted read still answers: exit %d %s", code, out)
 	}
 }
+
+// whoami prints the login's own organization id next to its name, the id edit-org-property needs through a Forward-support login.
+func TestWhoamiPrintsTheOrganizationIDAndName(t *testing.T) {
+	code, out, errs := call(t, []string{"whoami"}, "", map[string]fwdtest.Handler{
+		"GET /api/users/current": fwdtest.Const(200, map[string]any{"user": map[string]any{"id": "u1", "username": "tester@example.invalid"}}),
+		"GET /api/orgs/current":  fwdtest.Const(200, map[string]any{"id": "4242", "name": "Example Org"}),
+		"GET /api/version":       fwdtest.Const(200, map[string]any{"release": "26.10.0-01"}),
+	})
+	if code != 0 || !strings.Contains(out, "organization: Example Org (id 4242)") {
+		t.Fatalf("exit %d\n%s\n%s", code, out, errs)
+	}
+}

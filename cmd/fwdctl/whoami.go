@@ -25,7 +25,11 @@ func whoami(session func() (*fwd.Session, error), stdout, stderr io.Writer) int 
 	fmt.Fprintf(stdout, "url:          %s\n", os.Getenv("FORWARD_URL"))
 	fmt.Fprintf(stdout, "login:        %s\n", u.Username)
 	if o, err := s.Organization(ctx); err == nil {
-		fmt.Fprintf(stdout, "organization: %s\n", o.Name)
+		if o.ID != "" {
+			fmt.Fprintf(stdout, "organization: %s (id %s)\n", o.Name, o.ID)
+		} else {
+			fmt.Fprintf(stdout, "organization: %s\n", o.Name)
+		}
 	} else {
 		fmt.Fprintf(stdout, "organization: (not readable: %v)\n", err)
 	}

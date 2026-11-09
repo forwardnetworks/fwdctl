@@ -935,7 +935,7 @@ Examples:
 
 ## fwdctl whoami
 
-Prints the Forward URL, the login, the organization and the Forward version this connects with (one request each); exit 3 if the login does not work.
+Prints the Forward URL, the login, the organization (its name and numeric id: the id is what edit-org-property with org_id needs through a Forward-support login) and the Forward version this connects with (one request each); exit 3 if the login does not work.
 
 ```
 fwdctl whoami
