@@ -83,3 +83,7 @@ Run `fwdctl run inspect-vulnerabilities --help` for the inputs and an example, t
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe inspect-vulnerabilities reference/<file>`).
 
 - [reference/confidence.md](reference/confidence.md): how far to trust a verdict, and triage context. Read before stating a verdict as fact or ordering patches.
+
+## View scanners
+
+`view: scanners` reads the organization's Tenable VM scanners: each one's name, collector, schedule, which networks it may serve, and its last collection (last_retrieved, last_attempted and collection_error; NONE means the last collection finished). With `network_id`, it also shows whether that network includes each scanner. It is a read of the lists only: no snapshot is needed, nothing is collected and nothing changes. Without `network_id` the result is account-level. The Tenable side (its key pair and base URL) is not checked from here.

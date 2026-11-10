@@ -1,7 +1,6 @@
 {
   "type": "object",
   "required": [
-    "network_id",
     "object",
     "action"
   ],
@@ -23,6 +22,7 @@
         "cloud_account",
         "rapid7_source",
         "tenable_source",
+        "vulnerability_scanner",
         "controller_setup",
         "mist_setup",
         "custom_command_group",
@@ -43,7 +43,8 @@
         "mist_setup": "a Juniper Mist cloud setup",
         "custom_command_group": "commands (or OIDs) a network adds to a device type's collection: create, update, disable, delete",
         "discovery": "device discovery: start or stop a scan (it probes the network), add what it found, schedule it",
-        "sase_setup": "a Zscaler SASE setup (tenant, App Connectors, SCIM): create, update, delete (confirm = its name), or test (queues a collector test)"
+        "sase_setup": "a Zscaler SASE setup (tenant, App Connectors, SCIM): create, update, delete (confirm = its name), or test (queues a collector test)",
+        "vulnerability_scanner": "a Tenable VM vulnerability scanner for the organization: create, update, test, collect or delete (no network_id); include switches one network's use of it (network_id and name, definition {include})"
       }
     },
     "action": {
@@ -59,13 +60,15 @@
         "stop",
         "add_discovered",
         "schedule_create",
-        "schedule_delete"
+        "schedule_delete",
+        "collect",
+        "include"
       ]
     },
     "name": {
       "type": "string",
       "minLength": 1,
-      "description": "credential delete: the credential id; proxy update: the proxy id; classic_device update or delete: the device name; schedule update or delete: the schedule id; cloud_account update, rotate, test or delete: the account name; controller_setup or mist_setup update or delete: the setup name"
+      "description": "credential delete: the credential id; proxy update: the proxy id; classic_device update or delete: the device name; schedule update or delete: the schedule id; cloud_account update, rotate, test or delete: the account name; controller_setup or mist_setup update or delete: the setup name; vulnerability_scanner update, delete, collect or include: the scanner name"
     },
     "definition": {
       "type": "object",

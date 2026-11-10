@@ -52,3 +52,9 @@ Run `fwdctl run edit-source --help` for the inputs and an example, then give the
 ```bash
 echo '{"network_id":"N","object":"credential","action":"create","definition":{"type":"CLI","name":"ops","username":"admin"},"secret_file":"/path/to/pw"}' | fwdctl run edit-source
 ```
+
+## Tenable VM vulnerability scanners (`object: vulnerability_scanner`)
+
+An organization-level scanner, so these actions take no `network_id` (giving one refuses): `create` (definition: name, credential_id of an existing HTTP LOGIN credential, collector_id, interval_days, optional start_at and time_zone, and exactly one of all_networks true or network_ids), `update` (name is the scanner; give only the fields to change, new_name to rename), `test` (the config in the definition, nothing stored), `collect` (asynchronous; Forward answers 409 while one runs), and `delete` (confirm = the scanner's exact name). Every write is a dry run unless apply is true, with the before and after and the undo. The key pair is never in the input: the credential must already exist.
+
+`action: include` is the one network-level action: give `network_id`, the scanner `name`, and definition `{"include": true}` or `false`. It changes whether that network's next snapshot takes the scanner's data; an existing snapshot does not change. Forward refuses an include while another scanner type is included on the network. Read the state first with `inspect-vulnerabilities` `view: scanners`.

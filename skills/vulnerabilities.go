@@ -85,8 +85,16 @@ func investigateVulnerabilities(ctx context.Context, s *fwd.Session, raw json.Ra
 		if err := noDevicesViewInputs(in); err != nil {
 			return result.Result{}, err
 		}
+	case "scanners":
+		if in.CVEID != "" || in.Device != "" || in.SnapshotID != "" {
+			return result.Result{}, fmt.Errorf("%w: view scanners takes network_id (optional), not cve_id, device or snapshot_id", ErrInvalidInput)
+		}
+		return scannersView(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: view is cves or devices", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view is cves, devices or scanners", ErrInvalidInput)
+	}
+	if in.NetworkID == "" {
+		return result.Result{}, fmt.Errorf("%w: network_id is required (only view scanners takes none)", ErrInvalidInput)
 	}
 	if in.Limit <= 0 {
 		in.Limit = 25
