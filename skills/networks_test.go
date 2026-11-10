@@ -103,3 +103,47 @@ func TestNetworksViewPrimaryLeavesOutWorkspaces(t *testing.T) {
 		t.Errorf("only prod: %s", b)
 	}
 }
+
+// view latest answers "what is each network's newest PROCESSED snapshot": a prediction, a snapshot still UNPROCESSED and a whole-second time
+// next to a fractional one are the traps (a text compare of the times would pick the wrong one).
+func TestListNetworksLatestViewPicksTheNewestProcessedCollectedSnapshot(t *testing.T) {
+	processed := func(id, at string, devices int) map[string]any {
+		s := fwdtest.Snap(id, "PROCESSED", "COLLECTION", at)
+		s["totalDevices"] = devices
+		return s
+	}
+	predicted := fwdtest.Snap("p9", "PROCESSED", "PREDICT", "2026-09-05T00:00:00Z")
+	routes := map[string]fwdtest.Handler{
+		networksPath: fwdtest.Const(200, []any{
+			map[string]any{"id": "10", "name": "prod", "orgId": "1"},
+			map[string]any{"id": "11", "name": "quiet", "orgId": "1"},
+			map[string]any{"id": "12", "name": "broken", "orgId": "1"},
+		}),
+		"GET /api/networks/10/snapshots": fwdtest.Snapshots(
+			processed("a1", "2026-09-01T01:00:00Z", 5),
+			processed("e1", "2026-09-03T02:00:00Z", 6),
+			processed("b1", "2026-09-03T02:00:00.500Z", 7),
+			fwdtest.Snap("c1", "UNPROCESSED", "COLLECTION", "2026-09-04T00:00:00Z"),
+			predicted,
+		),
+		"GET /api/networks/11/snapshots": fwdtest.Snapshots(fwdtest.Snap("u1", "UNPROCESSED", "COLLECTION", "2026-09-02T00:00:00Z")),
+		"GET /api/networks/12/snapshots": fwdtest.Const(403, map[string]any{"message": "no access"}),
+	}
+	r, srv := mustRun(t, "inspect-networks", routes, `{"view":"latest"}`)
+	b := jsonOf(r)
+	if writes(srv) != 0 {
+		t.Fatalf("a read must write nothing: %d", writes(srv))
+	}
+	if r.Status != result.Unknown {
+		t.Errorf("one unreadable network must make the result unknown, got %s", r.Status)
+	}
+	if !strings.Contains(b, `"latest_processed_snapshot_id":"b1"`) || !strings.Contains(b, `"devices_in_latest_processed":7`) {
+		t.Errorf("prod must report b1 (the fractional-second one is the newest; the prediction and the UNPROCESSED are not): %s", b)
+	}
+	if !strings.Contains(b, "none: no PROCESSED collected snapshot") {
+		t.Errorf("quiet has only an UNPROCESSED snapshot and must say none: %s", b)
+	}
+	if !strings.Contains(b, "snapshots_error") {
+		t.Errorf("broken must carry its read error, not an empty answer: %s", b)
+	}
+}

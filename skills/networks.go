@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
+	forward "github.com/forwardnetworks/forward-go-sdk"
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
 )
@@ -23,7 +25,7 @@ type networksInput struct {
 }
 
 const (
-	defaultNetworksLimit = 25
+	defaultNetworksLimit = 50
 	maxNetworksLimit     = 200
 )
 
@@ -38,8 +40,8 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		in.Limit = defaultNetworksLimit
 	}
 	in.Limit = min(in.Limit, maxNetworksLimit)
-	if in.View != "" && in.View != "networks" && in.View != "workspaces" && in.View != "primary" {
-		return result.Result{}, fmt.Errorf("%w: view is networks (the default), primary (networks without the workspaces) or workspaces", ErrInvalidInput)
+	if in.View != "" && in.View != "networks" && in.View != "workspaces" && in.View != "primary" && in.View != "latest" {
+		return result.Result{}, fmt.Errorf("%w: view is networks (the default), primary (networks without the workspaces), workspaces or latest (each network's newest PROCESSED snapshot)", ErrInvalidInput)
 	}
 	onlyWorkspaces := in.View == "workspaces"
 	onlyPrimary := in.View == "primary"
@@ -146,8 +148,48 @@ func listNetworks(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		limits = append(limits, "snapshot counts by trigger and the device count of the newest snapshot are read per workspace for this page only (limit and offset page them); retention and expiry are Forward's")
 		finding = fmt.Sprintf("%d workspace(s) returned (%d match)", end-in.Offset, total)
 	}
+	status, basis := result.OK, result.Deterministic
+	if in.View == "latest" {
+		// one snapshot list per network on the page: the newest PROCESSED collected snapshot (never a prediction, and never one still UNPROCESSED or PROCESSING)
+		readFailed, noneProcessed := 0, 0
+		for _, row := range page {
+			snaps, serr := s.Snapshots(ctx, row["id"].(string))
+			if serr != nil {
+				row["snapshots_error"] = serr.Error()
+				readFailed++
+				continue
+			}
+			var best *forward.Snapshot
+			newest := ""
+			for i := range snaps {
+				sn := snaps[i]
+				if at := snapCreated(sn); newest == "" || snapTimeAfter(at, newest) {
+					newest = at
+					row["newest_snapshot_state"] = sn.State
+				}
+				if sn.State == "PROCESSED" && !sn.Predicted() && (best == nil || snapTimeAfter(snapTime(sn), snapTime(*best))) {
+					best = &snaps[i]
+				}
+			}
+			row["snapshots"] = len(snaps)
+			if best == nil {
+				row["latest_processed"] = "none: no PROCESSED collected snapshot in this network's list"
+				noneProcessed++
+				continue
+			}
+			row["latest_processed_snapshot_id"] = string(best.ID)
+			row["latest_processed_at"] = snapTime(*best)
+			row["devices_in_latest_processed"] = best.TotalDevices
+		}
+		limits = append(limits, "the newest PROCESSED snapshot is read per network for this page only (limit and offset page them); a snapshot still UNPROCESSED or PROCESSING is not reported as the latest, and a prediction never is")
+		if readFailed > 0 {
+			status, basis = result.Unknown, result.NoBasis
+			limits = append(limits, fmt.Sprintf("%d of the %d network(s) on this page could not have its snapshot list read (see snapshots_error): their latest processed snapshot is not known, which is not 'none'", readFailed, len(page)))
+		}
+		finding = fmt.Sprintf("%d network(s) returned with the newest PROCESSED snapshot read for each (%d with none processed, %d unreadable)", end-in.Offset, noneProcessed, readFailed)
+	}
 	detail := map[string]any{"total": total, "offset": in.Offset, "returned": end - in.Offset, "networks": page}
-	return result.Build(networksName, result.OK, finding, result.Deterministic, cx,
+	return result.Build(networksName, status, finding, basis, cx,
 		result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"inspect-inventory", "investigate-collection-failure", "inspect-vulnerabilities"},
 			Evidence: []result.Evidence{result.NewEvidence(result.EvState, "listNetworks", nil, detail, fmt.Sprintf("%d networks", total))}})
 }
@@ -158,4 +200,14 @@ func oneLineNote(s string) string {
 		s = s[:160] + "…"
 	}
 	return s
+}
+
+// snapTimeAfter reports whether a is a later time than b, comparing parsed timestamps (a fractional and a whole-second form of the same format sort wrongly as text).
+func snapTimeAfter(a, b string) bool {
+	ta, errA := time.Parse(time.RFC3339Nano, a)
+	tb, errB := time.Parse(time.RFC3339Nano, b)
+	if errA != nil || errB != nil {
+		return a > b
+	}
+	return ta.After(tb)
 }
