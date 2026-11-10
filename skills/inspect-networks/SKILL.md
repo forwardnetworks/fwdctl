@@ -18,7 +18,7 @@ so its result has `context.scope` `account` and no `network_id`.
 
 ## Inputs
 
-None are required. Optional: `name` (case-insensitive substring of the network name, or an exact id), `limit` (default 25, at
+None are required. Optional: `name` (case-insensitive substring of the network name, or an exact id), `limit` (default 50, at
 most 200) and `offset` for paging. See `schema.json`.
 
 ## Procedure
@@ -51,4 +51,6 @@ Run `fwdctl run inspect-networks --help` for the inputs and an example, then giv
 
 `view: primary` lists only the networks that are not change workspaces (no parent): the real networks, when a login sees many workspaces.
 
-`view: workspaces` lists only the change workspaces (networks with a parent): creator, created time, retention days and expiry, and, for the page asked for (`limit`, default 25, with `offset`), how many snapshots each holds by trigger (IMPORT, COLLECTION and so on) and the device count of its newest. It answers "what are the pre/post workspaces of this customer" in one call instead of a snapshot list per network.
+`view: workspaces` lists only the change workspaces (networks with a parent): creator, created time, retention days and expiry, and, for the page asked for (`limit`, default 50, with `offset`), how many snapshots each holds by trigger (IMPORT, COLLECTION and so on) and the device count of its newest. It answers "what are the pre/post workspaces of this customer" in one call instead of a snapshot list per network.
+
+`view: latest` lists every network, each with the id of its newest PROCESSED collected snapshot, when it was processed and its device count, for the page asked for (`limit`, default 50, with `offset`; each row costs one snapshot-list read, so a large page is slower). A prediction is never the latest, and a snapshot still UNPROCESSED or PROCESSING is not reported as latest. A network that has no processed collected snapshot says so; a network whose snapshot list cannot be read is named with its error and makes the result **unknown**, not a list with a gap. It answers "which snapshot is the base for each network" before a reprocess, in one call instead of a snapshot list per network. It reads one snapshot list per network on the page.

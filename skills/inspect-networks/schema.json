@@ -6,14 +6,16 @@
       "enum": [
         "networks",
         "workspaces",
-        "primary"
+        "primary",
+        "latest"
       ],
       "default": "networks",
-      "description": "workspaces: only the change workspaces (networks with a parent), each with its creator, created time, retention and snapshot counts by trigger for the page asked for",
+      "description": "workspaces: only the change workspaces (networks with a parent), each with its creator, created time, retention and snapshot counts by trigger for the page asked for; latest: every network with its newest PROCESSED snapshot id, time and device count for the page asked for",
       "x-values": {
         "networks": "every network the login can see (default)",
         "workspaces": "only the change workspaces, with creator, retention and snapshot counts by trigger for the page asked for",
-        "primary": "the networks that are not change workspaces (no parent)"
+        "primary": "the networks that are not change workspaces (no parent)",
+        "latest": "every network, each with its newest PROCESSED collected snapshot id, time and device count (read for the page asked for)"
       }
     },
     "name": {
@@ -24,7 +26,7 @@
     "limit": {
       "type": "integer",
       "minimum": 1,
-      "description": "networks per page: 25 by default, at most 200 (one call then covers most logins); view primary leaves the workspaces out"
+      "description": "networks per page: 50 by default, at most 200 (one call covers a login with up to 50 networks; a page says the next offset); view primary leaves the workspaces out"
     },
     "offset": {
       "type": "integer",
