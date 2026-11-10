@@ -86,8 +86,9 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
-	if in.NetworkID == "" {
-		return result.Result{}, fmt.Errorf("%w: network_id is required", ErrInvalidInput)
+	orgLevel := in.Object == "vulnerability_scanner" && in.Action != "include"
+	if in.NetworkID == "" && !orgLevel {
+		return result.Result{}, fmt.Errorf("%w: network_id is required (only object vulnerability_scanner with an organization-level action takes none)", ErrInvalidInput)
 	}
 	if bad := secretKeyNamesInDefinition(in.Definition); len(bad) > 0 {
 		return result.Result{}, fmt.Errorf("%w: definition has secret-looking field(s) %s: a secret is never put in the input; give secret_file (a path, mode 600) or secret_env (an environment variable name)", ErrInvalidInput, strings.Join(bad, ", "))
@@ -124,8 +125,10 @@ func editSource(ctx context.Context, s *fwd.Session, raw json.RawMessage) (resul
 		plan, err = planCustomCommandGroup(ctx, s, in)
 	case "discovery":
 		plan, err = planDiscovery(ctx, s, in)
+	case "vulnerability_scanner":
+		plan, err = planVulnerabilityScanner(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, endpoint, schedule, cloud_account, rapid7_source, tenable_source, sase_setup, controller_setup, mist_setup, custom_command_group or discovery", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: object must be credential, jump_server, proxy, classic_device, endpoint, schedule, cloud_account, rapid7_source, tenable_source, vulnerability_scanner, sase_setup, controller_setup, mist_setup, custom_command_group or discovery", ErrInvalidInput)
 	}
 	if err != nil {
 		return result.Result{}, err

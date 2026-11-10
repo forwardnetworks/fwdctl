@@ -1,8 +1,6 @@
 {
   "type": "object",
-  "required": [
-    "network_id"
-  ],
+  "required": [],
   "additionalProperties": false,
   "properties": {
     "network_id": {
@@ -42,13 +40,15 @@
     "view": {
       "enum": [
         "cves",
-        "devices"
+        "devices",
+        "scanners"
       ],
       "default": "cves",
-      "description": "devices: one row per device with its internet_addressable flag and CVE counts, in one call",
+      "description": "devices: one row per device with its internet_addressable flag and CVE counts, in one call; scanners: the Tenable VM scanners and whether network_id includes them (no snapshot needed)",
       "x-values": {
         "cves": "the CVEs that expose the network, or the devices one CVE affects",
-        "devices": "the CVEs that affect a device"
+        "devices": "the CVEs that affect a device",
+        "scanners": "the organization's Tenable VM scanners with their last collection and error; with network_id, which of them the network includes (reads only, no snapshot)"
       }
     },
     "threat_exposure_experimental": {
