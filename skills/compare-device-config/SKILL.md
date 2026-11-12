@@ -61,3 +61,7 @@ Read the file you need, when you need it (where you cannot read files: `fwdctl d
 
 - [reference/peer-drift.md](reference/peer-drift.md): comparing a device with its peers (outliers, one level deep, intended versus actual). Read for a peer comparison.
 - `fwdctl describe inspect-device-files reference/vendor-reading.md`: how to read a changed rule or policy by vendor (order, referenced objects, paired devices). Read before saying what a changed rule now does.
+
+## Long lists
+
+`added` and `removed` lines are cut at 400 characters. When a changed line holds a `[ ... ]` list longer than that, `list_changes` in the evidence names the entries added and removed inside it: each added list is paired with the removed list that shares most of its entries (at least half), with `line_before`, `line_after`, the entry counts and the entries (100 each way at most, with the true totals). At most 5 pairs are shown; a long list with no partner is counted in the limits and shows only its cut text. Entries are split on spaces, and a trailing comma or semicolon is dropped. Redaction applies as in the lines.

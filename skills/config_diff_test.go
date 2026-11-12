@@ -118,3 +118,32 @@ func TestConfigDiffAnAbsentDeviceIsUnknownNotUnchanged(t *testing.T) {
 		t.Fatalf("an absent device must be unknown and name the suffixed devices: %s %s", r.Status, b)
 	}
 }
+
+// a `[ ... ]` list longer than the 400-character cut hides what changed in it: list_changes names the entries added and removed.
+func TestConfigDiffNamesTheEntriesChangedInsideALongList(t *testing.T) {
+	entries := func(skip map[int]bool, extra ...string) string {
+		var b strings.Builder
+		for i := 0; i < 60; i++ {
+			if !skip[i] {
+				fmt.Fprintf(&b, "site%02d.example.invalid ", i)
+			}
+		}
+		for _, e := range extra {
+			b.WriteString(e + " ")
+		}
+		return "        list [ " + b.String() + "];\n"
+	}
+	before := "category big {\n" + entries(nil) + "}\nshort [ a b ];\n"
+	after := "category big {\n" + entries(map[int]bool{7: true, 41: true}, "newsite.example.invalid") + "}\nshort [ a c ];\n"
+	r, _ := mustRun(t, "compare-device-config", map[string]fwdtest.Handler{snapsPath: twoSnaps(), diffFilesPath: changedFiles(), dlBefore: download(before, after)}, cdIn+`,"device":"r1"}`)
+	d := fmt.Sprint(r.Evidence[0].Detail)
+	if !strings.Contains(d, "list_changes") || !strings.Contains(d, "newsite.example.invalid") || !strings.Contains(d, "site07.example.invalid") || !strings.Contains(d, "site41.example.invalid") {
+		t.Fatalf("the added and the two removed entries must be named: %s", d)
+	}
+	if strings.Contains(d, "added_total:1") == false || strings.Contains(d, "removed_total:2") == false {
+		t.Errorf("counts must be 1 added and 2 removed: %s", d)
+	}
+	if strings.Count(d, "line_before") != 1 {
+		t.Errorf("the short list is shown whole and must not be in list_changes: %s", d)
+	}
+}
