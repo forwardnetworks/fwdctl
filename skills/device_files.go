@@ -68,8 +68,28 @@ var (
 	blockKeyRe = regexp.MustCompile(`(?i)^\s*key\s+(\d\s+\S+|"[^"]*"\s*$)`)
 )
 
+// settingWords are values that say a setting is on or off, not a secret: "auth-algo-md5 no;" (a TLS profile) names md5 as an algorithm, and its value is a flag.
+var settingWords = map[string]bool{"no": true, "yes": true, "true": true, "false": true, "none": true, "any": true, "on": true, "off": true,
+	"enable": true, "enabled": true, "disable": true, "disabled": true}
+
+// redactSecretValue replaces the value after a secret-bearing keyword, keeps a trailing ";" (a statement end, not part of the secret) and leaves an on/off setting alone.
+func redactSecretValue(line string) string {
+	return redactor.ReplaceAllStringFunc(line, func(m string) string {
+		sub := redactor.FindStringSubmatch(m)
+		val := strings.Trim(strings.TrimRight(sub[3], ";,"), `"`)
+		if settingWords[strings.ToLower(val)] {
+			return m
+		}
+		end := ""
+		if strings.HasSuffix(sub[3], ";") {
+			end = ";"
+		}
+		return sub[1] + sub[2] + "<redacted>" + end
+	})
+}
+
 func redact(line string) (string, bool) {
-	out := redactor.ReplaceAllString(line, "${1}${2}<redacted>")
+	out := redactSecretValue(line)
 	if aaaKeyLine.MatchString(line) || blockKeyRe.MatchString(line) {
 		out = aaaKey.ReplaceAllString(out, "${1}${2}<redacted>")
 	}

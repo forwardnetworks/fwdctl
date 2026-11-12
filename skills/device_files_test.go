@@ -7,6 +7,7 @@ import (
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 const (
@@ -229,5 +230,15 @@ func TestDeviceFilesSearchOffsetPagesPastTheCap(t *testing.T) {
 	}
 	if l := strings.Join(r.Limits, "|"); !strings.Contains(l, "the last page") {
 		t.Errorf("the last page must say so: %v", r.Limits)
+	}
+}
+
+// "md5" in a setting name is not a secret: a flag value is left alone, a real value is replaced and the statement's semicolon is kept so a redacted file still diffs.
+func TestRedactLeavesOnOffSettingsAloneAndKeepsTheSemicolon(t *testing.T) {
+	in := "auth-algo-md5 no;\nenc-algo-3des no;\npassword hunter2;\nauth-algo-sha256 yes;\nmd5 5f4dcc3b5aa765d61d8327deb882cf99\n"
+	got, n := skills.RedactText([]byte(in))
+	want := "auth-algo-md5 no;\nenc-algo-3des no;\npassword <redacted>;\nauth-algo-sha256 yes;\nmd5 <redacted>\n"
+	if string(got) != want || n != 2 {
+		t.Fatalf("got %q (%d lines changed), want %q (2)", got, n, want)
 	}
 }
