@@ -55,11 +55,16 @@
     "max_matches": {
       "type": "integer",
       "minimum": 1,
-      "description": "search: matches to return (default 10, at most 50)."
+      "description": "search: matches to return (default 10, at most 50); page further with offset."
     },
     "no_redact": {
       "type": "boolean",
       "description": "Turn off the best-effort redaction of secret values after password, secret, community and key."
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "search: skip this many matches first, to page past max_matches (50 at most per call); the limits give the next offset"
     }
   }
 }
