@@ -213,3 +213,21 @@ func TestDeviceFilesRedactsAAAAndIKEKeys(t *testing.T) {
 		}
 	}
 }
+
+// offset pages a search past max_matches: the second page starts where the first ended and the limits name the next offset.
+func TestDeviceFilesSearchOffsetPagesPastTheCap(t *testing.T) {
+	file := []byte(strings.Repeat("object a\n", 7))
+	routes := map[string]fwdtest.Handler{filePath: fwdtest.Const(200, file)}
+	r, _ := devFiles(t, routes, `{"network_id":"n1","device":"r1","mode":"search","file":"config.txt","pattern":"object","max_matches":3}`)
+	if l := strings.Join(r.Limits, "|"); !strings.Contains(l, "7 lines match") || !strings.Contains(l, "page with offset=3") {
+		t.Fatalf("first page must name the next offset: %v", r.Limits)
+	}
+	r, _ = devFiles(t, routes, `{"network_id":"n1","device":"r1","mode":"search","file":"config.txt","pattern":"object","max_matches":3,"offset":6}`)
+	b := fmt.Sprint(r.Evidence[0].Detail)
+	if !strings.Contains(b, "line:7") || strings.Contains(b, "line:6") {
+		t.Errorf("offset 6 must return only the seventh match: %s", b)
+	}
+	if l := strings.Join(r.Limits, "|"); !strings.Contains(l, "the last page") {
+		t.Errorf("the last page must say so: %v", r.Limits)
+	}
+}

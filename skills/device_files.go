@@ -28,6 +28,7 @@ type deviceFilesInput struct {
 	StartLine  int    `json:"start_line"`
 	MaxLines   int    `json:"max_lines"`
 	MaxMatches int    `json:"max_matches"`
+	Offset     int    `json:"offset"`
 	NoRedact   bool   `json:"no_redact"`
 }
 
@@ -258,7 +259,7 @@ func searchLines(lines []string, re *regexp.Regexp, in deviceFilesInput, show fu
 			continue
 		}
 		total++
-		if len(hits) == in.MaxMatches {
+		if total <= in.Offset || len(hits) == in.MaxMatches {
 			continue
 		}
 		var around []string
@@ -268,8 +269,10 @@ func searchLines(lines []string, re *regexp.Regexp, in deviceFilesInput, show fu
 		hits = append(hits, map[string]any{"line": i + 1, "context": around})
 	}
 	base["pattern"], base["matches"], base["hits"] = in.Pattern, total, hits
-	if total > len(hits) {
-		*limits = append(*limits, fmt.Sprintf("%d lines match; the first %d are shown (raise max_matches or narrow the pattern)", total, len(hits)))
+	if total > in.Offset+len(hits) {
+		*limits = append(*limits, fmt.Sprintf("%d lines match; matches %d to %d are shown (page with offset=%d, or narrow the pattern)", total, in.Offset+1, in.Offset+len(hits), in.Offset+len(hits)))
+	} else if in.Offset > 0 {
+		*limits = append(*limits, fmt.Sprintf("%d lines match; matches %d to %d are shown, the last page", total, in.Offset+1, in.Offset+len(hits)))
 	}
 	if total == 0 {
 		return fmt.Sprintf("No line in %s matches %q", in.File, in.Pattern)
@@ -333,7 +336,7 @@ func searchAllFiles(ctx context.Context, s *fwd.Session, in deviceFilesInput, cx
 				continue
 			}
 			n++
-			if len(hits) < in.MaxMatches {
+			if total+n > in.Offset && len(hits) < in.MaxMatches {
 				hits = append(hits, map[string]any{"file": f.Name, "line": j + 1, "text": show(l)})
 			}
 		}
@@ -357,8 +360,10 @@ func searchAllFiles(ctx context.Context, s *fwd.Session, in deviceFilesInput, cx
 		return result.NewUnknown(deviceFilesName, fmt.Sprintf("No line in the %d searched file(s) of %s matches %q", read, in.Device, in.Pattern), cx,
 			append(limits, "no line matched; the setting may be absent, spelled differently in this vendor's syntax, or not collected"), result.Options{NextActions: []string{"check-network-compliance"}})
 	}
-	if total > len(hits) {
-		limits = append(limits, fmt.Sprintf("%d lines match; the first %d are shown (raise max_matches, or narrow the pattern or give file)", total, len(hits)))
+	if total > in.Offset+len(hits) {
+		limits = append(limits, fmt.Sprintf("%d lines match; matches %d to %d are shown (page with offset=%d, or narrow the pattern or give file)", total, in.Offset+1, in.Offset+len(hits), in.Offset+len(hits)))
+	} else if in.Offset > 0 {
+		limits = append(limits, fmt.Sprintf("%d lines match; matches %d to %d are shown, the last page", total, in.Offset+1, in.Offset+len(hits)))
 	}
 	finding := fmt.Sprintf("%d line(s) in %d of %d file(s) of %s match %q", total, len(perFile), read, in.Device, in.Pattern)
 	return result.Build(deviceFilesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"check-network-compliance"},
