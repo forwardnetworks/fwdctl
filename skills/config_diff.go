@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -104,10 +105,11 @@ func compareDeviceConfig(ctx context.Context, s *fwd.Session, raw json.RawMessag
 			return result.NewUnknown(configDiffName, fmt.Sprintf("%s is not a device in the %s snapshot, so no comparison was made", in.Device, strings.Join(missing, " or ")), cx, lim,
 				result.Options{NextActions: []string{"inspect-inventory"}})
 		}
-		return result.Build(configDiffName, result.OK, fmt.Sprintf("No %s file of %s changed between the snapshots", in.FileType, in.Device), result.Deterministic, cx,
-			result.Options{Limits: append(limits, "Forward lists no changed file for this device; a device absent from a snapshot also appears this way (check with inspect-inventory)"),
-				NextActions: []string{"inspect-inventory"}, Evidence: []result.Evidence{result.NewEvidence(result.EvConfig, "diffFiles", fwd.SnapshotIDPtr(after),
-					map[string]any{"device": in.Device, "file_type": in.FileType, "changed_files": 0}, "no changed files")}})
+		noneDetail := map[string]any{"device": in.Device, "file_type": in.FileType, "changed_files": 0}
+		lim := append(limits, "Forward lists no changed file for this device; a device absent from a snapshot also appears this way (check with inspect-inventory)")
+		sizeNote := fileInventory(ctx, s, in).attach(noneDetail, &lim, "", nil)
+		return result.Build(configDiffName, result.OK, fmt.Sprintf("No %s file of %s changed between the snapshots", in.FileType, in.Device)+sizeNote, result.Deterministic, cx,
+			result.Options{Limits: lim, NextActions: []string{"inspect-inventory"}, Evidence: []result.Evidence{result.NewEvidence(result.EvConfig, "diffFiles", fwd.SnapshotIDPtr(after), noneDetail, "no changed files")}})
 	}
 	return diffOneDevice(ctx, s, in, *dev, cx, limits)
 }
@@ -154,6 +156,16 @@ func diffOneDevice(ctx context.Context, s *fwd.Session, in configDiffInput, dev 
 			}
 		}
 	}
+	direct := false
+	if !found && in.File != "" {
+		// Forward's changed-file list can leave out a file whose size changed; a file named by the caller is compared by its text, from both snapshots
+		if inv := fileInventory(ctx, s, in); inv.err == nil {
+			if _, ok := inv.byName[in.File]; ok {
+				direct, found = true, true
+				limits = append(limits, fmt.Sprintf("Forward's changed-file list does not include %s; its text was compared directly", in.File))
+			}
+		}
+	}
 	if !found {
 		return result.NewUnknown(configDiffName, fmt.Sprintf("%s has no changed file %q that can be compared", in.Device, in.File), cx,
 			append(limits, "changed files that can be compared: "+strings.Join(offered, ", ")), result.Options{})
@@ -163,7 +175,9 @@ func diffOneDevice(ctx context.Context, s *fwd.Session, in configDiffInput, dev 
 	}
 	afterName, _ := pick.DeviceFileName()
 	beforeName := afterName
-	if pick.NameA != "" {
+	if direct {
+		afterName, beforeName = in.File, in.File
+	} else if pick.NameA != "" {
 		if n, ok := (forward.DiffFile{Name: pick.NameA}).DeviceFileName(); ok {
 			beforeName = n
 		}
@@ -212,11 +226,13 @@ func diffOneDevice(ctx context.Context, s *fwd.Session, in configDiffInput, dev 
 			limits = append(limits, fmt.Sprintf("%d long `[ ... ]` line(s) had no counterpart on the other side, so only the cut text shows for them", unpaired))
 		}
 	}
+	inv := fileInventory(ctx, s, in)
+	finding0 := inv.attach(detail, &limits, afterName, offered)
 	limits = append(limits, "lines are compared as a set, so a line that only moved is not reported; line numbers are from the file where the line appears")
 	if redacted > 0 {
 		limits = append(limits, fmt.Sprintf("%d shown line(s) had a secret replaced with <redacted>; a changed secret shows as the same text on both sides", redacted))
 	}
-	finding := fmt.Sprintf("%s %s: %d line(s) added, %d removed", in.Device, afterName, len(added), len(removed))
+	finding := fmt.Sprintf("%s %s: %d line(s) added, %d removed", in.Device, afterName, len(added), len(removed)) + finding0
 	if total == 0 {
 		finding = fmt.Sprintf("%s %s: no line differs, though Forward lists the file as changed", in.Device, afterName)
 		limits = append(limits, "Forward marks the file changed but no line differs: only ordering or whitespace changed, or the change is past the size cap")
@@ -400,4 +416,146 @@ func countTrue(b []bool) int {
 		}
 	}
 	return n
+}
+
+// fileInv is the device's collected files in both snapshots, set side by side by name and size. Forward's changed-file list can leave out a file whose size changed
+// (it did, for a 3.6 MB config), so the sizes are read from the file lists themselves.
+type fileInv struct {
+	rows   []map[string]any // added, removed and size-changed files, largest change first
+	byName map[string]map[string]any
+	same   int
+	err    error
+}
+
+const maxInventoryRows = 30
+
+func fileInventory(ctx context.Context, s *fwd.Session, in configDiffInput) fileInv {
+	inv := fileInv{byName: map[string]map[string]any{}}
+	if in.Device == "" {
+		return inv
+	}
+	b, err := s.DeviceFiles(ctx, in.NetworkID, in.Device, in.BeforeSnapshotID)
+	if err != nil {
+		inv.err = err
+		return inv
+	}
+	a, err := s.DeviceFiles(ctx, in.NetworkID, in.Device, in.AfterSnapshotID)
+	if err != nil {
+		inv.err = err
+		return inv
+	}
+	before, after := map[string]int64{}, map[string]int64{}
+	for _, f := range b {
+		before[f.Name] = f.Bytes
+	}
+	for _, f := range a {
+		after[f.Name] = f.Bytes
+	}
+	names := map[string]bool{}
+	for n := range before {
+		names[n] = true
+	}
+	for n := range after {
+		names[n] = true
+	}
+	for n := range names {
+		bb, inB := before[n]
+		ab, inA := after[n]
+		row := map[string]any{"file": n}
+		switch {
+		case inB && !inA:
+			row["status"], row["before_bytes"] = "removed", bb
+		case !inB && inA:
+			row["status"], row["after_bytes"] = "added", ab
+		case bb != ab:
+			row["status"], row["before_bytes"], row["after_bytes"], row["delta_bytes"] = "size_changed", bb, ab, ab-bb
+		default:
+			inv.same++
+			inv.byName[n] = nil
+			continue
+		}
+		inv.byName[n] = row
+		inv.rows = append(inv.rows, row)
+	}
+	sort.SliceStable(inv.rows, func(i, j int) bool { return invMagnitude(inv.rows[i]) > invMagnitude(inv.rows[j]) })
+	return inv
+}
+
+func invMagnitude(r map[string]any) int64 {
+	switch r["status"] {
+	case "size_changed":
+		d, _ := r["delta_bytes"].(int64)
+		if d < 0 {
+			d = -d
+		}
+		return d
+	case "removed":
+		b, _ := r["before_bytes"].(int64)
+		return b
+	default:
+		b, _ := r["after_bytes"].(int64)
+		return b
+	}
+}
+
+// attach puts the file inventory into detail and the limits, and returns the sentence to add to the finding. diffed is the file this call compared and offered the files Forward's
+// changed-file list gave; a size-changed file that is neither is named as not compared, with how to compare it.
+func (inv fileInv) attach(detail map[string]any, limits *[]string, diffed string, offered []string) string {
+	if inv.err != nil {
+		*limits = append(*limits, "the device's file lists could not be read, so file sizes were not compared: "+inv.err.Error())
+		return ""
+	}
+	if len(inv.rows) == 0 {
+		return ""
+	}
+	inList := map[string]bool{}
+	for _, o := range offered {
+		inList[o] = true
+	}
+	var rows []map[string]any
+	var notDiffed []string
+	var summary []string
+	for _, r := range inv.rows {
+		name, _ := r["file"].(string)
+		row := map[string]any{}
+		for k, v := range r {
+			row[k] = v
+		}
+		switch {
+		case name == diffed:
+			row["diffed"] = true
+		case r["status"] == "size_changed" && inList[name]:
+			row["diffed"] = false
+			row["why_not_diffed"] = "Forward lists it as changed; one file is diffed per call, set file to compare this one"
+			notDiffed = append(notDiffed, name)
+		case r["status"] == "size_changed":
+			row["diffed"] = false
+			row["why_not_diffed"] = "Forward's changed-file list does not include it although its size changed; set file to compare its text directly"
+			notDiffed = append(notDiffed, name)
+		default:
+			row["diffed"] = false
+			row["why_not_diffed"] = "present in only one snapshot, so there is nothing to compare line by line"
+		}
+		rows = append(rows, row)
+		if len(summary) < 4 {
+			switch r["status"] {
+			case "size_changed":
+				summary = append(summary, fmt.Sprintf("%s %+d B", name, r["delta_bytes"]))
+			case "removed":
+				summary = append(summary, name+" removed")
+			default:
+				summary = append(summary, name+" added")
+			}
+		}
+	}
+	shown, cut := result.Cap(rows, maxInventoryRows, "files whose size or presence changed", "narrow with file")
+	detail["file_inventory"] = map[string]any{"changed": len(inv.rows), "unchanged_size": inv.same, "files": shown}
+	for _, o := range cut {
+		*limits = append(*limits, o.Text())
+	}
+	if len(notDiffed) > 0 {
+		*limits = append(*limits, fmt.Sprintf("%d file(s) changed in size and were not compared line by line (%s): set file to one of them", len(notDiffed), strings.Join(notDiffed, ", ")))
+	}
+	*limits = append(*limits, "file sizes come from each snapshot's file list; a file that kept its size but changed content shows only if Forward's changed-file list names it")
+	return "; file sizes: " + strings.Join(summary, ", ")
 }

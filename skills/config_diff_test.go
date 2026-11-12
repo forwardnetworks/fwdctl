@@ -150,3 +150,39 @@ func TestConfigDiffNamesTheEntriesChangedInsideALongList(t *testing.T) {
 		t.Errorf("the short list is shown whole and must not be in list_changes: %s", d)
 	}
 }
+
+// Forward's changed-file list can omit a file whose size changed (a 3.6 MB config went to 2.1 MB and was not listed): the sizes of every file are compared from the
+// file lists, the files not compared line by line are named with why, and a file the caller names is compared by its text.
+func TestConfigDiffReportsFileSizeChangesForeignToForwardsChangedList(t *testing.T) {
+	filesBySnap := func(r *http.Request, _ []byte) (int, any) {
+		if r.URL.Query().Get("snapshotId") == "s1" {
+			return 200, map[string]any{"files": []any{map[string]any{"name": "CONFIGURATION.txt", "bytes": 3617331}, map[string]any{"name": "other.txt", "bytes": 100},
+				map[string]any{"name": "bgp_peers.txt", "bytes": 5000}, map[string]any{"name": "same.txt", "bytes": 7}}}
+		}
+		return 200, map[string]any{"files": []any{map[string]any{"name": "CONFIGURATION.txt", "bytes": 2133226}, map[string]any{"name": "other.txt", "bytes": 100},
+			map[string]any{"name": "same.txt", "bytes": 7}}}
+	}
+	routes := map[string]fwdtest.Handler{snapsPath: twoSnaps(), diffFilesPath: fwdtest.Const(200, []any{map[string]any{"name": "r1", "hasConfigChange": true,
+		"files": []any{map[string]any{"name": "r1,other.txt"}}}}), "GET /api/networks/n1/devices/r1/files": filesBySnap,
+		"GET /api/networks/n1/devices/r1/files/other.txt":         download("a\n", "a\nb\n"),
+		"GET /api/networks/n1/devices/r1/files/CONFIGURATION.txt": download("x\ny\n", "x\n")}
+	r, _ := mustRun(t, "compare-device-config", routes, cdIn+`,"device":"r1"}`)
+	d := fmt.Sprint(r.Evidence[0].Detail)
+	for _, want := range []string{"file_inventory", "CONFIGURATION.txt", "delta_bytes:-1484105", "bgp_peers.txt", "removed", "does not include it although its size changed"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("the inventory must name %q: %s", want, d)
+		}
+	}
+	if strings.Contains(d, "same.txt") {
+		t.Errorf("an unchanged file must not be listed: %s", d)
+	}
+	if !strings.Contains(r.Finding, "file sizes: CONFIGURATION.txt -1484105 B") {
+		t.Errorf("the finding must carry the byte deltas: %s", r.Finding)
+	}
+	// naming the file Forward did not list compares its text directly
+	r, _ = mustRun(t, "compare-device-config", routes, cdIn+`,"device":"r1","file":"CONFIGURATION.txt"}`)
+	d = fmt.Sprint(r.Evidence[0].Detail)
+	if r.Status != result.OK || !strings.Contains(d, "2: y") || !strings.Contains(strings.Join(r.Limits, "|"), "does not include CONFIGURATION.txt; its text was compared directly") {
+		t.Errorf("a named file missing from Forward's list must be compared directly: %s %v", d, r.Limits)
+	}
+}
