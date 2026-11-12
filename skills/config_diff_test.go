@@ -143,6 +143,9 @@ func TestConfigDiffNamesTheEntriesChangedInsideALongList(t *testing.T) {
 	if strings.Contains(d, "added_total:1") == false || strings.Contains(d, "removed_total:2") == false {
 		t.Errorf("counts must be 1 added and 2 removed: %s", d)
 	}
+	if !strings.Contains(d, "length_before:") || !strings.Contains(d, "length_after:") {
+		t.Errorf("the changed lines' full lengths must be reported: %s", d)
+	}
 	if strings.Count(d, "line_before") != 1 {
 		t.Errorf("the short list is shown whole and must not be in list_changes: %s", d)
 	}

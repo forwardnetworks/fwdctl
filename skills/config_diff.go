@@ -306,8 +306,9 @@ func listTokens(l string) []string {
 // partner.
 func listChanges(added, removed []numbered, noRedact bool) ([]map[string]any, int) {
 	type cand struct {
-		n    int
-		toks []string
+		n      int
+		length int
+		toks   []string
 	}
 	collect := func(ls []numbered) []cand {
 		var out []cand
@@ -322,7 +323,7 @@ func listChanges(added, removed []numbered, noRedact bool) ([]map[string]any, in
 				}
 			}
 			if toks := listTokens(t); len(toks) > 0 {
-				out = append(out, cand{l.n, toks})
+				out = append(out, cand{l.n, len(l.text), toks})
 			}
 		}
 		return out
@@ -384,7 +385,7 @@ func listChanges(added, removed []numbered, noRedact bool) ([]map[string]any, in
 		}
 		addShown, addTotal := result.CapRow(addedToks, maxListTokens)
 		remShown, remTotal := result.CapRow(removedToks, maxListTokens)
-		pairs = append(pairs, map[string]any{"line_before": r.n, "line_after": a.n, "entries_before": len(r.toks), "entries_after": len(a.toks),
+		pairs = append(pairs, map[string]any{"line_before": r.n, "line_after": a.n, "length_before": r.length, "length_after": a.length, "entries_before": len(r.toks), "entries_after": len(a.toks),
 			"added": addShown, "added_total": addTotal, "removed": remShown, "removed_total": remTotal})
 	}
 	unpaired += len(rems) - countTrue(used)

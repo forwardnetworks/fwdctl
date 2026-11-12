@@ -128,6 +128,52 @@ Examples:
   fwdctl describe inspect-environment properties.md
 ```
 
+## fwdctl device-file
+
+inspect-device-files shows a file in parts and cuts a long line at 400 characters. This command writes the whole file to a path you name, with no line cap, for the cases where the cut hides what you need (a very long list, a long policy line).
+
+```
+fwdctl device-file
+```
+
+Examples:
+
+```
+  fwdctl device-file download 12345 core-1 config.txt --out ./core-1.config.txt
+```
+
+## fwdctl device-file download
+
+Downloads one collected file of a device (the names inspect-device-files mode list shows, for example config.txt) and writes it, whole and with no line cap, to --out.
+
+--out must be a path that does not exist yet: an existing file is never overwritten. The file is created readable by you only (mode 600). --snapshot is the snapshot to read; without it the newest PROCESSED collected snapshot is used.
+
+Size limit: --max-mib (default 64, at most 512). A file larger than the limit is NOT written, so a cut file is never mistaken for the whole one; raise --max-mib and run it again.
+
+Redaction: by default a secret value (passwords, keys, SNMP communities and similar) is replaced with <redacted> on every line, the same best-effort rules as inspect-device-files; the output counts the lines changed. --no-redact writes the file exactly as collected: a RAW download is UNREDACTED and can hold secrets, so treat the file as sensitive and delete it when done. A session started with FWDCTL_FORCE_REDACT refuses --no-redact.
+
+The last line on stdout is a JSON object: status, path, bytes, lines, redacted_lines, redacted, snapshot_id and sha256 (of what was written).
+
+```
+fwdctl device-file download NETWORK_ID DEVICE FILE --out PATH [--snapshot ID] [--no-redact] [--max-mib N] [flags]
+```
+
+Examples:
+
+```
+  fwdctl device-file download 12345 core-1 config.txt --out ./core-1.config.txt
+  fwdctl device-file download 12345 core-1 config.txt --snapshot 67890 --out ./core-1.raw.txt --no-redact
+```
+
+Flags:
+
+```
+      --max-mib int       refuse a file larger than this many MiB (1 to 512); nothing is written then (default 64)
+      --no-redact         write the file exactly as collected: UNREDACTED, may hold secrets
+      --out string        the file to create (must not exist; mode 600)
+      --snapshot string   snapshot id (default: the newest PROCESSED collected snapshot)
+```
+
 ## fwdctl docs
 
 The built-in guide, readable offline. Topics: agents, architecture, cli, install, nqe, overview, skills, troubleshooting.
