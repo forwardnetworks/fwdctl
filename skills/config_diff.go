@@ -205,6 +205,13 @@ func diffOneDevice(ctx context.Context, s *fwd.Session, in configDiffInput, dev 
 	omitted := append(addedCut, removedCut...)
 	detail := map[string]any{"device": in.Device, "file": afterName, "added_count": len(added), "removed_count": len(removed),
 		"added": show(addedShown), "removed": show(removedShown)}
+	if lc, unpaired := listChanges(added, removed, in.NoRedact); len(lc) > 0 || unpaired > 0 {
+		detail["list_changes"] = lc
+		limits = append(limits, "added and removed lines are cut at 400 characters; list_changes gives the entries added and removed inside a long `[ ... ]` list, pairing the lines that share most of their entries (at most 5 pairs, 100 entries each way)")
+		if unpaired > 0 {
+			limits = append(limits, fmt.Sprintf("%d long `[ ... ]` line(s) had no counterpart on the other side, so only the cut text shows for them", unpaired))
+		}
+	}
 	limits = append(limits, "lines are compared as a set, so a line that only moved is not reported; line numbers are from the file where the line appears")
 	if redacted > 0 {
 		limits = append(limits, fmt.Sprintf("%d shown line(s) had a secret replaced with <redacted>; a changed secret shows as the same text on both sides", redacted))
@@ -270,4 +277,126 @@ func lineSetDiff(a, b []numbered) (added, removed []numbered) {
 		removed = append(removed, l)
 	}
 	return added, removed
+}
+
+// maxListPairs and maxListTokens bound list_changes: it is for the lines the 400-character cut hides, not a full dump.
+const (
+	maxListPairs  = 5
+	maxListTokens = 100
+)
+
+// listTokens returns the entries inside the first `[` to the last `]` of a line (split on spaces; a trailing comma or semicolon is dropped), or nil
+// when the line has no bracketed list.
+func listTokens(l string) []string {
+	i, j := strings.Index(l, "["), strings.LastIndex(l, "]")
+	if i < 0 || j <= i {
+		return nil
+	}
+	var out []string
+	for _, f := range strings.Fields(l[i+1 : j]) {
+		if f = strings.Trim(f, ",;"); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// listChanges pairs each long added `[ ... ]` line with the removed one that shares most of its entries and reports the entries added and removed.
+// Only lines longer than the display cut are considered: a shorter line is already shown whole. It returns the pairs and how many long lists found no
+// partner.
+func listChanges(added, removed []numbered, noRedact bool) ([]map[string]any, int) {
+	type cand struct {
+		n    int
+		toks []string
+	}
+	collect := func(ls []numbered) []cand {
+		var out []cand
+		for _, l := range ls {
+			t := l.text
+			if len(t) <= maxRenderedLength {
+				continue
+			}
+			if !noRedact {
+				if r, ok := redact(t); ok {
+					t = r
+				}
+			}
+			if toks := listTokens(t); len(toks) > 0 {
+				out = append(out, cand{l.n, toks})
+			}
+		}
+		return out
+	}
+	adds, rems := collect(added), collect(removed)
+	used := make([]bool, len(rems))
+	var pairs []map[string]any
+	unpaired := 0
+	for _, a := range adds {
+		aset := map[string]bool{}
+		for _, t := range a.toks {
+			aset[t] = true
+		}
+		best, bestScore := -1, 0.0
+		for i, r := range rems {
+			if used[i] {
+				continue
+			}
+			common := 0
+			rset := map[string]bool{}
+			for _, t := range r.toks {
+				if !rset[t] {
+					rset[t] = true
+					if aset[t] {
+						common++
+					}
+				}
+			}
+			if union := len(aset) + len(rset) - common; union > 0 {
+				if score := float64(common) / float64(union); score > bestScore {
+					best, bestScore = i, score
+				}
+			}
+		}
+		if best < 0 || bestScore < 0.5 {
+			unpaired++
+			continue
+		}
+		used[best] = true
+		r := rems[best]
+		rset := map[string]bool{}
+		for _, t := range r.toks {
+			rset[t] = true
+		}
+		var addedToks, removedToks []string
+		for _, t := range a.toks {
+			if !rset[t] {
+				addedToks = append(addedToks, t)
+			}
+		}
+		for _, t := range r.toks {
+			if !aset[t] {
+				removedToks = append(removedToks, t)
+			}
+		}
+		if len(pairs) == maxListPairs {
+			unpaired++
+			continue
+		}
+		addShown, addTotal := result.CapRow(addedToks, maxListTokens)
+		remShown, remTotal := result.CapRow(removedToks, maxListTokens)
+		pairs = append(pairs, map[string]any{"line_before": r.n, "line_after": a.n, "entries_before": len(r.toks), "entries_after": len(a.toks),
+			"added": addShown, "added_total": addTotal, "removed": remShown, "removed_total": remTotal})
+	}
+	unpaired += len(rems) - countTrue(used)
+	return pairs, unpaired
+}
+
+func countTrue(b []bool) int {
+	n := 0
+	for _, v := range b {
+		if v {
+			n++
+		}
+	}
+	return n
 }
