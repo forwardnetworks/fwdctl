@@ -369,3 +369,17 @@ func searchAllFiles(ctx context.Context, s *fwd.Session, in deviceFilesInput, cx
 	return result.Build(deviceFilesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, NextActions: []string{"check-network-compliance"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvConfig, "downloadDeviceFile", cx.SnapshotID, base, finding)}})
 }
+
+// RedactText applies the same line redaction as the read and search modes to a whole file and returns the text with the number of lines changed. It is for
+// the download command, which writes the file to disk: redaction is best effort, as everywhere else, and a file that must stay raw is requested with no-redact.
+func RedactText(b []byte) ([]byte, int) {
+	lines := strings.Split(string(b), "\n")
+	n := 0
+	for i, l := range lines {
+		if r, ok := redact(l); ok {
+			lines[i] = r
+			n++
+		}
+	}
+	return []byte(strings.Join(lines, "\n")), n
+}

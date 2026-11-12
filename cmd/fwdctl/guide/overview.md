@@ -53,6 +53,7 @@ With an agent (Claude Code, Codex or Gemini) you ask in plain words and it picks
 | `fwdctl source apply FILE` | Set up a network's collection sources (profiles, credentials, devices, endpoints) from one JSON inventory. A dry run until `--apply`. See `fwdctl describe edit-source inventory`. |
 | `fwdctl collector download` | Download the collector installer from the connected Forward (`--type linux`, `windows`, `osx`, or the headless archives). Registering and attaching a collector: `fwdctl describe edit-platform collectors`. |
 | `fwdctl wait snapshot` / `wait collector` | Block until a snapshot is processed, or a registered collector shows CONNECTED. |
+| `fwdctl device-file download` | Write one collected device file, whole and with no line cap, to a new local file (redacted by default; `--no-redact` writes it raw and unredacted). |
 | `fwdctl update` | Update fwdctl to the newest release (checksum verified). |
 | `fwdctl nqe lint [FILE]` | Check an NQE query offline: no Forward connection. See `fwdctl docs nqe`. |
 | `fwdctl context nqe <question>` | NQE worked examples nearest a question. |
