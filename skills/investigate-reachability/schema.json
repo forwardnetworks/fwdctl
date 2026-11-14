@@ -11,39 +11,48 @@
     },
     "dst_ip": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the destination address (required unless matrix is given); a host address proves more than a router loopback"
     },
     "src_ip": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the source address or prefix; give this or from. With from, the address is resolved on that device"
     },
     "from": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "a device name to start the flow on (any of its interfaces); to start from one interface or subnet give src_ip"
     },
     "protocol": {
       "type": [
         "string",
         "integer"
-      ]
+      ],
+      "description": "tcp, udp, icmp or an IP protocol number; ports need tcp or udp"
     },
     "src_port": {
-      "type": "string"
+      "type": "string",
+      "description": "source port or range; needs protocol tcp or udp"
     },
     "dst_port": {
-      "type": "string"
+      "type": "string",
+      "description": "destination port or range; needs protocol tcp or udp"
     },
     "snapshot_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "the snapshot to search (default: the newest processed snapshot)"
     },
     "max_results": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "the most paths Forward returns for the search"
     },
     "max_seconds": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "the time limit for the search, in seconds; a timed-out search with no delivered path is unknown"
     },
     "return_path": {
       "type": "boolean",
