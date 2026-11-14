@@ -1,5 +1,33 @@
 # investigate-reachability: inputs
 
+## Examples
+
+One flow, TCP 443 from a host address:
+
+```json
+{"network_id": "NETWORK_ID", "src_ip": "10.1.1.5", "dst_ip": "10.2.2.9", "protocol": "tcp", "dst_port": "443"}
+```
+
+Start on a device, and check the way back too:
+
+```json
+{"network_id": "NETWORK_ID", "from": "edge-1", "dst_ip": "10.2.2.9", "return_path": true}
+```
+
+Each hop's forwarding entry for the destination, checked against the path:
+
+```json
+{"network_id": "NETWORK_ID", "src_ip": "10.1.1.5", "dst_ip": "10.2.2.9", "explain": "routes"}
+```
+
+Every pair of several endpoints, naming the pairs that take different paths each way (see "matrix" below):
+
+```json
+{"network_id": "NETWORK_ID", "matrix": {"endpoints": [{"label": "a", "ip": "10.1.1.5"}, {"label": "b", "ip": "10.2.2.9"}]}}
+```
+
+## Every input
+
 `network_id` and `dst_ip` are required. Give `src_ip` or `from` (a device) to anchor the
 source. Optional: `protocol` (`tcp|udp|icmp` or a number), `src_port`, `dst_port`,
 `snapshot_id` (default: the newest processed snapshot), `max_results`, `max_seconds`, `return_path` (`true`: also search the return flow and report it beside the forward answer), `intent` (`PREFER_DELIVERED` default, `PREFER_VIOLATIONS`, `VIOLATIONS_ONLY`: how Forward selects the paths it returns; to see paths a default answer lacks, compare intents).
