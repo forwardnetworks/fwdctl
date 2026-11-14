@@ -176,6 +176,7 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		touched[d.Device] = true
 	}
 	bgpWarn, injectWarn, droppedConfigure := false, false, false
+	var ebgpNoPath []int // injects of type EBGP (the default) with no as_path
 	for i, a := range in.BGP {
 		switch a.Action {
 		case "", "inject", "modify":
@@ -194,6 +195,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 		if a.Action == "" || a.Action == "inject" || a.Action == "modify" {
 			injectWarn = true
+			if strings.EqualFold(firstNonEmpty(a.Type, "EBGP"), "EBGP") && len(a.ASPath) == 0 {
+				ebgpNoPath = append(ebgpNoPath, i)
+			}
 		}
 		touched[a.Device] = true
 	}
@@ -302,7 +306,7 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	if bgpWarn {
 		limits = append(limits, "modify and withdraw need received-advertisement collection on the device (collectBgpAdvertisements on, BGP table type BOTH or ADJ_RIB_IN covering the peer): without it the route is left unchanged in the predicted snapshot and no warning is shown, so a prediction can look like it did nothing; preflight (verify-change view preflight) counts the devices that collect it. A key that matches no received advertisement is ignored when the change set runs",
-			"a withdraw models the loss of a peer OUTSIDE the snapshot (an ISP); a peer that is itself a collected device needs no withdrawal")
+			"a withdraw models the loss of a peer OUTSIDE the snapshot (an ISP); a peer that is itself a collected device needs no withdrawal and a withdraw for one changes nothing: check who owns external_peer (inspect-inventory kind ip_owner), and for a collected peer shut the session on this device with commands, or change the peer device itself (for example remove its network statement)")
 	}
 	if cfgDevices {
 		limits = append(limits, "a device given config has its WHOLE running configuration replaced (send the complete configuration, at most 2 MB); Forward stores the text unchecked, so it is not validated here, and whether Predict can model the result depends on the device type, which Forward finds out when it runs")
@@ -312,6 +316,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	if injectWarn {
 		limits = append(limits, "inject and modify are not confirmed to take effect on every build: they can finish with status ok and change nothing (an injected prefix appeared on no device on one build, and a modify left route attributes unchanged). Pick a prefix the inbound policy permits (a denied or documentation prefix looks identical to a failure), and check the predicted snapshot (verify-change impact, or an NQE read of the prefix) before relying on one")
+	}
+	if len(ebgpNoPath) > 0 {
+		limits = append(limits, fmt.Sprintf("bgp_advertisements %v: type EBGP (the default) with no as_path. The SDK's note from Forward's source says an EBGP advertisement needs a non-empty AS path, so Forward may refuse this at apply and the change set is then not created (read from source, not confirmed live): give as_path, or type IBGP for a route with no AS path", ebgpNoPath))
 	}
 	if cliShutdown {
 		limits = append(limits, "a CLI `neighbor ... shutdown` (or `no neighbor`) removes the BGP session from the predicted snapshot, but the routes learned from it stay in the prediction (they are seeded from the collected received routes), so a de-peering what-if shows no impact; model the loss of a peer outside the snapshot with a bgp_advertisements withdraw")

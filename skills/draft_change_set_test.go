@@ -184,6 +184,18 @@ func TestDraftChangeSetBGPActionsAndTheShutdownWarning(t *testing.T) {
 	if r, _ := mustRun(t, "edit-change-set", routes, in(`{"device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24","next_hop":"192.0.2.9"}`, "")); !strings.Contains(strings.Join(r.Limits, " "), "not confirmed to take effect") {
 		t.Errorf("an inject warns that it may not take effect: %v", r.Limits)
 	}
+	// an EBGP inject (the default type) with no as_path warns; one with an as_path, or an IBGP one, does not
+	for name, adv := range map[string]string{
+		"no path":   `{"device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24","next_hop":"192.0.2.9","type":"EBGP"}`,
+		"with path": `{"device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24","next_hop":"192.0.2.9","as_path":[64500]}`,
+		"ibgp":      `{"device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24","next_hop":"192.0.2.9","type":"IBGP"}`,
+	} {
+		rr, _ := mustRun(t, "edit-change-set", routes, in(adv, ""))
+		got := strings.Contains(strings.Join(rr.Limits, " "), "needs a non-empty AS path")
+		if got != (name == "no path") {
+			t.Errorf("%s: the EBGP as_path warning must appear only for the inject without one: %v", name, rr.Limits)
+		}
+	}
 	r, srv := mustRun(t, "edit-change-set", routes, in(wd, ""))
 	if r.Mode != result.ModeDryRun || writes(srv) != 0 || !strings.Contains(strings.Join(r.Limits, " "), "received-advertisement collection") {
 		t.Fatalf("dry run: %s %v", r.Mode, r.Limits)
