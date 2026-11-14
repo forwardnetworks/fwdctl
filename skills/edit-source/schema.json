@@ -23,6 +23,7 @@
         "rapid7_source",
         "tenable_source",
         "vulnerability_scanner",
+        "org_credential",
         "controller_setup",
         "mist_setup",
         "custom_command_group",
@@ -44,7 +45,8 @@
         "custom_command_group": "commands (or OIDs) a network adds to a device type's collection: create, update, disable, delete",
         "discovery": "device discovery: start or stop a scan (it probes the network), add what it found, schedule it",
         "sase_setup": "a Zscaler SASE setup (tenant, App Connectors, SCIM): create, update, delete (confirm = its name), or test (queues a collector test)",
-        "vulnerability_scanner": "a Tenable VM vulnerability scanner for the organization: create, update, test, collect or delete (no network_id); include switches one network's use of it (network_id and name, definition {include})"
+        "vulnerability_scanner": "a Tenable VM vulnerability scanner for the organization: create, update, test, collect or delete (no network_id); include switches one network's use of it (network_id and name, definition {include})",
+        "org_credential": "an organization-level HTTP login (the org's own credential store, no network_id): create (name, username, secret from a file) or delete (name = its id, confirm = its id); a Tenable VM scanner takes its id as credential_id"
       }
     },
     "action": {
