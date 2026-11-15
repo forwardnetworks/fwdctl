@@ -291,6 +291,8 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	// after the name check, so a refused name pays for no address read
 	collectedPeers, peerLimits := collectedBGPPeers(ctx, s, in.NetworkID, base, in.BGP)
 	limits = append(limits, peerLimits...)
+	keyRows, keyLimits := receivedKeyCheck(ctx, s, in.NetworkID, base, in.BGP)
+	limits = append(limits, keyLimits...)
 	devices := make([]string, 0, len(touched))
 	for d := range touched {
 		devices = append(devices, d)
@@ -298,6 +300,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	plan := map[string]any{"name": in.Name, "base_snapshot_id": base, "devices": devices, "cli_devices": len(in.Devices), "bgp_advertisements": len(in.BGP), "firewall_rules": len(in.Firewall), "run_prediction": in.Run}
 	if len(collectedPeers) > 0 {
 		plan["collected_external_peers"] = collectedPeers
+	}
+	if len(keyRows) > 0 {
+		plan["received_advertisement_check"] = keyRows
 	}
 	ch := result.Change{Action: "create_change_set", Target: fmt.Sprintf("network %s, base snapshot %s", in.NetworkID, base), After: plan, Reversible: true,
 		Undo: "delete the draft change set (nothing reaches a device)"}
@@ -595,4 +600,95 @@ func collectedBGPPeers(ctx context.Context, s *fwd.Session, networkID, snapshotI
 		limits = append(limits, fmt.Sprintf("the interface-address read hit its %d-row bound, so an external_peer that is a collected device may not have been flagged", maxModelRows))
 	}
 	return hits, limits
+}
+
+// maxReceivedKeyChecks bounds the per-key reads of the received advertisements (one GET per bgp_advertisements entry checked).
+const maxReceivedKeyChecks = 20
+
+// receivedKeyCheck reads, for each withdraw, modify and inject entry, the device's received BGP advertisements for that key's VRF and prefix in the base snapshot
+// (Devices.BGPAdvertisements: Forward needs the VRF and the prefix, there is no list-all). A withdraw or modify whose external_peer matches no received row is
+// ignored by Forward, so the prediction changes nothing; an inject or modify whose peer type differs from the received row's is added beside it instead of
+// replacing it. Both are warnings. A read that fails, or an entry past the bound, says it was not checked. Seen live: the read returns a host route bare
+// (10.0.0.2, not 10.0.0.2/32) and answers on platforms with no Adj-RIB-In in NQE.
+func receivedKeyCheck(ctx context.Context, s *fwd.Session, networkID, snapshotID string, ads []draftAdvert) (rows []map[string]any, limits []string) {
+	checked := 0
+	var skipped []int
+	for i, a := range ads {
+		action := firstNonEmpty(a.Action, "inject")
+		if action == "restore" {
+			continue
+		}
+		peer, perr := netip.ParseAddr(strings.TrimSpace(a.ExternalPeer))
+		if perr != nil {
+			limits = append(limits, fmt.Sprintf("bgp_advertisements[%d]: external_peer %q is not an IP address, so whether it matches a received advertisement was not checked", i, a.ExternalPeer))
+			continue
+		}
+		if checked >= maxReceivedKeyChecks {
+			skipped = append(skipped, i)
+			continue
+		}
+		checked++
+		vrf := firstNonEmpty(a.VRF, "default")
+		got, _, err := s.Client.Devices.BGPAdvertisements(ctx, networkID, a.Device, snapshotID, vrf, a.Prefix)
+		row := map[string]any{"index": i, "action": action, "device": a.Device, "vrf": vrf, "prefix": a.Prefix, "external_peer": peer.String()}
+		if err != nil {
+			row["checked"] = false
+			rows = append(rows, row)
+			limits = append(limits, fmt.Sprintf("bgp_advertisements[%d] (%s): the received advertisements of %s for %s in VRF %s could not be read (%v), so whether this key matches one was not checked", i, action, a.Device, a.Prefix, vrf, err))
+			continue
+		}
+		var match *forward.BGPAdvertisement
+		for j := range got {
+			if p, e := netip.ParseAddr(got[j].ExternalPeer); e == nil && p.Unmap() == peer.Unmap() && samePrefix(got[j].Prefix, a.Prefix) {
+				match = &got[j]
+				break
+			}
+		}
+		row["checked"], row["received_rows"], row["matched"] = true, len(got), match != nil
+		if match != nil {
+			row["received_type"] = match.Type
+		}
+		rows = append(rows, row)
+		switch {
+		case match == nil && (action == "withdraw" || action == "modify"):
+			limits = append(limits, fmt.Sprintf("bgp_advertisements[%d] (%s): %s has no received advertisement for %s from %s in VRF %s in snapshot %s (%d from other peers), so Forward ignores this key and the prediction changes nothing; check the prefix, VRF and peer, and that the device collects received advertisements (verify-change view preflight)",
+				i, action, a.Device, a.Prefix, peer, vrf, snapshotID, len(got)))
+		case match != nil && action != "withdraw" && match.Type != "" && !strings.EqualFold(firstNonEmpty(a.Type, "EBGP"), match.Type):
+			limits = append(limits, fmt.Sprintf("bgp_advertisements[%d] (%s): the received advertisement for %s from %s is type %s but this entry is %s, so it is added beside the received one instead of replacing it; set type %s to replace it",
+				i, action, a.Prefix, peer, match.Type, strings.ToUpper(firstNonEmpty(a.Type, "EBGP")), match.Type))
+		}
+	}
+	if len(skipped) > 0 {
+		limits = append(limits, fmt.Sprintf("bgp_advertisements %v: past the %d-entry bound, so whether these keys match a received advertisement was not checked", skipped, maxReceivedKeyChecks))
+	}
+	return rows, limits
+}
+
+// samePrefix compares two prefixes as Forward writes them: a host route may come back bare (10.0.0.2 for 10.0.0.2/32). Text that does not parse is compared as text.
+func samePrefix(a, b string) bool {
+	parse := func(x string) (netip.Prefix, bool) {
+		x = strings.TrimSpace(x)
+		if !strings.Contains(x, "/") {
+			ip, err := netip.ParseAddr(x)
+			if err != nil {
+				return netip.Prefix{}, false
+			}
+			ip = ip.Unmap()
+			return netip.PrefixFrom(ip, ip.BitLen()), true
+		}
+		p, err := netip.ParsePrefix(x)
+		if err != nil {
+			return netip.Prefix{}, false
+		}
+		if p.Addr().Is4In6() && p.Bits() >= 96 {
+			p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+		}
+		return p.Masked(), true
+	}
+	pa, oka := parse(a)
+	pb, okb := parse(b)
+	if !oka || !okb {
+		return strings.TrimSpace(a) == strings.TrimSpace(b)
+	}
+	return pa == pb
 }

@@ -623,7 +623,7 @@ func TestDraftChangeSetFlagsAnExternalPeerThatIsACollectedDevice(t *testing.T) {
 	if !strings.Contains(lim, "bgp_advertisements[0] (withdraw): external_peer 192.0.2.9 is interface eth1 of isp1") {
 		t.Errorf("the collected peer is named with its device and interface: %v", r.Limits)
 	}
-	if strings.Contains(lim, "bgp_advertisements[1]") {
+	if strings.Contains(lim, "bgp_advertisements[1] (inject): external_peer") {
 		t.Errorf("a peer with no owner is not flagged: %v", r.Limits)
 	}
 	if !strings.Contains(lim, "2001:db8::1: IPv6") || !strings.Contains(lim, "not checked") {
@@ -671,5 +671,90 @@ func TestDraftChangeSetFlagsAnExternalPeerThatIsACollectedDevice(t *testing.T) {
 	}
 	if !strings.Contains(lim, `external_peer "peer-a" is not an IP address`) {
 		t.Errorf("a non-IP peer says it was not checked: %v", r.Limits)
+	}
+}
+
+// A withdraw or modify key is checked against the device's received advertisements (read per VRF and prefix): a key with no received row from that peer warns that
+// Forward ignores it, a matching key does not, an inject whose peer type differs from the received row's warns that it is added beside it, and a failed read says
+// the key was not checked (never a quiet pass). Nothing is created.
+func TestDraftChangeSetChecksEachKeyAgainstTheReceivedAdvertisements(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes[nqePath] = func(_ *http.Request, body []byte) (int, any) {
+		if strings.Contains(string(body), "device.name ==") {
+			return 200, map[string]any{"items": []any{map[string]any{"name": "r1"}}, "totalNumItems": 1}
+		}
+		return 200, map[string]any{"items": []any{}, "totalNumItems": 0}
+	}
+	received := "GET /api/networks/n1/devices/r1/bgp-advertisements"
+	routes[received] = func(req *http.Request, _ []byte) (int, any) {
+		if req.URL.Query().Get("prefix") == "192.0.2.77/32" {
+			return 200, []any{map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "192.0.2.77", "type": "EBGP"}}
+		}
+		if req.URL.Query().Get("prefix") == "198.51.100.0/25" {
+			return 200, []any{map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "198.51.100.0/24", "type": "EBGP"}}
+		}
+		if req.URL.Query().Get("prefix") == "203.0.113.0/24" && req.URL.Query().Get("vrf") == "default" {
+			return 200, []any{map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "203.0.113.0/24", "nextHop": "192.0.2.1", "type": "EBGP", "origin": "IGP", "asPath": []int{64500}}}
+		}
+		return 200, []any{}
+	}
+	in := `{"network_id":"n1","name":"keys","bgp_advertisements":[` +
+		`{"action":"withdraw","device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24"},` +
+		`{"action":"withdraw","device":"r1","external_peer":"192.0.2.1","prefix":"198.51.100.0/24"},` +
+		`{"device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24","next_hop":"192.0.2.1","type":"IBGP"}]}`
+	r, srv := mustRun(t, "edit-change-set", routes, in)
+	lim := strings.Join(r.Limits, " | ")
+	if strings.Contains(lim, "bgp_advertisements[0] (withdraw): r1 has no received") {
+		t.Errorf("a key that matches a received advertisement is not flagged: %v", r.Limits)
+	}
+	if !strings.Contains(lim, "bgp_advertisements[1] (withdraw): r1 has no received advertisement for 198.51.100.0/24 from 192.0.2.1") || !strings.Contains(lim, "Forward ignores this key") {
+		t.Errorf("a key with no received advertisement warns: %v", r.Limits)
+	}
+	if !strings.Contains(lim, "bgp_advertisements[2] (inject): the received advertisement for 203.0.113.0/24 from 192.0.2.1 is type EBGP but this entry is IBGP") {
+		t.Errorf("a peer-type mismatch warns: %v", r.Limits)
+	}
+	rows, _ := r.Changes[0].After.(map[string]any)["received_advertisement_check"].([]map[string]any)
+	if len(rows) != 3 || rows[0]["matched"] != true || rows[1]["matched"] != false {
+		t.Errorf("the plan records each check: %v", rows)
+	}
+	for _, p := range calls(srv, "POST") {
+		if strings.Contains(p, "change-sets") {
+			t.Errorf("a dry run creates nothing: %v", calls(srv, "POST"))
+		}
+	}
+	routes[received] = fwdtest.Const(500, map[string]any{"message": "boom"})
+	r, _ = mustRun(t, "edit-change-set", routes, in)
+	if !strings.Contains(strings.Join(r.Limits, " "), "bgp_advertisements[0] (withdraw): the received advertisements of r1 for 203.0.113.0/24 in VRF default could not be read") {
+		t.Errorf("a failed read says the key was not checked: %v", r.Limits)
+	}
+}
+
+// Forward writes a host route bare (seen live): a /32 key matches it. A covering route from the same peer is not the key.
+func TestDraftChangeSetReceivedKeyMatchesABareHostRouteButNotACoveringRoute(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes[nqePath] = func(_ *http.Request, body []byte) (int, any) {
+		if strings.Contains(string(body), "device.name ==") {
+			return 200, map[string]any{"items": []any{map[string]any{"name": "r1"}}, "totalNumItems": 1}
+		}
+		return 200, map[string]any{"items": []any{}, "totalNumItems": 0}
+	}
+	routes["GET /api/networks/n1/devices/r1/bgp-advertisements"] = func(req *http.Request, _ []byte) (int, any) {
+		switch req.URL.Query().Get("prefix") {
+		case "192.0.2.77/32":
+			return 200, []any{map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "192.0.2.77", "type": "EBGP"}}
+		case "198.51.100.0/25":
+			return 200, []any{map[string]any{"vrf": "default", "externalPeer": "192.0.2.1", "prefix": "198.51.100.0/24", "type": "EBGP"}}
+		}
+		return 200, []any{}
+	}
+	r, _ := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","name":"hosts","bgp_advertisements":[`+
+		`{"action":"withdraw","device":"r1","external_peer":"192.0.2.1","prefix":"192.0.2.77/32"},`+
+		`{"action":"modify","device":"r1","external_peer":"192.0.2.1","prefix":"198.51.100.0/25","next_hop":"192.0.2.1"}]}`)
+	lim := strings.Join(r.Limits, " | ")
+	if strings.Contains(lim, "bgp_advertisements[0] (withdraw): r1 has no received") {
+		t.Errorf("a /32 key matches the bare host route: %v", r.Limits)
+	}
+	if !strings.Contains(lim, "bgp_advertisements[1] (modify): r1 has no received advertisement for 198.51.100.0/25") {
+		t.Errorf("a covering /24 is not the /25 key: %v", r.Limits)
 	}
 }
