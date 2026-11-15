@@ -264,3 +264,14 @@ func TestRaiseIncidentOnAHibernatingInstanceSaysToWakeIt(t *testing.T) {
 		t.Fatalf("a hibernating instance says to wake it: %v", err)
 	}
 }
+
+// A suspended instance (Forward's other asleep reply) is caught by the SDK's typed error alone, not by the "hibernating" text.
+func TestRaiseIncidentOnASuspendedInstanceSaysToWakeIt(t *testing.T) {
+	f := &incFake{}
+	routes := f.routes()
+	routes["POST "+checksPath+"/9"] = fwdtest.Const(409, map[string]any{"message": "ServiceNow instance is suspended"})
+	_, _, err := runSkill(t, "edit-checks", routes, raiseInc+`,"apply":true,"confirm":"9"}`)
+	if err == nil || !strings.Contains(err.Error(), "wake it") {
+		t.Fatalf("a suspended instance says to wake it: %v", err)
+	}
+}

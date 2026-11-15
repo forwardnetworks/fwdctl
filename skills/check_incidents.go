@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -370,7 +371,7 @@ func incidentAction(ctx context.Context, s *fwd.Session, in manageChecksInput, s
 	}
 	got, err := do()
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "hibernating") {
+		if errors.Is(err, forward.ErrServiceNowInstanceAsleep) || strings.Contains(strings.ToLower(err.Error()), "hibernating") {
 			// seen live (26.10.6, a ServiceNow developer instance): Forward answers 409 "ServiceNow instance is hibernating"; the stored credential is not the problem
 			return result.Result{}, fmt.Errorf("%s failed: %w. The ServiceNow instance is asleep (a developer instance hibernates when idle): wake it in ServiceNow (for a developer instance, sign in at developer.servicenow.com and wake it), then run this again; the stored credential is not the cause", in.Action, err)
 		}
