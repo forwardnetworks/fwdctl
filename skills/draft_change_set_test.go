@@ -221,6 +221,9 @@ func TestDraftChangeSetBGPActionsAndTheShutdownWarning(t *testing.T) {
 	if !strings.Contains(strings.Join(r.Limits, " "), "routes learned from it stay in the prediction") || !strings.Contains(strings.Join(r.Limits, " "), "withdraw") {
 		t.Errorf("a neighbor shutdown warns: %v", r.Limits)
 	}
+	if lim := strings.Join(r.Limits, " "); !strings.Contains(lim, "peer that is a collected device") || !strings.Contains(lim, "ip_owner") {
+		t.Errorf("the shutdown note covers a collected-device peer and how to tell: %v", r.Limits)
+	}
 }
 
 // A device can take a whole configuration instead of commands (the "config file" option); a firewall rule can be edited, moved or have its staged change discarded.
