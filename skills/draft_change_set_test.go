@@ -787,7 +787,7 @@ func TestDraftChangeSetChecksBGPReadinessPerDevice(t *testing.T) {
 	routes["GET /api/config"] = fwdtest.Const(403, map[string]any{"message": "forbidden"})
 	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{map[string]any{"name": "r1", "host": "h", "collectBgpAdvertisements": true}})
 	r, _ = mustRun(t, "edit-change-set", routes, withdraw)
-	if !strings.Contains(strings.Join(r.Limits, " "), "was not checked for any device") {
+	if !strings.Contains(strings.Join(r.Limits, " "), "organization-properties was not checked for any device (") {
 		t.Errorf("an unread flag says not checked: %v", r.Limits)
 	}
 	// the classic devices are refused: the device half is not checked, and the row is not ready

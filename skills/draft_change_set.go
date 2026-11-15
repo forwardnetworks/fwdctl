@@ -708,7 +708,7 @@ const maxReadinessDevices = 20
 // that was refused for all devices, is said once. A device problem is a warning, unless the received-advertisement check already found this
 // device's key in the base snapshot (then the snapshot has the routes and the current setting is only noted). Whatever could not be read (the
 // SDK's Unknown: a property, a refused read, a device with no classic collection source) is "not checked", never ready. Confirmed live on 26.11
-// (SDK v0.8.32): flags and device settings read; an unknown device reads Unknown collection-source:NAME.
+// (SDK v0.8.32, reasons per Unknown entry from v0.8.34): flags and device settings read; an unknown device reads Unknown collection-source:NAME.
 func bgpDeviceReadiness(ctx context.Context, s *fwd.Session, networkID string, ads []draftAdvert, keyRows []map[string]any) (rows []map[string]any, limits []string) {
 	matched := map[string]bool{}
 	for _, k := range keyRows {
@@ -777,19 +777,9 @@ func bgpDeviceReadiness(ctx context.Context, s *fwd.Session, networkID string, a
 				limits = append(limits, fmt.Sprintf("BGP readiness of %s: no classic collection source has this name (a controller or cloud setup, or a name in another form), so its collection setup was not checked", d))
 				continue
 			}
-			why := "could not be read"
-			var shared []string
-			for _, note := range r.Notes {
-				if strings.Contains(note, u) {
-					shared = []string{note}
-					break
-				}
-				if !strings.Contains(note, "classic collection source named") {
-					shared = append(shared, note)
-				}
-			}
-			if len(shared) > 0 {
-				why = strings.Join(shared, "; ")
+			why := r.UnknownReasons[u]
+			if why == "" {
+				why = "could not be read"
 			}
 			once("unknown:"+u, "BGP readiness: "+u+" was not checked for any device ("+why+")")
 		}
