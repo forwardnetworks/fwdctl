@@ -293,6 +293,8 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	limits = append(limits, peerLimits...)
 	keyRows, keyLimits := receivedKeyCheck(ctx, s, in.NetworkID, base, in.BGP)
 	limits = append(limits, keyLimits...)
+	readyRows, readyLimits := bgpDeviceReadiness(ctx, s, in.NetworkID, in.BGP, keyRows)
+	limits = append(limits, readyLimits...)
 	devices := make([]string, 0, len(touched))
 	for d := range touched {
 		devices = append(devices, d)
@@ -303,6 +305,9 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	if len(keyRows) > 0 {
 		plan["received_advertisement_check"] = keyRows
+	}
+	if len(readyRows) > 0 {
+		plan["bgp_readiness"] = readyRows
 	}
 	ch := result.Change{Action: "create_change_set", Target: fmt.Sprintf("network %s, base snapshot %s", in.NetworkID, base), After: plan, Reversible: true,
 		Undo: "delete the draft change set (nothing reaches a device)"}
@@ -317,7 +322,7 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		return []result.Evidence{result.NewEvidence(result.EvPredict, "draftChangeSet", cx.SnapshotID, d, "")}
 	}
 	if bgpWarn {
-		limits = append(limits, "modify and withdraw need received-advertisement collection on the device (collectBgpAdvertisements on, BGP table type BOTH or ADJ_RIB_IN covering the peer): without it the route is left unchanged in the predicted snapshot and no warning is shown, so a prediction can look like it did nothing; preflight (verify-change view preflight) counts the devices that collect it. A key that matches no received advertisement is ignored when the change set runs",
+		limits = append(limits, "modify and withdraw need received-advertisement collection on the device (collectBgpAdvertisements on, BGP table type BOTH or ADJ_RIB_IN covering the peer): without it the route is left unchanged in the predicted snapshot and Forward itself gives no warning, so a prediction can look like it did nothing; bgp_readiness in the plan checks each device with a withdraw or modify, and preflight (verify-change view preflight) counts the devices that collect it. A key that matches no received advertisement is ignored when the change set runs",
 			"a withdraw models the loss of a peer OUTSIDE the snapshot (an ISP); a peer that is itself a collected device needs no withdrawal and a withdraw for one changes nothing: check who owns external_peer (inspect-inventory kind ip_owner), and for a collected peer shut the session on this device with commands, or change the peer device itself (for example remove its network statement)")
 	}
 	if cfgDevices {
@@ -691,4 +696,101 @@ func samePrefix(a, b string) bool {
 		return strings.TrimSpace(a) == strings.TrimSpace(b)
 	}
 	return pa == pb
+}
+
+// maxReadinessDevices bounds the readiness checks: each one reads the organization configuration, the network's classic devices and its
+// requirement groups (three GETs, two of them the same for every device).
+const maxReadinessDevices = 10
+
+// bgpDeviceReadiness runs the SDK's BGP advertisement readiness check (Predict.BGPAdvertisementReadiness: the organization's predict_modeling,
+// predict_model_bgp and predict_model_ext_adv, the device's CURRENT collection setup, the network's requirement groups) once per device that has a
+// withdraw or modify, the two actions that need received routes. An organization-wide problem is reported once. A device problem is a warning,
+// unless the received-advertisement check already found this device's key in the base snapshot (then the snapshot has the routes and the
+// current setting is only noted). A device with no classic collection source of that name, a value that could not be read, a refused read, or
+// a failed call is "not checked", never ready. Confirmed live on 26.11 (SDK v0.8.30): flags read, device settings read.
+func bgpDeviceReadiness(ctx context.Context, s *fwd.Session, networkID string, ads []draftAdvert, keyRows []map[string]any) (rows []map[string]any, limits []string) {
+	matched := map[string]bool{}
+	for _, k := range keyRows {
+		if m, _ := k["matched"].(bool); m {
+			matched[strings.ToLower(fmt.Sprint(k["device"]))] = true
+		}
+	}
+	seen := map[string]bool{}
+	var devices []string
+	for _, a := range ads {
+		key := strings.ToLower(a.Device)
+		if (a.Action == "withdraw" || a.Action == "modify") && !seen[key] {
+			seen[key] = true
+			devices = append(devices, a.Device)
+		}
+	}
+	sort.Strings(devices)
+	orgSaid := map[string]bool{}
+	for i, d := range devices {
+		if i >= maxReadinessDevices {
+			limits = append(limits, fmt.Sprintf("BGP readiness was checked on the first %d devices only; the other %d were not checked", maxReadinessDevices, len(devices)-maxReadinessDevices))
+			break
+		}
+		r, _, err := s.Client.Predict.BGPAdvertisementReadiness(ctx, networkID, d)
+		if err != nil || r == nil {
+			why := "no answer"
+			if err != nil {
+				why = err.Error()
+			}
+			rows = append(rows, map[string]any{"device": d, "checked": false})
+			limits = append(limits, fmt.Sprintf("BGP readiness of %s could not be checked (%s)", d, why))
+			continue
+		}
+		row := map[string]any{"device": d, "checked": true, "device_found": r.DeviceFound, "collect_bgp_advertisements": r.CollectBGPAdvertisements, "bgp_table_type": r.BGPTableType,
+			"bgp_peer_type": r.BGPPeerType, "required_by_network": r.RequiredByNetwork, "predict_modeling": r.PredictModeling, "predict_model_ext_adv": r.PredictModelExtAdv,
+			"predict_model_bgp": r.PredictModelBGP}
+		ready := len(r.Unknown) == 0
+		var notChecked []string
+		for _, n := range r.Notes {
+			if strings.HasPrefix(n, "not returned by the organization properties API") {
+				continue // the same fact as Unknown, said below
+			}
+			notChecked = append(notChecked, n)
+			ready = false
+		}
+		for _, p := range r.Problems {
+			switch {
+			case strings.HasPrefix(p, "PREDICT_"):
+				ready = false
+				if !orgSaid[p] {
+					orgSaid[p] = true
+					limits = append(limits, "BGP readiness (organization): "+p+", so a withdraw or modify is expected to change nothing in the prediction")
+				}
+			case strings.HasPrefix(p, "the network has no collection source named"):
+				ready = false
+				notChecked = append(notChecked, "no classic collection source has this name (a controller or cloud setup, or a name in another form), so its collection setup was not read")
+			case matched[strings.ToLower(d)]:
+				row["current_setting_note"] = p
+				limits = append(limits, fmt.Sprintf("BGP readiness of %s: %s in the CURRENT setup, but the base snapshot has the received route for this key, so the prediction can still use it; a later collection would not", d, p))
+			default:
+				ready = false
+				limits = append(limits, fmt.Sprintf("BGP readiness of %s: %s, so a withdraw or modify there is expected to change nothing in the prediction", d, p))
+			}
+		}
+		if len(r.Unknown) > 0 {
+			key := "unknown:" + strings.Join(r.Unknown, ",")
+			if !orgSaid[key] {
+				orgSaid[key] = true
+				limits = append(limits, "BGP readiness (organization): "+strings.Join(r.Unknown, ", ")+" could not be read, so that part was not checked")
+			}
+			row["unknown"] = r.Unknown
+		}
+		for _, n := range notChecked {
+			limits = append(limits, fmt.Sprintf("BGP readiness of %s: %s; that part was not checked", d, n))
+		}
+		if len(notChecked) > 0 {
+			row["not_checked"] = notChecked
+		}
+		if len(r.Problems) > 0 {
+			row["problems"] = r.Problems
+		}
+		row["ready"] = ready
+		rows = append(rows, row)
+	}
+	return rows, limits
 }
