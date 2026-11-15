@@ -81,7 +81,7 @@
       "required": [
         "endpoints"
       ],
-      "description": "a reachability matrix instead of one flow: every ordered pair of endpoints searched in one bulk request (protocol, src_port, dst_port, intent and snapshot_id apply to all), each pair compared with its reverse so asymmetric routing is named. Does not combine with src_ip, dst_ip, from or return_path.",
+      "description": "a reachability matrix instead of one flow: every ordered pair of endpoints searched in one bulk request (protocol, src_port, dst_port, intent and snapshot_id apply to all), each pair compared with its reverse so asymmetric routing is named. Does not combine with src_ip, dst_ip, from, return_path, through or leaving.",
       "properties": {
         "endpoints": {
           "type": "array",
@@ -129,6 +129,46 @@
           "description": "time for the whole request (default 300, at most 3000, which is under Forward's one hour limit for a large job)"
         }
       }
+    },
+    "through": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "search form (PREVIEW, Forward's Search-page query): hops the path must pass, in order. Each is DEVICE, \"DEVICE INTERFACE\", zone:DEVICE ZONE or vrf:[DEVICE ]VRF, optionally prefixed ingress: or egress: (default: anywhere through it). Lists the distinct device paths that match, by outcome; does not combine with return_path, explain or matrix"
+    },
+    "leaving": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "type": "string",
+          "description": "where the traffic leaves the network: DEVICE, \"DEVICE INTERFACE\", zone:DEVICE ZONE or vrf:DEVICE VRF"
+        },
+        "src_ip": {
+          "type": "string"
+        },
+        "dst_ip": {
+          "type": "string"
+        },
+        "src_port": {
+          "type": "string"
+        },
+        "dst_port": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": [
+            "string",
+            "integer"
+          ],
+          "description": "tcp, udp, icmp or an IP protocol number; ports need tcp or udp"
+        }
+      },
+      "required": [
+        "at"
+      ],
+      "description": "search form (PREVIEW): where the traffic leaves the network (at) and, optionally, how the packet looks as it leaves, after any NAT (addresses, ports, protocol). Switches to the search form like through"
     }
   }
 }

@@ -26,6 +26,12 @@ Every pair of several endpoints, naming the pairs that take different paths each
 {"network_id": "NETWORK_ID", "matrix": {"endpoints": [{"label": "a", "ip": "10.1.1.5"}, {"label": "b", "ip": "10.2.2.9"}]}}
 ```
 
+Every device path from one place that passes a firewall and leaves at an edge interface, with the packet as it leaves (search form, preview; see "search form" below):
+
+```json
+{"network_id": "NETWORK_ID", "from": "branch-1", "dst_ip": "203.0.113.0/24", "through": ["fw-1"], "leaving": {"at": "edge-1 eth1", "dst_port": "443"}}
+```
+
 ## Every input
 
 `network_id` and `dst_ip` are required. Give `src_ip` or `from` (a device) to anchor the
@@ -49,3 +55,15 @@ source. Optional: `protocol` (`tcp|udp|icmp` or a number), `src_port`, `dst_port
 - `max_overall_seconds`: time for the whole request (default 300, at most 3000). Forward runs more than ten queries as a large job with a one hour limit, and a query it has not started when the time passes comes back as a timeout with no paths.
 
 The result has `cells` (from, to, verdict delivered, blocked or undetermined, the outcome, groups crossed, hop count), `asymmetric_pairs` and `counts`. A pair is asymmetric when both directions are delivered and the groups crossed (or, without groups, the devices) differ once the reverse is turned around. A timed out or failed query is undetermined, never counted as blocked. Each cell uses the best path Forward returned (up to three per query). It needs VIEW_PATHS and a snapshot processed to the reachability stage.
+
+## search form (through, leaving)
+
+`through` or `leaving` switches to the search form: Forward's Search-page path query (PREVIEW: the GUI's trace-facets route, not in Forward's published API). It answers "which distinct device paths match", grouped by outcome, with the total number of flows; it does not read each path's headers, functions or config lines, and it does not combine with `return_path`, `explain` or `matrix`. `intent` and `max_seconds` do not apply; `max_results` caps the device paths listed (at most 32).
+
+- `from` names where the traffic enters: `DEVICE`, `"DEVICE INTERFACE"` (a space between, Forward's own form), `zone:DEVICE ZONE`, `vrf:[DEVICE ]VRF`, `host:NAME` or an address or prefix. Without `from`, `src_ip` is the place it enters; with `from`, `src_ip` filters the source address. `dst_ip`, `protocol`, `src_port` and `dst_port` filter the packet where it enters, so they need `from` or `src_ip`.
+- `through`: up to 8 hops the path must pass, in order, each a location as above (not a host, address or prefix), optionally prefixed `ingress:` or `egress:` (default: anywhere through it).
+- `leaving`: `{at, src_ip?, dst_ip?, src_port?, dst_port?, protocol?}`. `at` (required) is where the traffic leaves the network: a device, `"DEVICE INTERFACE"`, zone or VRF (an address or prefix is refused: a subnet there matched nothing live; put the address in `dst_ip`); the other fields describe the packet as it leaves, after any NAT.
+- When an address in the query is at more than one place, Forward answers with the places instead of paths: the result is `unknown` with `possible_locations`; name the device and ask again.
+- No match means no modelled flow takes that route in the snapshot. A hop named in another form (an interface spelling, a VRF) matches nothing, so check the names with `inspect-inventory` first.
+- Seen live: on 26.11 (a two-device lab) the interface form `"DEVICE INTERFACE"`, an interface in the leaving side returning paths, and a subnet in the leaving side returning nothing (so `at` takes a device or interface); on a 31-device demo network a device `through` hop narrowing the paths, `egress:` accepted, header filters (protocol, port, destination prefix) narrowing them, and a device as `leaving.at` returning the paths that leave there. Zones, VRFs, hosts and `ingress:` are read from Forward's source and not yet confirmed live.
+

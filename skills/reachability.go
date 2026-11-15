@@ -33,6 +33,10 @@ type reachabilityInput struct {
 	Intent string `json:"intent"`
 	// Explain "routes" adds to each hop the forwarding entry its device holds for the destination (longest prefix match over Forward's forwarding table, in the hop's VRF).
 	Explain string `json:"explain"`
+	// Through and Leaving switch to the search form (Forward's Search-page path query): hops the path must pass, and where and how the
+	// traffic leaves the network.
+	Through []string       `json:"through"`
+	Leaving *searchLeaving `json:"leaving"`
 }
 
 const maxReachabilityEvidence = 16 // enough for every branch of a few ECMP groups; the rest are counted in omitted
@@ -343,6 +347,27 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	case "", "routes", "trace":
 	default:
 		return result.Result{}, fmt.Errorf("%w: explain takes \"routes\" (each hop's forwarding entry for the destination) or \"trace\" (Forward's GUI flow trace per path, preview)", ErrInvalidInput)
+	}
+	if len(in.Through) > 0 || in.Leaving != nil {
+		var keys map[string]json.RawMessage
+		_ = json.Unmarshal(raw, &keys)
+		if _, hasMatrix := keys["matrix"]; in.ReturnPath || in.Explain != "" || hasMatrix {
+			return result.Result{}, fmt.Errorf("%w: through and leaving use the search form, which does not combine with return_path, explain or matrix", ErrInvalidInput)
+		}
+		q, qerr := buildSearchQuery(in, in.Leaving) // validated before any request
+		if qerr != nil {
+			return result.Result{}, qerr
+		}
+		snap, err := resolveSnapshot(ctx, s, in.NetworkID, in.SnapshotID)
+		if err != nil {
+			return result.Result{}, err
+		}
+		cx := fwd.Context(in.NetworkID, snap)
+		if !fwd.IsReady(snap) {
+			return result.NewUnknown(reachabilityName, "No processed snapshot is available to answer from", cx, []string{"no processed snapshot; nothing was searched"},
+				result.Options{NextActions: []string{"investigate-collection-failure"}})
+		}
+		return reachabilitySearch(ctx, s, in, q, fwd.SnapshotID(cx), cx, fwd.SnapshotIDPtr(snap))
 	}
 	mx, mgroups, merr := parseMatrix(raw, in) // validated before any request
 	if mx != nil && in.Explain != "" {

@@ -252,3 +252,15 @@ func TestRaiseIncidentOnACheckWithAnOpenIncidentIsRefusedBeforeAnythingIsSent(t 
 		t.Fatalf("a link with no reported state counts as open: %s %s %v", r.Status, r.Finding, h.actions)
 	}
 }
+
+// Seen live (26.10.6): a sleeping ServiceNow developer instance makes Forward answer 409 "ServiceNow instance is hibernating". The error says to
+// wake the instance and that the credential is not the cause, so nobody chases the stored login.
+func TestRaiseIncidentOnAHibernatingInstanceSaysToWakeIt(t *testing.T) {
+	f := &incFake{}
+	routes := f.routes()
+	routes["POST "+checksPath+"/9"] = fwdtest.Const(409, map[string]any{"message": "ServiceNow instance is hibernating"})
+	_, _, err := runSkill(t, "edit-checks", routes, raiseInc+`,"apply":true,"confirm":"9"}`)
+	if err == nil || !strings.Contains(err.Error(), "wake it") || !strings.Contains(err.Error(), "credential is not the cause") {
+		t.Fatalf("a hibernating instance says to wake it: %v", err)
+	}
+}

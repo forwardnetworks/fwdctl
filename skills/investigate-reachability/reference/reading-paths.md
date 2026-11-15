@@ -25,13 +25,13 @@ A router loopback proves the control plane resolves, not that a user's packet ar
 
 ## Empty is not a pass
 
-Zero paths, or a timeout, is **unknown**: the skill says which. If you constrain a search to pass through a device and get nothing, that says nothing about the unconstrained path: run it again without the constraint.
+Zero paths, or a timeout, is **unknown**: the skill says which. The search form (`through`, `leaving`) is the exception: no match with Forward's EXACT total is **ok** with "No path matches" (a fact about the snapshot, and the limits say to check the names), while no match without an exact total is **unknown**. If you constrain a search to pass through a device and get nothing, that says nothing about the unconstrained path: run it again without the constraint.
 
 ## Intents and a path through a device
 
 `intent` chooses which paths Forward returns, not whether a flow is allowed. `PREFER_DELIVERED` (the default) favours delivered paths and can hide a drop; to debug a failing flow use `PREFER_VIOLATIONS`, and do not use `VIOLATIONS_ONLY` to ask whether a flow works: it returns only violating paths, so a delivered flow returns none (an empty answer there is not "unreachable"; observed on a live network). In a security assessment run one `PREFER_VIOLATIONS` pass as well, because a delivered path can still violate policy. Check `timed_out` before reading an empty result. (Unverified: how Forward ranks paths within an intent; compare intents to see.)
 
-Forward's API has no "through this device" constraint (only `from`): to test A to B via a device, run the search and read the hops of each returned path for that device. If no returned path contains it, say the traffic does not take it in the returned paths, and that only the paths returned were checked.
+The normal path search has no "through this device" constraint (only `from`): to test A to B via a device there, read the hops of each returned path for that device, and say only the paths returned were checked. The search form (`through`, preview) asks Forward for exactly that: the paths that pass the hops given (reference/inputs.md, "search form").
 
 ## Two paths are not two failure domains
 

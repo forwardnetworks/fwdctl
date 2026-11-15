@@ -19,7 +19,7 @@ guessed from device output.
 
 ## Inputs
 
-`network_id` and `dst_ip` are required; give `src_ip` or `from` (a device) for the source. Each input, with examples for each form of the call: `fwdctl run investigate-reachability --help`, or `reference/inputs.md`. Forms of the call: one flow (the default); `return_path` for both directions; `matrix` for every pair of several endpoints, naming the pairs that take different paths each way; `explain: routes` for each hop's forwarding entry, checked against the path; `explain: trace` (preview) for Forward's GUI trace of each path. To compare one flow before and after a change: `verify-change` view `flows`.
+`network_id` and `dst_ip` are required; give `src_ip` or `from` (a device) for the source. Each input, with examples for each form of the call: `fwdctl run investigate-reachability --help`, or `reference/inputs.md`. Forms of the call: one flow (the default); `return_path` for both directions; `matrix` for every pair of several endpoints, naming the pairs that take different paths each way; `explain: routes` for each hop's forwarding entry, checked against the path; `explain: trace` (preview) for Forward's GUI trace of each path; `through` and `leaving` (preview) for the search form: the distinct device paths that pass given hops and leave at a given place, by outcome (dst_ip is then optional). To compare one flow before and after a change: `verify-change` view `flows`.
 
 ## Procedure
 
@@ -27,7 +27,7 @@ guessed from device output.
 2. Run Forward's path search (preferring delivered flows), bounded by `max_results` and `max_seconds`.
 3. Classify each path from its forwarding and security outcomes: `delivered`, `security_denied`, `missing_route`, `dropped`, `not_admitted`, `routing_loop`, `unreachable` or `incomplete_model` (the table is in reference/procedure.md).
 4. Report every distinct outcome, not the first path: one path per classification first, then more distinct paths up to 16; identical paths are counted. Compare two networks by those counts.
-5. Decide: any `delivered` path is **ok**; none delivered and the search completed is **failed** (the first path's last hop is the first failure point); no paths, a timeout with no delivered path, or only `incomplete_model` is **unknown** (zero paths is not proof of no connectivity). With `return_path: true` the status is about both directions. A last hop named `<device>-missing-peer` means an unmodelled peer: the status stays **unknown** and `next_actions` name `plan-synthetic-device` and `inspect-edge`. The ACL, zone and return-path details are in reference/procedure.md.
+5. Decide: any `delivered` path is **ok**; none delivered and the search completed is **failed** (the first path's last hop is the first failure point); no paths, a timeout with no delivered path, or only `incomplete_model` is **unknown** (zero paths is not proof of no connectivity). The search form (`through`, `leaving`) lists matching paths instead: no match with an exact total is **ok** "No path matches", and without one is **unknown**. With `return_path: true` the status is about both directions. A last hop named `<device>-missing-peer` means an unmodelled peer: the status stays **unknown** and `next_actions` name `plan-synthetic-device` and `inspect-edge`. The ACL, zone and return-path details are in reference/procedure.md.
 6. Report what was not measured (`limits`): truncation, timeout, predicted snapshot.
 
 ## Evidence
