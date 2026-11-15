@@ -276,9 +276,12 @@ func TestEditPlatformBannerDeleteInfobloxChangeAndWebhookCredential(t *testing.T
 	var infoSent, hookSent string
 	hook := map[string]any{"name": "ops", "url": "https://h.example", "enabled": true}
 	routes := map[string]fwdtest.Handler{
-		"GET /api/custom-banners":                  func(*http.Request, []byte) (int, any) { return 200, map[string]any{"banners": banners} },
-		"DELETE /api/custom-banners/b1":            func(*http.Request, []byte) (int, any) { banners = nil; return 204, nil },
-		"GET /api/integrations/infoblox/instances": func(*http.Request, []byte) (int, any) { return 200, infoblox },
+		"GET /api/custom-banners":       func(*http.Request, []byte) (int, any) { return 200, map[string]any{"banners": banners} },
+		"DELETE /api/custom-banners/b1": func(*http.Request, []byte) (int, any) { banners = nil; return 204, nil },
+		// GET /api/integrations/infoblox (enabled + instances): the list route; /instances answers only ?view=status, seen live as a 400 without it
+		"GET /api/integrations/infoblox": func(*http.Request, []byte) (int, any) {
+			return 200, map[string]any{"enabled": true, "instances": infoblox}
+		},
 		"PATCH /api/integrations/infoblox/instances/5": func(_ *http.Request, b []byte) (int, any) {
 			infoSent = string(b)
 			infoblox = []any{map[string]any{"id": "5", "name": "ipam", "ipAddress": "10.0.0.5", "username": "v"}}

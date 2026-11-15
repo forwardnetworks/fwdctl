@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/netip"
 	"sort"
 	"strings"
@@ -23,7 +24,10 @@ import (
 const maxSearchThrough = 8
 const maxSearchPaths = 32
 
-const searchLimit = "the search form is PREVIEW: it reads Forward's GUI Search-page query (trace-facets), which is not in Forward's published API and can change between Forward builds. It lists the distinct DEVICE paths that match, grouped by outcome, and the total number of flows; it does not read each path's headers, functions or config lines (explain does not combine with it). Forward groups flows by device path, so parallel links or different behaviours on one device path are one entry"
+// searchTraceLimit is said when the search form traces its paths: the same preview routes as explain trace, with the search's own query.
+const searchTraceLimit = "explain trace on the search form is PREVIEW and UNDOCUMENTED: it reads Forward's GUI flow-trace route with the SAME query as the search (through hops and leaving side included), for each path listed, so each trace is of that path as searched. Each path's `trace` is Forward's response body passed through unchanged (deviceHops with ports and headers, networkFunctions by layer with fileLines, 0-based, and actionBuckets, behavior.processingStages); IPv4 and IPv6 as the query gives them"
+
+const searchLimit = "the search form is PREVIEW: it reads Forward's GUI Search-page query (trace-facets), which is not in Forward's published API and can change between Forward builds. It lists the distinct DEVICE paths that match, grouped by outcome, and the total number of flows; it does not read each path's headers, functions or config lines unless explain is trace (then each path, up to 16, carries Forward's trace for the same query). Forward groups flows by device path, so parallel links or different behaviours on one device path are one entry"
 
 // searchLeaving is the leaving input: where the traffic leaves the network (at) and how the packet looks as it leaves (after any NAT).
 type searchLeaving struct {
@@ -336,10 +340,59 @@ func reachabilitySearch(ctx context.Context, s *fwd.Session, in reachabilityInpu
 			finding += fmt.Sprintf(" (%s%d flows)", bound, total.Value)
 		}
 	}
-	opts := result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"investigate-reachability"},
-		Evidence: []result.Evidence{result.NewEvidence(result.EvPath, "traceFacets", sid, detail, finding)}}
+	evidence := []result.Evidence{result.NewEvidence(result.EvPath, "traceFacets", sid, detail, finding)}
+	if in.Explain == "trace" && len(all) > 0 {
+		ev, tl := searchTraces(ctx, s, in.NetworkID, snapshotID, q, facets, sid, min(max, maxTracePaths))
+		limits = append(limits, tl...)
+		if ev != nil {
+			evidence = append(evidence, *ev)
+		}
+	}
+	opts := result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"investigate-reachability"}, Evidence: evidence}
 	if status == result.Unknown {
 		return result.NewUnknown(reachabilityName, finding, cx, limits, opts)
 	}
 	return result.Build(reachabilityName, status, finding, result.Deterministic, cx, opts)
+}
+
+// searchTraces traces each path the search found (up to maxTracePaths) with the same query (Trace.TraceFor), so a path with through hops or a
+// leaving side is traced as searched. A trace that cannot be read is a row error or a limit, never a change to the search answer.
+func searchTraces(ctx context.Context, s *fwd.Session, networkID, snapshotID string, q forward.TracePathQuery, facets *forward.TraceFacets, sid *string, bound int) (*result.Evidence, []string) {
+	limits := []string{searchTraceLimit}
+	var paths []map[string]any
+	total, failed := 0, 0
+	for gi, g := range facets.PathGroups {
+		for pi := range g.Paths {
+			total++
+			if len(paths) >= bound {
+				continue
+			}
+			sel, _ := g.Selection(pi)
+			row := map[string]any{"id": fmt.Sprintf("g%d.p%d", gi, pi), "group": gi, "index": pi, "trace_type": g.TraceType, "path": sel.Path}
+			tr, _, err := s.Client.Trace.TraceFor(ctx, networkID, snapshotID, q, sel)
+			switch {
+			case err == nil:
+				row["descriptor"] = nilIfEmpty(tr.PathDescriptor)
+				row["trace"] = json.RawMessage(tr.Raw)
+			case ctx.Err() != nil:
+				return nil, append(limits, "explain trace: stopped: "+ctx.Err().Error())
+			case forward.IsStatus(err, http.StatusUnauthorized) || forward.IsStatus(err, http.StatusForbidden) || forward.IsStatus(err, http.StatusNotFound) ||
+				forward.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, forward.ErrEndpointNotServed):
+				return nil, append(limits, "explain trace: the trace was refused ("+err.Error()+"); no trace was read")
+			default:
+				row["error"] = err.Error()
+				failed++
+			}
+			paths = append(paths, row)
+		}
+	}
+	if total > len(paths) {
+		limits = append(limits, fmt.Sprintf("explain trace: traces were asked for the first %d of %d paths found (the same paths listed above)", len(paths), total))
+	}
+	if failed > 0 {
+		limits = append(limits, fmt.Sprintf("explain trace: %d path trace(s) could not be read (each row says why)", failed))
+	}
+	ev := result.NewEvidence(result.EvPath, "trace", sid, map[string]any{"preview": true, "paths": paths, "traced": len(paths) - failed, "distinct_paths": total, "truncated": total > len(paths),
+		"timed_out": facets.TimedOut, "file_lines_base": 0}, fmt.Sprintf("%d path(s) traced", len(paths)-failed))
+	return &ev, limits
 }

@@ -135,7 +135,7 @@
       "items": {
         "type": "string"
       },
-      "description": "search form (PREVIEW, Forward's Search-page query): hops the path must pass, in order. Each is DEVICE, \"DEVICE INTERFACE\", zone:DEVICE ZONE or vrf:[DEVICE ]VRF, optionally prefixed ingress: or egress: (default: anywhere through it). Lists the distinct device paths that match, by outcome; does not combine with return_path, explain or matrix"
+      "description": "search form (PREVIEW, Forward's Search-page query): hops the path must pass, in order. Each is DEVICE, \"DEVICE INTERFACE\", zone:DEVICE ZONE or vrf:[DEVICE ]VRF, optionally prefixed ingress: or egress: (default: anywhere through it). Lists the distinct device paths that match, by outcome; explain trace traces each path found; does not combine with return_path, explain routes or matrix"
     },
     "leaving": {
       "type": "object",

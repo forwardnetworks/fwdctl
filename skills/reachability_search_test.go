@@ -111,3 +111,55 @@ func TestReachabilitySearchSaysWhenTheListMayBeIncomplete(t *testing.T) {
 		t.Errorf("no paths and no total is unknown: %s %s", r.Status, r.Finding)
 	}
 }
+
+// explain trace on the search form traces each path found with the SAME query (through hops and leaving side included), so the trace is of
+// the path as searched; a trace that fails is marked on its row and the search answer stands.
+func TestReachabilitySearchExplainTraceUsesTheSameQuery(t *testing.T) {
+	facets := map[string]any{"totalResults": map[string]any{"value": 2, "type": "EXACT"}, "facets": map[string]any{"pathGroups": []any{
+		map[string]any{"traceType": "VALID", "paths": []any{map[string]any{"path": []any{"b1", "fw1", "e1"}, "behaviorSample": map[string]any{"k": 1}},
+			map[string]any{"path": []any{"b1", "fw2", "e1"}, "behaviorSample": map[string]any{"k": 2}}}}}}}
+	var traced []string
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"),
+		"POST /api/networks/n1/trace-facets": fwdtest.Const(200, facets),
+		"POST /api/networks/n1/trace": func(_ *http.Request, b []byte) (int, any) {
+			traced = append(traced, string(b))
+			if strings.Contains(string(b), "fw2") {
+				return 500, map[string]any{"message": "boom"}
+			}
+			return 200, map[string]any{"traceType": "VALID", "pathDescriptor": "b1 > fw1 > e1", "deviceHops": []any{map[string]any{"device": "b1"}}}
+		}}
+	r, _ := mustRun(t, "investigate-reachability", routes, `{"network_id":"n1","from":"b1","through":["fw1"],"explain":"trace"}`)
+	if r.Status != result.OK || len(traced) != 2 {
+		t.Fatalf("%s %s, traced %d", r.Status, r.Finding, len(traced))
+	}
+	for _, b := range traced {
+		if !strings.Contains(b, `"transitType":"through"`) || !strings.Contains(b, "fw1") {
+			t.Errorf("each trace carries the search's chain: %s", b)
+		}
+	}
+	var tr map[string]any
+	for _, e := range r.Evidence {
+		if e.Source.Operation == "trace" {
+			tr = e.Detail
+		}
+	}
+	paths, _ := tr["paths"].([]map[string]any)
+	if len(paths) != 2 || paths[0]["trace"] == nil || paths[0]["trace_type"] != "VALID" || paths[1]["error"] == nil || !strings.Contains(strings.Join(r.Limits, " "), "1 path trace(s) could not be read") {
+		t.Errorf("one traced, one marked failed: %v %v", tr, r.Limits)
+	}
+	if _, _, err := runSkill(t, "investigate-reachability", routes, `{"network_id":"n1","from":"b1","through":["fw1"],"explain":"routes"}`); !errors.Is(err, skills.ErrInvalidInput) {
+		t.Errorf("explain routes does not combine with the search form: %v", err)
+	}
+}
+
+// A refused trace (403) stops tracing: no trace evidence, a limit says why, and the search answer stands.
+func TestReachabilitySearchExplainTraceRefusedStopsTracing(t *testing.T) {
+	facets := map[string]any{"totalResults": map[string]any{"value": 1, "type": "EXACT"}, "facets": map[string]any{"pathGroups": []any{
+		map[string]any{"traceType": "VALID", "paths": []any{map[string]any{"path": []any{"b1", "fw1"}}}}}}}
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), "POST /api/networks/n1/trace-facets": fwdtest.Const(200, facets),
+		"POST /api/networks/n1/trace": fwdtest.Const(403, map[string]any{"message": "forbidden"})}
+	r, _ := mustRun(t, "investigate-reachability", routes, `{"network_id":"n1","from":"b1","through":["fw1"],"explain":"trace"}`)
+	if r.Status != result.OK || len(r.Evidence) != 1 || !strings.Contains(strings.Join(r.Limits, " "), "the trace was refused") {
+		t.Errorf("a refused trace stops tracing and leaves the search answer: %s %d %v", r.Status, len(r.Evidence), r.Limits)
+	}
+}

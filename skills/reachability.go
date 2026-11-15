@@ -351,8 +351,8 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	if len(in.Through) > 0 || in.Leaving != nil {
 		var keys map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &keys)
-		if _, hasMatrix := keys["matrix"]; in.ReturnPath || in.Explain != "" || hasMatrix {
-			return result.Result{}, fmt.Errorf("%w: through and leaving use the search form, which does not combine with return_path, explain or matrix", ErrInvalidInput)
+		if _, hasMatrix := keys["matrix"]; in.ReturnPath || in.Explain == "routes" || hasMatrix {
+			return result.Result{}, fmt.Errorf("%w: through and leaving use the search form, which does not combine with return_path, explain routes or matrix (explain trace works with it)", ErrInvalidInput)
 		}
 		q, qerr := buildSearchQuery(in, in.Leaving) // validated before any request
 		if qerr != nil {
