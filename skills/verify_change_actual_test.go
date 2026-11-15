@@ -119,3 +119,37 @@ func TestVerifyChangeActualRefusesTheWrongSnapshots(t *testing.T) {
 		t.Errorf("view actual never runs a prediction: run_predict is refused")
 	}
 }
+
+// A next hop is its address and egress interface: Predict moving a route to the same address out of another interface than the network did is
+// "differs", not "match" (an interface-only move otherwise reads as unchanged).
+func TestVerifyChangeActualComparesTheEgressInterface(t *testing.T) {
+	hop := func(prefix, ip, iface string) map[string]any {
+		return map[string]any{"vrf": "default", "prefix": prefix, "nextHops": []any{map[string]any{"ip": ip, "iface": iface}}}
+	}
+	keep := hop("192.0.2.0/24", "198.51.100.1", "et1")
+	r, _ := mustRun(t, "verify-change", actualRoutes(map[string][]map[string]any{
+		"b1": {keep, hop("203.0.113.0/24", "198.51.100.1", "et1")},
+		"a1": {keep, hop("203.0.113.0/24", "198.51.100.1", "et2")},
+		"c2": {keep, hop("203.0.113.0/24", "198.51.100.1", "et3")},
+	}), actualIn)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "1 differ") || !strings.Contains(jsonOf(r), "198.51.100.1%et2") {
+		t.Fatalf("an egress-interface difference is a difference: %s %s", r.Status, r.Finding)
+	}
+}
+
+// When a snapshot carries no interface names (a predicted snapshot that leaves interfaceName empty would), next hops are compared on addresses
+// alone: the same move on both sides is still a match, and a limit says interfaces were not compared.
+func TestVerifyChangeActualFallsBackToAddressesWithoutInterfaces(t *testing.T) {
+	withIf := func(prefix, ip, iface string) map[string]any {
+		return map[string]any{"vrf": "default", "prefix": prefix, "nextHops": []any{map[string]any{"ip": ip, "iface": iface}}}
+	}
+	keep := withIf("192.0.2.0/24", "198.51.100.1", "et1")
+	r, _ := mustRun(t, "verify-change", actualRoutes(map[string][]map[string]any{
+		"b1": {keep, withIf("203.0.113.0/24", "198.51.100.1", "et1")},
+		"a1": {withIf("192.0.2.0/24", "198.51.100.1", ""), withIf("203.0.113.0/24", "198.51.100.9", "")},
+		"c2": {keep, withIf("203.0.113.0/24", "198.51.100.9", "et2")},
+	}), actualIn)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "1 match, 0 differ") || !strings.Contains(strings.Join(r.Limits, " "), "addresses only") {
+		t.Fatalf("addresses only when a snapshot has no interfaces: %s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}

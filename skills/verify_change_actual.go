@@ -20,7 +20,7 @@ import (
 const maxActualDevices = 10
 const maxActualRows = 100
 
-const actualLimit = "compares IPv4 forwarding entries (prefix and next-hop addresses per VRF) of the named or edited devices only; route attributes (AS path, preference), other devices and IPv6 are not compared. Anything that changed between the base and the after-change collection for another reason (another change, a flap, a later collection) shows as actual_only: read those rows before blaming the prediction"
+const actualLimit = "compares IPv4 forwarding entries (prefix and next hops, address and egress interface, per VRF; whether a predicted snapshot names interfaces as the collected one does is not yet seen live) of the named or edited devices only; route attributes (AS path, preference), other devices and IPv6 are not compared. Anything that changed between the base and the after-change collection for another reason (another change, a flap, a later collection) shows as actual_only: read those rows before blaming the prediction"
 
 // routeChange describes how one vrf/prefix moved between two reads: "" (same), "added", "removed" or "next_hops".
 func routeChange(before, after map[string]string, key string) string {
@@ -95,6 +95,9 @@ func predictedVsActual(ctx context.Context, s *fwd.Session, in verifyChangeInput
 		if len(b) == 0 || len(p) == 0 || len(a) == 0 {
 			limits = append(limits, fmt.Sprintf("%s was not compared: it has no IPv4 forwarding entry in one of the three snapshots (base %d, predicted %d, after %d entries), so it was not proven read", dev, len(b), len(p), len(a)))
 			continue
+		}
+		if !alignHops(b, p, a) {
+			limits = append(limits, fmt.Sprintf("%s: next hops were compared on addresses only, because a snapshot carries no egress interface names", dev))
 		}
 		judged++
 		keys := map[string]bool{}

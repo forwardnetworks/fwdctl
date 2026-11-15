@@ -191,14 +191,14 @@ func routingDelta(ctx context.Context, s *fwd.Session, networkID, beforeID, afte
 	return evidence, limits, changed
 }
 
-// devicePrefixMap reads one device's IPv4 forwarding entries on a snapshot: "vrf\x00prefix" to its sorted next-hop addresses, joined.
+// devicePrefixMap reads one device's IPv4 forwarding entries on a snapshot: "vrf\x00prefix" to its sorted next hops (address%egress interface), joined.
 func devicePrefixMap(ctx context.Context, s *fwd.Session, networkID, snap, device string) (map[string]string, error) {
 	q := `foreach device in network.devices
 where device.name == ` + strconv.Quote(device) + `
 foreach instance in device.networkInstances
 where isPresent(instance.afts) && isPresent(instance.afts.ipv4Unicast)
 foreach entry in instance.afts.ipv4Unicast.ipEntries
-select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry.nextHops select hop.ipAddress}`
+select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry.nextHops select {ip: hop.ipAddress, iface: hop.interfaceName}}`
 	rows, _, trunc, err := s.RunNQEAll(ctx, networkID, snap, q, maxRoutingRows)
 	if err == nil && trunc {
 		// a partial table would show every entry past the cap as removed or added, so say it was not read whole instead of diffing it
@@ -209,6 +209,15 @@ select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry
 		hops := []string{}
 		if hs, ok := r["nextHops"].([]any); ok {
 			for _, h := range hs {
+				// a next hop is its address and egress interface (seen live: interfaceName is set), so an interface-only move is a change
+				if hm, ok := h.(map[string]any); ok {
+					hop := str(hm["ip"])
+					if iface := str(hm["iface"]); iface != "" {
+						hop += "%" + iface
+					}
+					hops = append(hops, hop)
+					continue
+				}
 				hops = append(hops, fmt.Sprint(h))
 			}
 		}
@@ -216,6 +225,43 @@ select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry
 		m[fmt.Sprint(r["vrf"])+"\x00"+fmt.Sprint(r["prefix"])] = strings.Join(hops, ",")
 	}
 	return m, err
+}
+
+// alignHops makes next-hop tables comparable: a next hop is "address%egress interface", but when any table carries no interface name at all
+// (a snapshot that leaves interfaceName empty; whether a predicted snapshot fills it is not yet seen live), every table is compared on
+// addresses alone, so a missing interface never reads as a change. It returns whether interfaces were compared.
+func alignHops(tables ...map[string]string) bool {
+	for _, t := range tables {
+		has := false
+		for _, v := range t {
+			if strings.Contains(v, "%") {
+				has = true
+				break
+			}
+		}
+		if !has && len(t) > 0 {
+			for _, t2 := range tables {
+				for k, v := range t2 {
+					t2[k] = stripIfaces(v)
+				}
+			}
+			return false
+		}
+	}
+	return true
+}
+
+func stripIfaces(v string) string {
+	if v == "" {
+		return v
+	}
+	parts := strings.Split(v, ",")
+	for i, p := range parts {
+		p, _, _ = strings.Cut(p, "%")
+		parts[i] = p
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
 }
 
 // devicePrefixChanges lists one device's IPv4 prefixes whose next hops differ between the snapshots (added, removed, next hops changed), per VRF.
@@ -228,6 +274,7 @@ func devicePrefixChanges(ctx context.Context, s *fwd.Session, networkID, beforeI
 	if err != nil {
 		return nil, err
 	}
+	alignHops(b, a)
 	var out []map[string]any
 	for k, bh := range b {
 		p := strings.SplitN(k, "\x00", 2)
@@ -276,6 +323,7 @@ func stagedAdvertisementEffect(ctx context.Context, s *fwd.Session, networkID, c
 			limits = append(limits, fmt.Sprintf("the forwarding entries of %s could not be read (%v), so its staged advertisements were not checked", dev, errors.Join(e1, e2)))
 			continue
 		}
+		alignHops(before, after)
 		check := func(action, vrf, prefix string) {
 			p := prefix
 			if pp, err := netip.ParsePrefix(strings.TrimSpace(prefix)); err == nil {
