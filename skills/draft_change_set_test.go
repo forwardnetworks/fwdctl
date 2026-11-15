@@ -596,3 +596,80 @@ func TestEditChecksRefusesAReachabilityCheckForwardWouldFailAtRunTime(t *testing
 		t.Errorf("a standing Reachability check with flowTypes must be refused: %v", err)
 	}
 }
+
+// A BGP advertisement models a peer outside the snapshot: an external_peer that is an interface of a collected device is flagged (device and interface named), a peer
+// with no owner is not, and an IPv6 peer, a non-IP peer, a failed read or an address class (SVI) that could not be read says it was not checked (never a quiet
+// pass); a restore entry is not checked. It warns; it creates nothing.
+func TestDraftChangeSetFlagsAnExternalPeerThatIsACollectedDevice(t *testing.T) {
+	nqeOK := func(_ *http.Request, body []byte) (int, any) {
+		q := string(body)
+		rows := func(r ...map[string]any) (int, any) { return 200, map[string]any{"items": r, "totalNumItems": len(r)} }
+		switch {
+		case strings.Contains(q, "device.name =="):
+			return rows(map[string]any{"name": "r1"})
+		case strings.Contains(q, "sub.ipv4.addresses"):
+			return rows(map[string]any{"device": "isp1", "iface": "eth1", "sub": "eth1", "vrf": "default", "ip": "192.0.2.9", "prefixLength": 30})
+		}
+		return rows()
+	}
+	in := `{"network_id":"n1","name":"bgp","bgp_advertisements":[` +
+		`{"action":"withdraw","device":"r1","external_peer":"192.0.2.9","prefix":"203.0.113.0/24"},` +
+		`{"device":"r1","external_peer":"198.51.100.1","prefix":"203.0.113.0/24","next_hop":"198.51.100.1","as_path":[64500]},` +
+		`{"device":"r1","external_peer":"2001:db8::1","prefix":"2001:db8:1::/48","next_hop":"2001:db8::1","as_path":[64500]}]}`
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes[nqePath] = nqeOK
+	r, srv := mustRun(t, "edit-change-set", routes, in)
+	lim := strings.Join(r.Limits, " | ")
+	if !strings.Contains(lim, "bgp_advertisements[0] (withdraw): external_peer 192.0.2.9 is interface eth1 of isp1") {
+		t.Errorf("the collected peer is named with its device and interface: %v", r.Limits)
+	}
+	if strings.Contains(lim, "bgp_advertisements[1]") {
+		t.Errorf("a peer with no owner is not flagged: %v", r.Limits)
+	}
+	if !strings.Contains(lim, "2001:db8::1: IPv6") || !strings.Contains(lim, "not checked") {
+		t.Errorf("an IPv6 peer says it was not checked: %v", r.Limits)
+	}
+	hits, _ := r.Changes[0].After.(map[string]any)["collected_external_peers"].([]map[string]any)
+	if len(hits) != 1 || hits[0]["external_peer"] != "192.0.2.9" {
+		t.Errorf("the plan lists the one collected peer: %v", r.Changes[0].After)
+	}
+	for _, p := range calls(srv, "POST") {
+		if strings.Contains(p, "changeSets") || strings.Contains(p, "change-sets") {
+			t.Errorf("a dry run creates nothing: %v", calls(srv, "POST"))
+		}
+	}
+	// the address read fails: the check says it did not run
+	routes[nqePath] = func(req *http.Request, body []byte) (int, any) {
+		if strings.Contains(string(body), "device.name ==") {
+			return nqeOK(req, body)
+		}
+		return 400, map[string]any{"message": "boom"}
+	}
+	r, _ = mustRun(t, "edit-change-set", routes, in)
+	if !strings.Contains(strings.Join(r.Limits, " "), "could not be checked (reading the interface addresses of snapshot") {
+		t.Errorf("a failed read says the check did not run: %v", r.Limits)
+	}
+	// the SVI class cannot be read while the interface read works: that class is reported unchecked, not passed
+	routes[nqePath] = func(req *http.Request, body []byte) (int, any) {
+		if strings.Contains(string(body), "routedVlan.ipv4.addresses") {
+			return 400, map[string]any{"message": "boom"}
+		}
+		return nqeOK(req, body)
+	}
+	r, _ = mustRun(t, "edit-change-set", routes, in)
+	if lim := strings.Join(r.Limits, " "); !strings.Contains(lim, "external_peer check: ") || !strings.Contains(lim, "SVI") {
+		t.Errorf("a class that could not be read is named: %v", r.Limits)
+	}
+	// a restore is not checked; a peer that is not an IP says so
+	routes[nqePath] = nqeOK
+	r, _ = mustRun(t, "edit-change-set", routes, `{"network_id":"n1","name":"bgp","bgp_advertisements":[`+
+		`{"action":"restore","device":"r1","external_peer":"192.0.2.9","prefix":"203.0.113.0/24"},`+
+		`{"action":"withdraw","device":"r1","external_peer":"peer-a","prefix":"203.0.113.0/24"}]}`)
+	lim = strings.Join(r.Limits, " ")
+	if strings.Contains(lim, "is interface eth1 of isp1") {
+		t.Errorf("a restore entry is not checked: %v", r.Limits)
+	}
+	if !strings.Contains(lim, `external_peer "peer-a" is not an IP address`) {
+		t.Errorf("a non-IP peer says it was not checked: %v", r.Limits)
+	}
+}

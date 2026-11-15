@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strings"
@@ -287,11 +288,17 @@ func draftChangeSet(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			}
 		}
 	}
+	// after the name check, so a refused name pays for no address read
+	collectedPeers, peerLimits := collectedBGPPeers(ctx, s, in.NetworkID, base, in.BGP)
+	limits = append(limits, peerLimits...)
 	devices := make([]string, 0, len(touched))
 	for d := range touched {
 		devices = append(devices, d)
 	}
 	plan := map[string]any{"name": in.Name, "base_snapshot_id": base, "devices": devices, "cli_devices": len(in.Devices), "bgp_advertisements": len(in.BGP), "firewall_rules": len(in.Firewall), "run_prediction": in.Run}
+	if len(collectedPeers) > 0 {
+		plan["collected_external_peers"] = collectedPeers
+	}
 	ch := result.Change{Action: "create_change_set", Target: fmt.Sprintf("network %s, base snapshot %s", in.NetworkID, base), After: plan, Reversible: true,
 		Undo: "delete the draft change set (nothing reaches a device)"}
 	ev := func(mode string, extra map[string]any) []result.Evidence {
@@ -528,4 +535,64 @@ func missingSnapshotDevices(ctx context.Context, s *fwd.Session, networkID, snap
 		}
 	}
 	return missing, true
+}
+
+// collectedBGPPeers checks each bgp_advertisements external_peer (inject, modify, withdraw; restore only drops a staged entry) against the interface addresses of
+// the base snapshot, on a dry run and on apply. Forward's withdraw and inject model a peer OUTSIDE the snapshot: a key whose peer is an interface of a collected
+// device changed nothing in the prediction (seen live for a withdraw). A hit is a warning naming the owning device and interface, not a refusal; a peer that could
+// not be checked (not an IP, IPv6, a failed read or an address class that could not be read) says so, never a pass.
+func collectedBGPPeers(ctx context.Context, s *fwd.Session, networkID, snapshotID string, ads []draftAdvert) (hits []map[string]any, limits []string) {
+	peers := map[int]netip.Addr{}
+	var v6 []string
+	for i, a := range ads {
+		if a.Action == "restore" {
+			continue
+		}
+		ip, err := netip.ParseAddr(strings.TrimSpace(a.ExternalPeer))
+		switch {
+		case err != nil:
+			limits = append(limits, fmt.Sprintf("bgp_advertisements[%d]: external_peer %q is not an IP address, so whether it is a collected device was not checked", i, a.ExternalPeer))
+		case ip.Unmap().Is4():
+			peers[i] = ip.Unmap()
+		default:
+			v6 = append(v6, a.ExternalPeer)
+		}
+	}
+	if len(v6) > 0 {
+		limits = append(limits, fmt.Sprintf("external_peer %s: IPv6, so whether it is an interface of a collected device was not checked (the owner read is IPv4 only)", strings.Join(v6, ", ")))
+	}
+	if len(peers) == 0 {
+		return nil, limits
+	}
+	addrs, truncated, notes, err := loadIfaceAddrs(ctx, s, networkID, snapshotID)
+	if err != nil {
+		return nil, append(limits, fmt.Sprintf("whether each external_peer is an interface of a collected device could not be checked (reading the interface addresses of snapshot %s failed: %v); check with inspect-inventory kind ip_owner before relying on the prediction", snapshotID, err))
+	}
+	owners := ownersOf(addrs)
+	for i, a := range ads {
+		ip, ok := peers[i]
+		if !ok || len(owners[ip]) == 0 {
+			continue
+		}
+		o := owners[ip][0]
+		action := firstNonEmpty(a.Action, "inject")
+		iface := o.Iface
+		if o.Sub != "" && o.Sub != o.Iface {
+			iface = o.Sub
+		}
+		hits = append(hits, map[string]any{"index": i, "external_peer": ip.String(), "action": action, "owner": o.row()})
+		what := "a withdraw for it changed nothing in the prediction when seen live; to model losing this peer, shut the session on " + a.Device + " with CLI commands, or change " + o.Device + " itself"
+		if action != "withdraw" {
+			what = "this " + action + " is expected to change nothing too (seen live for a withdraw only, not confirmed for " + action + "); to change what " + o.Device + " sends, change " + o.Device + " itself with CLI commands"
+		}
+		limits = append(limits, fmt.Sprintf("bgp_advertisements[%d] (%s): external_peer %s is interface %s of %s, a collected device in snapshot %s. A BGP advertisement models a peer OUTSIDE the snapshot: %s",
+			i, action, ip, iface, o.Device, snapshotID, what))
+	}
+	for _, n := range notes {
+		limits = append(limits, "external_peer check: "+n)
+	}
+	if truncated {
+		limits = append(limits, fmt.Sprintf("the interface-address read hit its %d-row bound, so an external_peer that is a collected device may not have been flagged", maxModelRows))
+	}
+	return hits, limits
 }
