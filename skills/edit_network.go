@@ -347,9 +347,51 @@ func planLocation(ctx context.Context, s *fwd.Session, in editNetworkInput) (*ne
 			sort.Strings(bad)
 			return nil, fmt.Errorf("%w: these location ids do not exist on the network: %s (inspect-platform area locations lists them)", ErrInvalidInput, strings.Join(bad, ", "))
 		}
+		// Forward places only the network's registered (classic) devices and refuses the whole call otherwise ("Unrecognized devices cannot be
+		// moved", seen live by a peer session on 26.10.6), even for devices present in every snapshot, as on a network fed only by snapshot uploads.
+		assignLimits := []string{"device names are compared ignoring case (Forward keeps source names unique ignoring case); whether its placement matches names the same way is not seen live"}
+		// registered = every collection source: classic devices, controller setups, their controllers and managed devices. Forward refused
+		// unregistered devices live (26.10.6); the refusal here fires only when every source list was read, otherwise the miss is a limit.
+		reg := map[string]bool{}
+		readAll := true
+		if devs, derr := s.ClassicDevices(ctx, in.NetworkID); derr != nil {
+			readAll = false
+			assignLimits = append(assignLimits, "the collection list could not be read ("+derr.Error()+"), so whether each device is registered was not checked; Forward refuses the whole assign if one is not")
+		} else {
+			for _, d := range devs {
+				reg[strings.ToLower(d.Name)] = true
+			}
+		}
+		if setups, _, serr := s.Client.ControllerManagedSetups.List(ctx, in.NetworkID); serr != nil {
+			readAll = false
+			assignLimits = append(assignLimits, "the controller setups could not be read ("+serr.Error()+"), so a controller-managed device was not checked")
+		} else {
+			for _, st := range setups {
+				reg[strings.ToLower(st.Name)] = true
+				for _, c := range st.Controllers {
+					reg[strings.ToLower(c.Name)] = true
+				}
+				for _, m := range st.ManagedDevices {
+					reg[strings.ToLower(m.Name)] = true
+				}
+			}
+		}
+		var unreg []string
+		for d := range mapping {
+			if !reg[strings.ToLower(d)] {
+				unreg = append(unreg, d)
+			}
+		}
+		sort.Strings(unreg)
+		if len(unreg) > 0 && readAll {
+			return nil, fmt.Errorf("%w: not registered in any collection source of the network, so Forward refuses to place them (\"Unrecognized devices cannot be moved\", seen live on 26.10.6): %s. A device that is only in uploaded snapshots can be registered without being collected: edit-source object classic_device action create with {\"name\", \"host\", \"collect\": false} (no credentials needed), then assign again", ErrInvalidInput, strings.Join(unreg, ", "))
+		}
+		if len(unreg) > 0 {
+			assignLimits = append(assignLimits, "not found in the source lists that could be read: "+strings.Join(unreg, ", ")+"; Forward refuses the whole assign if one is unregistered")
+		}
 		return &networkPlan{target: fmt.Sprintf("assign %d device(s) to locations on network %s", len(mapping), in.NetworkID), action: "assign_locations", before: "not read: the SDK has no read of current device locations", after: mapping, reversible: false,
 			undo:   "assign the devices to their earlier locations: the earlier ones are not read here, so note them first",
-			limits: []string{"device names are matched by Forward exactly; a name it does not know is accepted without effect"},
+			limits: assignLimits,
 			do: func(ctx context.Context) error {
 				_, err := s.Client.Locations.Assign(ctx, in.NetworkID, mapping)
 				return err

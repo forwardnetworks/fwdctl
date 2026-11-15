@@ -1,12 +1,14 @@
 package skills_test
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 func TestEditNetworkCreateIsADryRunRefusesADuplicateAndReadsBack(t *testing.T) {
@@ -153,5 +155,34 @@ func TestEditNetworkCollectorWithNoneAttachedIsNotReversibleAndUnknownOnesAreRef
 	}
 	if _, _, err := runSkill(t, "edit-network", routes, `{"object":"collector","action":"delete","network_id":"n1"}`); err == nil {
 		t.Error("detaching is not offered")
+	}
+}
+
+// Forward places only registered (classic) devices and refuses the whole assign otherwise ("Unrecognized devices cannot be moved", seen live): the
+// skill refuses first, naming the unregistered devices and how to register one without collecting it, and sends nothing.
+func TestLocationAssignRefusesDevicesNotInTheCollectionList(t *testing.T) {
+	routes := map[string]fwdtest.Handler{"GET /api/networks": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/locations":                 fwdtest.Const(200, []any{map[string]any{"id": "1", "name": "Branches"}}),
+		"GET /api/networks/n1/classic-devices":           fwdtest.Const(200, []any{map[string]any{"name": "r1", "host": "192.0.2.1"}}),
+		"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{map[string]any{"name": "sdwan", "managedDevices": []any{map[string]any{"name": "edge9"}}}})}
+	for _, in := range []string{
+		`{"network_id":"n1","object":"location","action":"assign","definition":{"r1":"1","r2":"1"},"apply":true}`,
+		`{"network_id":"n1","object":"location","action":"assign","definition":{"r1":"1","r2":"1"}}`, // the dry run refuses too
+	} {
+		_, srv, err := runSkill(t, "edit-network", routes, in)
+		if !errors.Is(err, skills.ErrInvalidInput) || !strings.Contains(err.Error(), ": r2.") || strings.Contains(err.Error(), "r1") || !strings.Contains(err.Error(), `"collect": false`) || writes(srv) != 0 {
+			t.Fatalf("unregistered r2 refused with the fix, nothing sent: %v (writes %d)", err, writes(srv))
+		}
+	}
+	// a classic device in another case and a controller-managed device are registered: planned normally
+	r, _ := mustRun(t, "edit-network", routes, `{"network_id":"n1","object":"location","action":"assign","definition":{"R1":"1","edge9":"1"}}`)
+	if r.Status != result.OK || r.Changes[0].Applied {
+		t.Fatalf("registered devices plan normally: %s %s", r.Status, r.Finding)
+	}
+	// a source list that cannot be read: no refusal, a limit says what was not checked
+	routes["GET /api/networks/n1/controller-managed-setups"] = fwdtest.Const(500, map[string]any{"message": "boom"})
+	r, _ = mustRun(t, "edit-network", routes, `{"network_id":"n1","object":"location","action":"assign","definition":{"r2":"1"}}`)
+	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "not found in the source lists that could be read: r2") {
+		t.Fatalf("an unread source list turns the refusal into a limit: %s %v", r.Status, r.Limits)
 	}
 }
