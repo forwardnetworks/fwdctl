@@ -394,6 +394,14 @@ func planLocation(ctx context.Context, s *fwd.Session, in editNetworkInput) (*ne
 			limits: assignLimits,
 			do: func(ctx context.Context) error {
 				_, err := s.Client.Locations.Assign(ctx, in.NetworkID, mapping)
+				var er *forward.ErrorResponse
+				if errors.Is(err, forward.ErrUnrecognizedDevices) && errors.As(err, &er) {
+					names := strings.Join(er.UnrecognizedDevices, ", ")
+					if names == "" {
+						names = "(Forward did not name them)"
+					}
+					return fmt.Errorf("%w. Forward refused the whole assign; these devices are not registered: %s. Register each without collecting it (edit-source object classic_device action create with {\"name\", \"host\", \"collect\": false}), then assign again", err, names)
+				}
 				return err
 			}}, nil
 	case "update", "delete":

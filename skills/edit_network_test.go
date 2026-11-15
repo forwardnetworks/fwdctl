@@ -2,6 +2,7 @@ package skills_test
 
 import (
 	"errors"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 	"net/http"
 	"strings"
 	"testing"
@@ -184,5 +185,20 @@ func TestLocationAssignRefusesDevicesNotInTheCollectionList(t *testing.T) {
 	r, _ = mustRun(t, "edit-network", routes, `{"network_id":"n1","object":"location","action":"assign","definition":{"r2":"1"}}`)
 	if r.Status != result.OK || !strings.Contains(strings.Join(r.Limits, " "), "not found in the source lists that could be read: r2") {
 		t.Fatalf("an unread source list turns the refusal into a limit: %s %v", r.Status, r.Limits)
+	}
+}
+
+// When the pre-check could not run and Forward still refuses ("Unrecognized devices cannot be moved"), the error names the devices and the fix.
+func TestLocationAssignExplainsForwardsRefusal(t *testing.T) {
+	routes := map[string]fwdtest.Handler{"GET /api/networks": fwdtest.Const(200, []any{}),
+		"GET /api/networks/n1/locations":                 fwdtest.Const(200, []any{map[string]any{"id": "1", "name": "Branches"}}),
+		"GET /api/networks/n1/classic-devices":           fwdtest.Const(500, map[string]any{"message": "boom"}),
+		"GET /api/networks/n1/controller-managed-setups": fwdtest.Const(200, []any{}),
+		"PATCH /api/networks/n1/atlas":                   fwdtest.Const(400, map[string]any{"message": "Unrecognized devices cannot be moved: [r2]"}),
+	}
+	_, _, err := runSkill(t, "edit-network", routes, `{"network_id":"n1","object":"location","action":"assign","definition":{"r2":"1"},"apply":true}`)
+	// only reachable when the pre-check could not read a source list (otherwise the skill refuses first)
+	if !errors.Is(err, forward.ErrUnrecognizedDevices) || !strings.Contains(err.Error(), "not registered: r2") || !strings.Contains(err.Error(), `"collect": false`) {
+		t.Fatalf("Forward's refusal is explained: %v", err)
 	}
 }
