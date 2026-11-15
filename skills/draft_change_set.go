@@ -698,16 +698,17 @@ func samePrefix(a, b string) bool {
 	return pa == pb
 }
 
-// maxReadinessDevices bounds the readiness checks: each one reads the organization configuration, the network's classic devices and its
-// requirement groups (three GETs, two of them the same for every device).
-const maxReadinessDevices = 10
+// maxReadinessDevices bounds the readiness check (one call reads the organization configuration, the classic devices and the requirement groups
+// once for all devices).
+const maxReadinessDevices = 20
 
-// bgpDeviceReadiness runs the SDK's BGP advertisement readiness check (Predict.BGPAdvertisementReadiness: the organization's predict_modeling,
-// predict_model_bgp and predict_model_ext_adv, the device's CURRENT collection setup, the network's requirement groups) once per device that has a
-// withdraw or modify, the two actions that need received routes. An organization-wide problem is reported once. A device problem is a warning,
-// unless the received-advertisement check already found this device's key in the base snapshot (then the snapshot has the routes and the
-// current setting is only noted). A device with no classic collection source of that name, a value that could not be read, a refused read, or
-// a failed call is "not checked", never ready. Confirmed live on 26.11 (SDK v0.8.30): flags read, device settings read.
+// bgpDeviceReadiness runs the SDK's BGP advertisement readiness check (Predict.BGPAdvertisementReadinessFor: the organization's predict_modeling,
+// predict_model_bgp and predict_model_ext_adv, each device's CURRENT collection setup, the network's requirement groups; three reads for all
+// devices) for the devices that have a withdraw or modify, the two actions that need received routes. An organization-wide problem, and a read
+// that was refused for all devices, is said once. A device problem is a warning, unless the received-advertisement check already found this
+// device's key in the base snapshot (then the snapshot has the routes and the current setting is only noted). Whatever could not be read (the
+// SDK's Unknown: a property, a refused read, a device with no classic collection source) is "not checked", never ready. Confirmed live on 26.11
+// (SDK v0.8.32): flags and device settings read; an unknown device reads Unknown collection-source:NAME.
 func bgpDeviceReadiness(ctx context.Context, s *fwd.Session, networkID string, ads []draftAdvert, keyRows []map[string]any) (rows []map[string]any, limits []string) {
 	matched := map[string]bool{}
 	for _, k := range keyRows {
@@ -724,72 +725,83 @@ func bgpDeviceReadiness(ctx context.Context, s *fwd.Session, networkID string, a
 			devices = append(devices, a.Device)
 		}
 	}
+	if len(devices) == 0 {
+		return nil, nil
+	}
 	sort.Strings(devices)
-	orgSaid := map[string]bool{}
-	for i, d := range devices {
-		if i >= maxReadinessDevices {
-			limits = append(limits, fmt.Sprintf("BGP readiness was checked on the first %d devices only; the other %d were not checked", maxReadinessDevices, len(devices)-maxReadinessDevices))
-			break
+	devices, cut := result.Cap(devices, maxReadinessDevices, "devices with a withdraw or modify checked for BGP readiness", "the others were not checked")
+	for _, o := range cut {
+		limits = append(limits, "BGP readiness: "+o.Text())
+	}
+	reports, _, err := s.Client.Predict.BGPAdvertisementReadinessFor(ctx, networkID, devices)
+	if err != nil || len(reports) != len(devices) {
+		why := fmt.Sprintf("%d answer(s) for %d device(s)", len(reports), len(devices))
+		if err != nil {
+			why = err.Error()
 		}
-		r, _, err := s.Client.Predict.BGPAdvertisementReadiness(ctx, networkID, d)
-		if err != nil || r == nil {
-			why := "no answer"
-			if err != nil {
-				why = err.Error()
-			}
+		for _, d := range devices {
 			rows = append(rows, map[string]any{"device": d, "checked": false})
-			limits = append(limits, fmt.Sprintf("BGP readiness of %s could not be checked (%s)", d, why))
+		}
+		return rows, append(limits, fmt.Sprintf("BGP readiness of %s could not be checked (%s)", strings.Join(devices, ", "), why))
+	}
+	said := map[string]bool{}
+	once := func(key, text string) {
+		if !said[key] {
+			said[key] = true
+			limits = append(limits, text)
+		}
+	}
+	for i, r := range reports {
+		d := devices[i]
+		if r == nil {
+			rows = append(rows, map[string]any{"device": d, "checked": false})
+			limits = append(limits, fmt.Sprintf("BGP readiness of %s could not be checked (no answer)", d))
 			continue
 		}
-		row := map[string]any{"device": d, "checked": true, "device_found": r.DeviceFound, "collect_bgp_advertisements": r.CollectBGPAdvertisements, "bgp_table_type": r.BGPTableType,
+		row := map[string]any{"device": d, "checked": len(r.Unknown) == 0, "device_found": r.DeviceFound, "collect_bgp_advertisements": r.CollectBGPAdvertisements, "bgp_table_type": r.BGPTableType,
 			"bgp_peer_type": r.BGPPeerType, "required_by_network": r.RequiredByNetwork, "predict_modeling": r.PredictModeling, "predict_model_ext_adv": r.PredictModelExtAdv,
-			"predict_model_bgp": r.PredictModelBGP}
-		ready := len(r.Unknown) == 0
-		var notChecked []string
-		for _, n := range r.Notes {
-			if strings.HasPrefix(n, "not returned by the organization properties API") {
-				continue // the same fact as Unknown, said below
-			}
-			notChecked = append(notChecked, n)
-			ready = false
-		}
+			"predict_model_bgp": r.PredictModelBGP, "ready": r.Ready()}
 		for _, p := range r.Problems {
 			switch {
 			case strings.HasPrefix(p, "PREDICT_"):
-				ready = false
-				if !orgSaid[p] {
-					orgSaid[p] = true
-					limits = append(limits, "BGP readiness (organization): "+p+", so a withdraw or modify is expected to change nothing in the prediction")
-				}
-			case strings.HasPrefix(p, "the network has no collection source named"):
-				ready = false
-				notChecked = append(notChecked, "no classic collection source has this name (a controller or cloud setup, or a name in another form), so its collection setup was not read")
+				once("problem:"+p, "BGP readiness (organization): "+p+", so a withdraw or modify is expected to change nothing in the prediction")
 			case matched[strings.ToLower(d)]:
 				row["current_setting_note"] = p
 				limits = append(limits, fmt.Sprintf("BGP readiness of %s: %s in the CURRENT setup, but the base snapshot has the received route for this key, so the prediction can still use it; a later collection would not", d, p))
 			default:
-				ready = false
 				limits = append(limits, fmt.Sprintf("BGP readiness of %s: %s, so a withdraw or modify there is expected to change nothing in the prediction", d, p))
 			}
 		}
-		if len(r.Unknown) > 0 {
-			key := "unknown:" + strings.Join(r.Unknown, ",")
-			if !orgSaid[key] {
-				orgSaid[key] = true
-				limits = append(limits, "BGP readiness (organization): "+strings.Join(r.Unknown, ", ")+" could not be read, so that part was not checked")
+		for _, u := range r.Unknown {
+			if strings.HasPrefix(u, "collection-source:") {
+				limits = append(limits, fmt.Sprintf("BGP readiness of %s: no classic collection source has this name (a controller or cloud setup, or a name in another form), so its collection setup was not checked", d))
+				continue
 			}
-			row["unknown"] = r.Unknown
-		}
-		for _, n := range notChecked {
-			limits = append(limits, fmt.Sprintf("BGP readiness of %s: %s; that part was not checked", d, n))
-		}
-		if len(notChecked) > 0 {
-			row["not_checked"] = notChecked
+			why := "could not be read"
+			var shared []string
+			for _, note := range r.Notes {
+				if strings.Contains(note, u) {
+					shared = []string{note}
+					break
+				}
+				if !strings.Contains(note, "classic collection source named") {
+					shared = append(shared, note)
+				}
+			}
+			if len(shared) > 0 {
+				why = strings.Join(shared, "; ")
+			}
+			once("unknown:"+u, "BGP readiness: "+u+" was not checked for any device ("+why+")")
 		}
 		if len(r.Problems) > 0 {
 			row["problems"] = r.Problems
 		}
-		row["ready"] = ready
+		if len(r.Unknown) > 0 {
+			row["unknown"] = r.Unknown
+		}
+		if len(r.Notes) > 0 {
+			row["notes"] = r.Notes
+		}
 		rows = append(rows, row)
 	}
 	return rows, limits

@@ -787,7 +787,7 @@ func TestDraftChangeSetChecksBGPReadinessPerDevice(t *testing.T) {
 	routes["GET /api/config"] = fwdtest.Const(403, map[string]any{"message": "forbidden"})
 	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{map[string]any{"name": "r1", "host": "h", "collectBgpAdvertisements": true}})
 	r, _ = mustRun(t, "edit-change-set", routes, withdraw)
-	if !strings.Contains(strings.Join(r.Limits, " "), "could not be read, so that part was not checked") {
+	if !strings.Contains(strings.Join(r.Limits, " "), "was not checked for any device") {
 		t.Errorf("an unread flag says not checked: %v", r.Limits)
 	}
 	// the classic devices are refused: the device half is not checked, and the row is not ready
@@ -795,7 +795,7 @@ func TestDraftChangeSetChecksBGPReadinessPerDevice(t *testing.T) {
 	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(403, map[string]any{"message": "forbidden"})
 	r, _ = mustRun(t, "edit-change-set", routes, withdraw)
 	rows, _ = r.Changes[0].After.(map[string]any)["bgp_readiness"].([]map[string]any)
-	if len(rows) != 1 || rows[0]["ready"] != false || !strings.Contains(strings.Join(r.Limits, " "), "that part was not checked") {
+	if len(rows) != 1 || rows[0]["ready"] != false || !strings.Contains(strings.Join(r.Limits, " "), "classic-devices was not checked for any device (the network's collection sources could not be read") {
 		t.Errorf("a refused device read is not checked, never ready: %v %v", rows, r.Limits)
 	}
 	// collection is off NOW, but the base snapshot has the received route for the key: noted as the current setting, not "changes nothing"
@@ -811,12 +811,64 @@ func TestDraftChangeSetChecksBGPReadinessPerDevice(t *testing.T) {
 	// a device with no classic source of that name is not checked, not a warning
 	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{map[string]any{"name": "other", "host": "h"}})
 	r, _ = mustRun(t, "edit-change-set", routes, withdraw)
-	if lim := strings.Join(r.Limits, " "); !strings.Contains(lim, "no classic collection source has this name") || strings.Contains(lim, "the network has no collection source named r1, so a withdraw") {
+	if lim := strings.Join(r.Limits, " "); !strings.Contains(lim, "no classic collection source has this name") || strings.Contains(lim, "BGP readiness of r1: the network has no") {
 		t.Errorf("a missing classic source is not checked: %v", r.Limits)
 	}
 	// an inject alone needs no received routes: no readiness check
 	r, _ = mustRun(t, "edit-change-set", routes, `{"network_id":"n1","name":"inj","bgp_advertisements":[{"device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24","next_hop":"192.0.2.1","as_path":[64500]}]}`)
 	if strings.Contains(strings.Join(r.Limits, " "), "BGP readiness of") {
 		t.Errorf("an inject alone is not readiness-checked: %v", r.Limits)
+	}
+}
+
+// Readiness for several devices reads the organization configuration, the classic devices and the requirement groups once, not once per device.
+func TestDraftChangeSetReadinessReadsSharedDataOnce(t *testing.T) {
+	routes := dcRoutes(map[string]any{"commandErrors": []any{}})
+	routes[nqePath] = func(_ *http.Request, body []byte) (int, any) {
+		if strings.Contains(string(body), "device.name ==") {
+			return 200, map[string]any{"items": []any{map[string]any{"name": "x"}}, "totalNumItems": 1}
+		}
+		return 200, map[string]any{"items": []any{}, "totalNumItems": 0}
+	}
+	for _, d := range []string{"r1", "r2"} {
+		routes["GET /api/networks/n1/devices/"+d+"/bgp-advertisements"] = fwdtest.Const(200, []any{})
+	}
+	routes["GET /api/networks/n1/bgp-collection-requirements"] = fwdtest.Const(200, map[string]any{"requirements": []any{}})
+	routes["GET /api/config"] = fwdtest.Const(200, map[string]any{"predict_modeling": true, "predict_model_ext_adv": true, "predict_model_bgp": true})
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{map[string]any{"name": "r1", "host": "h", "collectBgpAdvertisements": true}, map[string]any{"name": "r2", "host": "h", "collectBgpAdvertisements": true}})
+	r, srv := mustRun(t, "edit-change-set", routes, `{"network_id":"n1","name":"two","bgp_advertisements":[`+
+		`{"action":"withdraw","device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24"},{"action":"withdraw","device":"r2","external_peer":"192.0.2.5","prefix":"203.0.113.0/24"}]}`)
+	n := 0
+	for _, c := range srv.Calls() {
+		if c.Method == "GET" && (c.Path == "/api/config" || c.Path == "/api/networks/n1/classic-devices" || c.Path == "/api/networks/n1/bgp-collection-requirements") {
+			n++
+		}
+	}
+	rows, _ := r.Changes[0].After.(map[string]any)["bgp_readiness"].([]map[string]any)
+	if n != 3 || len(rows) != 2 || rows[0]["device"] != "r1" || rows[1]["device"] != "r2" || rows[0]["ready"] != true || rows[1]["ready"] != true {
+		t.Errorf("three shared reads for two devices, both ready: %d reads, %v", n, rows)
+	}
+	in2 := `{"network_id":"n1","name":"two","bgp_advertisements":[{"action":"withdraw","device":"r1","external_peer":"192.0.2.1","prefix":"203.0.113.0/24"},{"action":"withdraw","device":"r2","external_peer":"192.0.2.5","prefix":"203.0.113.0/24"}]}`
+	// the requirement groups are refused: said once for both devices, and neither is checked or ready
+	routes["GET /api/networks/n1/bgp-collection-requirements"] = fwdtest.Const(403, map[string]any{"message": "forbidden"})
+	r, _ = mustRun(t, "edit-change-set", routes, in2)
+	rows, _ = r.Changes[0].After.(map[string]any)["bgp_readiness"].([]map[string]any)
+	if lim := strings.Join(r.Limits, " | "); strings.Count(lim, "BGP readiness: bgp-collection-requirements was not checked for any device") != 1 || rows[0]["checked"] != false || rows[1]["ready"] != false {
+		t.Errorf("a refused shared read is said once and checks nothing: %v %v", r.Limits, rows)
+	}
+	// r2 has no classic collection source: only r2 gets that limit
+	routes["GET /api/networks/n1/bgp-collection-requirements"] = fwdtest.Const(200, map[string]any{"requirements": []any{}})
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(200, []any{map[string]any{"name": "r1", "host": "h", "collectBgpAdvertisements": true}})
+	r, _ = mustRun(t, "edit-change-set", routes, in2)
+	lim := strings.Join(r.Limits, " | ")
+	if !strings.Contains(lim, "BGP readiness of r2: no classic collection source") || strings.Contains(lim, "BGP readiness of r1: no classic") {
+		t.Errorf("only the missing device is not checked: %v", r.Limits)
+	}
+	// the whole call fails: every device is not checked
+	routes["GET /api/config"] = fwdtest.Const(500, map[string]any{"message": "boom"})
+	r, _ = mustRun(t, "edit-change-set", routes, in2)
+	rows, _ = r.Changes[0].After.(map[string]any)["bgp_readiness"].([]map[string]any)
+	if len(rows) != 2 || rows[0]["checked"] != false || rows[1]["checked"] != false || !strings.Contains(strings.Join(r.Limits, " "), "BGP readiness of r1, r2 could not be checked") {
+		t.Errorf("a failed call checks no device: %v %v", rows, r.Limits)
 	}
 }
