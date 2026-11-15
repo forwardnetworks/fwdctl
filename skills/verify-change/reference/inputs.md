@@ -19,6 +19,6 @@
 echo '{"network_id": "<network id>", "view": "impact", "before_snapshot_id": "<id>", "after_snapshot_id": "<id>", "device": "<device name>"}' | fwdctl run verify-change
 ```
 
-`commit_id` belongs to views `history` and `config`; `device` to `describe`, `impact` and `config`; `after_snapshot_id` to `affected`, `paths`, `flows`, `ai_summary`, `verify`, `impact` and `model_check` (a collected snapshot).
+`commit_id` belongs to views `history` and `config`; `device` to `describe`, `impact`, `config` and `actual`; `after_snapshot_id` to `affected`, `paths`, `flows`, `ai_summary`, `verify`, `impact`, `model_check` and `actual` (a collected snapshot; for `actual`, the one collected after the change was really made).
 
 `object_kind` belongs to view `objects`; `os` and `protocol` to view `commands`; `commit_id` also to `bgp_diffs`; `device` also to `bgp_diffs` and `objects`.

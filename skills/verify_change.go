@@ -63,6 +63,7 @@ var verifyChangeViewInputs = map[string][]string{
 	"commands":    {"os", "protocol"},
 	"flows":       {"change_set_id", "run_predict", "before_snapshot_id", "after_snapshot_id", "expectations"},
 	"model_check": {"after_snapshot_id"},
+	"actual":      {"change_set_id", "after_snapshot_id", "device"},
 }
 
 func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
@@ -75,9 +76,9 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		view = "verify"
 	}
 	switch view {
-	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected", "bgp_diffs", "objects", "checks", "commands", "flows", "model_check":
+	case "verify", "impact", "describe", "list", "scope", "preflight", "paths", "ai_summary", "history", "config", "affected", "bgp_diffs", "objects", "checks", "commands", "flows", "model_check", "actual":
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config, affected, bgp_diffs, objects, checks, commands, flows or model_check", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be verify, describe, impact, list, scope, preflight, paths, ai_summary, history, config, affected, bgp_diffs, objects, checks, commands, flows, model_check or actual", ErrInvalidInput)
 	}
 	if err := rejectForeignInputs(raw, verifyChangeName, "view", view, verifyChangeViewInputs); err != nil {
 		return result.Result{}, err
@@ -103,6 +104,8 @@ func verifyChange(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return flowDiff(ctx, s, in)
 	case "model_check":
 		return modelCheck(ctx, s, in)
+	case "actual":
+		return predictedVsActual(ctx, s, in)
 	case "list":
 		return listChangeSets(ctx, s, in.NetworkID)
 	case "scope":
