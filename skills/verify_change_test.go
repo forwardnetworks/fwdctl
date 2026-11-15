@@ -464,6 +464,43 @@ func TestPreflightJoinsTheDemoChecklist(t *testing.T) {
 	if !strings.HasPrefix(r.Finding, "Predict preflight:") {
 		t.Errorf("finding %q", r.Finding)
 	}
+	advOf := func(r result.Result) map[string]any {
+		for _, e := range r.Evidence {
+			if v, ok := e.Detail["preflight"].(map[string]any); ok {
+				return v["bgp_advertisement_collection"].(map[string]any)
+			}
+		}
+		return nil
+	}
+	// the requirements read is refused: the limits say the list is missing, and no list is shown (not an empty one)
+	routes["GET /api/networks/n1/bgp-collection-requirements"] = fwdtest.Const(403, map[string]any{"message": "forbidden"})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"preflight"}`)
+	if adv := advOf(r); !strings.Contains(strings.Join(r.Limits, " "), "BGP collection requirements could not be read") || adv["required_by_network"] != nil {
+		t.Errorf("a failed requirements read is said, not shown as none: %v %v", r.Limits, adv)
+	}
+	// no requirement group: the lists are empty, not null
+	routes["GET /api/networks/n1/bgp-collection-requirements"] = fwdtest.Const(200, map[string]any{"requirements": []any{}})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"preflight"}`)
+	if j := jsonOf(r); !strings.Contains(j, `"required_by_network":[]`) || !strings.Contains(j, `"required_not_collecting":[]`) {
+		t.Errorf("no requirement is an empty list: %s", j)
+	}
+	// the network requires eos2, eos1 and edge9 (out of order, eos2 twice); eos1 collects, eos2 does not, edge9 is no classic device
+	routes["GET /api/networks/n1/bgp-collection-requirements"] = fwdtest.Const(200, map[string]any{"requirements": []any{map[string]any{"devices": []any{"eos2", "eos1"}}, map[string]any{"devices": []any{"edge9", "eos2"}}}})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"preflight"}`)
+	adv = advOf(r)
+	if fmt.Sprint(adv["required_by_network"]) != "[edge9 eos1 eos2]" || fmt.Sprint(adv["required_not_collecting"]) != "[eos2]" || fmt.Sprint(adv["required_not_checked"]) != "[edge9]" {
+		t.Errorf("required devices sorted once each, the one with collection off, and the one not checked: %v", adv)
+	}
+	lim := strings.Join(r.Limits, " ")
+	if !strings.Contains(lim, "1 device(s) the network requires to collect BGP advertisements have collection off") || !strings.Contains(lim, "so whether they collect was not checked") {
+		t.Errorf("both cases are limits: %v", r.Limits)
+	}
+	// the classic devices cannot be read: the required list is shown, the not-collecting list is not computed
+	routes["GET /api/networks/n1/classic-devices"] = fwdtest.Const(403, map[string]any{"message": "forbidden"})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"preflight"}`)
+	if adv := advOf(r); adv["required_by_network"] == nil || adv["required_not_collecting"] != nil {
+		t.Errorf("without the classic devices, collection is not judged: %v", adv)
+	}
 }
 
 // view paths is the GUI's "view interesting paths": for a snapshot (or a change set's predicted snapshot) it ranks the paths that go through firewalls or load balancers, and says what they pass through. It

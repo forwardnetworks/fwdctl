@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -46,17 +47,65 @@ func predictPreflight(ctx context.Context, s *fwd.Session, networkID string) (re
 	}
 
 	adv := map[string]any{"bgp_devices": len(sc.bgpDevs)}
-	if devs, derr := s.ClassicDevices(ctx, networkID); derr != nil {
+	collects := map[string]bool{}
+	devs, derr := s.ClassicDevices(ctx, networkID)
+	if derr != nil {
 		limits = append(limits, "the collection devices could not be read ("+derr.Error()+"), so received-advertisement collection is not counted")
 	} else {
 		collecting := 0
 		for _, dv := range devs {
-			if sc.bgpDevs[dv.Name] && dv.CollectBGPAdvertisements != nil && *dv.CollectBGPAdvertisements {
+			on := dv.CollectBGPAdvertisements != nil && *dv.CollectBGPAdvertisements
+			collects[dv.Name] = on
+			if sc.bgpDevs[dv.Name] && on {
 				collecting++
 			}
 		}
 		adv["collecting_received_advertisements"] = collecting
 		adv["match"] = "by device name between the BGP devices found in config and the classic collection devices; a BGP device collected another way (a cloud or controller setup) is not counted as collecting"
+	}
+	// the network's own requirement groups: devices Forward requires BGP advertisement collection on (gateways to adjacent networks, internet and intranet nodes, L3 VPNs fed by BGP)
+	if reqs, _, rerr := s.Client.Predict.BGPCollectionRequirements(ctx, networkID); rerr != nil {
+		limits = append(limits, "the network's BGP collection requirements could not be read ("+rerr.Error()+"), so which devices Forward requires to collect BGP advertisements is not listed")
+	} else {
+		seen := map[string]bool{}
+		var required, notCollecting, notClassic []string
+		for _, g := range reqs {
+			for _, n := range g.Devices {
+				if seen[n] {
+					continue
+				}
+				seen[n] = true
+				required = append(required, n)
+				if derr == nil {
+					if on, known := collects[n]; !known {
+						notClassic = append(notClassic, n)
+					} else if !on {
+						notCollecting = append(notCollecting, n)
+					}
+				}
+			}
+		}
+		sort.Strings(required)
+		sort.Strings(notCollecting)
+		sort.Strings(notClassic)
+		if required == nil {
+			required = []string{}
+		}
+		adv["required_by_network"] = required
+		adv["required_note"] = "a required device counts as collecting when collectBgpAdvertisements is on; the table and peer type each requirement group needs are kept by Forward and not checked here"
+		if derr == nil {
+			if notCollecting == nil {
+				notCollecting = []string{}
+			}
+			adv["required_not_collecting"] = notCollecting
+			if len(notClassic) > 0 {
+				adv["required_not_checked"] = notClassic
+				limits = append(limits, fmt.Sprintf("%d device(s) the network requires to collect BGP advertisements have no classic collection device of that name (a controller or cloud setup, or a name in another form), so whether they collect was not checked; required_not_checked lists them", len(notClassic)))
+			}
+			if len(notCollecting) > 0 {
+				limits = append(limits, fmt.Sprintf("%d device(s) the network requires to collect BGP advertisements have collection off; required_not_collecting lists them all", len(notCollecting)))
+			}
+		}
 	}
 	adv["warning"] = "modifying or withdrawing a received BGP advertisement needs received-advertisement collection on the device (off by default); without it the route is left unchanged in the predicted snapshot and no warning is shown, so a prediction can look like it did nothing"
 	d["bgp_advertisement_collection"] = adv

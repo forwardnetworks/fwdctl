@@ -230,6 +230,9 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 		notes = append(notes, "redistribution into BGP is not re-propagated")
 	}
 	finding := "Predict fit: " + strings.Join(notes, "; ")
+	if len(notes) == 0 {
+		finding = "Predict fit: no unmodelled family, stopping platform or switched-off modelling found (see the limits for what was not read)"
+	}
 	status := result.OK
 	if lic["predict"] == false {
 		status = result.Failed // Predict cannot be used on this license whatever the network looks like
