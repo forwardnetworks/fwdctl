@@ -32,3 +32,6 @@ func RoutingRowsCap(n int) (restore func()) {
 	maxRoutingRows = n
 	return func() { maxRoutingRows = old }
 }
+
+// NHEqual exposes the next-hop comparison to the table test.
+func NHEqual(x, y string) (equal, ifaceNotCompared bool) { return nhEqual(x, y) }

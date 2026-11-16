@@ -212,6 +212,9 @@ select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry
 				// a next hop is its address and egress interface (seen live: interfaceName is set), so an interface-only move is a change
 				if hm, ok := h.(map[string]any); ok {
 					hop := str(hm["ip"])
+					if hop == "" {
+						hop = "-" // no address (a connected or local entry): a marker, so one such hop differs from no next hop at all
+					}
 					if iface := str(hm["iface"]); iface != "" {
 						hop += "%" + iface
 					}
@@ -227,30 +230,6 @@ select {vrf: instance.name, prefix: entry.prefix, nextHops: foreach hop in entry
 	return m, err
 }
 
-// alignHops makes next-hop tables comparable: a next hop is "address%egress interface", but when any table carries no interface name at all
-// (a snapshot that leaves interfaceName empty; whether a predicted snapshot fills it is not yet seen live), every table is compared on
-// addresses alone, so a missing interface never reads as a change. It returns whether interfaces were compared.
-func alignHops(tables ...map[string]string) bool {
-	for _, t := range tables {
-		has := false
-		for _, v := range t {
-			if strings.Contains(v, "%") {
-				has = true
-				break
-			}
-		}
-		if !has && len(t) > 0 {
-			for _, t2 := range tables {
-				for k, v := range t2 {
-					t2[k] = stripIfaces(v)
-				}
-			}
-			return false
-		}
-	}
-	return true
-}
-
 func stripIfaces(v string) string {
 	if v == "" {
 		return v
@@ -264,6 +243,50 @@ func stripIfaces(v string) string {
 	return strings.Join(parts, ",")
 }
 
+func nhSame(x, y string) bool { eq, _ := nhEqual(x, y); return eq }
+
+// addressOnly is true when two next-hop texts were judged equal on addresses alone because one side has no interface on a hop.
+func addressOnly(x, y string) bool { _, skipped := nhEqual(x, y); return skipped }
+
+// nhEqual compares two next-hop texts ("address%interface", joined). Equal as text is equal. Otherwise, when either side has a next hop with no
+// interface (a predicted snapshot leaves it off a route it computed; seen live on 26.11.0-07: the new BGP routes of a predicted snapshot carry no
+// egress interface while the collected one does), the two are compared on addresses alone, and ifaceNotCompared says so, so a missing interface
+// never reads as a change. When both sides name every interface, a different interface is a different next hop.
+func nhEqual(x, y string) (equal, ifaceNotCompared bool) {
+	if x == y || sortedHops(x) == sortedHops(y) {
+		return true, false
+	}
+	if stripIfaces(x) != stripIfaces(y) {
+		return false, false
+	}
+	if allHaveIfaces(x) && allHaveIfaces(y) {
+		return false, false // same addresses out of different interfaces, both named: a different next hop
+	}
+	return true, true
+}
+
+// sortedHops puts a joined next-hop text in a fixed order (devicePrefixMap already sorts; this keeps the comparison independent of it).
+func sortedHops(v string) string {
+	if v == "" {
+		return v
+	}
+	parts := strings.Split(v, ",")
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
+}
+
+func allHaveIfaces(v string) bool {
+	if v == "" {
+		return true
+	}
+	for _, p := range strings.Split(v, ",") {
+		if !strings.Contains(p, "%") {
+			return false
+		}
+	}
+	return true
+}
+
 // devicePrefixChanges lists one device's IPv4 prefixes whose next hops differ between the snapshots (added, removed, next hops changed), per VRF.
 func devicePrefixChanges(ctx context.Context, s *fwd.Session, networkID, beforeID, afterID, device string) ([]map[string]any, error) {
 	b, err := devicePrefixMap(ctx, s, networkID, beforeID, device)
@@ -274,13 +297,12 @@ func devicePrefixChanges(ctx context.Context, s *fwd.Session, networkID, beforeI
 	if err != nil {
 		return nil, err
 	}
-	alignHops(b, a)
 	var out []map[string]any
 	for k, bh := range b {
 		p := strings.SplitN(k, "\x00", 2)
 		if ah, ok := a[k]; !ok {
 			out = append(out, map[string]any{"vrf": p[0], "prefix": p[1], "change": "removed", "next_hops_before": bh})
-		} else if ah != bh {
+		} else if eq, _ := nhEqual(bh, ah); !eq {
 			out = append(out, map[string]any{"vrf": p[0], "prefix": p[1], "change": "next hops changed", "next_hops_before": bh, "next_hops_after": ah})
 		}
 	}
@@ -323,7 +345,6 @@ func stagedAdvertisementEffect(ctx context.Context, s *fwd.Session, networkID, c
 			limits = append(limits, fmt.Sprintf("the forwarding entries of %s could not be read (%v), so its staged advertisements were not checked", dev, errors.Join(e1, e2)))
 			continue
 		}
-		alignHops(before, after)
 		check := func(action, vrf, prefix string) {
 			p := prefix
 			if pp, err := netip.ParsePrefix(strings.TrimSpace(prefix)); err == nil {
@@ -343,7 +364,7 @@ func stagedAdvertisementEffect(ctx context.Context, s *fwd.Session, networkID, c
 			b, hadB := find(before)
 			a, hadA := find(after)
 			rows = append(rows, map[string]any{"device": dev, "action": action, "vrf": firstNonEmpty(vrf, "default"), "prefix": p, "next_hops_base": nilIfEmpty(b), "next_hops_predicted": nilIfEmpty(a),
-				"in_base": hadB, "in_predicted": hadA, "forwarding_changed": hadB != hadA || b != a})
+				"in_base": hadB, "in_predicted": hadA, "forwarding_changed": hadB != hadA || !nhSame(b, a), "interface_compared": !addressOnly(b, a)})
 		}
 		for _, r := range c.RemovedAdvertisements {
 			check("withdraw", r.VRF, r.Prefix)

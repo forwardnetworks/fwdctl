@@ -20,7 +20,7 @@ import (
 const maxActualDevices = 10
 const maxActualRows = 100
 
-const actualLimit = "compares IPv4 forwarding entries (prefix and next hops, address and egress interface, per VRF; whether a predicted snapshot names interfaces as the collected one does is not yet seen live) of the named or edited devices only; route attributes (AS path, preference), other devices and IPv6 are not compared. Anything that changed between the base and the after-change collection for another reason (another change, a flap, a later collection) shows as actual_only: read those rows before blaming the prediction"
+const actualLimit = "compares IPv4 forwarding entries (prefix and next hops, address and egress interface, per VRF; a route whose next hop has no interface name in one snapshot is compared on addresses only and marked interface_compared false: seen live on 26.11.0-07, a predicted snapshot has no egress interface on the next hop of a new BGP route while the collected snapshot has it) of the named or edited devices only; route attributes (AS path, preference), other devices and IPv6 are not compared. Anything that changed between the base and the after-change collection for another reason (another change, a flap, a later collection) shows as actual_only: read those rows before blaming the prediction"
 
 // routeChange describes how one vrf/prefix moved between two reads: "" (same), "added", "removed" or "next_hops".
 func routeChange(before, after map[string]string, key string) string {
@@ -31,7 +31,7 @@ func routeChange(before, after map[string]string, key string) string {
 		return "added"
 	case hb && !ha:
 		return "removed"
-	case hb && ha && b != a:
+	case hb && ha && !nhSame(b, a):
 		return "next_hops"
 	}
 	return ""
@@ -84,6 +84,7 @@ func predictedVsActual(ctx context.Context, s *fwd.Session, in verifyChangeInput
 	var rows []map[string]any
 	counts := map[string]int{}
 	judged := 0
+	addressOnly := 0
 	for _, dev := range devices {
 		b, e1 := devicePrefixMap(ctx, s, in.NetworkID, baseID, dev)
 		p, e2 := devicePrefixMap(ctx, s, in.NetworkID, predID, dev)
@@ -95,9 +96,6 @@ func predictedVsActual(ctx context.Context, s *fwd.Session, in verifyChangeInput
 		if len(b) == 0 || len(p) == 0 || len(a) == 0 {
 			limits = append(limits, fmt.Sprintf("%s was not compared: it has no IPv4 forwarding entry in one of the three snapshots (base %d, predicted %d, after %d entries), so it was not proven read", dev, len(b), len(p), len(a)))
 			continue
-		}
-		if !alignHops(b, p, a) {
-			limits = append(limits, fmt.Sprintf("%s: next hops were compared on addresses only, because a snapshot carries no egress interface names", dev))
 		}
 		judged++
 		keys := map[string]bool{}
@@ -122,15 +120,25 @@ func predictedVsActual(ctx context.Context, s *fwd.Session, in verifyChangeInput
 				verdict = "predicted_only"
 			case pc == "" && ac != "":
 				verdict = "actual_only"
-			case pc == ac && p[k] == a[k]:
+			case pc == ac && nhSame(p[k], a[k]):
 				verdict = "match"
 			}
 			counts[verdict]++
 			vrf, prefix, _ := strings.Cut(k, "\x00")
-			rows = append(rows, map[string]any{"device": dev, "vrf": vrf, "prefix": prefix, "verdict": verdict,
+			_, ifaceSkipped1 := nhEqual(b[k], p[k])
+			_, ifaceSkipped2 := nhEqual(b[k], a[k])
+			_, ifaceSkipped3 := nhEqual(p[k], a[k])
+			notCompared := ifaceSkipped1 || ifaceSkipped2 || ifaceSkipped3
+			if notCompared {
+				addressOnly++
+			}
+			rows = append(rows, map[string]any{"interface_compared": !notCompared, "device": dev, "vrf": vrf, "prefix": prefix, "verdict": verdict,
 				"predicted_change": nilIfEmpty(pc), "actual_change": nilIfEmpty(ac),
 				"next_hops_base": nilIfEmpty(b[k]), "next_hops_predicted": nilIfEmpty(p[k]), "next_hops_actual": nilIfEmpty(a[k])})
 		}
+	}
+	if addressOnly > 0 {
+		limits = append(limits, fmt.Sprintf("%d row(s) were compared on next-hop addresses only (interface_compared false): a snapshot has no egress interface on that route. Seen live on 26.11.0-07 (stable, cEOS): a predicted snapshot carries no egress interface on the next hop of a new BGP route while the collected snapshot has it, so Predict's interface choice for such a route is not checked here", addressOnly))
 	}
 	shown, omittedRows := result.Cap(rows, maxActualRows, "prefixes that changed on either side", "name one device with device to see its rows")
 	detail := map[string]any{"base_snapshot_id": baseID, "predicted_snapshot_id": predID, "actual_snapshot_id": string(actual.ID), "devices": devices,
