@@ -20,7 +20,7 @@ import (
 const maxActualDevices = 10
 const maxActualRows = 100
 
-const actualLimit = "compares IPv4 forwarding entries (prefix and next hops, address and egress interface, per VRF; a route whose next hop has no interface name in one snapshot is compared on addresses only and marked interface_compared false: seen live on 26.11.0-07, a predicted snapshot has no egress interface on the next hop of a new BGP route while the collected snapshot has it) of the named or edited devices only; route attributes (AS path, preference), other devices and IPv6 are not compared. Anything that changed between the base and the after-change collection for another reason (another change, a flap, a later collection) shows as actual_only: read those rows before blaming the prediction"
+const actualLimit = "compares IPv4 forwarding entries (prefix and next hops, address and egress interface, per VRF; a route whose next hop has no interface name in one snapshot is compared on addresses only and marked interface_compared false: seen live on 26.11.0-07, only a route the change itself makes Forward learn lacks its egress interface in the predicted snapshot; one carried over from the base keeps it) of the named or edited devices only; route attributes (AS path, preference), other devices and IPv6 are not compared. Anything that changed between the base and the after-change collection for another reason (another change, a flap, a later collection) shows as actual_only: read those rows before blaming the prediction"
 
 // routeChange describes how one vrf/prefix moved between two reads: "" (same), "added", "removed" or "next_hops".
 func routeChange(before, after map[string]string, key string) string {
@@ -138,7 +138,7 @@ func predictedVsActual(ctx context.Context, s *fwd.Session, in verifyChangeInput
 		}
 	}
 	if addressOnly > 0 {
-		limits = append(limits, fmt.Sprintf("%d row(s) were compared on next-hop addresses only (interface_compared false): a snapshot has no egress interface on that route. Seen live on 26.11.0-07 (stable, cEOS): a predicted snapshot carries no egress interface on the next hop of a new BGP route while the collected snapshot has it, so Predict's interface choice for such a route is not checked here", addressOnly))
+		limits = append(limits, fmt.Sprintf("%d row(s) were compared on next-hop addresses only (interface_compared false): a snapshot has no egress interface on that route. Seen live on 26.11.0-07 (stable, cEOS): a predicted snapshot lacks the egress interface only on routes the change itself makes Forward learn (new BGP routes from a route-map change); a route carried over from the base keeps its interface (a neighbor shutdown matched on all 57 entries), so Predict's interface choice for a newly learned route is not checked here", addressOnly))
 	}
 	shown, omittedRows := result.Cap(rows, maxActualRows, "prefixes that changed on either side", "name one device with device to see its rows")
 	detail := map[string]any{"base_snapshot_id": baseID, "predicted_snapshot_id": predID, "actual_snapshot_id": string(actual.ID), "devices": devices,
