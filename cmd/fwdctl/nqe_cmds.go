@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,10 +27,10 @@ func (a *app) nqeCmd() *cobra.Command {
 }
 
 func (a *app) nqeLint() *cobra.Command {
-	var modules, synthetic, file string
+	var modules, synthetic, file, schemaFile string
 	var org, errorsOnly bool
 	c := &cobra.Command{
-		Use: "lint [FILE|-]", Short: "check a query: syntax, names, types, deprecations (offline, or against an organization's live schema with --org)",
+		Use: "lint [FILE|-]", Short: "check a query: syntax, names, types, deprecations (offline, or against an organization's live schema with --org, or a schema file with --schema-file)",
 		Long: "Offline NQE check, no Forward connection: syntax errors with line and column, unknown names, wrong argument counts, fields and enum values the data model does not have,\n" +
 			"type errors, and deprecations with Forward's own advice. Exit 1 on an error. The type check is gradual (it says nothing where it cannot tell a type), so\n" +
 			"validate-nqe-query, which runs the query on Forward, is still the last word. An import of your own organization's saved query (not @fwd/...) warns rather than being\n" +
@@ -40,14 +41,39 @@ func (a *app) nqeLint() *cobra.Command {
 			"Performance advice is reported as `info` (never an error, exit stays 0): the query will not run device-parallel (perf-device-parallel), a device filter that is not an exact name equality (perf-device-filter), a very large inline query (perf-inline-size), a function called per list element that rebuilds shared group trees (perf-repeated-tree-per-row), a device-level value bound inside a row loop (perf-device-value-in-row-loop), a list held as a record field filtered by a field (perf-record-field-not-indexed), a large function called from three or more places (perf-call-site-expansion). The experimental rule perf-catalog-outer-join (two bare lists joined by a field: the smaller should be the outer) is off unless asked for with --experimental, because it cannot tell which list is larger and flags both forms. See `fwdctl describe author-nqe-query reference/performance.md`.\n" +
 			"The embedded schema is a release's; an organization on a newer build has fields it lacks (and may have dropped fields it still has). --org reads the organization's live schema\n" +
 			"(GET /api/nqe/schema; needs a login) and checks against that, so a field the organization no longer has is reported as an error, and the result says how many field paths the live schema\n" +
-			"has that the embedded one lacks and the reverse (schema.source, fields_added, fields_removed).",
-		Example: "  fwdctl nqe lint query.nqe\n  fwdctl nqe lint --file query.nqe\n  cat query.nqe | fwdctl nqe lint -",
+			"has that the embedded one lacks and the reverse (schema.source, fields_added, fields_removed).\n" +
+			"--schema-file PATH does the same with a schema you already hold, with no login: for a release no reachable organization runs yet (an organization that has not upgraded, or one ahead of it), check a query against that release's schema before it is committed. " +
+			"The file is the NQE schema as Forward serves it (GET /api/nqe/schema, saved to a file); the result gives the same schema.source (file), fields_added and fields_removed against the embedded schema. " +
+			"It reads the file you name and nothing else; --org and --schema-file do not combine.",
+		Example: "  fwdctl nqe lint query.nqe\n  fwdctl nqe lint --file query.nqe\n  cat query.nqe | fwdctl nqe lint -\n  fwdctl nqe lint --schema-file ./network-inlined-type-all query.nqe",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tool := []string{}
 			lintSchema = nil
 			if err := a.applyNQEFeatures(cmd); err != nil {
 				return err
+			}
+			if org && schemaFile != "" {
+				return a.fail("give --org or --schema-file, not both (the organization's live schema or a schema file)")
+			}
+			if schemaFile != "" {
+				st, serr := os.Stat(schemaFile)
+				if serr != nil {
+					return a.fail("could not read the schema file: %v", serr)
+				}
+				if !st.Mode().IsRegular() || st.Size() > 64<<20 {
+					return a.fail("--schema-file must be a regular file of at most 64 MiB")
+				}
+				raw, rerr := os.ReadFile(schemaFile)
+				if rerr != nil {
+					return a.fail("could not read the schema file: %v", rerr)
+				}
+				added, removed, removedPaths, uerr := nqelint.UseOrgSchemaDiff(escapeRawControlsInStrings(raw))
+				if uerr != nil {
+					return a.fail("could not use the schema file %s (it must be the NQE schema JSON: a Record named Network with its fields): %v", filepath.Base(schemaFile), uerr)
+				}
+				lintSchema = map[string]any{"source": "file", "file": filepath.Base(schemaFile), "fields_added": added, "fields_removed": removed, "removed_paths": removedPaths,
+					"note": "fields_added are field paths the schema file has that this binary's embedded schema lacks; fields_removed are the reverse (a query using one of those fails against the file's release)"}
 			}
 			if org {
 				sess, err := a.session()
@@ -89,6 +115,7 @@ func (a *app) nqeLint() *cobra.Command {
 	addExperimentalFlag(c)
 	c.Flags().StringVar(&modules, "modules", "", "where \"import\" statements are read from (default: the directory of FILE)")
 	c.Flags().BoolVar(&org, "org", false, "check against the organization's live schema instead of the embedded one (needs a login)")
+	c.Flags().StringVar(&schemaFile, "schema-file", "", "check against this NQE schema file (Forward's /api/nqe/schema JSON) instead of the embedded one: no login, for a release no reachable organization runs yet")
 	c.Flags().BoolVar(&errorsOnly, "errors-only", false, "report errors only, no warnings or deprecations (the exit status is the same)")
 	c.Flags().StringVar(&synthetic, "synthetic", "", "check the file as a synthetic-device query of this kind ("+join(nqelint.SyntheticKindNames())+")")
 	_ = c.RegisterFlagCompletionFunc("synthetic", cobra.FixedCompletions(nqelint.SyntheticKindNames(), cobra.ShellCompDirectiveNoFileComp))
@@ -467,4 +494,44 @@ func projectNQEFeatures() []string {
 	}
 	names, _ := nqelint.ProjectFeatures(dir)
 	return names
+}
+
+// escapeRawControlsInStrings makes a schema JSON strict. A schema saved by some Forward tooling holds raw newlines inside its docString values,
+// which a strict JSON parser refuses; this escapes a control character found inside a string and changes nothing else, so valid JSON is
+// returned byte for byte.
+func escapeRawControlsInStrings(b []byte) []byte {
+	var out []byte
+	inStr, esc := false, false
+	last := 0
+	for i, c := range b {
+		switch {
+		case !inStr:
+			if c == '"' {
+				inStr = true
+			}
+		case esc:
+			esc = false
+		case c == '\\':
+			esc = true
+		case c == '"':
+			inStr = false
+		case c < 0x20:
+			out = append(out, b[last:i]...)
+			switch c {
+			case '\n':
+				out = append(out, '\\', 'n')
+			case '\r':
+				out = append(out, '\\', 'r')
+			case '\t':
+				out = append(out, '\\', 't')
+			default:
+				out = append(out, []byte(fmt.Sprintf("\\u%04x", c))...)
+			}
+			last = i + 1
+		}
+	}
+	if out == nil {
+		return b
+	}
+	return append(out, b[last:]...)
 }

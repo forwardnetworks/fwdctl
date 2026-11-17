@@ -75,6 +75,13 @@
     "discard_draft": {
       "type": "boolean",
       "default": false
+    },
+    "acknowledge_new_errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "with changes and typecheck: true, commit although Forward's typecheck finds NEW errors, for code written for a release the organization has not upgraded to. List the errors exactly as the dry run prints them (typecheck.new_errors_to_acknowledge, each \"path: message\"). The commit goes ahead only when Forward's new errors are exactly this list; a different, extra or missing error refuses it. Never overrides a login that may not commit"
     }
   }
 }

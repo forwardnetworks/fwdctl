@@ -34,6 +34,22 @@
    "query": "Which CVEs are critical?",
    "should_trigger": false,
    "note": "vulnerabilities"
+  },
+  {
+   "query": "Which of our saved NQE queries read the negated field on an address, so I know what breaks when we upgrade?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs find-nqe-query with source_matches",
+    "says how many query sources were searched, and that a partial search is not proof of none"
+   ]
+  },
+  {
+   "query": "List every query in our library under a folder, all levels, and show which have no stated intent.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs find-nqe-query with recursive and an intent filter",
+    "lists the queries with their intent"
+   ]
   }
  ],
  "measure": [

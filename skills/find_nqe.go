@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	forward "github.com/forwardnetworks/forward-go-sdk"
+
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
 )
@@ -28,6 +30,12 @@ type findNQEInput struct {
 	// queries directly in it.
 	List  bool `json:"list"`
 	Limit int  `json:"limit"`
+	// Recursive lists every query under Directory at any depth (with its intent) instead of one level. Intent keeps only the queries whose intent
+	// matches this regular expression (^\s*$ is "no intent"); alone, or with list or recursive, it gives the recursive listing; with question it filters
+	// the matches. SourceMatches searches the organization's query SOURCES under Directory for this regular expression.
+	Recursive     bool   `json:"recursive"`
+	Intent        string `json:"intent"`
+	SourceMatches string `json:"source_matches"`
 }
 
 const (
@@ -67,6 +75,24 @@ func findNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.R
 		}
 		return readNQEQuery(ctx, s, in, cx)
 	}
+	if in.SourceMatches != "" {
+		if in.Question != "" || in.List || in.Recursive {
+			return result.Result{}, fmt.Errorf("%w: source_matches searches the query sources under directory; it does not combine with question, list or recursive (intent and directory narrow it)", ErrInvalidInput)
+		}
+		return searchNQESources(ctx, s, in, cx)
+	}
+	if in.Recursive && in.Question != "" {
+		return result.Result{}, fmt.Errorf("%w: recursive lists every query under directory; it does not combine with question (use intent to filter the listing, or drop recursive to search)", ErrInvalidInput)
+	}
+	if in.CommitID != "" && (in.Recursive || in.Intent != "") {
+		return result.Result{}, fmt.Errorf("%w: commit_id reads one query (query_id or path), describes a commit, or sets the commit source_matches reads; the listing and intent filter read the head only", ErrInvalidInput)
+	}
+	if in.List && in.Question != "" {
+		return result.Result{}, fmt.Errorf("%w: list shows the library tree and does not combine with question (use intent to filter a listing, or drop list to search)", ErrInvalidInput)
+	}
+	if in.Question == "" && (in.Recursive || in.Intent != "") {
+		return listNQERecursive(ctx, s, in, cx)
+	}
 	if in.List {
 		return listNQEDirectory(ctx, s, in, cx)
 	}
@@ -77,9 +103,26 @@ func findNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.R
 	if len(want) == 0 {
 		return result.NewError(findNQEName, "question has no searchable words", cx), nil
 	}
+	var intentRe *regexp.Regexp
+	if in.Intent != "" {
+		var rerr error
+		if intentRe, rerr = compileFindRegex("intent", in.Intent); rerr != nil {
+			return result.Result{}, rerr
+		}
+	}
 	lib, err := s.NQELibrary(ctx, in.Directory)
 	if err != nil {
 		return result.Result{}, err
+	}
+	if intentRe != nil {
+		re := intentRe
+		var kept []forward.NQEQuery
+		for _, q := range lib {
+			if re.MatchString(q.Intent) {
+				kept = append(kept, q)
+			}
+		}
+		lib = kept
 	}
 	type hit struct {
 		score int

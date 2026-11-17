@@ -8,6 +8,7 @@ NQE is Forward's query language. `fwdctl` has three tools for writing it, from f
     cat query.nqe | fwdctl nqe lint
     fwdctl nqe lint -            # read stdin
     fwdctl nqe lint --org q.nqe  # check against the organization's live schema (needs a login)
+    fwdctl nqe lint --schema-file ./network-inlined-type-all q.nqe  # check against a schema file you hold (no login): a release no reachable organization runs yet
 
 The embedded schema is Forward's full data model from a master build, and Forward serves each organization that model **filtered by its feature flags** (org properties). Offline lint applies Forward's defaults, so a field behind a flag that is off by default (the Palo Alto and Fortinet security policy, `device.securityPolicy`, are experimental; so are the extra host fields and `device.services`) shows "Record does not have field" for an organization that has the flag on. The diagnostic's `hint` names the flag, and `--features` turns flags on the way that organization has them:
 

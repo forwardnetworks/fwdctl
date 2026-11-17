@@ -70,7 +70,9 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | A webhook is not arriving, not delivering or failing: the webhook list, its last test result, what it sends, its events and auth, and why a configured one stays silent (outbound connections switched off, scope, no retry); sending events or check results to an external monitoring system | `inspect-platform` (`area: webhooks`) |
 | Who holds a route for a prefix, a more specific one or a covering one: a prefix overlap check across all VRFs | `inspect-inventory` (`kind: routes`, `ips` as prefixes) |
 | Which devices carry public IPv4 addresses on their own interfaces (management, loopback, firewall sides), by role, device type or VRF; what to review before excluding prefixes from the internet node or when a device is flagged internet addressable | `inspect-edge` (`view: public_addresses`) |
-| Is there already a saved NQE query for a question; browse the NQE library: list its top-level folders or directories and the queries in one | `find-nqe-query` (`list: true`) |
+| Is there already a saved NQE query for a question | `find-nqe-query` (`question`) |
+| Browse the NQE library: list its top-level folders or directories and the queries in one | `find-nqe-query` (`list: true`, no question) |
+| Which saved NQE queries read a field or use a pattern (what breaks when a field changes); every query under a library directory with its intent; queries with no intent, or whose intent carries a category | `find-nqe-query` (`source_matches`; `recursive`, `intent`) |
 | Which internal devices are good sources to trace from; choose a source that is not blackholed before tracing to an external or synthetic destination | `inspect-edge` (`view: trace_sources`, `target_ip`) |
 | Keep public space the network routes internally off the internet node (its excluded subnets) | `edit-internet-exclusions` (dry run first) |
 | Drive a synthetic node (internet, intranet, L3 VPN, L2 VPN, adjacent network) from a saved NQE query, or take it off | `edit-synthetic-query` (dry run first) |

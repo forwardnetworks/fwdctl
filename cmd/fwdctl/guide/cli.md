@@ -591,6 +591,7 @@ Performance advice is reported as `info` (never an error, exit stays 0): the que
 The embedded schema is a release's; an organization on a newer build has fields it lacks (and may have dropped fields it still has). --org reads the organization's live schema
 (GET /api/nqe/schema; needs a login) and checks against that, so a field the organization no longer has is reported as an error, and the result says how many field paths the live schema
 has that the embedded one lacks and the reverse (schema.source, fields_added, fields_removed).
+--schema-file PATH does the same with a schema you already hold, with no login: for a release no reachable organization runs yet (an organization that has not upgraded, or one ahead of it), check a query against that release's schema before it is committed. The file is the NQE schema as Forward serves it (GET /api/nqe/schema, saved to a file); the result gives the same schema.source (file), fields_added and fields_removed against the embedded schema. It reads the file you name and nothing else; --org and --schema-file do not combine.
 
 ```
 fwdctl nqe lint [FILE|-] [flags]
@@ -602,6 +603,7 @@ Examples:
   fwdctl nqe lint query.nqe
   fwdctl nqe lint --file query.nqe
   cat query.nqe | fwdctl nqe lint -
+  fwdctl nqe lint --schema-file ./network-inlined-type-all query.nqe
 ```
 
 Flags:
@@ -613,6 +615,7 @@ Flags:
       --file string                        the query file (the same as the FILE argument; - reads stdin), as nqe run takes it
       --modules string                     where "import" statements are read from (default: the directory of FILE)
       --org                                check against the organization's live schema instead of the embedded one (needs a login)
+      --schema-file string                 check against this NQE schema file (Forward's /api/nqe/schema JSON) instead of the embedded one: no login, for a release no reachable organization runs yet
       --synthetic string                   check the file as a synthetic-device query of this kind (adjacent-network|internet|intranet|l2vpn|l3vpn)
 ```
 

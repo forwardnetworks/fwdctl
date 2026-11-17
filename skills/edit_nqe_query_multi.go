@@ -176,6 +176,7 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	}
 	limits = append(limits, "the commit is visible to everyone in the organization and is ONE commit for all paths; Forward has no optimistic-concurrency check, so this skill compares the head to the basis before it commits (a commit landing in between is not caught)")
 	var tc map[string]any
+	acknowledged := 0 // new typecheck errors the caller acknowledged by exact text; 0 when none
 	if in.Typecheck {
 		if mine, derr := s.DraftsAt(ctx, paths); derr != nil {
 			return result.Result{}, fmt.Errorf("reading your uncommitted NQE changes failed, so nothing was staged: %w", derr)
@@ -256,9 +257,40 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		if len(dr.UnauthorizedQueryChanges)+len(dr.UnauthorizedAccessSettingChanges) > 0 {
 			return fail("Forward says this login may not commit some of these changes; nothing was changed", map[string]any{"typecheck": tc, "head_commit_id": head})
 		}
-		if n > 0 {
-			return fail(fmt.Sprintf("Forward's typecheck finds %d new error(s) across %d quer(ies), in the changed queries and the queries that import them%s. Nothing was committed", n, len(errs), map[bool]string{true: "; " + fmt.Sprint(ne) + " more existed at head and are listed apart as existing_errors", false: ""}[ne > 0]),
-				map[string]any{"typecheck": tc, "head_commit_id": head, "paths": paths})
+		newList := canonicalNewErrors(errs)
+		tc["new_errors_to_acknowledge"] = newList
+		if len(in.AcknowledgeNewErrors) > 0 {
+			missing, unexpected := multisetDiff(in.AcknowledgeNewErrors, newList)
+			if len(missing) > 0 || len(unexpected) > 0 {
+				return fail(fmt.Sprintf("acknowledge_new_errors does not match Forward's new errors (%d acknowledged you expected that Forward did not find; %d Forward found that you did not acknowledge). Nothing was committed", len(missing), len(unexpected)),
+					map[string]any{"typecheck": tc, "head_commit_id": head, "paths": paths, "acknowledged_not_found": missing, "found_not_acknowledged": unexpected}, limits...)
+			}
+			acknowledged = len(newList)
+			verb := "committing"
+			if !in.Apply {
+				verb = "would commit"
+			}
+			edited := map[string]bool{}
+			for _, pth := range paths {
+				edited[pth] = true
+			}
+			var others []string
+			for pth := range errs {
+				if !edited[pth] {
+					others = append(others, pth)
+				}
+			}
+			sort.Strings(others)
+			limits = append(limits, fmt.Sprintf("%s despite %d new typecheck error(s) the caller acknowledged by exact text (acknowledge_new_errors): for code written for a release the organization has not upgraded to, those errors are expected until it does. A different error, an extra one or a missing one refuses the commit", verb, acknowledged))
+			if len(others) > 0 {
+				limits = append(limits, fmt.Sprintf("the acknowledged errors include queries you did NOT edit (%s), which import the changed ones: they will fail on this organization until it upgrades, and %d check(s) or dashboard(s) use the changed queries and their importers (uses_count)", strings.Join(others, ", "), len(dr.Uses)))
+			}
+			if !baselineRan && len(prior) > 0 {
+				limits = append(limits, "no baseline ran, so the acknowledged list includes errors that already existed at head, not only what this change adds")
+			}
+		} else if n > 0 {
+			return fail(fmt.Sprintf("Forward's typecheck finds %d new error(s) across %d quer(ies), in the changed queries and the queries that import them%s. Nothing was committed. Only if the person confirms these are fields of a newer release the organization has not upgraded to (not typos), pass acknowledge_new_errors with exactly the list in typecheck.new_errors_to_acknowledge", n, len(errs), map[bool]string{true: "; " + fmt.Sprint(ne) + " more existed at head and are listed apart as existing_errors", false: ""}[ne > 0]),
+				map[string]any{"typecheck": tc, "head_commit_id": head, "paths": paths}, limits...)
 		}
 	} else {
 		limits = append(limits, "dependents were NOT typechecked: Forward types only staged changes, so set typecheck: true (it stages drafts, asks Forward, restores them) to see errors in the queries that import these")
@@ -268,8 +300,12 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		title = fmt.Sprintf("Update %d queries", len(paths))
 	}
 	if !in.Apply {
-		return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Dry run: would commit %d quer(ies) in one commit on head %s. Nothing was committed; run again with apply=true to commit", len(paths), head),
-			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: changes, Limits: limits, Evidence: evd(map[string]any{"typecheck": tc, "basis_commit_id": basis, "typechecked": in.Typecheck}),
+		dryNote := ""
+		if acknowledged > 0 {
+			dryNote = fmt.Sprintf(", with %d acknowledged new typecheck error(s) (listed in typecheck.new_errors_to_acknowledge)", acknowledged)
+		}
+		return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Dry run: would commit %d quer(ies) in one commit on head %s%s. Nothing was committed; run again with apply=true to commit", len(paths), head, dryNote),
+			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: changes, Limits: limits, Evidence: evd(map[string]any{"typecheck": tc, "basis_commit_id": basis, "typechecked": in.Typecheck, "acknowledged_new_errors": acknowledged}),
 				NextActions: []string{"validate-nqe-query", "find-nqe-query"}})
 	}
 
@@ -319,12 +355,16 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		}
 	}
 	sort.Strings(bad)
-	ev := evd(map[string]any{"previous_commit_id": basis, "commit_id": newHead, "held": held, "typecheck": tc})
+	ev := evd(map[string]any{"previous_commit_id": basis, "commit_id": newHead, "held": held, "typecheck": tc, "acknowledged_new_errors": acknowledged})
 	if !held {
 		return result.Build(editNQEQueryName, result.Failed, fmt.Sprintf("Committed %s but the library does not hold the requested source at: %s", newHead, strings.Join(bad, ", ")), result.Deterministic, cx,
 			result.Options{Mode: result.ModeApplied, Changes: changes, Limits: limits, Evidence: ev})
 	}
-	return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Committed %d quer(ies) as one commit %s (previous head %s)", len(paths), newHead, basis), result.Deterministic, cx,
+	committedNote := ""
+	if acknowledged > 0 {
+		committedNote = fmt.Sprintf(", with %d acknowledged new typecheck error(s)", acknowledged)
+	}
+	return result.Build(editNQEQueryName, result.OK, fmt.Sprintf("Committed %d quer(ies) as one commit %s (previous head %s)%s", len(paths), newHead, basis, committedNote), result.Deterministic, cx,
 		result.Options{Mode: result.ModeApplied, Changes: changes, Limits: limits, Evidence: ev, NextActions: []string{"validate-nqe-query", "find-nqe-query"}})
 }
 
@@ -377,4 +417,41 @@ func splitErrors(base, after map[string][]map[string]any) (newErrs, existing map
 		}
 	}
 	return
+}
+
+// canonicalNewErrors lists the new errors as "path: message", sorted: the text acknowledge_new_errors must repeat exactly.
+func canonicalNewErrors(errs map[string][]map[string]any) []string {
+	out := []string{}
+	for pth, ds := range errs {
+		for _, d := range ds {
+			out = append(out, pth+": "+strings.TrimSpace(fmt.Sprint(d["message"])))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// multisetDiff compares what the caller expects with what Forward found, counting duplicates: missing is expected but not found, unexpected is found but not expected.
+func multisetDiff(expected, found []string) (missing, unexpected []string) {
+	left := map[string]int{}
+	for _, f := range found {
+		left[f]++
+	}
+	for _, e := range expected {
+		e = strings.TrimSpace(e)
+		if left[e] > 0 {
+			left[e]--
+		} else {
+			missing = append(missing, e)
+		}
+	}
+	for _, f := range found {
+		if left[f] > 0 {
+			left[f]--
+			unexpected = append(unexpected, f)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(unexpected)
+	return missing, unexpected
 }

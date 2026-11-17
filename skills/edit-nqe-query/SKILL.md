@@ -24,7 +24,7 @@ by path or by its query id. This skill adds, replaces or removes one entry and c
 
 What each input means, and the fields per object and action: `fwdctl run edit-nqe-query --help`, or `reference/inputs.md`.
 
-Read before applying (printed by `fwdctl run edit-nqe-query --help`, from `reference/inputs.md`): Discarding a stray draft, Directories.
+Read before applying (printed by `fwdctl run edit-nqe-query --help`, from `reference/inputs.md`): Discarding a stray draft, Directories, and acknowledge_new_errors (committing code written for a release the organization has not upgraded to: commits only when Forward's new typecheck errors are exactly the list you acknowledge).
 
 **`discard_draft` drops the draft at that path, which on a shared login may be a colleague's: check first. A save needs an existing directory (one exists only while a committed query is under it).**
 

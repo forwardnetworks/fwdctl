@@ -29,13 +29,15 @@ What each input means, and the fields per object and action: `fwdctl run find-nq
    - No match: **unknown**. It does not mean no such query exists; the wording may differ. Fall back to
      `author-nqe-query`.
 
+Three more forms read the whole library (the details are in `reference/inputs.md`): `list` shows one level of the tree; `recursive: true` (or `list` with `intent`) lists every query under `directory` at any depth with its intent; `intent` keeps only queries whose intent text matches a regular expression (`^\s*$` finds the ones with no intent), and with `question` narrows the matches; `source_matches` searches the SOURCE of the organization's queries under `directory` for a pattern (at most 300 sources per call, and a partial search says so: no match in a partial search is **unknown**).
+
 With `query_id` or `path` the skill instead reads that one saved query of the organization's library and returns its source in a `nqe`
 evidence item (**ok**, deterministic); a query that is not there is **unknown**. The built-in library (`FQ_` ids) is searched by
 `question` but its source is not read.
 
 ## Evidence
 
-One `nqe` item listing the matches: id, path, intent, repository, words matched.
+One `nqe` item listing the matches: id, path, intent, repository, words matched. A recursive listing's item lists every query under the directory (path, id, intent, repository) with the count in all and the count that matched `intent`; a source search's item lists each matching query with its matching lines and how many sources were read of how many qualified.
 
 ## Output
 

@@ -38,6 +38,10 @@ type editNQEQueryInput struct {
 	// Features turns NQE feature flags on for the offline check (fwdctl nqe features lists them): fields such as device.securityPolicy exist only behind a flag.
 	Features   []string `json:"features"`
 	SnapshotID string   `json:"snapshot_id"`
+	// AcknowledgeNewErrors lets a multi-query commit go ahead although Forward's typecheck finds new errors, for code written for a newer release than the
+	// organization runs. It lists the EXACT new errors expected, each "path: message", as the dry run prints them; the commit proceeds only when Forward's new
+	// errors are exactly this list (a different, extra or missing error refuses it). Needs changes and typecheck: true. It never overrides "unauthorized".
+	AcknowledgeNewErrors []string `json:"acknowledge_new_errors"`
 	// DiscardDraft drops the caller's own uncommitted draft at exactly path (nothing else; nothing committed changes).
 	DiscardDraft bool `json:"discard_draft"`
 	// NetworkID is not declared any more (the library is organization-wide); Run drops it, so an older caller that still sends it works.
@@ -73,6 +77,12 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 	}
 	if in.OfflineCheck == "skip" && !(len(in.Changes) > 0 && in.Typecheck) {
 		return result.Result{}, fmt.Errorf("%w: offline_check skip needs changes with typecheck: true, so that Forward's own check is the gate (an unchecked save is never offered)", ErrInvalidInput)
+	}
+	if len(in.AcknowledgeNewErrors) > 0 && !(len(in.Changes) > 0 && in.Typecheck) {
+		return result.Result{}, fmt.Errorf("%w: acknowledge_new_errors needs changes with typecheck: true (it acknowledges the errors Forward's typecheck finds); a single-query save has no typecheck to acknowledge", ErrInvalidInput)
+	}
+	if len(in.AcknowledgeNewErrors) > 200 {
+		return result.Result{}, fmt.Errorf("%w: acknowledge_new_errors lists at most 200 errors", ErrInvalidInput)
 	}
 	if len(in.Changes) > 0 {
 		return editNQEQueries(ctx, s, in)

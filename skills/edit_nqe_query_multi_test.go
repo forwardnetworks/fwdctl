@@ -2,12 +2,14 @@ package skills_test
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 const goodQueryB = "foreach d in network.devices select {n: d.name, v: d.platform.vendor}"
@@ -387,5 +389,104 @@ func TestEditNQEQueriesTypecheckSeparatesExistingErrorsFromNewOnes(t *testing.T)
 	b = jsonOf(r)
 	if r.Status != result.Failed || head != "c1" || !strings.Contains(b, `"new_error_count":1`) || !strings.Contains(b, "Unknown name foo") || !strings.Contains(b, `"existing_error_count":1`) || !strings.Contains(r.Finding, "1 new") {
 		t.Fatalf("a new error stops the commit: %s %s %s", r.Status, r.Finding, b)
+	}
+}
+
+// acknowledge_new_errors: code written for a release the organization has not upgraded to has typecheck errors that are expected. The commit goes
+// ahead only when Forward's new errors are EXACTLY the acknowledged list; the dry run prints the list to copy; every other gate still holds.
+func ackFixture(t *testing.T, errsMsgs ...string) (map[string]fwdtest.Handler, *string, *[]string) {
+	t.Helper()
+	head := "c1"
+	var es []any
+	for _, m := range errsMsgs {
+		es = append(es, map[string]any{"severity": "ERROR", "message": m})
+	}
+	dry := map[string]any{"newErrors": map[string]any{"/Team/importer": es}}
+	routes, _, log := multiLibrary(&head, dry)
+	dryRunSequence(routes, log, map[string]any{"newErrors": map[string]any{}}, dry)
+	return routes, &head, log
+}
+
+func TestEditNQEQueriesAcknowledgedNewErrorsCommitOnlyOnAnExactMatch(t *testing.T) {
+	in := func(ack string) string {
+		return strings.Replace(multiIn, `"network_id":"x",`, "", 1) + `,"typecheck":true,"offline_check":"skip","apply":true,"acknowledge_new_errors":` + ack + `}`
+	}
+	// an apply with no acknowledgement refuses and prints the exact text to acknowledge
+	routes, head, _ := ackFixture(t, "no such field negated", "no such field schedules")
+	r, _ := mustRun(t, "edit-nqe-query", routes, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true,"offline_check":"skip","apply":true}`)
+	if r.Status != result.Failed || *head != "c1" || !strings.Contains(r.Finding, "acknowledge_new_errors") || !strings.Contains(jsonOf(r), "/Team/importer: no such field negated") {
+		t.Fatalf("without an acknowledgement it refuses and says what to acknowledge: %s %s", r.Status, r.Finding)
+	}
+	// the exact list (any order) commits, and says so
+	routes, head, log := ackFixture(t, "no such field negated", "no such field schedules")
+	r, _ = mustRun(t, "edit-nqe-query", routes, in(`["/Team/importer: no such field schedules","/Team/importer: no such field negated"]`))
+	if r.Status != result.OK || *head == "c1" || !strings.Contains(r.Finding, "with 2 acknowledged new typecheck error(s)") || !strings.Contains(strings.Join(*log, ","), "commit") {
+		t.Fatalf("the exact list commits: %s %s head=%s", r.Status, r.Finding, *head)
+	}
+	// a missing, an extra and an unrelated acknowledgement each refuse, and nothing is committed
+	for name, ack := range map[string]string{
+		"extra expected":   `["/Team/importer: no such field negated","/Team/importer: no such field schedules","/Team/importer: another"]`,
+		"one not listed":   `["/Team/importer: no such field negated"]`,
+		"different error":  `["/Team/importer: no such field negated","/Team/importer: something else"]`,
+		"wrong path":       `["/Team/other: no such field negated","/Team/other: no such field schedules"]`,
+		"duplicate counts": `["/Team/importer: no such field negated","/Team/importer: no such field negated"]`,
+	} {
+		routes, head, _ := ackFixture(t, "no such field negated", "no such field schedules")
+		r, _ := mustRun(t, "edit-nqe-query", routes, in(ack))
+		if r.Status != result.Failed || *head != "c1" || !strings.Contains(r.Finding, "does not match") {
+			t.Errorf("%s: must refuse and commit nothing: %s %s head=%s", name, r.Status, r.Finding, *head)
+		}
+	}
+	// a stale acknowledgement when Forward finds no new error refuses too (it must not mask a later, different error)
+	routes, head, _ = ackFixture(t)
+	r, _ = mustRun(t, "edit-nqe-query", routes, in(`["/Team/importer: no such field negated"]`))
+	if r.Status != result.Failed || *head != "c1" {
+		t.Errorf("a stale acknowledgement refuses: %s %s", r.Status, r.Finding)
+	}
+}
+
+func TestEditNQEQueriesAcknowledgementNeedsTypecheckAndChangesAndNeverOverridesUnauthorized(t *testing.T) {
+	routes, _, _ := ackFixture(t, "e")
+	for _, bad := range []string{
+		`{"path":"/Team/a","source":"` + goodQuery + `","acknowledge_new_errors":["x"]}`,
+		strings.Replace(multiIn, `"network_id":"x",`, "", 1) + `,"acknowledge_new_errors":["x"]}`, // no typecheck
+	} {
+		_, srv, err := runSkill(t, "edit-nqe-query", routes, bad)
+		if !errors.Is(err, skills.ErrInvalidInput) || len(srv.Calls()) != 0 {
+			t.Errorf("%s: refused before any call (%v, %d calls)", bad, err, len(srv.Calls()))
+		}
+	}
+	// Forward says this login may not commit: no acknowledgement overrides that
+	head := "c1"
+	dry := map[string]any{"newErrors": map[string]any{"/Team/importer": []any{map[string]any{"severity": "ERROR", "message": "e"}}}, "unauthorizedQueryChanges": []any{"/Team/a"}}
+	r2, _, log := multiLibrary(&head, dry)
+	dryRunSequence(r2, log, map[string]any{"newErrors": map[string]any{}}, dry)
+	r, _ := mustRun(t, "edit-nqe-query", r2, strings.Replace(multiIn, `"network_id":"x",`, "", 1)+`,"typecheck":true,"offline_check":"skip","apply":true,"acknowledge_new_errors":["/Team/importer: e"]}`)
+	if r.Status != result.Failed || head != "c1" || !strings.Contains(r.Finding, "may not commit") {
+		t.Errorf("an unauthorized change is never overridden: %s %s head=%s", r.Status, r.Finding, head)
+	}
+}
+
+// A dry run with a matching acknowledgement says in its finding and evidence that errors would be committed (the person approving reads the dry
+// run); a mismatch refuses on a dry run too; an acknowledgement of an error on a query that was not edited is named; whitespace around an entry is ignored.
+func TestEditNQEQueriesAcknowledgementIsVisibleOnTheDryRun(t *testing.T) {
+	dryIn := func(ack string) string {
+		return strings.Replace(multiIn, `"network_id":"x",`, "", 1) + `,"typecheck":true,"offline_check":"skip","acknowledge_new_errors":` + ack + `}`
+	}
+	routes, head, log := ackFixture(t, "no such field negated")
+	r, _ := mustRun(t, "edit-nqe-query", routes, dryIn(`["  /Team/importer: no such field negated  "]`))
+	j := jsonOf(r)
+	if r.Status != result.OK || r.Mode != result.ModeDryRun || *head != "c1" || strings.Contains(strings.Join(*log, ","), "commit,") ||
+		!strings.Contains(r.Finding, "with 1 acknowledged new typecheck error(s)") || !strings.Contains(j, `"acknowledged_new_errors":1`) {
+		t.Fatalf("the dry run says errors would be committed: %s %s", r.Status, r.Finding)
+	}
+	lim := strings.Join(r.Limits, " ")
+	if !strings.Contains(lim, "would commit despite 1 new typecheck error") || !strings.Contains(lim, "queries you did NOT edit (/Team/importer)") {
+		t.Errorf("the limits say would-commit and name the importer: %v", r.Limits)
+	}
+	routes, head, _ = ackFixture(t, "no such field negated")
+	r, _ = mustRun(t, "edit-nqe-query", routes, dryIn(`["/Team/importer: some other error"]`))
+	if r.Status != result.Failed || *head != "c1" || !strings.Contains(r.Finding, "does not match") {
+		t.Errorf("a mismatch refuses on a dry run too: %s %s", r.Status, r.Finding)
 	}
 }

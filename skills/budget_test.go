@@ -70,6 +70,7 @@ var wideReadSkills = map[string]int{
 	"inspect-bgp-neighbors":    13, // routing adds the routing-app option
 	"compare-nqe-results":      9,  // after_network_id, key and ignore compare two networks
 	"inspect-device-files":     12, // search adds offset to page past 50 matches (a search across files has no single start line to reuse)
+	"find-nqe-query":           11, // recursive, intent and source_matches: a recursive listing with an intent filter, and a search of the query sources (a customer asked; no existing input holds them)
 	"validate-nqe-query":       9,  // query_id and commit_id validate a saved library query by id instead of text
 	"investigate-reachability": 16, // return_path asks Forward for the return flow in the same search (a Forward parameter, not a view); explain routes adds each hop's forwarding entry, read in one NQE call (an option on the same paths, not a view); through and leaving are the search form's hops and leaving side (Forward's Search-page query; Craig raised the cap to 16 on 2026-11-15); no existing input holds any of them
 	// Merged views (v0.5.27): each view names its own inputs in SKILL.md and rejects another view's, so the schema is wide and the call is not.

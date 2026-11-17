@@ -3,7 +3,7 @@
   "required": [
     "network_id"
   ],
-  "description": "Give exactly one of question (search), query_id (read a Q_ query's source) or path (read by library path)",
+  "description": "Give one of question (search), query_id (read a Q_ query's source), path (read by library path), or a library-wide read: list/recursive/intent (the tree, or every query with its intent) or source_matches (search the query sources)",
   "additionalProperties": false,
   "properties": {
     "network_id": {
@@ -29,7 +29,7 @@
     "list": {
       "type": "boolean",
       "default": false,
-      "description": "Show one level of the library as a tree (directories with query counts, and the queries directly in directory, default /) instead of searching"
+      "description": "Show one level of the library as a tree (directories with query counts, and the queries directly in directory, default /) instead of searching. Does not combine with question (use intent to filter a listing)"
     },
     "limit": {
       "type": "integer",
@@ -38,7 +38,22 @@
     "commit_id": {
       "type": "string",
       "minLength": 1,
-      "description": "read query_id or path at this library commit instead of the head"
+      "description": "read query_id or path at this library commit instead of the head. Refused with recursive or intent (the listing reads the head); with source_matches it sets the commit the sources are read at"
+    },
+    "recursive": {
+      "type": "boolean",
+      "default": false,
+      "description": "with list (or alone): list every query under directory at any depth, each with its intent and id, instead of one level"
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1,
+      "description": "keep only the queries whose @intent text matches this regular expression (Go RE2; case-sensitive unless it starts with (?i); ^\\s*$ finds the queries with no intent). Alone or with list/recursive it gives the recursive listing; with question it filters the matches; with source_matches it narrows which sources are read"
+    },
+    "source_matches": {
+      "type": "string",
+      "minLength": 1,
+      "description": "search the SOURCE of the organization's saved queries under directory (default /) for this regular expression (Go RE2; a literal dot is \\.): lists each query with its first matching lines. At most 300 sources are read per call; a larger set is partial and says so. Does not combine with question, list or recursive"
     }
   }
 }
