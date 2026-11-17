@@ -36,6 +36,12 @@ type findNQEInput struct {
 	Recursive     bool   `json:"recursive"`
 	Intent        string `json:"intent"`
 	SourceMatches string `json:"source_matches"`
+	// Repository keeps only the organization's own queries (ORG) or Forward's built-in ones (FWD) in a listing, an intent filter or a search.
+	Repository string `json:"repository"`
+	// Offset pages a listing (rows to skip) or moves a source search's read window (qualifying queries to skip, in path order).
+	Offset int `json:"offset"`
+	// userLimit is Limit as the caller gave it (0 = not given), before the question search's default is applied.
+	userLimit int
 }
 
 const (
@@ -64,8 +70,20 @@ func findNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.R
 	if err := json.Unmarshal(raw, &in); err != nil {
 		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
+	in.userLimit = in.Limit
 	if in.Limit <= 0 {
 		in.Limit = defaultFindLimit
+	}
+	repo, rerr := normalizeRepository(in.Repository)
+	if rerr != nil {
+		return result.Result{}, rerr
+	}
+	in.Repository = repo
+	if in.Offset < 0 {
+		return result.Result{}, fmt.Errorf("%w: offset is 0 or more", ErrInvalidInput)
+	}
+	if (in.Repository != "" || in.Offset > 0) && (in.QueryID != "" || in.Path != "" || (in.SourceMatches == "" && !in.Recursive && in.Intent == "" && in.Question == "")) {
+		return result.Result{}, fmt.Errorf("%w: repository and offset apply to a recursive listing (recursive, or intent), a source search (source_matches) and, for repository, a question search; list shows one level, and reading a query or describing a commit has neither", ErrInvalidInput)
 	}
 	in.Limit = min(in.Limit, maxFindLimit)
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
@@ -79,7 +97,13 @@ func findNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.R
 		if in.Question != "" || in.List || in.Recursive {
 			return result.Result{}, fmt.Errorf("%w: source_matches searches the query sources under directory; it does not combine with question, list or recursive (intent and directory narrow it)", ErrInvalidInput)
 		}
+		if in.Repository == "FWD" {
+			return result.Result{}, fmt.Errorf("%w: source_matches reads the organization's own query sources (repository ORG); Forward's built-in queries are not read", ErrInvalidInput)
+		}
 		return searchNQESources(ctx, s, in, cx)
+	}
+	if in.Offset > 0 && in.Question != "" {
+		return result.Result{}, fmt.Errorf("%w: offset pages a listing or a source search, not a question search (narrow the question instead)", ErrInvalidInput)
 	}
 	if in.Recursive && in.Question != "" {
 		return result.Result{}, fmt.Errorf("%w: recursive lists every query under directory; it does not combine with question (use intent to filter the listing, or drop recursive to search)", ErrInvalidInput)
@@ -113,6 +137,15 @@ func findNQE(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.R
 	lib, err := s.NQELibrary(ctx, in.Directory)
 	if err != nil {
 		return result.Result{}, err
+	}
+	if in.Repository != "" {
+		var keptRepo []forward.NQEQuery
+		for _, q := range lib {
+			if strings.EqualFold(q.Repository, in.Repository) {
+				keptRepo = append(keptRepo, q)
+			}
+		}
+		lib = keptRepo
 	}
 	if intentRe != nil {
 		re := intentRe

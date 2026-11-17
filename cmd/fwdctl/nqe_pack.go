@@ -131,7 +131,7 @@ func nqePackCmd(a *app, dir string, o nqePackOpts) int {
 		return fail(1, "no queries to pack: %s holds no .nqe files%s", dir, map[bool]string{true: " that differ from the manifest", false: ""}[o.changedOnly])
 	}
 	if len(changes) > skills.MaxQueryChanges {
-		return fail(1, "%d queries, but one commit carries at most %d; pack a subtree (point pack at a subdirectory) or use --changed-only", len(changes), skills.MaxQueryChanges)
+		return fail(1, "%d queries, but one commit carries at most %d; pack a subtree (point pack at a subdirectory) or use --changed-only. For more, pack in several calls, in order: each commit moves the library head, so give the next one --basis-commit-id = the commit the previous one returned (queries that import one another go in the same pack)", len(changes), skills.MaxQueryChanges)
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
 	in := map[string]any{"changes": changes}

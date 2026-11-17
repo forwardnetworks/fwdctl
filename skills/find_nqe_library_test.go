@@ -230,3 +230,106 @@ func TestFindNQEQueryRefusesIgnoredCombinations(t *testing.T) {
 		}
 	}
 }
+
+// A library bigger than one page: the listing shows 200 by default and says where to continue, offset and limit page it, repository keeps only the
+// organization's own (ORG) or the built-in (FWD) queries, and an offset past the end is unknown, not an empty page.
+func bigLib(org, fwd int) []any {
+	var lib []any
+	for i := 0; i < org; i++ {
+		lib = append(lib, map[string]any{"queryId": fmt.Sprintf("Q_%03d", i), "path": fmt.Sprintf("/Lib/o%03d", i), "intent": "", "repository": "ORG"})
+	}
+	for i := 0; i < fwd; i++ {
+		lib = append(lib, map[string]any{"queryId": fmt.Sprintf("FQ_%03d", i), "path": fmt.Sprintf("/Lib/f%03d", i), "intent": "x", "repository": "FWD"})
+	}
+	return lib
+}
+
+func TestFindNQEQueryListingPagesAndFiltersByRepository(t *testing.T) {
+	routes := map[string]fwdtest.Handler{"GET /api/nqe/queries": fwdtest.Const(200, bigLib(120, 130))}
+	shown := func(r result.Result) int {
+		q, _ := r.Evidence[0].Detail["queries"].([]map[string]any)
+		return len(q)
+	}
+	r, _ := mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","recursive":true}`)
+	if shown(r) != 200 || r.Evidence[0].Detail["next_offset"] != 200 || !strings.Contains(strings.Join(r.Limits, " "), "ask again with offset 200") {
+		t.Fatalf("250 queries: 200 shown, continue at 200: %d %v", shown(r), r.Evidence[0].Detail["next_offset"])
+	}
+	r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","recursive":true,"offset":200}`)
+	if shown(r) != 50 || r.Evidence[0].Detail["next_offset"] != nil {
+		t.Errorf("the second page holds the last 50 and no next: %d %v", shown(r), r.Evidence[0].Detail["next_offset"])
+	}
+	if r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","recursive":true,"limit":1000}`); shown(r) != 250 {
+		t.Errorf("limit 1000 shows all 250: %d", shown(r))
+	}
+	r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","recursive":true,"repository":"org","limit":1000}`)
+	if shown(r) != 120 || !strings.Contains(r.Finding, "120 queries") || strings.Contains(jsonOf(r), "FQ_") {
+		t.Errorf("repository ORG keeps only the organization's 120: %d %s", shown(r), r.Finding)
+	}
+	if r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","recursive":true,"repository":"FWD","limit":1000}`); shown(r) != 130 {
+		t.Errorf("repository FWD keeps the 130 built-in: %d", shown(r))
+	}
+	if r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","recursive":true,"offset":999}`); r.Status != result.Unknown || !strings.Contains(r.Finding, "past the end") {
+		t.Errorf("an offset past the end is unknown: %s %s", r.Status, r.Finding)
+	}
+	// offset and limit together: rows 101 to 150
+	r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","recursive":true,"offset":100,"limit":50}`)
+	if q, _ := r.Evidence[0].Detail["queries"].([]map[string]any); len(q) != 50 || q[0]["path"] != "/Lib/f100" || r.Evidence[0].Detail["next_offset"] != 150 {
+		t.Errorf("offset 100 limit 50 is rows 101-150 (path order: /Lib/f000-f129 then /Lib/o000-o119, so row 101 is f100), next 150: %v", r.Evidence[0].Detail["next_offset"])
+	}
+	// repository also narrows a question search
+	qr, _ := mustRun(t, "find-nqe-query", map[string]fwdtest.Handler{"GET /api/nqe/queries": fwdtest.Const(200, []any{
+		map[string]any{"queryId": "Q_1", "path": "/Mine/devices report", "intent": "list devices", "repository": "ORG"},
+		map[string]any{"queryId": "FQ_1", "path": "/Fwd/devices report", "intent": "list devices", "repository": "FWD"}})},
+		`{"network_id":"n1","question":"devices report","repository":"ORG"}`)
+	if j := jsonOf(qr); !strings.Contains(j, "Q_1") || strings.Contains(j, "FQ_1") {
+		t.Errorf("repository ORG narrows a question search: %s", j)
+	}
+	for _, in := range []string{
+		`{"network_id":"n1","list":true,"repository":"ORG"}`,
+		`{"network_id":"n1","list":true,"offset":10}`,
+		`{"network_id":"n1","commit_id":"abc","offset":10}`,
+		`{"network_id":"n1","query_id":"Q_1","repository":"ORG"}`,
+		`{"network_id":"n1","query_id":"Q_1","offset":5,"recursive":true}`, // reading a query ignores both, even with recursive
+		`{"network_id":"n1","path":"/Team/q","repository":"FWD","intent":"x"}`,
+		`{"network_id":"n1","recursive":true,"repository":"MINE"}`,
+		`{"network_id":"n1","recursive":true,"offset":-1}`,
+		`{"network_id":"n1","question":"devices","offset":5}`,
+		`{"network_id":"n1","source_matches":"x","repository":"FWD"}`,
+	} {
+		if _, srv, err := runSkill(t, "find-nqe-query", routes, in); !errors.Is(err, skills.ErrInvalidInput) || len(srv.Calls()) != 0 {
+			t.Errorf("%s: refused before any call (%v, %d calls)", in, err, len(srv.Calls()))
+		}
+	}
+}
+
+// More than 300 organization sources: the first call reads 300 and says where the next window starts, offset moves the window over the qualifying
+// queries in path order, and a window that finds nothing is unknown (the rest was not searched), never "none". limit raises how many matches are shown.
+func TestFindNQEQuerySourceSearchWindowsOverALargeLibrary(t *testing.T) {
+	routes := map[string]fwdtest.Handler{"GET /api/nqe/repos/org/commits/head": fwdtest.Const(200, "c1"), "GET /api/nqe/queries": fwdtest.Const(200, bigLib(305, 40))}
+	for i := 0; i < 305; i++ {
+		src := "select 1"
+		if i >= 300 {
+			src = "select needle" // only the last five carry the pattern
+		}
+		routes[fmt.Sprintf("GET /api/nqe/queries/Q_%03d/source-code", i)] = fwdtest.Const(200, map[string]any{"sourceCode": src})
+	}
+	r, _ := mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","source_matches":"needle"}`)
+	if r.Status != result.Unknown || r.Evidence[0].Detail["next_offset"] != 300 || !strings.Contains(strings.Join(r.Limits, " "), "ask again with offset 300") {
+		t.Fatalf("the first window finds nothing and says where to continue: %s %s %v", r.Status, r.Finding, r.Evidence[0].Detail["next_offset"])
+	}
+	r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","source_matches":"needle","offset":300}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "5 of 5 query source(s)") || r.Evidence[0].Detail["next_offset"] != nil {
+		t.Errorf("the last window finds the five and ends: %s %s", r.Status, r.Finding)
+	}
+	// the LAST window finds nothing for a pattern none of the 305 carries: the 300 before it were not searched in this call, so it is unknown, never "none"
+	if r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","source_matches":"absent-everywhere","offset":300}`); r.Status != result.Unknown || strings.Contains(r.Finding, "None of") {
+		t.Errorf("a later window with no match is unknown: %s %s", r.Status, r.Finding)
+	}
+	if r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","source_matches":"needle","offset":999}`); r.Status != result.Unknown || !strings.Contains(r.Finding, "past the end") {
+		t.Errorf("an offset past the end is unknown: %s %s", r.Status, r.Finding)
+	}
+	r, _ = mustRun(t, "find-nqe-query", routes, `{"network_id":"n1","source_matches":"needle","offset":300,"limit":2}`)
+	if q, _ := r.Evidence[0].Detail["queries"].([]map[string]any); len(q) != 2 || len(r.Omitted) == 0 {
+		t.Errorf("limit 2 shows two matches and says the rest were omitted: %v", r.Omitted)
+	}
+}

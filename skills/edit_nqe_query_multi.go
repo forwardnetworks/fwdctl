@@ -15,6 +15,9 @@ import (
 
 const maxQueryChanges = 25
 
+// typecheckBatchHint is the batch size above which a typecheck is said to be slow (a live run of 25 took over 10 minutes).
+const typecheckBatchHint = 10
+
 type nqeChange struct {
 	Path   string `json:"path"`
 	Source string `json:"source"`
@@ -34,17 +37,25 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		return result.Result{}, fmt.Errorf("%w: changes replaces path, source and delete; give one or the other (create_directory does go with changes)", ErrInvalidInput)
 	}
 	if len(in.Changes) > maxQueryChanges {
-		return result.Result{}, fmt.Errorf("%w: at most %d changed queries per commit", ErrInvalidInput, maxQueryChanges)
+		return result.Result{}, fmt.Errorf("%w: at most %d changed queries per commit. For more, send them in several calls, in order: each commit moves the library head, so give the next call basis_commit_id = the commit_id the previous result returned (queries that import one another go in the same call)", ErrInvalidInput, maxQueryChanges)
 	}
 	seen := map[string]bool{}
+	total := 0
 	for i := range in.Changes {
 		c := &in.Changes[i]
 		c.Path = strings.TrimSpace(c.Path)
 		if c.Path == "" || !strings.HasPrefix(c.Path, "/") || strings.Contains(c.Path, "..") || strings.HasSuffix(c.Path, "/") || len(c.Path) > 300 {
 			return result.Result{}, fmt.Errorf("%w: every change needs a path in the library starting with / (for example /Team/Module)", ErrInvalidInput)
 		}
-		if strings.TrimSpace(c.Source) == "" || len(c.Source) > maxQuerySource {
-			return result.Result{}, fmt.Errorf("%w: every change needs a source of at most %d bytes (this skill does not delete)", ErrInvalidInput, maxQuerySource)
+		if strings.TrimSpace(c.Source) == "" {
+			return result.Result{}, fmt.Errorf("%w: every change needs a non-empty source (this skill does not delete)", ErrInvalidInput)
+		}
+		if len(c.Source) > maxQuerySource {
+			return result.Result{}, fmt.Errorf("%w: the source of %s is %d bytes; this skill sends at most %d per query (its own bound, not Forward's: Forward refuses a source it will not take with its own error)", ErrInvalidInput, c.Path, len(c.Source), maxQuerySource)
+		}
+		total += len(c.Source)
+		if total > maxChangesSource {
+			return result.Result{}, fmt.Errorf("%w: the sources together are over %d bytes; commit fewer or smaller queries per call (this skill's own bound)", ErrInvalidInput, maxChangesSource)
 		}
 		if seen[c.Path] {
 			return result.Result{}, fmt.Errorf("%w: %s appears twice", ErrInvalidInput, c.Path)
@@ -116,6 +127,12 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		paths = append(paths, c.Path)
 	}
 	// a NEW query needs its enclosing directories to exist; create_directory makes the missing ones in the same commit
+	// only the paths that change are staged (an unchanged query is not committed): staging an unchanged one would overwrite the caller's own draft at it, and the
+	// cleanup, which discards only the changed paths, would leave the staged copy behind
+	changedSet := map[string]bool{}
+	for _, pth := range paths {
+		changedSet[pth] = true
+	}
 	var newDirs []string
 	{
 		wanted := map[string]bool{}
@@ -175,6 +192,9 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		limits = append(limits, "the offline check used the organization's live schema (offline_check: org)")
 	}
 	limits = append(limits, "the commit is visible to everyone in the organization and is ONE commit for all paths; Forward has no optimistic-concurrency check, so this skill compares the head to the basis before it commits (a commit landing in between is not caught)")
+	if in.Typecheck && len(paths) > typecheckBatchHint {
+		limits = append(limits, fmt.Sprintf("typecheck stages the %d changed queries as drafts and has Forward type every query that imports them, which can take many minutes: one live run of 25 queries with typecheck ran past 10 minutes (the cause was not isolated: Forward's typecheck of the importers and this skill's own reads of the library both take part). Each request to Forward times out at FORWARD_TIMEOUT (default 120 s) and this call prints no progress. For large sets work in batches of about %d, each with typecheck and each on the new head (basis_commit_id = the previous result's commit_id)", len(paths), typecheckBatchHint))
+	}
 	var tc map[string]any
 	acknowledged := 0 // new typecheck errors the caller acknowledged by exact text; 0 when none
 	if in.Typecheck {
@@ -221,6 +241,9 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 			return result.Result{}, fmt.Errorf("staging the missing directories failed, nothing is left in your workspace: %w", err)
 		}
 		for _, c := range in.Changes {
+			if !changedSet[c.Path] {
+				continue
+			}
 			if err := s.StageOrgQuery(ctx, c.Path, c.Source); err != nil {
 				derr := discard()
 				msg := fmt.Sprintf("staging %s failed: %v", c.Path, err)
@@ -323,6 +346,9 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		return result.Result{}, fmt.Errorf("staging the missing directories failed, nothing was committed: %w", err)
 	}
 	for _, c := range in.Changes {
+		if !changedSet[c.Path] {
+			continue
+		}
 		if err := s.StageOrgQuery(ctx, c.Path, c.Source); err != nil {
 			msg := fmt.Sprintf("staging %s failed, nothing was committed", c.Path)
 			if derr := discardAll(); derr != nil {

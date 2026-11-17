@@ -16,7 +16,13 @@ const editNQEQueryName = "edit-nqe-query"
 
 func init() { Register(editNQEQueryName, editNQEQuery) }
 
-const maxQuerySource = 200_000
+// maxQuerySource and maxChangesSource are THIS SKILL's own bounds on what one call sends, not Forward's limit (which is not known here: Forward refuses a
+// source it will not take, with its own error). A real library holds a query with a multi-megabyte embedded data table, so the per-source bound is 8 MiB;
+// the total bound keeps this program's own memory (the sources and the result's before and after) in check.
+const (
+	maxQuerySource   = 8 << 20
+	maxChangesSource = 32 << 20
+)
 
 type editNQEQueryInput struct {
 	Path    string `json:"path"`
@@ -110,7 +116,7 @@ func editNQEQuery(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 		return result.Result{}, fmt.Errorf("%w: source is required (or set delete to remove the query)", ErrInvalidInput)
 	}
 	if len(in.Source) > maxQuerySource {
-		return result.Result{}, fmt.Errorf("%w: source is %d bytes; at most %d", ErrInvalidInput, len(in.Source), maxQuerySource)
+		return result.Result{}, fmt.Errorf("%w: source is %d bytes; this skill sends at most %d (its own bound, not Forward's: Forward refuses a source it will not take with its own error)", ErrInvalidInput, len(in.Source), maxQuerySource)
 	}
 	cx := result.Context{Scope: "account", State: "current"}
 	mode := result.ModeDryRun

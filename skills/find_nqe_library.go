@@ -21,10 +21,12 @@ import (
 // @intent text as a stand-in for tags), and a search of the query SOURCES for a pattern (what breaks when a field changes). Read-only.
 
 const (
-	maxRecursiveRows = 200 // queries shown by a recursive listing
-	maxSourceReads   = 300 // query sources read by one source search (each is one request)
-	maxSourceRows    = 100 // queries shown by a source search
-	maxLinesPerQuery = 3   // matching lines shown per query
+	maxRecursiveRows = 200  // queries shown by a recursive listing by default
+	maxListLimit     = 1000 // the most a listing shows when limit is given
+	maxSourceReads   = 300  // query sources read by one source search (each is one request)
+	maxSourceRows    = 100  // queries shown by a source search by default
+	maxSourceLimit   = 500  // the most a source search shows when limit is given
+	maxLinesPerQuery = 3    // matching lines shown per query
 	sourceReadPar    = 8
 	maxLineChars     = 160
 )
@@ -42,7 +44,7 @@ func compileFindRegex(input, text string) (*regexp.Regexp, error) {
 }
 
 // libraryUnder returns the library's queries whose path is under dir (any depth), sorted by path, optionally keeping only those whose intent matches.
-func libraryUnder(ctx context.Context, s *fwd.Session, dir string, intent *regexp.Regexp) (all, kept []forward.NQEQuery, err error) {
+func libraryUnder(ctx context.Context, s *fwd.Session, dir string, intent *regexp.Regexp, repository string) (all, kept []forward.NQEQuery, err error) {
 	// the whole library is asked for and filtered here by path prefix: how Forward treats ?dir= (one level or all) is not relied on
 	lib, err := s.NQELibrary(ctx, "")
 	if err != nil {
@@ -53,12 +55,25 @@ func libraryUnder(ctx context.Context, s *fwd.Session, dir string, intent *regex
 			continue
 		}
 		all = append(all, q)
+		if repository != "" && !strings.EqualFold(q.Repository, repository) {
+			continue
+		}
 		if intent == nil || intent.MatchString(q.Intent) {
 			kept = append(kept, q)
 		}
 	}
 	sort.SliceStable(kept, func(i, j int) bool { return kept[i].Path < kept[j].Path })
 	return all, kept, nil
+}
+
+// normalizeRepository accepts ORG or FWD (any case) or nothing.
+func normalizeRepository(r string) (string, error) {
+	r = strings.ToUpper(strings.TrimSpace(r))
+	switch r {
+	case "", "ORG", "FWD":
+		return r, nil
+	}
+	return "", fmt.Errorf("%w: repository is ORG (the organization's own queries) or FWD (Forward's built-in ones)", ErrInvalidInput)
 }
 
 func normalizeFindDir(d string) (string, error) {
@@ -87,7 +102,7 @@ func listNQERecursive(ctx context.Context, s *fwd.Session, in findNQEInput, cx r
 			return result.Result{}, err
 		}
 	}
-	all, kept, err := libraryUnder(ctx, s, dir, intent)
+	all, kept, err := libraryUnder(ctx, s, dir, intent, in.Repository)
 	if err != nil {
 		return result.Result{}, err
 	}
@@ -97,21 +112,43 @@ func listNQERecursive(ctx context.Context, s *fwd.Session, in findNQEInput, cx r
 		byRepo[q.Repository]++
 		rows = append(rows, map[string]any{"path": q.Path, "query_id": q.QueryID, "intent": q.Intent, "repository": q.Repository})
 	}
-	limits := []string{fmt.Sprintf("every query under %s at any depth (%d in all), read from the library listing; the source of a query is not read", dir, len(all))}
-	if intent != nil {
-		limits = append(limits, fmt.Sprintf("only queries whose intent matches the regular expression %q (case-sensitive unless it starts with (?i); ^\\s*$ is the queries with no intent): %d of %d", in.Intent, len(kept), len(all)))
+	scoped := len(all)
+	if in.Repository != "" {
+		scoped = 0
+		for _, q := range all {
+			if strings.EqualFold(q.Repository, in.Repository) {
+				scoped++
+			}
+		}
 	}
-	shown, omitted := result.Cap(rows, maxRecursiveRows, "queries listed", "narrow directory or intent to see the rest")
+	limits := []string{fmt.Sprintf("every query under %s at any depth (%d in all), read from the library listing; the source of a query is not read. The listing is read again on each call: a query added or removed between pages shifts them, so finish a paging run promptly", dir, len(all))}
+	if intent != nil {
+		limits = append(limits, fmt.Sprintf("only queries whose intent matches the regular expression %q (case-sensitive unless it starts with (?i); ^\\s*$ is the queries with no intent): %d of %d", in.Intent, len(kept), scoped))
+	}
+	if in.Repository != "" {
+		limits = append(limits, "only the "+map[string]string{"ORG": "organization's own", "FWD": "Forward built-in"}[in.Repository]+" queries (repository "+in.Repository+")")
+	}
+	limit := maxRecursiveRows
+	if in.userLimit > 0 {
+		limit = min(in.userLimit, maxListLimit)
+	}
+	if len(rows) > 0 && in.Offset >= len(rows) {
+		return result.NewUnknown(findNQEName, fmt.Sprintf("offset %d is past the end: %d queries match under %s", in.Offset, len(rows), dir), cx, limits, result.Options{NextActions: []string{"find-nqe-query"}})
+	}
+	shown, omitted, _ := result.Page(rows, in.Offset, limit, "queries listed")
+	if end := in.Offset + len(shown); end < len(rows) {
+		limits = append(limits, fmt.Sprintf("showing %d-%d of %d: ask again with offset %d for the next page (limit up to %d rows per call)", in.Offset+1, end, len(rows), end, maxListLimit))
+	}
 	finding := fmt.Sprintf("%d quer%s under %s", len(kept), map[bool]string{true: "y", false: "ies"}[len(kept) == 1], dir)
 	if intent != nil {
-		finding += fmt.Sprintf(" with an intent matching %q (of %d)", in.Intent, len(all))
+		finding += fmt.Sprintf(" with an intent matching %q (of %d)", in.Intent, scoped)
 	}
 	if len(all) == 0 {
 		return result.NewUnknown(findNQEName, fmt.Sprintf("The library has no query under %s", dir), cx, append(limits, "no such directory (a directory exists only while a query is in it)"), result.Options{NextActions: []string{"find-nqe-query"}})
 	}
 	return result.Build(findNQEName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted, NextActions: []string{"validate-nqe-query", "edit-nqe-query"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "listNqeQueries", nil, map[string]any{"directory": dir, "recursive": true, "intent_filter": nilIfEmpty(in.Intent),
-			"queries_in_directory": len(all), "matched": len(kept), "by_repository": byRepo, "queries": shown}, finding)}})
+			"queries_in_directory": len(all), "matched": len(kept), "offset": in.Offset, "shown": len(shown), "next_offset": nextOffset(in.Offset, len(shown), len(rows)), "by_repository": byRepo, "queries": shown}, finding)}})
 }
 
 // searchNQESources reads the source of the organization's queries under in.Directory (those whose intent matches in.Intent, when given) and lists
@@ -132,7 +169,7 @@ func searchNQESources(ctx context.Context, s *fwd.Session, in findNQEInput, cx r
 			return result.Result{}, err
 		}
 	}
-	_, kept, err := libraryUnder(ctx, s, dir, intent)
+	_, kept, err := libraryUnder(ctx, s, dir, intent, in.Repository)
 	if err != nil {
 		return result.Result{}, err
 	}
@@ -152,7 +189,10 @@ func searchNQESources(ctx context.Context, s *fwd.Session, in findNQEInput, cx r
 	if len(org) == 0 {
 		return result.NewUnknown(findNQEName, fmt.Sprintf("No saved query of the organization under %s qualifies, so no source was searched", dir), cx, limits, result.Options{NextActions: []string{"find-nqe-query"}})
 	}
-	toRead, omitted := result.Cap(org, maxSourceReads, "query sources read", "narrow directory or intent so the search covers them all")
+	if in.Offset >= len(org) && in.Offset > 0 {
+		return result.NewUnknown(findNQEName, fmt.Sprintf("offset %d is past the end: %d organization queries qualify under %s", in.Offset, len(org), dir), cx, limits, result.Options{NextActions: []string{"find-nqe-query"}})
+	}
+	toRead, omitted, _ := result.Page(org, in.Offset, maxSourceReads, "query sources read")
 	commit := in.CommitID
 	if commit == "" {
 		head, _, herr := s.Client.NQERepository.Head(ctx)
@@ -240,16 +280,24 @@ func searchNQESources(ctx context.Context, s *fwd.Session, in findNQEInput, cx r
 		refused = true
 	}
 	read := len(toRead) - failed
-	limits = append(limits, fmt.Sprintf("source read at library commit %s", commit))
+	limits = append(limits, fmt.Sprintf("source read at library commit %s (commit_id pins the sources, not the listing: the listing is read again on each call, so a query added or removed between windows shifts them; finish a paging run promptly)", commit))
 	partial := len(omitted) > 0 || failed > 0
+	if in.Offset > 0 || len(omitted) > 0 {
+		limits = append(limits, fmt.Sprintf("read window: qualifying queries %d-%d of %d (path order); the other %d were not searched in this call%s", in.Offset+1, in.Offset+len(toRead), len(org), len(org)-len(toRead),
+			map[bool]string{true: "; ask again with offset " + fmt.Sprint(in.Offset+len(toRead)) + " for the next window", false: ""}[in.Offset+len(toRead) < len(org)]))
+	}
 	if failed > 0 {
 		limits = append(limits, fmt.Sprintf("%d query source(s) could not be read (first error: %v), so they were not searched", failed, firstErr))
 	}
 	if refused {
 		return result.NewUnknown(findNQEName, "The library's sources were refused or the request was stopped, so the search is not complete", cx, limits, result.Options{NextActions: []string{"inspect-access"}})
 	}
-	detail := map[string]any{"directory": dir, "source_matches": in.SourceMatches, "intent_filter": nilIfEmpty(in.Intent), "sources_read": read, "queries_qualifying": len(org), "queries_with_a_match": len(rows)}
-	shown, omittedRows := result.Cap(rows, maxSourceRows, "queries with a match", "narrow directory or the pattern")
+	detail := map[string]any{"directory": dir, "source_matches": in.SourceMatches, "intent_filter": nilIfEmpty(in.Intent), "sources_read": read, "queries_qualifying": len(org), "queries_with_a_match": len(rows), "offset": in.Offset, "next_offset": nextOffset(in.Offset, len(toRead), len(org))}
+	rowLimit := maxSourceRows
+	if in.userLimit > 0 {
+		rowLimit = min(in.userLimit, maxSourceLimit)
+	}
+	shown, omittedRows := result.Cap(rows, rowLimit, "queries with a match", "narrow directory or the pattern, or raise limit (up to 500)")
 	detail["queries"] = shown
 	opts := result.Options{Limits: limits, Omitted: append(omitted, omittedRows...), NextActions: []string{"find-nqe-query", "edit-nqe-query"},
 		Evidence: []result.Evidence{result.NewEvidence(result.EvNQE, "searchNqeSources", nil, detail, "")}}
@@ -279,4 +327,12 @@ func clipChars(text string, n int) string {
 		count++
 	}
 	return text
+}
+
+// nextOffset is the offset of the next page or window, or nil when this one reaches the end.
+func nextOffset(offset, shown, total int) any {
+	if end := offset + shown; end < total {
+		return end
+	}
+	return nil
 }

@@ -3,6 +3,7 @@ package skills_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -108,13 +109,27 @@ func multiLibrary(head *string, dry map[string]any) (map[string]fwdtest.Handler,
 			}
 			return 200, map[string]any{}
 		},
-		"POST /api/nqe/repos/org/commits": func(r *http.Request, _ []byte) (int, any) {
+		"POST /api/nqe/repos/org/commits": func(r *http.Request, body []byte) (int, any) {
 			if r.URL.Query().Get("dryRun") == "true" {
 				log = append(log, "dryrun")
 				return 200, dry
 			}
+			// Forward commits the paths the request names, not every draft in the workspace
+			var req struct {
+				Paths []string `json:"paths"`
+			}
+			_ = json.Unmarshal(body, &req)
+			if len(req.Paths) == 0 {
+				return 400, map[string]any{"message": "a commit names the paths to commit"}
+			}
+			named := map[string]bool{}
+			for _, p := range req.Paths {
+				named[p] = true
+			}
 			for p, s := range draft {
-				state[p] = s
+				if named[p] {
+					state[p] = s
+				}
 			}
 			*head = "c2"
 			log = append(log, "commit")
@@ -488,5 +503,100 @@ func TestEditNQEQueriesAcknowledgementIsVisibleOnTheDryRun(t *testing.T) {
 	r, _ = mustRun(t, "edit-nqe-query", routes, dryIn(`["/Team/importer: some other error"]`))
 	if r.Status != result.Failed || *head != "c1" || !strings.Contains(r.Finding, "does not match") {
 		t.Errorf("a mismatch refuses on a dry run too: %s %s", r.Status, r.Finding)
+	}
+}
+
+// A real library holds a query with a multi-megabyte embedded data table: a 3 MB source is accepted (Forward decides its own limit), a source over this
+// skill's 8 MiB bound or sources over 32 MiB together are refused with the bound called this skill's own, and 26 queries are refused saying how to chain.
+func TestEditNQEQueriesSourceSizeBoundsAndChaining(t *testing.T) {
+	head := "c1"
+	big := func(n int) string {
+		return "foreach d in network.devices select {a: d.name, csv: \\\"" + strings.Repeat("x", n) + "\\\"}"
+	}
+	routes, _, _ := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	in := func(changes string) string { return `{"changes":` + changes + `,"message":"m"}` }
+	r, _ := mustRun(t, "edit-nqe-query", routes, in(`[{"path":"/Team/a","source":"`+big(3<<20)+`"}]`))
+	if r.Status != result.OK || r.Mode != result.ModeDryRun {
+		t.Fatalf("a 3 MB source is accepted: %s %s", r.Status, r.Finding)
+	}
+	for name, c := range map[string]struct{ changes, want string }{
+		"one over the bound": {`[{"path":"/Team/a","source":"` + big(8<<20) + `"}]`, "its own bound, not Forward's"},
+		"together over":      {`[{"path":"/Team/a","source":"` + big(7<<20) + `"},{"path":"/Team/b","source":"` + big(7<<20) + `"},{"path":"/Team/c","source":"` + big(7<<20) + `"},{"path":"/Team/d","source":"` + big(7<<20) + `"},{"path":"/Team/e","source":"` + big(7<<20) + `"}]`, "sources together are over"},
+	} {
+		if _, _, err := runSkill(t, "edit-nqe-query", routes, in(c.changes)); !errors.Is(err, skills.ErrInvalidInput) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: want %q: %v", name, c.want, err)
+		}
+	}
+	// the single-query form (path + source) has the same bound and the same wording
+	_, _, err := runSkill(t, "edit-nqe-query", routes, `{"path":"/Team/q","source":"`+big(8<<20)+`"}`)
+	if !errors.Is(err, skills.ErrInvalidInput) || !strings.Contains(err.Error(), "its own bound, not Forward's") {
+		t.Errorf("a single source over the bound is refused as this skill's own: %v", err)
+	}
+	if r, _ := mustRun(t, "edit-nqe-query", routes, `{"path":"/Team/q","source":"`+big(3<<20)+`"}`); r.Status != result.OK {
+		t.Errorf("a 3 MB single source is accepted: %s %s", r.Status, r.Finding)
+	}
+	var many []string
+	for i := 0; i < 26; i++ {
+		many = append(many, fmt.Sprintf(`{"path":"/Team/q%02d","source":"%s"}`, i, goodQuery))
+	}
+	_, _, err = runSkill(t, "edit-nqe-query", routes, in("["+strings.Join(many, ",")+"]"))
+	if !errors.Is(err, skills.ErrInvalidInput) || !strings.Contains(err.Error(), "basis_commit_id = the commit_id the previous result returned") {
+		t.Errorf("26 queries: refused with how to chain: %v", err)
+	}
+}
+
+// A large typecheck batch says it can take many minutes and what to do; a small one does not.
+func TestEditNQEQueriesLargeTypecheckSaysItIsSlow(t *testing.T) {
+	head := "c1"
+	routes, _, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	dryRunSequence(routes, log, map[string]any{"newErrors": map[string]any{}})
+	mk := func(n int) string {
+		var cs []string
+		for i := 0; i < n; i++ {
+			cs = append(cs, fmt.Sprintf(`{"path":"/Team/q%02d","source":"%s"}`, i, goodQuery))
+		}
+		return `{"changes":[` + strings.Join(cs, ",") + `],"typecheck":true,"message":"m"}`
+	}
+	r, _ := mustRun(t, "edit-nqe-query", routes, mk(12))
+	if !strings.Contains(strings.Join(r.Limits, " "), "can take many minutes") {
+		t.Errorf("12 queries with typecheck says it is slow: %v", r.Limits)
+	}
+	r, _ = mustRun(t, "edit-nqe-query", routes, mk(3))
+	if strings.Contains(strings.Join(r.Limits, " "), "can take many minutes") {
+		t.Errorf("3 queries does not: %v", r.Limits)
+	}
+}
+
+// Existing uncommitted drafts at several of the paths are ALL named in one refusal (on a dry run with typecheck and on an apply), so the caller does not
+// retry once per path; nothing is staged or committed.
+func TestEditNQEQueriesNamesEveryConflictingDraftInOneRefusal(t *testing.T) {
+	for name, extra := range map[string]string{"apply": `,"apply":true`, "dry run with typecheck": `,"typecheck":true`} {
+		head := "c1"
+		routes, _, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+		drafts["/Team/a"], drafts["/Team/b"] = "draft a", "draft b" // two drafts already in the workspace (the fake's workspace, not the committed library)
+		in := `{"changes":[{"path":"/Team/a","source":"` + goodQuery + `"},{"path":"/Team/b","source":"` + goodQueryB + `"},{"path":"/Team/new","source":"` + goodQuery + `"}],"message":"m"` + extra + `}`
+		r, _ := mustRun(t, "edit-nqe-query", routes, in)
+		if r.Status != result.Failed || !strings.Contains(r.Finding, "/Team/a") || !strings.Contains(r.Finding, "/Team/b") || strings.Contains(r.Finding, "/Team/new") || head != "c1" || strings.Contains(strings.Join(*log, ","), "commit") {
+			t.Errorf("%s: one refusal names both drafts and commits nothing: %s %s head=%s", name, r.Status, r.Finding, head)
+		}
+	}
+}
+
+// A query in `changes` whose source equals the head's is "unchanged" and is not committed. The caller's own uncommitted draft at such a path must
+// never be overwritten or deleted: staging touches only the paths that change.
+func TestEditNQEQueriesNeverTouchesADraftAtAnUnchangedPath(t *testing.T) {
+	for name, extra := range map[string]string{"apply": `,"apply":true`, "typecheck": `,"typecheck":true`} {
+		head := "c1"
+		routes, state, log := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+		dryRunSequence(routes, log, map[string]any{"newErrors": map[string]any{}})
+		drafts["/Team/a"] = "my uncommitted draft" // the caller's draft at /Team/a, which the call below leaves unchanged
+		in := `{"changes":[{"path":"/Team/a","source":"` + state["/Team/a"] + `"},{"path":"/Team/b","source":"` + goodQueryB + `"}],"message":"m"` + extra + `}`
+		r, _ := mustRun(t, "edit-nqe-query", routes, in)
+		if r.Status != result.OK { // it must actually reach staging, or this test passes vacuously
+			t.Fatalf("%s: the call itself succeeds: %s %s", name, r.Status, r.Finding)
+		}
+		if drafts["/Team/a"] != "my uncommitted draft" {
+			t.Errorf("%s: the draft at the unchanged path /Team/a was overwritten or removed: %q (log %v)", name, drafts["/Team/a"], *log)
+		}
 	}
 }
