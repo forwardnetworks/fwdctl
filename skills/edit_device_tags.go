@@ -127,6 +127,8 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		// ParentDevice is the physical device a refused virtual device (a firewall virtual system, a wireless access point under its controller) belongs to, read from the newest processed
 		// snapshot (device.system.physicalName). Empty when the device is not virtual there or the read failed.
 		ParentDevice string `json:"parent_device,omitempty"`
+		// PhysicalName is the raw device.system.physicalName when it differs from the device's name; it can be set while ParentDevice is empty (it names no device Forward lists).
+		PhysicalName string `json:"physical_name,omitempty"`
 	}
 	var refused []refusal
 	sent := make([][]string, len(plans)) // the devices Forward accepted, per plan
@@ -135,12 +137,12 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			sent[i] = p.Devices
 			continue
 		} else if len(p.Devices) == 1 {
-			refused = append(refused, refusal{p.Tag, p.Devices[0], err.Error(), ""})
+			refused = append(refused, refusal{Tag: p.Tag, Device: p.Devices[0], Reason: err.Error()})
 			continue
 		}
 		for _, d := range p.Devices {
 			if err := send([]string{d}, p.Tag); err != nil {
-				refused = append(refused, refusal{p.Tag, d, err.Error(), ""})
+				refused = append(refused, refusal{Tag: p.Tag, Device: d, Reason: err.Error()})
 			} else {
 				sent[i] = append(sent[i], d)
 			}
@@ -158,8 +160,8 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	if len(refused) > 0 {
 		parents := physicalParents(ctx, s, in.NetworkID)
 		for i := range refused {
-			if p := parents[refused[i].Device]; p != "" {
-				refused[i].ParentDevice = p
+			if p, ok := parents[refused[i].Device]; ok {
+				refused[i].ParentDevice, refused[i].PhysicalName = p.Device, p.Raw
 			}
 		}
 	}
@@ -176,7 +178,7 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		for i, p := range plans {
 			for _, d := range sent[i] {
 				if (in.Action == "add") != slices.Contains(now[p.Tag], d) {
-					notHeld = append(notHeld, refusal{p.Tag, d, "Forward accepted the request but the tag is not in the requested state afterwards (it may skip a device that is not a collection source)", ""})
+					notHeld = append(notHeld, refusal{Tag: p.Tag, Device: d, Reason: "Forward accepted the request but the tag is not in the requested state afterwards (it may skip a device that is not a collection source)"})
 				}
 			}
 		}
@@ -184,7 +186,7 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	applied := pairCount - len(refused)
 	extra := map[string]any{"applied_pairs": applied - len(notHeld), "refused": refused, "not_in_requested_state": notHeld}
 	if len(refused) > 0 || len(notHeld) > 0 {
-		limits = append(limits, "partly applied: the changes listed were made; the refused or unproven devices are in the evidence with the reason (and, for a virtual device, parent_device: the physical device to tag instead), and the rest of the batch was applied",
+		limits = append(limits, "partly applied: the changes listed were made; the refused or unproven devices are in the evidence with the reason (and, for a virtual device, parent_device when the physical name matches a device Forward lists, and physical_name as recorded; an access point under a controller has no parent recorded), and the rest of the batch was applied",
 			"a tag set here is written at Forward's staging instant (after every existing snapshot), so NQE (device.tagNames) shows it only in a snapshot collected after the change; a snapshot already processed does not")
 		return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("%s on %d device-tag pair(s) of %d: %d refused by Forward, %d accepted but not in the requested state; see the evidence for each device and reason",
 			in.Action, applied-len(notHeld), pairCount, len(refused), len(notHeld)), result.Deterministic, cx,
@@ -215,8 +217,10 @@ func quoteJoin(ss []string) string {
 }
 
 // physicalParents maps a modeled device that is part of a physical one (a firewall virtual system, an access point listed under its controller) to the physical device, from the newest processed
-// snapshot's device.system.physicalName. It returns nothing when the snapshot or the read is unavailable: the parent is a help, not part of the result.
-func physicalParents(ctx context.Context, s *fwd.Session, networkID string) map[string]string {
+// snapshot's device.system.physicalName. That value is the raw name the parser recorded, not necessarily the name of a modeled device: it is matched to a device case-insensitively, by the
+// device's name, then by the names it is also known by (system.hostNames, system.otherNames). A value that matches no device is returned as the raw name with resolved false. It returns nothing
+// when the snapshot or the read is unavailable: the parent is a help, not part of the result.
+func physicalParents(ctx context.Context, s *fwd.Session, networkID string) map[string]physicalParent {
 	snap, err := resolveSnapshot(ctx, s, networkID, "")
 	if err != nil || !fwd.IsReady(snap) {
 		return nil
@@ -225,17 +229,51 @@ func physicalParents(ctx context.Context, s *fwd.Session, networkID string) map[
 	if err != nil {
 		return nil
 	}
-	out := map[string]string{}
+	byName := map[string]string{} // lowercase name -> device name
+	for _, r := range rows {
+		if n, _ := r["name"].(string); n != "" {
+			byName[strings.ToLower(n)] = n
+		}
+	}
+	byAlias := map[string]string{} // a name the device is also known by -> device name; ambiguous aliases are dropped
+	for _, r := range rows {
+		n, _ := r["name"].(string)
+		for _, k := range []string{"hostNames", "otherNames"} {
+			list, _ := r[k].([]any)
+			for _, a := range list {
+				if as, _ := a.(string); as != "" {
+					key := strings.ToLower(as)
+					if prev, seen := byAlias[key]; seen && prev != n {
+						byAlias[key] = ""
+					} else {
+						byAlias[key] = n
+					}
+				}
+			}
+		}
+	}
+	out := map[string]physicalParent{}
 	for _, r := range rows {
 		n, _ := r["name"].(string)
 		p, _ := r["physical"].(string)
-		if n != "" && p != "" && p != n {
-			out[n] = p
+		if n == "" || p == "" || p == n {
+			continue
 		}
+		pp := physicalParent{Raw: p}
+		if d, ok := byName[strings.ToLower(p)]; ok && d != n {
+			pp.Device = d
+		} else if d := byAlias[strings.ToLower(p)]; d != "" && d != n {
+			pp.Device = d
+		}
+		out[n] = pp
 	}
 	return out
 }
 
+type physicalParent struct {
+	Device string // the modeled device the physical name resolves to ("" if none)
+	Raw    string // what device.system.physicalName holds
+}
+
 const physicalParentsQuery = `foreach device in network.devices
-where device.system.physicalName != device.name
-select { name: device.name, physical: device.system.physicalName }`
+select { name: device.name, physical: device.system.physicalName, hostNames: device.system.hostNames, otherNames: device.system.otherNames }`

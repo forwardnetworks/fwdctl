@@ -585,7 +585,7 @@ func TestEditDeviceTagsAppliesTheRestAndReportsEachRefusedDevice(t *testing.T) {
 		if !strings.Contains(string(body), "physicalName") {
 			return 400, map[string]any{"message": "unexpected query"}
 		}
-		return 200, map[string]any{"items": []any{map[string]any{"name": "fw_vsys3", "physical": "fw"}}, "totalNumItems": 1}
+		return 200, map[string]any{"items": []any{map[string]any{"name": "fw_vsys3", "physical": "FW"}, map[string]any{"name": "fw", "physical": "fw"}}, "totalNumItems": 2}
 	}
 	r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"add","devices":["r1","fw_vsys3","r2"],"tags":["lab"],"apply":true}`)
 	if r.Status != result.Failed || len(r.Changes) != 1 || !r.Changes[0].Applied || strings.Contains(r.Changes[0].Target, "fw_vsys3") {
@@ -609,5 +609,39 @@ func TestEditDeviceTagsAllRefusedIsAValidFailedResultWithTheReason(t *testing.T)
 	r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"add","devices":["fw_vsys3"],"tags":["lab"],"apply":true}`)
 	if r.Status != result.Failed || len(r.Changes) != 0 || !strings.Contains(jsonOf(r), "Unregistered device") {
 		t.Fatalf("%s %s %+v", r.Status, r.Finding, r.Changes)
+	}
+}
+
+func TestEditDeviceTagsParentDeviceMatchesByNameCaseByAliasAndKeepsTheRawValue(t *testing.T) {
+	rows := []any{
+		map[string]any{"name": "vs1", "physical": "corefw.example"}, // a name two devices are known by: ambiguous
+		map[string]any{"name": "vs2", "physical": "ghost"},          // names no device
+		map[string]any{"name": "ap1", "physical": "ap1"},            // an access point: its own name, no parent
+		map[string]any{"name": "vs3", "physical": "core-fw"},        // the same name in another case
+		map[string]any{"name": "vs4", "physical": "uniq.example"},   // an alias of exactly one device
+		map[string]any{"name": "box", "physical": "box", "hostNames": []any{"corefw.example"}},
+		map[string]any{"name": "Core-FW", "physical": "Core-FW", "hostNames": []any{"corefw.example"}},
+		map[string]any{"name": "edge", "physical": "edge", "otherNames": []any{"uniq.example"}},
+	}
+	routes, _ := tagRefusingRoutes("vs1", "vs2", "ap1", "vs3", "vs4")
+	routes["GET /api/networks/n1/snapshots"] = fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"))
+	routes["POST /api/nqe"] = func(*http.Request, []byte) (int, any) {
+		return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
+	}
+	r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"add","devices":["vs1","vs2","ap1","vs3","vs4"],"tags":["lab"],"apply":true}`)
+	var raw []map[string]string
+	for _, e := range r.Evidence {
+		b, _ := json.Marshal(e.Detail["refused"])
+		_ = json.Unmarshal(b, &raw)
+	}
+	got := map[string][2]string{}
+	for _, m := range raw {
+		got[m["device"]] = [2]string{m["parent_device"], m["physical_name"]}
+	}
+	want := map[string][2]string{"vs1": {"", "corefw.example"}, "vs2": {"", "ghost"}, "ap1": {"", ""}, "vs3": {"Core-FW", "core-fw"}, "vs4": {"edge", "uniq.example"}}
+	for d, w := range want {
+		if got[d] != w {
+			t.Errorf("%s: parent and raw physical name %v, want %v", d, got[d], w)
+		}
 	}
 }
