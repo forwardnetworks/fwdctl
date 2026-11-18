@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/nqelint"
@@ -465,5 +466,84 @@ func TestVulnerabilitiesCVESourcesQueryLintsClean(t *testing.T) {
 	}
 	if ds := nqelint.LintWith(skills.CVESourcesQuery(), nqelint.Modules); len(ds) != 0 {
 		t.Errorf("sources query: %v", ds)
+	}
+}
+
+const detectionRoute = "GET /api/cves/CVE-2024-0001/detection-logic"
+
+func TestVulnerabilitiesOneCVEShowsTheDetectionLogicWhenAsked(t *testing.T) {
+	routes := sourcesRoutes(vendorRow(nil))
+	routes[detectionRoute] = fwdtest.Const(200, map[string]any{"cveId": "CVE-2024-0001", "sourceType": "NQE_QUERY", "source": "foreach d in network.devices\nselect d.name"})
+	r, _ := vuln(t, routes, cveIn(`,"view":"detection_logic"`))
+	dl, _ := r.Evidence[0].Detail["detection_logic"].(map[string]any)
+	if dl["has_logic"] != true || dl["source_type"] != "NQE_QUERY" || !strings.Contains(dl["source"].(string), "network.devices") || dl["truncated"] != nil {
+		t.Fatalf("%v", dl)
+	}
+	// not asked: not read
+	if r, _ := vuln(t, routes, cveIn("")); r.Evidence[0].Detail["detection_logic"] != nil {
+		t.Errorf("the detection logic is read only when asked")
+	}
+	// a long source is cut and says so
+	routes[detectionRoute] = fwdtest.Const(200, map[string]any{"cveId": "CVE-2024-0001", "sourceType": "CONFIG_BLOCK_PATTERN", "source": strings.Repeat("x", 7000)})
+	r, _ = vuln(t, routes, cveIn(`,"view":"detection_logic"`))
+	dl, _ = r.Evidence[0].Detail["detection_logic"].(map[string]any)
+	if dl["truncated"] != true || len(dl["source"].(string)) != 6000 || dl["source_bytes"] != 7000 {
+		t.Errorf("a long source is capped and says so: %v", dl["truncated"])
+	}
+}
+
+func TestVulnerabilitiesOneCVEDetectionLogicKeepsTheAnswerWhenItCannotBeRead(t *testing.T) {
+	routes := sourcesRoutes(vendorRow(nil))
+	cases := map[string]struct {
+		h    fwdtest.Handler
+		want string
+	}{
+		"off":              {fwdtest.Const(403, map[string]any{"message": "CVE_DETECTION_LOGIC_EXPOSED is off for your organization"}), "Forward does not give the detection source"},
+		"unknown":          {fwdtest.Const(404, map[string]any{"message": "CVE-2024-0001 not found"}), "not in Forward's CVE index"},
+		"route not served": {fwdtest.Const(404, map[string]any{"message": "No endpoint GET /api/cves/CVE-2024-0001/detection-logic."}), "does not serve the detection-logic route"},
+		"error":            {fwdtest.Const(500, map[string]any{"message": "boom"}), "could not be read"},
+	}
+	for name, c := range cases {
+		routes[detectionRoute] = c.h
+		r, _ := vuln(t, routes, cveIn(`,"view":"detection_logic"`))
+		if r.Status != result.Failed || r.Evidence[0].Detail["detection_logic"] != nil || !strings.Contains(strings.Join(r.Limits, " "), c.want) {
+			t.Errorf("%s: %s %v %v", name, r.Status, r.Evidence[0].Detail["detection_logic"], r.Limits)
+		}
+	}
+	// a source with no type is not logic Forward can say how to read
+	routes[detectionRoute] = fwdtest.Const(200, map[string]any{"cveId": "CVE-2024-0001", "source": "foreach x in y"})
+	if r, _ := vuln(t, routes, cveIn(`,"view":"detection_logic"`)); r.Evidence[0].Detail["detection_logic"].(map[string]any)["has_logic"] != false {
+		t.Errorf("a source with no type is not logic")
+	}
+	// a CVE with no detection logic: Forward has it, nothing to show
+	routes[detectionRoute] = fwdtest.Const(200, map[string]any{"cveId": "CVE-2024-0001"})
+	r, _ := vuln(t, routes, cveIn(`,"view":"detection_logic"`))
+	if dl, _ := r.Evidence[0].Detail["detection_logic"].(map[string]any); dl["has_logic"] != false {
+		t.Errorf("no logic: %v", dl)
+	}
+	if _, _, err := runSkill(t, "inspect-vulnerabilities", routes, netIn+`,"view":"detection_logic"}`); err == nil {
+		t.Errorf("detection_logic without cve_id is refused")
+	}
+}
+
+func TestVulnerabilitiesDetectionLogicIsNeverCutInsideACharacter(t *testing.T) {
+	routes := sourcesRoutes(vendorRow(nil))
+	// 3-byte characters: byte 6000 falls inside one only if the cut ignores boundaries (6000 is a multiple of 3, so offset the start by one byte)
+	src := "x" + strings.Repeat("é", 4000) // é is 2 bytes
+	routes[detectionRoute] = fwdtest.Const(200, map[string]any{"cveId": "CVE-2024-0001", "sourceType": "NQE_QUERY", "source": src})
+	r, _ := vuln(t, routes, cveIn(`,"view":"detection_logic"`))
+	dl, _ := r.Evidence[0].Detail["detection_logic"].(map[string]any)
+	got, _ := dl["source"].(string)
+	if !utf8.ValidString(got) || len(got) > 6000 || dl["truncated"] != true || strings.ContainsRune(got, '\uFFFD') {
+		t.Errorf("the cut must land on a character boundary: %d bytes valid=%v", len(got), utf8.ValidString(got))
+	}
+}
+
+func TestVulnerabilitiesDetectionLogicSaysWhenItWasNotReadBecauseTheCVEIsNotForThisNetwork(t *testing.T) {
+	routes := vulnRoutes(nil) // no vulnGet route: Forward has no such CVE for the network
+	routes[vulnGet] = fwdtest.Const(404, map[string]any{"message": "not found"})
+	r, _ := vuln(t, routes, cveIn(`,"view":"detection_logic"`))
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "detection_logic was not read") {
+		t.Errorf("%s %v", r.Status, r.Limits)
 	}
 }

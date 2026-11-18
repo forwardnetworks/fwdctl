@@ -41,13 +41,15 @@
       "enum": [
         "cves",
         "devices",
+        "detection_logic",
         "scanners"
       ],
       "default": "cves",
-      "description": "devices: one row per device with its internet_addressable flag and CVE counts, in one call; scanners: the Tenable VM scanners and whether network_id includes them (no snapshot needed)",
+      "description": "devices: one row per device with its internet_addressable flag and CVE counts, in one call; detection_logic (with cve_id; EXPERIMENTAL): the one-CVE answer plus the rule Forward evaluates against configuration to decide it; scanners: the Tenable VM scanners and whether network_id includes them (no snapshot needed)",
       "x-values": {
         "cves": "the CVEs that expose the network, or the devices one CVE affects",
         "devices": "the CVEs that affect a device",
+        "detection_logic": "one CVE (cve_id) with the configuration detection source Forward evaluates for it, a config pattern or NQE query (EXPERIMENTAL: needs the organization property CVE_DETECTION_LOGIC_EXPOSED)",
         "scanners": "the organization's Tenable VM scanners with their last collection and error; with network_id, which of them the network includes (reads only, no snapshot)"
       }
     },

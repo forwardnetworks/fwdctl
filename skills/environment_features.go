@@ -77,6 +77,8 @@ var featureDefs = []featureDef{
 		"Forward documents the property as UI-gated: inferred hosts cannot be added as edge assets with a criticality in the interface, so threat exposure has no business weight to use"},
 	{"nqe_device_services", "NQE exposes device DNS, log, NTP and TACACS server configuration (Forward 26.11)", "check-network-compliance, author-nqe-query, validate-nqe-query", "flag", "ORG", "ON_PREMISES", false,
 		"device.services is absent from the NQE model for the organization: a query over it fails with Record does not have field, so logging and TACACS evidence read from it is missing (the property exists from 26.11)"},
+	{"cve_detection_logic_exposed", "the configuration detection logic of a CVE: the pattern or NQE source that decides whether a device is vulnerable (EXPERIMENTAL)", "inspect-vulnerabilities (view detection_logic)", "flag", "ORG", "ON_PREMISES", false,
+		"Forward documents the property as UI-gated and off by default (enabled for selected customers): the route that returns a CVE's detection source answers as not available, so a CVE can be explained only by its verdict and config evidence, not by the rule that produced it"},
 	{"snmp_trap_monitoring", "live incident management from SNMP traps", "(no fwdctl skill reads these incidents yet)", "flag", "ORG", "NONE", false,
 		"traps do not raise incidents inside Forward"},
 	{"collector_health_monitoring", "collector health monitoring on a dashboard", "inspect-collection", "flag", "BOTH", "ON_PREMISES", false,
@@ -88,7 +90,7 @@ var featureDefs = []featureDef{
 // securityFeatures are the properties of featureDefs that unlock security and audit evidence: their rows carry topic "security", so an audit (plan-compliance-audit, plan-security-posture, the NIST CSF
 // and DORA references) can read those rows and say which missing evidence an off property explains.
 var securityFeatures = map[string]bool{
-	"cis_benchmarks": true, "vulnerability_scanners_integration": true, "threat_exposure": true, "edge_assets_in_sources": true, "nqe_device_services": true, "snmp_trap_monitoring": true,
+	"cis_benchmarks": true, "cve_detection_logic_exposed": true, "vulnerability_scanners_integration": true, "threat_exposure": true, "edge_assets_in_sources": true, "nqe_device_services": true, "snmp_trap_monitoring": true,
 	"collector_health_monitoring": true, "audit_logs_retention_days": true, "enable_cve_config_analysis": true, "auto_update_cve_index": true, "advanced_reachability_analysis": true,
 	"disable_flow_computation": true, "performance_data": true, "nqe_security_rules_panos": true, "nqe_security_rules_fortios": true, "predict_modeling": true,
 }

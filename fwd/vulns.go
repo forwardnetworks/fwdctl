@@ -175,3 +175,18 @@ func (s *Session) CVEDetail(ctx context.Context, networkID, cveID, snapshotID st
 	})
 	return d, true, nil
 }
+
+// CVEDetectionLogic is the configuration detection logic of one CVE: the config block pattern or NQE query that decides whether a device is vulnerable (EXPERIMENTAL: the organization
+// property CVE_DETECTION_LOGIC_EXPOSED must be on). Forward sends no source for a CVE whose impact is not configuration-dependent.
+type CVEDetectionLogic struct {
+	CVEID, SourceType, Source string
+}
+
+// CVEDetectionLogic reads it. A feature-gated answer (the property is off) and an unknown CVE are returned as the error Forward gave; the caller says which.
+func (s *Session) CVEDetectionLogic(ctx context.Context, cveID string) (CVEDetectionLogic, error) {
+	d, _, err := s.Client.Vulnerabilities.DetectionLogic(ctx, cveID)
+	if err != nil {
+		return CVEDetectionLogic{}, err
+	}
+	return CVEDetectionLogic{CVEID: d.CVEID, SourceType: d.SourceType, Source: d.Source}, nil
+}

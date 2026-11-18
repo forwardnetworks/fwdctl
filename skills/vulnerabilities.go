@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
+
+	forward "github.com/forwardnetworks/forward-go-sdk"
 
 	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/result"
@@ -24,7 +27,9 @@ type vulnInput struct {
 	MinSeverity         string `json:"min_severity"`
 	KnownExploitedOnly  bool   `json:"known_exploited_only"`
 	InternetAddressable *bool  `json:"internet_addressable"`
-	Limit               int    `json:"limit"`
+	// DetectionLogic is set by view detection_logic: the one-CVE view plus the CVE's configuration detection source (EXPERIMENTAL: needs the organization property CVE_DETECTION_LOGIC_EXPOSED).
+	DetectionLogic bool `json:"-"`
+	Limit          int  `json:"limit"`
 	// View is "cves" (the default: the CVEs, worst first) or "devices" (one row per device, with its internet_addressable flag).
 	View string `json:"view"`
 
@@ -85,13 +90,18 @@ func investigateVulnerabilities(ctx context.Context, s *fwd.Session, raw json.Ra
 		if err := noDevicesViewInputs(in); err != nil {
 			return result.Result{}, err
 		}
+	case "detection_logic":
+		if in.CVEID == "" || in.Device != "" {
+			return result.Result{}, fmt.Errorf("%w: view detection_logic takes cve_id (the detection source is read for one CVE), not device", ErrInvalidInput)
+		}
+		in.DetectionLogic = true
 	case "scanners":
 		if in.CVEID != "" || in.Device != "" || in.SnapshotID != "" {
 			return result.Result{}, fmt.Errorf("%w: view scanners takes network_id (optional), not cve_id, device or snapshot_id", ErrInvalidInput)
 		}
 		return scannersView(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: view is cves, devices or scanners", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view is cves, devices, detection_logic or scanners", ErrInvalidInput)
 	}
 	if in.NetworkID == "" {
 		return result.Result{}, fmt.Errorf("%w: network_id is required (only view scanners takes none)", ErrInvalidInput)
@@ -209,6 +219,9 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 	if err != nil {
 		return result.Result{}, err
 	}
+	if in.DetectionLogic && !found {
+		limits = append(limits, "detection_logic was not read: the CVE is not among those Forward found for this network, and the view answers only for those")
+	}
 	if !found {
 		return result.NewUnknown(vulnerabilitiesName, in.CVEID+" is not among the CVEs Forward found that may affect this network", cx,
 			append(limits, "Forward answers not-found both for a CVE that does not apply and for one absent from its CVE index; this skill cannot tell which"), result.Options{})
@@ -225,6 +238,9 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 	}
 	if in.InternetAddressable != nil && len(d.Devices) > 0 && nilRows == len(d.Devices) {
 		in.flow = readFlowFacts(ctx, s)
+		if in.DetectionLogic {
+			limits = append(limits, "detection_logic was not read: no device has an internet_addressable value, so the view answered with that instead")
+		}
 		return exposureUnknown("", in, cx, limits), nil
 	}
 	if nilRows > 0 {
@@ -264,6 +280,13 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 		limits = append(limits, addressableCaveat)
 	}
 	detail := cveDetail(d.CVE, singleDescChars)
+	if in.DetectionLogic {
+		if dl, note := cveDetectionLogic(ctx, s, in.CVEID); dl != nil {
+			detail["detection_logic"] = dl
+		} else {
+			limits = append(limits, note)
+		}
+	}
 	if src, note := cveSources(ctx, s, in, snapID, d.CVE.KnownExploit); src != nil {
 		detail["sources"] = src
 	} else if note != "" {
@@ -605,6 +628,41 @@ func cveSources(ctx context.Context, s *fwd.Session, in vulnInput, snapID string
 	}
 	if flag != (basis != "none") {
 		m["basis_note"] = "Forward's known_exploit flag and the sources read here disagree; trust neither over the other and read the advisory"
+	}
+	return m, ""
+}
+
+// maxDetectionSourceChars caps the detection source returned (it is raw text; a long NQE query is cut and says so).
+const maxDetectionSourceChars = 6000
+
+// cveDetectionLogic reads the CVE's configuration detection source. It returns nil and a note when the property is off, the CVE is unknown, or the read fails: the CVE answer stands without it.
+func cveDetectionLogic(ctx context.Context, s *fwd.Session, cveID string) (map[string]any, string) {
+	dl, err := s.CVEDetectionLogic(ctx, cveID)
+	switch {
+	case errors.Is(err, forward.ErrFeatureGated):
+		return nil, "detection_logic: the organization property CVE_DETECTION_LOGIC_EXPOSED is off, so Forward does not give the detection source (an on-premises administrator or Forward support turns it on; inspect-environment shows it)"
+	case errors.Is(err, forward.ErrEndpointNotServed):
+		return nil, "detection_logic: this Forward does not serve the detection-logic route (an older build), so no detection source can be read"
+	case err != nil && forward.IsStatus(err, 404):
+		return nil, "detection_logic: " + cveID + " is not in Forward's CVE index, so it has no detection source"
+	case err != nil:
+		return nil, "detection_logic: the detection source could not be read: " + err.Error()
+	}
+	if dl.Source == "" || dl.SourceType == "" {
+		return map[string]any{"has_logic": false, "note": "Forward has this CVE but no configuration detection logic for it (its impact is not configuration-dependent), so a device's verdict rests on the OS version alone"}, ""
+	}
+	src, truncated := dl.Source, false
+	if len(src) > maxDetectionSourceChars {
+		cut := maxDetectionSourceChars
+		for cut > 0 && !utf8.RuneStart(src[cut]) { // never cut inside a multi-byte character
+			cut--
+		}
+		src, truncated = src[:cut], true
+	}
+	m := map[string]any{"has_logic": true, "source_bytes": len(dl.Source), "source_type": dl.SourceType, "source": src,
+		"note": "EXPERIMENTAL: the rule Forward evaluates against a device's configuration to decide this CVE; read it to see why a device is vulnerable, not vulnerable or unconfirmed"}
+	if truncated {
+		m["truncated"] = true
 	}
 	return m, ""
 }

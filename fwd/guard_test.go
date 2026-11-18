@@ -331,3 +331,78 @@ func TestAllowNetworksLetsDeviceTextBodiesThroughOnlyOnTheTwoTextRoutes(t *testi
 		}
 	}
 }
+
+// A CVE's detection logic belongs to the CVE index, not to a network, so it has no network in its path. A network-limited session may read exactly that one route.
+func TestAllowNetworksLetsTheCVEDetectionLogicRouteThroughAndNothingElseUnderCVEs(t *testing.T) {
+	ok := fwdtest.Const(200, map[string]any{})
+	routes := map[string]fwdtest.Handler{
+		"GET /api/cves/CVE-2024-0001/detection-logic":    ok,
+		"POST /api/cves/CVE-2024-0001/detection-logic":   ok,
+		"GET /api/cves/CVE-2024-0001":                    ok,
+		"GET /api/cves/CVE-2024-0001/detection-logic/x":  ok,
+		"GET /api/cves/not-a-cve/detection-logic":        ok,
+		"GET /api/cves/CVE-2024-0001/other":              ok,
+		"GET /api/cves":                                  ok,
+		"PUT /api/cves/CVE-2024-0001/detection-logic":    ok,
+		"DELETE /api/cves/CVE-2024-0001/detection-logic": ok,
+	}
+	s, srv := fwdtest.NewWith(t, routes, func(c *fwd.Config) { c.AllowNetworks = []string{"n1"} })
+	send := func(method, path string) error {
+		req, err := s.Client.NewRequest(context.Background(), method, path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = s.Client.Do(req, nil)
+		return err
+	}
+	if err := send("GET", "/api/cves/CVE-2024-0001/detection-logic"); err != nil {
+		t.Errorf("the detection-logic route must pass: %v", err)
+	}
+	if err := send("GET", "/api/cves/cve-2024-0001/detection-logic"); err != nil && errors.Is(err, fwd.ErrGuardRefused) {
+		t.Errorf("a lower-case id is the same route: %v", err)
+	}
+	// the query string and a body are still checked on the allowed route
+	for _, p := range []string{"/api/cves/CVE-2024-0001/detection-logic?networkId=n2", "/api/cves/CVE-2024-0001/detection-logic?snapshotId=s2", "/api/cves/CVE-2024-0001/detection-logic?target_network_id=n2"} {
+		before := len(srv.Calls())
+		if err := send("GET", p); !errors.Is(err, fwd.ErrGuardRefused) {
+			t.Errorf("%s: err = %v, want a guard refusal", p, err)
+		}
+		for _, c := range srv.Calls()[before:] {
+			if c.Path == "/api/cves/CVE-2024-0001/detection-logic" && (c.Query["networkId"] != "" || c.Query["snapshotId"] != "" || c.Query["target_network_id"] != "") {
+				t.Errorf("%s: a refused request was sent", p)
+			}
+		}
+	}
+	for _, p := range []string{"/api/cves/CVE-2024-0001/detection-logic/", "/api/cves/%43VE-2024-0001/detection-logic"} {
+		if err := send("GET", p); errors.Is(err, fwd.ErrGuardRefused) {
+			t.Errorf("%s is the same route and must not be refused by the guard: %v", p, err)
+		}
+	}
+	if req, err := s.Client.NewRequest(context.Background(), "GET", "/api/cves/CVE-2024-0001/detection-logic", strings.NewReader(`{"networkId":"n2"}`)); err == nil {
+		req.Header.Set("Content-Type", "application/json")
+		if _, err := s.Client.Do(req, nil); !errors.Is(err, fwd.ErrGuardRefused) {
+			t.Errorf("a body naming another network is refused on the allowed route: %v", err)
+		}
+	}
+	if err := send("HEAD", "/api/cves/CVE-2024-0001/detection-logic"); !errors.Is(err, fwd.ErrGuardRefused) {
+		t.Errorf("HEAD is refused: %v", err)
+	}
+	for _, c := range []struct{ method, path string }{
+		{"POST", "/api/cves/CVE-2024-0001/detection-logic"},
+		{"PUT", "/api/cves/CVE-2024-0001/detection-logic"},
+		{"DELETE", "/api/cves/CVE-2024-0001/detection-logic"},
+		{"GET", "/api/cves/CVE-2024-0001"},
+		{"GET", "/api/cves/CVE-2024-0001/detection-logic/x"},
+		{"GET", "/api/cves/not-a-cve/detection-logic"},
+		{"GET", "/api/cves/CVE-2024-0001/other"},
+		{"GET", "/api/cves"},
+	} {
+		before := len(srv.Calls())
+		if err := send(c.method, c.path); !errors.Is(err, fwd.ErrGuardRefused) {
+			t.Errorf("%s %s: err = %v, want a guard refusal", c.method, c.path, err)
+		}
+		if len(srv.Calls()) != before {
+			t.Errorf("%s %s: a refused request was sent", c.method, c.path)
+		}
+	}
+}
