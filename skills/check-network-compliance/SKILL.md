@@ -60,6 +60,7 @@ Run `fwdctl run check-network-compliance --help` for the inputs and an example, 
 
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe check-network-compliance reference/<file>`).
 
+- [reference/library-queries.md](reference/library-queries.md): Forward's saved STIG (Cat I, II, III), CIS and unused-firewall-rule queries: their ids, columns and what a row is, how to count (`fwdctl nqe run --query-id ... --count-by Outcome`), how to find what is new since a snapshot, and when an empty or zero result is unknown. Read when asked which devices fail STIG or CIS, or which firewall rules are unused.
 - [reference/stig-results.md](reference/stig-results.md): reading STIG and other catalog-query results (rows that are not violations, zero rows, counting devices). Read when an `nqe` result says the rows are not all violations.
 - [reference/baseline.md](reference/baseline.md): what to look at in a general configuration review (management, control and data plane), as prompts, not findings. Read when asked for a review with no policy to check against.
 - [reference/citations.md](reference/citations.md): the IETF RFCs behind common routing and security findings. Read when a finding should cite a standard.

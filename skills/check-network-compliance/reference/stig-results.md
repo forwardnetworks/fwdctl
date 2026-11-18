@@ -1,6 +1,6 @@
 # Reading STIG and other catalog-query results
 
-Read when an `nqe` policy is a catalog query (for example the saved STIG queries under `/Security/STIGs`) and the result is `unknown` with "the rows are not all violations", or when a row count looks too large.
+Forward's own STIG, CIS and unused-rule queries, with their ids and recipes, are in the skill's other reference note on the library queries (SKILL.md lists it). Read when an `nqe` policy is a catalog query (for example the saved STIG queries under `/Security/STIGs`) and the result is `unknown` with "the rows are not all violations", or when a row count looks too large.
 
 **Measured** on a demo network with a read-only run of the saved query "STIG Findings": the query returned one row for every device and control, not only failures, and each row carries a `violation` column (true, false or empty) and an `Outcome` (for example "Not a Finding", "Not Reviewed"). 166 of the first 200 of 16,779 rows were not violations. Other catalog queries may return failures only, so check the columns of the rows you got.
 

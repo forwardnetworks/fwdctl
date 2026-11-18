@@ -30,6 +30,21 @@
     "rival": "inspect-history"
   },
   {
+    "query": "Which devices fail STIG Cat I, and how many findings are open?",
+    "expect": "check-network-compliance",
+    "rival": "plan-compliance-audit"
+  },
+  {
+    "query": "Which CIS benchmark findings are new since the last snapshot?",
+    "expect": "check-network-compliance",
+    "rival": "compare-nqe-results"
+  },
+  {
+    "query": "Which firewall rules have not been used in 30 days?",
+    "expect": "check-network-compliance",
+    "rival": "plan-security-posture"
+  },
+  {
     "query": "What did the 'no open telnet' check find?",
     "expect": "check-network-compliance",
     "rival": "inspect-history"

@@ -83,6 +83,34 @@
     "gives Forward's recorded reason or says none was recorded",
     "does not call it a policy failure"
    ]
+  },
+  {
+   "query": "Which of our devices fail STIG Cat I? How bad is it?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads reference/library-queries.md and runs Forward's saved Cat I query with fwdctl nqe run --query-id",
+    "counts by Outcome and reports Open, Not a Finding and Not Reviewed separately",
+    "answers in distinct devices and rules, never in rows",
+    "treats Not Reviewed and vendors the query does not cover as unknown, not compliant"
+   ]
+  },
+  {
+   "query": "Show me the CIS benchmark findings, and which ones are new since last week's snapshot",
+   "should_trigger": true,
+   "expected_behavior": [
+    "checks that the CIS_BENCHMARKS org property is on (inspect-environment)",
+    "runs the CIS Findings query on both snapshots (or compare-nqe-results for a small diff) and compares the violating rows",
+    "says an empty findings result is unknown, not compliant, and suggests checking when the snapshot was processed"
+   ]
+  },
+  {
+   "query": "Are there firewall rules nobody has used in a month?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs the unused-rules query with expectedUnusedRules as an empty list",
+    "checks that the firewalls report rule usage before saying there are none",
+    "calls a firewall with no usage data unknown"
+   ]
   }
  ],
  "measure": [

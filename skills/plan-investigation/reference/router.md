@@ -31,7 +31,10 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | A path ends at the edge, "is the internet modelled", links added by hand, the connections of an L3 VPN or L2 VPN | `inspect-topology` (kind external) |
 | "When did this check start failing", "is this new or old" | `inspect-history` |
 | Show the saved network maps (custom diagrams), their directories, what one map covers in a snapshot | `inspect-topology` kind `maps` (`map_id` for one map) |
-| "Which checks exist or fail", "how many checks fail or error", "why is this check in ERROR", "what did this check find", "what checks does Forward offer" | `check-network-compliance` (view read) |
+| "Which checks exist or fail", "which checks failed right now", "how many checks fail or error", "why is this check in ERROR", "what did this check find", "what checks does Forward offer" | `check-network-compliance` (view read) |
+| Which STIG rules fail (Cat I, II or III), how many STIG findings are open, STIG Open and Not Reviewed counts by severity | `check-network-compliance` (reference `library-queries.md`: run Forward's saved STIG query with `fwdctl nqe run --query-id`, count with `--count-by Outcome`; a row is a device and a rule) |
+| CIS benchmark findings, which CIS rules fail, new CIS findings since the last snapshot | `check-network-compliance` (`library-queries.md`; needs the org property CIS_BENCHMARKS, see `inspect-environment`); the change between two snapshots: run the query on each (`library-queries.md`), or `compare-nqe-results` for a small diff |
+| Which firewall rules are unused or idle, rules not hit for 30 days, newly added firewall rules | `check-network-compliance` (`library-queries.md`, the unused-rules query; first check the firewalls report rule usage, or the answer is unknown) |
 | "What does this change set do", "is it ready" | `verify-change` with `view: describe` |
 | Show a Predict change set's saved versions, notes and history, the config a version holds, what a prediction affected, which commands Predict accepts for an OS, a change set's firewall objects, BGP advertisement diffs or NQE checks; commit or copy a change set | `verify-change` views `history`, `config`, `affected`; changes with `edit-change-set` lifecycle |
 | Label a snapshot | `edit-snapshot` (action note) (dry run first) |
