@@ -1,6 +1,8 @@
 package skills_test
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -8,6 +10,7 @@ import (
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/knowledge"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 // orgPropRoutes serves a small configuration (a lower-case key per property) and records PUT/DELETE on /api/config/{property}.
@@ -114,6 +117,9 @@ func TestOrgPropertyRefusesWhatForwardOnlySupportMayChangeAndWhatDoesNotExist(t 
 	if r.Status != result.Failed || !strings.Contains(r.Finding, "Forward support") || writes(srv) != 0 {
 		t.Fatalf("%s %s", r.Status, r.Finding)
 	}
+	if !strings.Contains(r.Finding, "--support-token-file") || !strings.Contains(r.Finding, "org_id") {
+		t.Errorf("the refusal should say how to use the support route: %s", r.Finding)
+	}
 	r, _ = mustRun(t, "edit-org-property", orgPropRoutes(effective, map[string]any{}, written), `{"property":"NOT_A_PROPERTY","value":"1"}`)
 	if r.Status != result.Failed || !strings.Contains(r.Finding, "defines no organization property") {
 		t.Fatalf("%s %s", r.Status, r.Finding)
@@ -180,5 +186,62 @@ func TestEditOrgPropertyOnAnotherOrganization(t *testing.T) {
 	r, _ = mustRun(t, "edit-org-property", routes, in(""))
 	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "support") {
 		t.Errorf("403: %s %v", r.Status, r.Limits)
+	}
+}
+
+// A property only Forward support may change (admin NONE in Forward) must still be settable on another organization with org_id: that route is the support route (another organization's
+// configuration is readable only with support authority), and the refusal is for a login that has no org_id. THREAT_EXPOSURE and EDGE_ASSETS_IN_SOURCES are ON_PREMISES in Forward 26.11.0-10;
+// CLIENT_PACKAGE stands for a NONE property here.
+func TestEditOrgPropertyWithOrgIDIsNotRefusedAsSupportOnly(t *testing.T) {
+	if p, ok := knowledge.OrgPropertyInfo("CLIENT_PACKAGE"); !ok || p.Admin != "NONE" {
+		t.Skip("the property table is not in this build, or CLIENT_PACKAGE is no longer a support-only property")
+	}
+	var puts []string
+	applied := false
+	routes := map[string]fwdtest.Handler{
+		"GET /api/version":    fwdtest.Const(200, map[string]any{"version": "26.11.0", "release": "26.11.0-14", "build": "b"}),
+		"GET /api/admin/orgs": fwdtest.Const(200, []any{map[string]any{"id": "1991", "name": "Example Lab"}}),
+		"GET /api/orgs/1991/config": func(r *http.Request, _ []byte) (int, any) {
+			if r.URL.Query().Get("filter") == "CONFIGURED" {
+				return 200, map[string]any{}
+			}
+			if applied {
+				return 200, map[string]any{"client_package": "3.0"}
+			}
+			return 200, map[string]any{"client_package": "2.0"}
+		},
+		"GET /api/global-config": fwdtest.Const(200, map[string]any{"client_package": "2.0"}),
+		"PUT /api/orgs/1991/config/client_package": func(r *http.Request, _ []byte) (int, any) {
+			puts = append(puts, r.URL.Query().Get("value"))
+			applied = true
+			return 200, map[string]any{"client_package": "3.0"}
+		},
+	}
+	r, _ := mustRun(t, "edit-org-property", routes, `{"org_id":"1991","property":"CLIENT_PACKAGE","value":"3.0"}`)
+	if strings.Contains(r.Finding, "Refused") || r.Mode != result.ModeDryRun || len(puts) != 0 {
+		t.Fatalf("a support-only property on another organization is planned, not refused: %s %s %s", r.Status, r.Mode, r.Finding)
+	}
+	r, _ = mustRun(t, "edit-org-property", routes, `{"org_id":"1991","property":"CLIENT_PACKAGE","value":"3.0","apply":true,"confirm":"client_package 1991"}`)
+	if r.Status != result.OK || len(puts) != 1 || puts[0] != "3.0" {
+		t.Fatalf("apply reaches Forward and reads back: %s %s %v", r.Status, r.Finding, puts)
+	}
+}
+
+// Without org_id the write is the main login's own organization's, whatever support login is configured, so a support-only property is still refused: a support login alone does not make
+// a change to the login's own organization a support one.
+func TestSupportOnlyPropertyWithASupportLoginButNoOrgIDIsStillRefused(t *testing.T) {
+	if p, ok := knowledge.OrgPropertyInfo("CLIENT_PACKAGE"); !ok || p.Admin != "NONE" {
+		t.Skip("the property table is not in this build, or CLIENT_PACKAGE is no longer a support-only property")
+	}
+	routes := orgPropRoutes(map[string]any{"client_package": "2.0"}, map[string]any{}, map[string]string{})
+	sess, srv := fwdtest.New(t, routes)
+	support, _ := fwdtest.New(t, routes)
+	sess.Support = support
+	r, err := skills.Run(context.Background(), "edit-org-property", sess, json.RawMessage(`{"property":"CLIENT_PACKAGE","value":"3.0","apply":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "Refused") || writes(srv) != 0 {
+		t.Fatalf("a support login without org_id must not unlock a NONE property: %s %s writes=%d", r.Status, r.Finding, writes(srv))
 	}
 }

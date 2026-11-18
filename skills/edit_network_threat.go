@@ -11,9 +11,9 @@ import (
 	"github.com/forwardnetworks/fwdctl/fwd"
 )
 
-// threatWriteLimits label every threat exposure write: the feature is experimental, switched on by an organization property that only Forward support changes, licence- and permission-gated, and served only by newer builds.
+// threatWriteLimits label every threat exposure write: the feature is experimental, switched on by an organization property that an on-premises administrator or Forward support changes (on SaaS only support), licence- and permission-gated, and served only by newer builds.
 var threatWriteLimits = []string{
-	"EXPERIMENTAL: Forward's threat exposure feature is experimental and its shapes change between builds. It is enabled by the organization property THREAT_EXPOSURE (not an organization administrator's to change), needs the security licence facet, and a build that does not serve its routes answers 404",
+	"EXPERIMENTAL: Forward's threat exposure feature is experimental and its shapes change between builds. It is enabled by the organization property THREAT_EXPOSURE (an on-premises administrator or Forward support changes it; on SaaS only Forward support), needs the security licence facet, and a build that does not serve its routes answers 404",
 	"permissions: EDIT_THREAT_EXPOSURE (definitions), EVALUATE_THREAT_EXPOSURE (an analysis), EDIT_ASSET_CRITICALITIES (criticality); an organization administrator is expected to hold them, a 403 says which is missing",
 }
 

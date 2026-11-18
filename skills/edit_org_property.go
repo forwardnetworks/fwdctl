@@ -117,8 +117,10 @@ func editOrgProperty(ctx context.Context, s *fwd.Session, raw json.RawMessage) (
 	def := cfg.Global[name]
 	before := map[string]any{"value": cur, "overridden": overridden, "default": def}
 	facts := map[string]any{"risk": risk, "reason": reason, "consequence": consequence, "who_can_change": whoCanChange(admin), "before": before}
-	if known && admin == "NONE" {
-		return refuse(fmt.Sprintf("%s can be changed only by Forward support, not by an organization administrator (%s)", strings.ToUpper(name), whoCanChange(admin)), facts)
+	// Only Forward support may change a NONE property, and the support route is the case org_id exists for: with org_id the write goes through the support login (or the main login when it is one), so
+	// Forward decides; without org_id the write is the main login's own organization's, whatever support login is configured, so the refusal stays.
+	if known && admin == "NONE" && in.OrgID == "" {
+		return refuse(fmt.Sprintf("%s can be changed only by Forward support, not by an organization administrator (%s); with a Forward-support login, give the organization as org_id and the login as --support-token-file (or FORWARD_SUPPORT_TOKEN_FILE)", strings.ToUpper(name), whoCanChange(admin)), facts)
 	}
 
 	// what the change is

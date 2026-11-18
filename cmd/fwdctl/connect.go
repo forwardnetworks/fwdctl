@@ -50,6 +50,17 @@ func readTokenFile(path string) (url, user, pass string, err error) {
 	return parseNetrc(path, string(b))
 }
 
+// countLines is the number of non-empty lines in text.
+func countLines(text string) int {
+	n := 0
+	for _, l := range strings.Split(text, "\n") {
+		if strings.TrimSpace(l) != "" {
+			n++
+		}
+	}
+	return n
+}
+
 // parseNetrc reads a netrc token file: one machine entry with login and password, tokens separated by whitespace or newlines. The machine is the Forward host (or a full URL); a bare host gets https://.
 func parseNetrc(path, text string) (string, string, string, error) {
 	toks := strings.Fields(text)
@@ -66,7 +77,21 @@ func parseNetrc(path, text string) (string, string, string, error) {
 		}
 	}
 	if len(machines) != 1 || login == "" || password == "" {
-		return "", "", "", fmt.Errorf("the token file %s is not in a format fwdctl reads: expected netrc: machine HOST, login USER, password SECRET (one machine, on one line or several)", path)
+		// Say what is missing from the file's shape only: counts, never any of its content (it holds a secret).
+		why := ""
+		switch {
+		case len(machines) == 0 && login == "" && password == "":
+			why = fmt.Sprintf(" (it has %d non-empty line(s) and none of the words machine, login or password: a file of just a user and a password has no host, so write it as one line, `machine HOST login USER password SECRET`)", countLines(text))
+		case len(machines) == 0:
+			why = " (it has no machine line: fwdctl needs the Forward host)"
+		case len(machines) > 1:
+			why = " (it names more than one machine: use one file per Forward)"
+		case login == "":
+			why = " (it has no login)"
+		case password == "":
+			why = " (it has no password)"
+		}
+		return "", "", "", fmt.Errorf("the token file %s is not in a format fwdctl reads%s: expected netrc: machine HOST, login USER, password SECRET (one machine, on one line or several)", path, why)
 	}
 	url := machines[0]
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
