@@ -72,3 +72,19 @@ func TestReprocessApplyWarnsWhenTheSnapshotStillReadsProcessed(t *testing.T) {
 		t.Errorf("limits: %v", r.Limits)
 	}
 }
+
+// Seen live after a 26.11 upgrade: Forward answered UNPROCESSED -> UNPROCESSED and kept that state for about a minute before PROCESSING. The finding must not read as a no-op, and says
+// how to read the real state by snapshot id (the network-wide list holds only the newest snapshots).
+func TestReprocessWhoseAnswerKeepsTheOldStateIsNotReportedAsANoOp(t *testing.T) {
+	routes := reprocessRoutes("UNPROCESSED")
+	routes["POST /api/snapshots/s1"] = func(*http.Request, []byte) (int, any) {
+		return 200, map[string]any{"previousState": "UNPROCESSED", "state": "UNPROCESSED"}
+	}
+	r, srv := mustRun(t, "edit-snapshot-reprocess", routes, `{"network_id":"n1","snapshot_id":"s1","apply":true}`)
+	if r.Status != result.OK || writes(srv) != 1 {
+		t.Fatalf("%s writes=%d", r.Status, writes(srv))
+	}
+	if strings.Contains(r.Finding, "UNPROCESSED -> UNPROCESSED") || !strings.Contains(r.Finding, "accepted") || !strings.Contains(strings.Join(r.Limits, " "), "inspect-snapshots with snapshot_id s1") || !strings.Contains(strings.Join(r.Limits, " "), "fwdctl wait snapshot --network n1 --snapshot s1 --follow") {
+		t.Errorf("finding %q limits %v", r.Finding, r.Limits)
+	}
+}

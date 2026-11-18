@@ -78,6 +78,12 @@ func reprocessSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage)
 	if now, nerr := s.Snapshot(ctx, in.NetworkID, in.SnapshotID); nerr == nil && now != nil && now.State == "PROCESSED" {
 		limits = append(limits, "Forward still reports PROCESSED for this snapshot right after the start (its own answer said "+after+"): the state can lag a few seconds, so re-read it (inspect-snapshots) before trusting a wait or a PROCESSED reading")
 	}
-	return result.Build(reprocessSnapshotName, result.OK, fmt.Sprintf("Started reprocessing snapshot %s (%s -> %s)", in.SnapshotID, sn.State, after),
+	finding := fmt.Sprintf("Started reprocessing snapshot %s (%s -> %s)", in.SnapshotID, sn.State, after)
+	if after == sn.State {
+		// Forward accepted the request but its state had not moved when it answered (seen live: UNPROCESSED for about a minute, then PROCESSING): not a no-op.
+		finding = fmt.Sprintf("Reprocessing of snapshot %s was accepted; its state still reads %s, and Forward's state can lag the start", in.SnapshotID, sn.State)
+		limits = append(limits, fmt.Sprintf("the state did not change yet, which is not yet a failure: seen live, an UNPROCESSED snapshot kept that state for about a minute before PROCESSING (a snapshot still FAILED after a wait did fail). Read it by id, not from the network-wide list (which holds only the newest snapshots): inspect-snapshots with snapshot_id %s, or `fwdctl wait snapshot --network %s --snapshot %s --follow`", in.SnapshotID, in.NetworkID, in.SnapshotID))
+	}
+	return result.Build(reprocessSnapshotName, result.OK, finding,
 		result.Deterministic, cx, result.Options{Mode: result.ModeApplied, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"state_after": after}), Limits: limits, NextActions: next})
 }

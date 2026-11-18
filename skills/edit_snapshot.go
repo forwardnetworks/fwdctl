@@ -31,7 +31,7 @@ type editSnapshotInput struct {
 
 // editSnapshot is the one place to change a snapshot or how a network keeps its snapshots: set its note, reprocess or invalidate it, favorite it, delete it, or set the network's
 // retention policy. The note and reprocess actions are the retired skills edit-snapshot and edit-snapshot (which stay as aliases); every other action is new. Each is
-// a dry run unless apply is true, says what cannot be undone, and the destructive ones (delete, favorite, retention policy) need confirm.
+// a dry run unless apply is true, says what cannot be undone, and the destructive ones (delete, retention policy) need confirm.
 func editSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
 	var in editSnapshotInput
 	if err := json.Unmarshal(raw, &in); err != nil {
@@ -58,6 +58,10 @@ func editSnapshot(ctx context.Context, s *fwd.Session, raw json.RawMessage) (res
 }
 
 // snapshotBusy says a snapshot is being worked on now, so it is not changed under Forward.
+// busyFavoriteRace is the caveat on a favorite or unfavorite made while Forward works on the snapshot: Forward's reprocess keeps the snapshot metadata it read when it started and writes that
+// copy back when it fails or is cancelled (SnapshotReprocessHelper on release/26.11.0-10, read from source, not reproduced live), which can undo the change.
+const busyFavoriteRace = "Forward's reprocess keeps the metadata it read when it started and writes that copy back if it fails or is cancelled, which can silently undo this change: read the favorite flag again (inspect-snapshots, favorite true) once the snapshot has finished, and set it again if it is gone"
+
 func snapshotBusy(state string) bool {
 	switch strings.ToUpper(state) {
 	case "UNPACKING", "PROCESSING", "RESTORING":
@@ -102,7 +106,9 @@ func snapshotLifecycle(ctx context.Context, s *fwd.Session, in editSnapshotInput
 		}
 		return []result.Evidence{result.NewEvidence(result.EvState, "editSnapshot", cx.SnapshotID, d, "")}
 	}
-	if snapshotBusy(sn.State) {
+	// Only invalidate and delete are refused while Forward works on the snapshot. A favorite is a metadata write that Forward's SnapshotService.addFavoriteSnapshot makes without looking at the state
+	// (it changes retention only), so favorite and unfavorite go through (a Wells-network peer needed to favorite a snapshot that was reprocessing for ~99 minutes).
+	if snapshotBusy(sn.State) && (in.Action == "invalidate" || in.Action == "delete") {
 		return result.Build(editSnapshotName, result.Failed, fmt.Sprintf("Refused, nothing was changed: snapshot %s is %s, which Forward is working on now", in.SnapshotID, sn.State), result.Deterministic, cx,
 			result.Options{Mode: mode, Evidence: ev(nil), Limits: []string{"wait for it to finish (inspect-snapshots shows its state), then run this again"}})
 	}
@@ -115,9 +121,15 @@ func snapshotLifecycle(ctx context.Context, s *fwd.Session, in editSnapshotInput
 	case "favorite":
 		ch = result.Change{Action: "favorite_snapshot", Target: "snapshot " + in.SnapshotID, Before: false, After: true, Reversible: true, Undo: "unfavorite it (action unfavorite)"}
 		limits = append(limits, "a favorite snapshot is never thinned by the retention policy and is kept")
+		if snapshotBusy(sn.State) {
+			limits = append(limits, fmt.Sprintf("the snapshot is %s: Forward's favorite call does not look at the processing state (it only changes retention), so it is allowed now. %s", sn.State, busyFavoriteRace))
+		}
 	case "unfavorite":
 		ch = result.Change{Action: "unfavorite_snapshot", Target: "snapshot " + in.SnapshotID, Before: true, After: false, Reversible: true, Undo: "favorite it again (action favorite)"}
-		limits = append(limits, "once not a favorite, the retention policy may thin this snapshot; the result does not read the flag back (Forward's snapshot list does not carry it)")
+		limits = append(limits, "once not a favorite, the retention policy may thin this snapshot; this result does not read the flag back: inspect-snapshots shows it (favorite true) on the snapshot's row")
+		if snapshotBusy(sn.State) {
+			limits = append(limits, fmt.Sprintf("the snapshot is %s: allowed, as Forward's call does not look at the processing state. %s", sn.State, busyFavoriteRace))
+		}
 	case "delete":
 		ch = result.Change{Action: "delete_snapshot", Target: "snapshot " + in.SnapshotID, Before: before, After: nil, Reversible: false, Undo: "none: a deleted snapshot and its model are gone (a backup restore may bring one back if it was backed up)"}
 		limits = append(limits, "deleting a snapshot removes it and its derived data for good; other snapshots are untouched. Forward's own answer decides whether a snapshot that others were predicted from can be deleted; this skill does not check")

@@ -25,12 +25,12 @@ What each input means, and the fields per object and action: `fwdctl run edit-sn
 
 ## Dry run
 
-Without `apply: true` nothing changes. The result returns `mode: dry_run`, the change with before and after, the undo (or that there is none), and for `delete`, `favorite` and `retention_policy` the exact `confirm` value needed.
+Without `apply: true` nothing changes. The result returns `mode: dry_run`, the change with before and after, the undo (or that there is none), and for `delete` and `retention_policy` the exact `confirm` value needed.
 
 ## Procedure
 
 1. Find the snapshot (or read the network's policy). Not found: **unknown**, nothing changed.
-2. A snapshot being worked on (UNPACKING, PROCESSING, RESTORING) is refused for every action but `note`.
+2. A snapshot being worked on (UNPACKING, PROCESSING, RESTORING) is refused for `invalidate` and `delete`; `reprocess` has its own check. `favorite` and `unfavorite` are allowed (Forward's call does not look at the state), with a caveat that a reprocess which fails or is cancelled can write the old metadata back and undo it: read the flag again when processing has finished.
 3. Dry run returns the plan. With `apply: true`: one call, then read back and say if the read-back differs (**failed**).
 
 ## Limits

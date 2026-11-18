@@ -310,3 +310,35 @@ func TestEditSnapshotExportSelectsDevicesByPlatformOrQuery(t *testing.T) {
 		}
 	}
 }
+
+// A favorite only changes retention, and Forward's addFavoriteSnapshot is a metadata write that does not look at the processing state: favorite and unfavorite go through on a snapshot that is
+// PROCESSING (a reprocess can run for hours), with a limit saying so, while invalidate and delete stay refused.
+func TestEditSnapshotFavoriteIsAllowedWhileProcessingAndDestructiveActionsAreNot(t *testing.T) {
+	var calls []string
+	routes := snapWorld("PROCESSING", map[string]fwdtest.Handler{"PATCH /api/snapshots/s1": func(r *http.Request, _ []byte) (int, any) {
+		calls = append(calls, r.URL.Query().Get("action"))
+		return 204, nil
+	}})
+	for _, a := range []string{"favorite", "unfavorite"} {
+		r, _ := mustRun(t, "edit-snapshot", routes, `{"network_id":"n1","snapshot_id":"s1","action":"`+a+`","apply":true}`)
+		if r.Status != result.OK || !r.Changes[0].Applied {
+			t.Fatalf("%s while PROCESSING: %s %s", a, r.Status, r.Finding)
+		}
+	}
+	if len(calls) != 2 {
+		t.Errorf("both writes should reach Forward: %v", calls)
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, `{"network_id":"n1","snapshot_id":"s1","action":"favorite"}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "does not look at the processing state") || !strings.Contains(strings.Join(r.Limits, " "), "silently undo") {
+		t.Errorf("the limit should say why it is allowed and that a failed reprocess can undo it: %v", r.Limits)
+	}
+	if u, _ := mustRun(t, "edit-snapshot", routes, `{"network_id":"n1","snapshot_id":"s1","action":"unfavorite"}`); !strings.Contains(strings.Join(u.Limits, " "), "silently undo") {
+		t.Errorf("unfavorite while busy carries the same caveat: %v", u.Limits)
+	}
+	for _, body := range []string{`{"network_id":"n1","snapshot_id":"s1","action":"invalidate","apply":true}`, `{"network_id":"n1","snapshot_id":"s1","action":"delete","apply":true,"confirm":"s1"}`} {
+		r, srv := mustRun(t, "edit-snapshot", routes, body)
+		if r.Status != result.Failed || writes(srv) != 0 || !strings.Contains(r.Finding, "Refused") {
+			t.Errorf("%s while PROCESSING must stay refused: %s %s", body, r.Status, r.Finding)
+		}
+	}
+}
