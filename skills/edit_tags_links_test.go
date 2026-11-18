@@ -549,3 +549,55 @@ func TestEditLinkOverridesDryRunEmitsTheAPIBodyAndCurl(t *testing.T) {
 		t.Errorf("staged mode: %s", b)
 	}
 }
+
+// Forward refuses a device that is not a collection source (a virtual context such as a PAN-OS vsys takes its tags from the physical device). One such device must not fail the batch or turn
+// the answer into an invalid result: the rest is applied and each refusal is reported with Forward's reason.
+func tagRefusingRoutes(bad ...string) (map[string]fwdtest.Handler, *map[string][]string) {
+	state := map[string][]string{"lab": {}}
+	return map[string]fwdtest.Handler{
+		"GET /api/networks/n1/device-tags": func(*http.Request, []byte) (int, any) {
+			ds := []any{}
+			for _, d := range state["lab"] {
+				ds = append(ds, d)
+			}
+			return 200, []any{map[string]any{"name": "lab", "devices": ds}}
+		},
+		"POST /api/networks/n1/device-tags": func(_ *http.Request, body []byte) (int, any) {
+			var in struct{ Devices, Tags []string }
+			_ = jsonUnmarshal(body, &in)
+			for _, d := range in.Devices {
+				for _, b := range bad {
+					if d == b {
+						return 400, map[string]any{"message": "Unregistered device " + d}
+					}
+				}
+			}
+			state["lab"] = append(state["lab"], in.Devices...)
+			return 204, nil
+		},
+	}, &state
+}
+
+func TestEditDeviceTagsAppliesTheRestAndReportsEachRefusedDevice(t *testing.T) {
+	routes, state := tagRefusingRoutes("fw_vsys3")
+	r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"add","devices":["r1","fw_vsys3","r2"],"tags":["lab"],"apply":true}`)
+	if r.Status != result.Failed || len(r.Changes) != 1 || !r.Changes[0].Applied || strings.Contains(r.Changes[0].Target, "fw_vsys3") {
+		t.Fatalf("one refused device: the others are applied and listed, the refused one is not: %s %s %+v", r.Status, r.Finding, r.Changes)
+	}
+	if got := strings.Join((*state)["lab"], ","); got != "r1,r2" {
+		t.Errorf("the other devices must be tagged: %s", got)
+	}
+	ev := jsonOf(r)
+	if !strings.Contains(ev, `"device":"fw_vsys3"`) || !strings.Contains(ev, "Unregistered device") || !strings.Contains(r.Finding, "1 refused") {
+		t.Errorf("the refusal is named with Forward's reason: %s | %s", r.Finding, ev)
+	}
+}
+
+// the first (and only) call refused: this once produced an applied result that listed an unmade change, which the validator rejected and hid Forward's reason
+func TestEditDeviceTagsAllRefusedIsAValidFailedResultWithTheReason(t *testing.T) {
+	routes, _ := tagRefusingRoutes("fw_vsys3")
+	r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"add","devices":["fw_vsys3"],"tags":["lab"],"apply":true}`)
+	if r.Status != result.Failed || len(r.Changes) != 0 || !strings.Contains(jsonOf(r), "Unregistered device") {
+		t.Fatalf("%s %s %+v", r.Status, r.Finding, r.Changes)
+	}
+}

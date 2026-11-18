@@ -112,41 +112,74 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		return result.Build(editDeviceTagsName, result.OK, fmt.Sprintf("Dry run: would %s %d tag(s) on devices (%d pair(s) differ). Nothing was changed; run again with apply=true to make it", in.Action, len(plans), pairCount),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: changes, Evidence: ev(nil), Limits: limits, NextActions: next})
 	}
-	for i, p := range plans {
-		var err error
+	// Apply tag by tag. A batch Forward refuses (for example when one device is not a collection source) is retried one device at a time, so one bad device does not stop the rest and
+	// the refusal is reported per device with Forward's own words.
+	send := func(devs []string, tag string) error {
 		if in.Action == "add" {
-			err = s.AddDeviceTags(ctx, in.NetworkID, p.Devices, []string{p.Tag})
-		} else {
-			err = s.RemoveDeviceTags(ctx, in.NetworkID, p.Devices, []string{p.Tag})
+			return s.AddDeviceTags(ctx, in.NetworkID, devs, []string{tag})
 		}
-		if err != nil {
-			for j := 0; j < i; j++ {
-				changes[j].Applied = true
-			}
-			return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("Forward refused the change for tag %s: %v; the tags before it were changed", p.Tag, err), result.Deterministic, cx,
-				result.Options{Mode: result.ModeApplied, Changes: changes, Evidence: ev(nil), Limits: append(limits, "partly applied: the changes marked applied were made, the rest were not")})
+		return s.RemoveDeviceTags(ctx, in.NetworkID, devs, []string{tag})
+	}
+	type refusal struct {
+		Tag    string `json:"tag"`
+		Device string `json:"device"`
+		Reason string `json:"reason"`
+	}
+	var refused []refusal
+	sent := make([][]string, len(plans)) // the devices Forward accepted, per plan
+	for i, p := range plans {
+		if err := send(p.Devices, p.Tag); err == nil {
+			sent[i] = p.Devices
+			continue
+		} else if len(p.Devices) == 1 {
+			refused = append(refused, refusal{p.Tag, p.Devices[0], err.Error()})
+			continue
 		}
-		changes[i].Applied = true
-	}
-	after, err := s.DeviceTags(ctx, in.NetworkID)
-	if err != nil {
-		return result.Result{}, fmt.Errorf("the change was sent but reading the tags back failed, so it is not proven: %w", err)
-	}
-	now := map[string][]string{}
-	for _, t := range after {
-		now[t.Name] = t.Devices
-	}
-	for _, p := range plans {
 		for _, d := range p.Devices {
-			holds := slices.Contains(now[p.Tag], d)
-			if (in.Action == "add") != holds {
-				return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("Forward accepted the change but tag %s on %s is not in the requested state", p.Tag, d), result.Deterministic, cx,
-					result.Options{Mode: result.ModeApplied, Changes: changes, Evidence: ev(map[string]any{"held": false}), Limits: limits})
+			if err := send([]string{d}, p.Tag); err != nil {
+				refused = append(refused, refusal{p.Tag, d, err.Error()})
+			} else {
+				sent[i] = append(sent[i], d)
 			}
 		}
+	}
+	// an applied result lists only the changes that were made: one change per tag, naming the devices Forward accepted
+	var made []result.Change
+	for i, p := range plans {
+		if len(sent[i]) == 0 {
+			continue
+		}
+		made = append(made, result.Change{Action: in.Action + "_tag", Target: fmt.Sprintf("tag %s on %s", p.Tag, strings.Join(sent[i], ", ")), Before: strings.Join(have[p.Tag], ","), Applied: true, Reversible: true,
+			Undo: fmt.Sprintf("run edit-device-tags with action %q, tags [%q], devices [%s] and apply=true", opposite, p.Tag, quoteJoin(sent[i]))})
+	}
+	var notHeld []refusal
+	if len(made) > 0 {
+		after, err := s.DeviceTags(ctx, in.NetworkID)
+		if err != nil {
+			return result.Result{}, fmt.Errorf("the change was sent but reading the tags back failed, so it is not proven: %w", err)
+		}
+		now := map[string][]string{}
+		for _, t := range after {
+			now[t.Name] = t.Devices
+		}
+		for i, p := range plans {
+			for _, d := range sent[i] {
+				if (in.Action == "add") != slices.Contains(now[p.Tag], d) {
+					notHeld = append(notHeld, refusal{p.Tag, d, "Forward accepted the request but the tag is not in the requested state afterwards (it may skip a device that is not a collection source)"})
+				}
+			}
+		}
+	}
+	applied := pairCount - len(refused)
+	extra := map[string]any{"applied_pairs": applied - len(notHeld), "refused": refused, "not_in_requested_state": notHeld}
+	if len(refused) > 0 || len(notHeld) > 0 {
+		limits = append(limits, "partly applied: the changes listed were made; the refused or unproven devices are in the evidence with the reason, and the rest of the batch was applied")
+		return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("%s on %d device-tag pair(s) of %d: %d refused by Forward, %d accepted but not in the requested state; see the evidence for each device and reason",
+			in.Action, applied-len(notHeld), pairCount, len(refused), len(notHeld)), result.Deterministic, cx,
+			result.Options{Mode: result.ModeApplied, Changes: made, Evidence: ev(extra), Limits: limits, NextActions: next})
 	}
 	return result.Build(editDeviceTagsName, result.OK, fmt.Sprintf("Applied: %s on %d tag(s)", in.Action, len(plans)), result.Deterministic, cx,
-		result.Options{Mode: result.ModeApplied, Changes: changes, Evidence: ev(map[string]any{"held": true}), Limits: limits, NextActions: next})
+		result.Options{Mode: result.ModeApplied, Changes: made, Evidence: ev(map[string]any{"held": true, "applied_pairs": applied}), Limits: limits, NextActions: next})
 }
 
 func cleanNames(in []string) []string {

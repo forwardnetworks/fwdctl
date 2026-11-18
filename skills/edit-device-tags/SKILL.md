@@ -35,6 +35,7 @@ listing only the devices that would actually change. Show it to the person who a
 1. Read the tags and their devices. An `add` of a tag that does not exist is **failed** (nothing changed).
 2. Keep only the pairs that differ: a device that already has the tag is not touched by `add`; one that lacks it is not touched by `remove`.
 3. Nothing differs: **ok**, nothing changed. Dry run: return the plan. With `apply: true`: send one change per tag, then read the tags back; a pair not in the requested state is **failed**, never ok.
+4. Forward refuses a whole batch when one device is not a collection source. The skill then retries that tag one device at a time, so the rest is applied, and lists each refused device with Forward's reason in the evidence (`refused`); a device Forward accepted but that does not show the tag afterwards is listed in `not_in_requested_state`. Either makes the result **failed** (partly applied); `changes` lists only what was made. A virtual context (a PAN-OS vsys, a virtual device) is not a collection source and is expected to take its tags from the physical device (Forward groups virtual contexts under the physical device's tags in its layout; the tag write API's own handling of one is not verified): tag the physical device.
 
 ## Undo
 
