@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -598,8 +599,8 @@ func TestEditDeviceTagsAppliesTheRestAndReportsEachRefusedDevice(t *testing.T) {
 	if r.Evidence[0].Detail["changes"] == nil || strings.Contains(fmt.Sprint(r.Evidence[0].Detail["changes"]), "fw_vsys3") || !strings.Contains(fmt.Sprint(r.Evidence[0].Detail["planned"]), "fw_vsys3") {
 		t.Errorf("evidence changes lists what Forward accepted, planned what was asked: %v", r.Evidence[0].Detail)
 	}
-	if !strings.Contains(ev, `"parent_device":"fw"`) || !strings.Contains(strings.Join(r.Limits, " "), "staging instant") {
-		t.Errorf("a refused virtual device names its physical device, and the limits say when NQE shows the tag: %s | %v", ev, r.Limits)
+	if !strings.Contains(ev, `"parent_device":"fw"`) || !strings.Contains(strings.Join(r.Limits, " "), "takes effect from snapshot s1") {
+		t.Errorf("a refused virtual device names its physical device, and the limits name the snapshot the change starts from: %s | %v", ev, r.Limits)
 	}
 	if !strings.Contains(ev, `"device":"fw_vsys3"`) || !strings.Contains(ev, "Unregistered device") || !strings.Contains(r.Finding, "1 refused") {
 		t.Errorf("the refusal is named with Forward's reason: %s | %s", r.Finding, ev)
@@ -654,5 +655,71 @@ func TestEditDeviceTagsParentDeviceMatchesByNameCaseByAliasAndKeepsTheRawValue(t
 		if got[d] != w {
 			t.Errorf("%s: parent and raw physical name %v, want %v", d, got[d], w)
 		}
+	}
+}
+
+// Tags written at a processed snapshot show in NQE on that snapshot at once; written at the staging instant they show only after the next collection. The default is the newest processed snapshot.
+// The fake keeps membership per instant (the snapshot id, or "" for staging), so a read or write at the wrong instant is seen.
+func TestEditDeviceTagsWritesAtTheNewestProcessedSnapshotUnlessToldOtherwise(t *testing.T) {
+	var gets, posts []string
+	held := map[string][]string{}
+	instant := func(r *http.Request) string { return r.URL.Query().Get("snapshotId") }
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/snapshots": fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+		"GET /api/networks/n1/device-tags": func(r *http.Request, _ []byte) (int, any) {
+			gets = append(gets, r.URL.RawQuery)
+			ds := []any{}
+			for _, d := range held[instant(r)] {
+				ds = append(ds, d)
+			}
+			return 200, []any{map[string]any{"name": "lab", "devices": ds}}
+		},
+		"POST /api/networks/n1/device-tags": func(r *http.Request, b []byte) (int, any) {
+			posts = append(posts, r.URL.RawQuery)
+			var in struct{ Devices []string }
+			_ = jsonUnmarshal(b, &in)
+			k := instant(r)
+			if strings.Contains(r.URL.RawQuery, "removeBatchFrom") {
+				var keep []string
+				for _, d := range held[k] {
+					if !slices.Contains(in.Devices, d) {
+						keep = append(keep, d)
+					}
+				}
+				held[k] = keep
+			} else {
+				held[k] = append(held[k], in.Devices...)
+			}
+			return 204, nil
+		},
+	}
+	run := func(action, extra string) result.Result {
+		r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"`+action+`","devices":["r1"],"tags":["lab"],"apply":true`+extra+`}`)
+		return r
+	}
+	r := run("add", "")
+	if r.Status != result.OK || len(posts) != 1 || !strings.Contains(posts[0], "snapshotId=s1") || !strings.Contains(posts[0], "addBatchTo") {
+		t.Fatalf("default: written at the newest processed snapshot: %s %s %v", r.Status, r.Finding, posts)
+	}
+	if len(gets) == 0 || !strings.Contains(gets[0], "snapshotId=s1") || !strings.Contains(gets[0], "with=devices") {
+		t.Errorf("membership is read at the same snapshot: %v", gets)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "takes effect from snapshot s1") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+	posts = nil
+	r = run("remove", "")
+	if r.Status != result.OK || len(posts) != 1 || !strings.Contains(posts[0], "snapshotId=s1") || !strings.Contains(posts[0], "removeBatchFrom") || len(held["s1"]) != 0 {
+		t.Fatalf("a removal is written at the snapshot too: %s %s %v %v", r.Status, r.Finding, posts, held)
+	}
+	held, gets, posts = map[string][]string{}, nil, nil
+	r = run("add", `,"snapshot_id":"staging"`)
+	if r.Status != result.OK || len(posts) != 1 || strings.Contains(posts[0], "snapshotId") || !strings.Contains(strings.Join(r.Limits, " "), "snapshot_id is staging") {
+		t.Fatalf("staging: no snapshot on the request: %s %v %v", r.Status, posts, r.Limits)
+	}
+	held, gets, posts = map[string][]string{}, nil, nil
+	r = run("add", `,"snapshot_id":"s1"`)
+	if r.Status != result.OK || len(posts) != 1 || !strings.Contains(posts[0], "snapshotId=s1") {
+		t.Fatalf("an explicit snapshot: %s %v", r.Status, posts)
 	}
 }

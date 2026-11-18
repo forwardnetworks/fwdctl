@@ -36,3 +36,36 @@ func (s *Session) EditLinkOverrides(ctx context.Context, snapshotID string, e fo
 	_, err := s.Client.Topology.EditOverrides(ctx, snapshotID, e)
 	return err
 }
+
+// DeviceTagsAt lists the tag definitions with the devices that carry each as of one snapshot (an empty snapshot id reads the staging instant, as DeviceTags does).
+func (s *Session) DeviceTagsAt(ctx context.Context, networkID, snapshotID string) ([]forward.DeviceTag, error) {
+	if snapshotID == "" {
+		return s.DeviceTags(ctx, networkID)
+	}
+	tags, _, err := s.Client.DeviceTags.ListAt(ctx, networkID, snapshotID)
+	if err == nil {
+		s.Annotate(intp(len(tags)), false)
+	}
+	for i := range tags {
+		sort.Strings(tags[i].Devices)
+	}
+	return tags, err
+}
+
+// AddDeviceTagsAt puts existing tags on devices from one snapshot on (an empty snapshot id writes at the staging instant: the next snapshot). The devices must be names in the snapshot.
+func (s *Session) AddDeviceTagsAt(ctx context.Context, networkID, snapshotID string, devices, tags []string) error {
+	if snapshotID == "" {
+		return s.AddDeviceTags(ctx, networkID, devices, tags)
+	}
+	_, err := s.Client.DeviceTags.AddBatchToAt(ctx, networkID, snapshotID, devices, tags)
+	return err
+}
+
+// RemoveDeviceTagsAt takes tags off devices from one snapshot on (an empty snapshot id writes at the staging instant).
+func (s *Session) RemoveDeviceTagsAt(ctx context.Context, networkID, snapshotID string, devices, tags []string) error {
+	if snapshotID == "" {
+		return s.RemoveDeviceTags(ctx, networkID, devices, tags)
+	}
+	_, err := s.Client.DeviceTags.RemoveBatchFromAt(ctx, networkID, snapshotID, devices, tags)
+	return err
+}

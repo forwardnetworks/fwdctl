@@ -23,7 +23,9 @@ type editDeviceTagsInput struct {
 	Action    string   `json:"action"`
 	Devices   []string `json:"devices"`
 	Tags      []string `json:"tags"`
-	Apply     bool     `json:"apply"`
+	// SnapshotID is the snapshot the change takes effect from (and the one membership is read at): omitted means the newest processed snapshot, "staging" means no snapshot (the next collection).
+	SnapshotID string `json:"snapshot_id"`
+	Apply      bool   `json:"apply"`
 }
 
 // editDeviceTags puts existing tags on devices or takes them off. It reads the current membership first, so it changes only the
@@ -45,12 +47,32 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		return result.Result{}, fmt.Errorf("%w: at most %d devices per run", ErrInvalidInput, maxTagDevices)
 	}
 	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
+	// The snapshot the tags are written at and read at. A tag written without one starts at Forward's staging instant (after every snapshot), so NQE shows it only after the next collection;
+	// written at a processed snapshot it takes effect from that snapshot on (later ones inherit it) and NQE shows it on that snapshot at once.
+	at, atLimits := "", []string(nil)
+	switch strings.TrimSpace(in.SnapshotID) {
+	case "staging":
+		atLimits = append(atLimits, "snapshot_id is staging: the change starts after every existing snapshot, so NQE shows it only in a snapshot collected afterwards")
+	case "":
+		snap, serr := resolveSnapshot(ctx, s, in.NetworkID, "")
+		if serr == nil && fwd.IsReady(snap) {
+			at = fwd.SnapshotID(fwd.Context(in.NetworkID, snap))
+			cx = fwd.Context(in.NetworkID, snap)
+		} else {
+			atLimits = append(atLimits, "no processed snapshot was found, so the change was planned at the staging instant: NQE shows it only in a snapshot collected afterwards")
+		}
+	default:
+		at = strings.TrimSpace(in.SnapshotID)
+		if snap, serr := resolveSnapshot(ctx, s, in.NetworkID, at); serr == nil {
+			cx = fwd.Context(in.NetworkID, snap)
+		}
+	}
 	mode := result.ModeDryRun
 	if in.Apply {
 		mode = result.ModeApplied
 	}
 	next := []string{"inspect-inventory"}
-	defs, err := s.DeviceTags(ctx, in.NetworkID)
+	defs, err := s.DeviceTagsAt(ctx, in.NetworkID, at)
 	if err != nil {
 		return result.Result{}, err
 	}
@@ -103,7 +125,12 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	for _, p := range plans {
 		pairCount += len(p.Devices)
 	}
-	limits := []string{"a tag change takes effect in the network's next snapshot; the devices must be collection sources"}
+	limits := append([]string{}, atLimits...)
+	if at != "" {
+		limits = append(limits, "the change takes effect from snapshot "+at+" on (later snapshots inherit it, earlier ones are untouched); the devices must be names in that snapshot")
+	} else {
+		limits = append(limits, "a tag change takes effect in the network's next snapshot; the devices must be collection sources")
+	}
 	if len(plans) == 0 {
 		return result.Build(editDeviceTagsName, result.OK, "Every requested device already is in the requested state; nothing to change", result.Deterministic, cx,
 			result.Options{Mode: mode, Evidence: ev(nil), NextActions: next})
@@ -116,9 +143,9 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	// the refusal is reported per device with Forward's own words.
 	send := func(devs []string, tag string) error {
 		if in.Action == "add" {
-			return s.AddDeviceTags(ctx, in.NetworkID, devs, []string{tag})
+			return s.AddDeviceTagsAt(ctx, in.NetworkID, at, devs, []string{tag})
 		}
-		return s.RemoveDeviceTags(ctx, in.NetworkID, devs, []string{tag})
+		return s.RemoveDeviceTagsAt(ctx, in.NetworkID, at, devs, []string{tag})
 	}
 	type refusal struct {
 		Tag    string `json:"tag"`
@@ -167,7 +194,7 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	var notHeld []refusal
 	if len(made) > 0 {
-		after, err := s.DeviceTags(ctx, in.NetworkID)
+		after, err := s.DeviceTagsAt(ctx, in.NetworkID, at)
 		if err != nil {
 			return result.Result{}, fmt.Errorf("the change was sent but reading the tags back failed, so it is not proven: %w", err)
 		}
@@ -197,8 +224,7 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	}
 	extra := map[string]any{"applied_pairs": applied - len(notHeld), "refused": refused, "not_in_requested_state": notHeld}
 	if len(refused) > 0 || len(notHeld) > 0 {
-		limits = append(limits, "partly applied: the changes listed were made; the refused or unproven devices are in the evidence with the reason (and, for a virtual device, parent_device when the physical name matches a device Forward lists, and physical_name as recorded; an access point under a controller has no parent recorded), and the rest of the batch was applied",
-			"a tag set here is written at Forward's staging instant (after every existing snapshot), so NQE (device.tagNames) shows it only in a snapshot collected after the change; a snapshot already processed does not")
+		limits = append(limits, "partly applied: the changes listed were made; the refused or unproven devices are in the evidence with the reason (and, for a virtual device, parent_device when the physical name matches a device Forward lists, and physical_name as recorded; an access point under a controller has no parent recorded), and the rest of the batch was applied")
 		return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("%s on %d device-tag pair(s) of %d: %d refused by Forward, %d accepted but not in the requested state; see the evidence for each device and reason",
 			in.Action, applied-len(notHeld), pairCount, len(refused), len(notHeld)), result.Deterministic, cx,
 			result.Options{Mode: result.ModeApplied, Changes: made, Evidence: appliedEv(extra), Limits: limits, NextActions: next})

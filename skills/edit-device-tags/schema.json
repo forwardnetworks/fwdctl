@@ -35,6 +35,10 @@
         "minLength": 1
       }
     },
+    "snapshot_id": {
+      "type": "string",
+      "description": "The snapshot the change takes effect from and membership is read at. Omitted: the newest processed snapshot, so NQE shows the tag on it at once (later snapshots inherit it). \"staging\": no snapshot, the change starts after every existing snapshot (the devices must be collection sources)."
+    },
     "apply": {
       "type": "boolean",
       "default": false
