@@ -259,3 +259,75 @@ func TestGuardRefusalIsNotRetried(t *testing.T) {
 		t.Fatalf("a refused GET took %s: it was retried", d)
 	}
 }
+
+// The CLI commands and the configuration of one device in a change set are plain text. A session limited to a network must still be able to stage them, on exactly those two routes, with the
+// network checked from the path; a text body anywhere else, a JSON body carrying a foreign id, and a foreign network stay refused.
+func TestAllowNetworksLetsDeviceTextBodiesThroughOnlyOnTheTwoTextRoutes(t *testing.T) {
+	ok := fwdtest.Const(204, nil)
+	routes := map[string]fwdtest.Handler{
+		"PUT /api/networks/n1/change-sets/cs1/draft/devices/r1/commands":  ok,
+		"PUT /api/networks/n1/change-sets/cs1/draft/devices/r1/config":    ok,
+		"PUT /api/networks/n2/change-sets/cs1/draft/devices/r1/commands":  ok,
+		"POST /api/networks/n1/paths-bulk":                                ok,
+		"PUT /api/networks/n1/change-sets/cs1/draft/devices/r1/other":     ok,
+		"POST /api/networks/n1/change-sets/cs1/draft/devices/r1/commands": ok,
+		"PUT /api/networks/n1/change-sets/cs1/draft/X/r1/commands":        ok,
+		"PUT /api/networks/n1/X/cs1/draft/devices/r1/commands":            ok,
+		"PUT /api/snapshots/s1/change-sets/cs1/draft/devices/r1/commands": ok,
+		"GET /api/networks/n1/snapshots":                                  fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+	}
+	s, srv := fwdtest.NewWith(t, routes, func(c *fwd.Config) { c.AllowNetworks = []string{"n1"} })
+	text := "interface Gi0/1\n shutdown\nip route 10.0.0.0 255.0.0.0 192.0.2.1\n"
+	send := func(method, path, body, ct string) error {
+		req, err := s.Client.NewRequest(context.Background(), method, path, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ct != "" {
+			req.Header.Set("Content-Type", ct)
+		}
+		_, err = s.Client.Do(req, nil)
+		return err
+	}
+	const plain = "text/plain;charset=UTF-8" // what the SDK sends on both routes
+	for _, p := range []string{"/api/networks/n1/change-sets/cs1/draft/devices/r1/commands", "/api/networks/n1/change-sets/cs1/draft/devices/r1/config"} {
+		if err := send("PUT", p, text, plain); err != nil {
+			t.Errorf("a plain text body on %s must pass: %v", p, err)
+		}
+	}
+	// JSON on a text route is still read and its ids checked: an allowed id passes
+	if err := send("PUT", "/api/networks/n1/change-sets/cs1/draft/devices/r1/commands", `{"snapshotId":"s1"}`, "application/json"); err != nil {
+		t.Errorf("JSON naming an allowed snapshot must pass: %v", err)
+	}
+	cmdPath := "/api/networks/n1/change-sets/cs1/draft/devices/r1/commands"
+	for _, c := range []struct{ method, path, body, ct string }{
+		{"PUT", "/api/networks/n2/change-sets/cs1/draft/devices/r1/commands", text, plain},       // another network: refused from the path
+		{"POST", "/api/networks/n1/paths-bulk", "snapshotId=s2", plain},                          // a text body on another route
+		{"PUT", "/api/networks/n1/change-sets/cs1/draft/devices/r1/other", text, plain},          // another leaf of the same shape
+		{"POST", cmdPath, text, plain},                                                           // the same path with another method
+		{"PUT", cmdPath, `{"snapshotId":"s2"}`, "application/json"},                              // JSON on the text route: ids checked
+		{"PUT", cmdPath, `{"snapshotId":"s2"}`, plain},                                           // JSON-shaped text: read as JSON too
+		{"PUT", "/api/networks/n1/change-sets/cs1/notdraft/devices/r1/commands", text, plain},    // the middle of the path matters
+		{"PUT", "/api/networks/n1/change-sets/cs1/draft/X/r1/commands", text, plain},             // devices segment
+		{"PUT", "/api/networks/n1/X/cs1/draft/devices/r1/commands", text, plain},                 // change-sets segment
+		{"PUT", "/api/snapshots/s1/change-sets/cs1/draft/devices/r1/commands", text, plain},      // networks segment
+		{"PUT", "/api/networks/n1/change-sets/cs1/draft/devices", text, plain},                   // a shorter path
+		{"PUT", "/api/networks/n1/change-sets/cs1/draft/devices/r1/commands/extra", text, plain}, // a longer one
+		{"PUT", cmdPath, "networkId=n2&snapshotId=s2", "application/x-www-form-urlencoded"},      // a form: Forward reads parameters
+		{"PUT", cmdPath, "networkId=n2&snapshotId=s2", "text/html"},                              // another text type is not plain text
+		{"PUT", cmdPath, "networkId=n2&snapshotId=s2", ""},                                       // no type: not claimed to be text
+		{"PUT", cmdPath, "\ufeff{\"snapshotId\":\"s2\"}", "application/json"},                    // a BOM: Go refuses it, a lenient parser may not
+		{"PUT", cmdPath, `{"snapshotId":"s2"} x`, "application/json"},                            // trailing data
+	} {
+		before := len(srv.Calls())
+		err := send(c.method, c.path, c.body, c.ct)
+		if !errors.Is(err, fwd.ErrGuardRefused) {
+			t.Errorf("%s %s (%s): err = %v, want a guard refusal", c.method, c.path, c.ct, err)
+		}
+		for _, sent := range srv.Calls()[before:] { // the guard may read the allowed network's snapshot list to judge an id; the refused request itself must never reach Forward
+			if sent.Method == c.method && sent.Path == c.path {
+				t.Errorf("%s %s: a refused request was sent", c.method, c.path)
+			}
+		}
+	}
+}

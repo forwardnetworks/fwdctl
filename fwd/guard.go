@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"slices"
@@ -172,8 +173,15 @@ func (g *networkGuard) RoundTrip(r *http.Request) (*http.Response, error) {
 				return nil, err
 			}
 			r.Body = io.NopCloser(bytes.NewReader(b))
-			if err := g.bodyAllowed(r, b); err != nil {
-				return nil, err
+			// the CLI commands or the whole configuration of one device in a change set are plain text by design (Predict.StageCommands, SaveDeviceConfig): on exactly those two routes a body
+			// that is not JSON is let through, because the network is fixed by the path (checked above) and the text carries no id. A body that does parse as JSON is still checked, and a text
+			// body on any other route is still refused.
+			// A text body is exempt only when it SAYS it is plain text (the SDK sends text/plain;charset=UTF-8 on both routes): a form or JSON-typed body that Go cannot parse is still refused, because
+			// Forward would read it as parameters or with a more lenient JSON parser. JSON-shaped text is still read as JSON (and may be refused for a key such as networkId).
+			if !(isDeviceTextRoute(r.Method, rest) && isPlainText(r.Header.Get("Content-Type")) && !json.Valid(b)) {
+				if err := g.bodyAllowed(r, b); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -182,6 +190,18 @@ func (g *networkGuard) RoundTrip(r *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 	return g.filterNetworkList(resp)
+}
+
+// isDeviceTextRoute is PUT /api/networks/{id}/change-sets/{id}/draft/devices/{device}/commands or .../config: the two routes whose body is device text (CLI commands, a configuration), not JSON.
+// rest is the path after /api.
+func isDeviceTextRoute(method string, rest []string) bool {
+	return method == http.MethodPut && len(rest) == 8 && rest[0] == "networks" && rest[2] == "change-sets" && rest[4] == "draft" && rest[5] == "devices" && (rest[7] == "commands" || rest[7] == "config")
+}
+
+// isPlainText says a Content-Type is text/plain (parameters such as the charset ignored).
+func isPlainText(contentType string) bool {
+	mt, _, err := mime.ParseMediaType(contentType)
+	return err == nil && mt == "text/plain"
 }
 
 // streamable says a body is an upload (multipart, zip, octet-stream) that holds no ids and is sent unread. Every other body, JSON or not, is read
