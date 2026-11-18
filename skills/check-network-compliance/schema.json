@@ -60,13 +60,15 @@
       "enum": [
         "evaluate",
         "read",
-        "incidents"
+        "incidents",
+        "shadowed_rules"
       ],
       "default": "evaluate",
       "x-values": {
         "evaluate": "run a policy (Forward's checks or NQE violation queries) against the snapshot and judge it",
         "read": "list the checks that already exist and their status",
-        "incidents": "the ServiceNow incidents linked to the snapshot's checks (state); with check_id, each read from ServiceNow with Forward's update history"
+        "incidents": "the ServiceNow incidents linked to the snapshot's checks (state); with check_id, each read from ServiceNow with Forward's update history",
+        "shadowed_rules": "zone-based firewall rules covered by one earlier rule (redundant or ineffective candidates), from the ACL entries Forward models; needs no policy"
       }
     },
     "check_id": {

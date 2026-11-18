@@ -72,7 +72,7 @@
    "expected_behavior": [
     "reads reference/soc-toolkit-map.md and answers by workflow: monitor, investigate, contain, recover, vulnerabilities, posture, evidence",
     "names the skill for each covered question and says which are partial",
-    "says plainly what is a gap (SNMP trap incidents, shadowed firewall rules, device certificate expiry, wireless and NAC posture) and what is outside Forward (event logs, packets, threat intelligence, applying a change)",
+    "says plainly what is a gap (SNMP trap incidents, device certificate expiry, wireless and NAC posture) and that shadowed firewall rules are only partly covered (candidates on PAN-OS, to confirm) and what is outside Forward (event logs, packets, threat intelligence, applying a change)",
     "does not claim compliance or detection coverage it does not have"
    ]
   }

@@ -35,3 +35,7 @@ func RoutingRowsCap(n int) (restore func()) {
 
 // NHEqual exposes the next-hop comparison to the table test.
 func NHEqual(x, y string) (equal, ifaceNotCompared bool) { return nhEqual(x, y) }
+
+// ShadowRowsQuery and ShadowCountsQuery expose the two NQE queries of view shadowed_rules to the external tests.
+func ShadowRowsQuery() string   { return shadowRowsQuery }
+func ShadowCountsQuery() string { return shadowCountsQuery }

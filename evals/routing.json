@@ -30,6 +30,11 @@
     "rival": "inspect-history"
   },
   {
+    "query": "Which firewall rules are shadowed by an earlier rule and can be removed?",
+    "expect": "check-network-compliance",
+    "rival": "plan-security-posture"
+  },
+  {
     "query": "Users report the network is slow, help me triage this incident",
     "expect": "plan-incident-triage",
     "rival": "plan-security-posture"

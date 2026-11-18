@@ -111,6 +111,16 @@
     "checks that the firewalls report rule usage before saying there are none",
     "calls a firewall with no usage data unknown"
    ]
+  },
+  {
+   "query": "Which of our firewall rules are shadowed, and which can I safely delete?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs check-network-compliance with view shadowed_rules and reads reference/shadowed-rules.md",
+    "reports each candidate as redundant or ineffective with the covering rule, and says it must be confirmed in the rule base because application, user and schedule conditions are not in the model",
+    "says how many rules were analyzed and why the rest were not (no zone scope, no IP version), and that an any-to-any rule above others and union coverage are not detected",
+    "treats 'none found' as unknown, never as clean, and does not delete anything"
+   ]
   }
  ],
  "measure": [

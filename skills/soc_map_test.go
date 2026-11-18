@@ -104,7 +104,7 @@ func TestSocToolkitMapNamesOnlyRealThingsAndKeepsItsGaps(t *testing.T) {
 	if rows < 38 {
 		t.Errorf("only %d rows: the map was cut", rows)
 	}
-	if statuses["covered"] < 14 || statuses["partial"] < 12 || statuses["gap"] < 4 || statuses["outside"] < 3 {
+	if statuses["covered"] < 14 || statuses["partial"] < 12 || statuses["gap"] < 3 || statuses["outside"] < 3 {
 		t.Errorf("the map should say what is covered, partial, a gap and outside: %v", statuses)
 	}
 }
@@ -118,7 +118,6 @@ func TestSocToolkitMapGapsAreNotCoveredBySomeSkill(t *testing.T) {
 	}
 	gaps := map[string]*regexp.Regexp{
 		"Incidents raised from device SNMP traps":              regexp.MustCompile(`(?i)\btraps?\b`),
-		"Which firewall rules are shadowed or redundant":       regexp.MustCompile(`(?i)shadow`),
 		"Which device certificates are about to expire":        regexp.MustCompile(`(?i)certificate expir|cert expir|expiring certificate`),
 		"Wireless networks (SSIDs) and network access control": regexp.MustCompile(`(?i)wireless|\bssid|802\.1x|\bNAC\b`),
 	}
