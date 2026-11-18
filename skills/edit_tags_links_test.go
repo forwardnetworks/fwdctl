@@ -580,6 +580,13 @@ func tagRefusingRoutes(bad ...string) (map[string]fwdtest.Handler, *map[string][
 
 func TestEditDeviceTagsAppliesTheRestAndReportsEachRefusedDevice(t *testing.T) {
 	routes, state := tagRefusingRoutes("fw_vsys3")
+	routes["GET /api/networks/n1/snapshots"] = fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"))
+	routes["POST /api/nqe"] = func(_ *http.Request, body []byte) (int, any) {
+		if !strings.Contains(string(body), "physicalName") {
+			return 400, map[string]any{"message": "unexpected query"}
+		}
+		return 200, map[string]any{"items": []any{map[string]any{"name": "fw_vsys3", "physical": "fw"}}, "totalNumItems": 1}
+	}
 	r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"add","devices":["r1","fw_vsys3","r2"],"tags":["lab"],"apply":true}`)
 	if r.Status != result.Failed || len(r.Changes) != 1 || !r.Changes[0].Applied || strings.Contains(r.Changes[0].Target, "fw_vsys3") {
 		t.Fatalf("one refused device: the others are applied and listed, the refused one is not: %s %s %+v", r.Status, r.Finding, r.Changes)
@@ -588,6 +595,9 @@ func TestEditDeviceTagsAppliesTheRestAndReportsEachRefusedDevice(t *testing.T) {
 		t.Errorf("the other devices must be tagged: %s", got)
 	}
 	ev := jsonOf(r)
+	if !strings.Contains(ev, `"parent_device":"fw"`) || !strings.Contains(strings.Join(r.Limits, " "), "staging instant") {
+		t.Errorf("a refused virtual device names its physical device, and the limits say when NQE shows the tag: %s | %v", ev, r.Limits)
+	}
 	if !strings.Contains(ev, `"device":"fw_vsys3"`) || !strings.Contains(ev, "Unregistered device") || !strings.Contains(r.Finding, "1 refused") {
 		t.Errorf("the refusal is named with Forward's reason: %s | %s", r.Finding, ev)
 	}

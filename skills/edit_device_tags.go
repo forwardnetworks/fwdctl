@@ -124,6 +124,9 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		Tag    string `json:"tag"`
 		Device string `json:"device"`
 		Reason string `json:"reason"`
+		// ParentDevice is the physical device a refused virtual device (a firewall virtual system, a wireless access point under its controller) belongs to, read from the newest processed
+		// snapshot (device.system.physicalName). Empty when the device is not virtual there or the read failed.
+		ParentDevice string `json:"parent_device,omitempty"`
 	}
 	var refused []refusal
 	sent := make([][]string, len(plans)) // the devices Forward accepted, per plan
@@ -132,12 +135,12 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 			sent[i] = p.Devices
 			continue
 		} else if len(p.Devices) == 1 {
-			refused = append(refused, refusal{p.Tag, p.Devices[0], err.Error()})
+			refused = append(refused, refusal{p.Tag, p.Devices[0], err.Error(), ""})
 			continue
 		}
 		for _, d := range p.Devices {
 			if err := send([]string{d}, p.Tag); err != nil {
-				refused = append(refused, refusal{p.Tag, d, err.Error()})
+				refused = append(refused, refusal{p.Tag, d, err.Error(), ""})
 			} else {
 				sent[i] = append(sent[i], d)
 			}
@@ -152,6 +155,14 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		made = append(made, result.Change{Action: in.Action + "_tag", Target: fmt.Sprintf("tag %s on %s", p.Tag, strings.Join(sent[i], ", ")), Before: strings.Join(have[p.Tag], ","), Applied: true, Reversible: true,
 			Undo: fmt.Sprintf("run edit-device-tags with action %q, tags [%q], devices [%s] and apply=true", opposite, p.Tag, quoteJoin(sent[i]))})
 	}
+	if len(refused) > 0 {
+		parents := physicalParents(ctx, s, in.NetworkID)
+		for i := range refused {
+			if p := parents[refused[i].Device]; p != "" {
+				refused[i].ParentDevice = p
+			}
+		}
+	}
 	var notHeld []refusal
 	if len(made) > 0 {
 		after, err := s.DeviceTags(ctx, in.NetworkID)
@@ -165,7 +176,7 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		for i, p := range plans {
 			for _, d := range sent[i] {
 				if (in.Action == "add") != slices.Contains(now[p.Tag], d) {
-					notHeld = append(notHeld, refusal{p.Tag, d, "Forward accepted the request but the tag is not in the requested state afterwards (it may skip a device that is not a collection source)"})
+					notHeld = append(notHeld, refusal{p.Tag, d, "Forward accepted the request but the tag is not in the requested state afterwards (it may skip a device that is not a collection source)", ""})
 				}
 			}
 		}
@@ -173,7 +184,8 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 	applied := pairCount - len(refused)
 	extra := map[string]any{"applied_pairs": applied - len(notHeld), "refused": refused, "not_in_requested_state": notHeld}
 	if len(refused) > 0 || len(notHeld) > 0 {
-		limits = append(limits, "partly applied: the changes listed were made; the refused or unproven devices are in the evidence with the reason, and the rest of the batch was applied")
+		limits = append(limits, "partly applied: the changes listed were made; the refused or unproven devices are in the evidence with the reason (and, for a virtual device, parent_device: the physical device to tag instead), and the rest of the batch was applied",
+			"a tag set here is written at Forward's staging instant (after every existing snapshot), so NQE (device.tagNames) shows it only in a snapshot collected after the change; a snapshot already processed does not")
 		return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("%s on %d device-tag pair(s) of %d: %d refused by Forward, %d accepted but not in the requested state; see the evidence for each device and reason",
 			in.Action, applied-len(notHeld), pairCount, len(refused), len(notHeld)), result.Deterministic, cx,
 			result.Options{Mode: result.ModeApplied, Changes: made, Evidence: ev(extra), Limits: limits, NextActions: next})
@@ -201,3 +213,29 @@ func quoteJoin(ss []string) string {
 	}
 	return strings.Join(q, ", ")
 }
+
+// physicalParents maps a modeled device that is part of a physical one (a firewall virtual system, an access point listed under its controller) to the physical device, from the newest processed
+// snapshot's device.system.physicalName. It returns nothing when the snapshot or the read is unavailable: the parent is a help, not part of the result.
+func physicalParents(ctx context.Context, s *fwd.Session, networkID string) map[string]string {
+	snap, err := resolveSnapshot(ctx, s, networkID, "")
+	if err != nil || !fwd.IsReady(snap) {
+		return nil
+	}
+	rows, _, _, err := s.RunNQEAll(ctx, networkID, fwd.SnapshotID(fwd.Context(networkID, snap)), physicalParentsQuery, 200000)
+	if err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, r := range rows {
+		n, _ := r["name"].(string)
+		p, _ := r["physical"].(string)
+		if n != "" && p != "" && p != n {
+			out[n] = p
+		}
+	}
+	return out
+}
+
+const physicalParentsQuery = `foreach device in network.devices
+where device.system.physicalName != device.name
+select { name: device.name, physical: device.system.physicalName }`
