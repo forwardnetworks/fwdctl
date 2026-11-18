@@ -35,13 +35,13 @@ func TestNQEFeaturesListsEachFlagWithItsOrgPropertyDefaultAndKind(t *testing.T) 
 			t.Errorf("incomplete: %+v", f)
 		}
 	}
-	if len(got.Features) != 10 || by["security-rules-panos"] || !by["cis-benchmarks"] || !by["trim-builtin"] {
+	if len(got.Features) != 11 || by["security-rules-panos"] || by["lldp-chassis-id"] || !by["cis-benchmarks"] || !by["trim-builtin"] {
 		t.Errorf("features = %v", by)
 	}
 	if !strings.Contains(got.Note, "NQE_ORDERED_LIST") {
 		t.Errorf("the note should say ordered lists are retired: %q", got.Note)
 	}
-	_, out, _ = call(t, []string{"nqe", "features", "--features", "security-rules-fortios,device-services"}, "", nil)
+	_, out, _ = call(t, []string{"nqe", "features", "--features", "security-rules-fortios,lldp-chassis-id"}, "", nil)
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestNQEFeaturesListsEachFlagWithItsOrgPropertyDefaultAndKind(t *testing.T) 
 	for _, f := range got.Features {
 		on[f.Name] = f.Enabled
 	}
-	if !on["security-rules-fortios"] || !on["device-services"] || on["security-rules-panos"] {
+	if !on["security-rules-fortios"] || !on["lldp-chassis-id"] || on["security-rules-panos"] {
 		t.Errorf("with --features: %v", on)
 	}
 }
@@ -140,7 +140,7 @@ func TestNQEFeaturesMarksTheSecurityRulesFeaturesExperimental(t *testing.T) {
 		}
 	}
 	_, help, _ := call(t, []string{"nqe", "features", "--help"}, "", nil)
-	if n != 2 || !strings.Contains(help, "EXPERIMENTAL") || !strings.Contains(help, "NQE_SECURITY_RULES_PANOS") || !strings.Contains(help, "26.10") {
+	if n != 2 || !strings.Contains(help, "EXPERIMENTAL") || !strings.Contains(help, "NQE_SECURITY_RULES_PANOS") || !strings.Contains(help, "26.11") {
 		t.Errorf("help: %s", help)
 	}
 }

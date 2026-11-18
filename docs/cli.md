@@ -515,7 +515,7 @@ Flags:
 
 ## fwdctl nqe features
 
-A feature flag is an org property that switches a change in the model or the data on: setting it enables the fields, types or functions listed against it, and an organization without it does not have them. Forward serves each organization an NQE schema filtered by its feature flags. The offline checker uses Forward's defaults; --features turns flags on, as an organization with them would have, so a query using a field behind a flag checks clean. The Palo Alto and Fortinet security policy features (security-rules-panos and security-rules-fortios, org properties NQE_SECURITY_RULES_PANOS and NQE_SECURITY_RULES_FORTIOS) are EXPERIMENTAL in Forward, still so in 26.10, and off by default: device.securityPolicy exists only in an organization that has one of them turned on, so offline you need --features for it, or `nqe lint --org`. `nqe lint --org` reads the organization's own live schema and is the authority for one organization. Kinds: schema (fields and types), language (a function), runtime (storage and summaries: no effect on the checker).
+A feature flag is an org property that switches a change in the model or the data on: setting it enables the fields, types or functions listed against it, and an organization without it does not have them. Forward serves each organization an NQE schema filtered by its feature flags. The offline checker uses Forward's defaults; --features turns flags on, as an organization with them would have, so a query using a field behind a flag checks clean. The Palo Alto and Fortinet security policy features (security-rules-panos and security-rules-fortios, org properties NQE_SECURITY_RULES_PANOS and NQE_SECURITY_RULES_FORTIOS) are EXPERIMENTAL in Forward, still so in 26.11, and off by default: device.securityPolicy exists only in an organization that has one of them turned on, so offline you need --features for it, or `nqe lint --org`. `nqe lint --org` reads the organization's own live schema and is the authority for one organization. Kinds: schema (fields and types), language (a function), runtime (storage and summaries: no effect on the checker).
 
 ```
 fwdctl nqe features [flags]
@@ -525,7 +525,7 @@ Examples:
 
 ```
   fwdctl nqe features
-  fwdctl nqe features --features security-rules-fortios,device-services
+  fwdctl nqe features --features security-rules-fortios,lldp-chassis-id
 ```
 
 Flags:
