@@ -23,9 +23,11 @@ creates or deletes a tag definition: `edit-network` (object `tag`, action `creat
 
 ## Inputs
 
+**The default changed: a change is now written at the newest processed snapshot, not at the staging instant.** Use `snapshot_id: "staging"` for the old behaviour (a change that starts with the next collection).
+
 `network_id`, `action` (`add` or `remove`), `devices` (names, at most 200), `tags` (names of tags that exist). Optional: `snapshot_id` and `apply` (default false). See `schema.json`.
 
-`snapshot_id` is the snapshot the change takes effect from and the one membership is read at. Omitted, it is the **newest processed snapshot**: Forward writes the tag at that snapshot's instant (later snapshots inherit it, earlier ones are untouched), the devices need only be names in that snapshot (a firewall virtual system or an access point passes), and NQE `device.tagNames` shows the tag on that snapshot at once, so a tag can be written and read back by a sync without a new collection. `"staging"` writes no snapshot: the change starts after every existing snapshot, the devices must be collection sources, and NQE shows it only in a snapshot collected afterwards. With no processed snapshot the skill falls back to staging and says so. From Forward's source and API spec; the immediate NQE visibility has not been confirmed live.
+`snapshot_id` is the snapshot the change takes effect from and the one membership is read at. Omitted, it is the **newest processed snapshot**: Forward writes the tag at that snapshot's instant (later snapshots inherit it, earlier ones are untouched), the devices need only be names in that snapshot (a firewall virtual system or an access point passes), and NQE `device.tagNames` shows the tag on that snapshot at once, so a tag can be written and read back by a sync without a new collection. `"staging"` writes no snapshot: the change starts after every existing snapshot, the devices must be collection sources, and NQE shows it only in a snapshot collected afterwards. With no processed snapshot the skill falls back to staging and says so. Confirmed live on a production network (2,912 devices, including firewall virtual systems and wireless access points that the staging write refuses): NQE showed every written tag on that snapshot at once, while tags written earlier at staging were not visible to NQE until rewritten at the snapshot.
 
 ## Dry run
 
