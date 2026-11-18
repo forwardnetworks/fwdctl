@@ -202,3 +202,44 @@ func TestLocationAssignExplainsForwardsRefusal(t *testing.T) {
 		t.Fatalf("Forward's refusal is explained: %v", err)
 	}
 }
+
+func TestEditNetworkTagCreateMakesTheDefinitionIdempotentlyAndSaysHowToUndo(t *testing.T) {
+	var tags []any
+	var posted []byte
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/device-tags": func(*http.Request, []byte) (int, any) { return 200, tags },
+		"POST /api/networks/n1/device-tags": func(_ *http.Request, b []byte) (int, any) {
+			posted = b
+			tags = []any{map[string]any{"name": "dmz", "color": "#112233"}}
+			return 200, nil
+		},
+	}
+	in := `{"network_id":"n1","object":"tag","action":"create","name":"dmz","definition":{"color":"#112233"}`
+	r, srv := mustRun(t, "edit-network", routes, in+`}`)
+	if r.Status != result.OK || writes(srv) != 0 || len(r.Changes) != 1 || !r.Changes[0].Reversible || r.Changes[0].Action != "create_tag" {
+		t.Fatalf("dry run: %s %s %+v", r.Status, r.Finding, r.Changes)
+	}
+	r, _ = mustRun(t, "edit-network", routes, in+`,"apply":true}`)
+	if r.Status != result.OK || !strings.Contains(string(posted), `"dmz"`) || !strings.Contains(string(posted), "#112233") {
+		t.Fatalf("apply: %s %s body %s", r.Status, r.Finding, posted)
+	}
+	posted = nil
+	r, _ = mustRun(t, "edit-network", routes, in+`,"apply":true}`)
+	if posted != nil || !strings.Contains(r.Finding, "Already as asked") {
+		t.Errorf("an existing tag is a no-op, nothing sent: %s %s", r.Finding, posted)
+	}
+	if _, _, err := runSkill(t, "edit-network", routes, `{"network_id":"n1","object":"tag","action":"create","name":"x","definition":{"color":"red"}}`); err == nil {
+		t.Errorf("a color that is not #rrggbb is refused")
+	}
+}
+
+func TestEditNetworkTagCreateIsNotProvenWhenTheReadBackLacksIt(t *testing.T) {
+	routes := map[string]fwdtest.Handler{
+		"GET /api/networks/n1/device-tags":  func(*http.Request, []byte) (int, any) { return 200, []any{} },
+		"POST /api/networks/n1/device-tags": func(*http.Request, []byte) (int, any) { return 200, nil },
+	}
+	r, _ := mustRun(t, "edit-network", routes, `{"network_id":"n1","object":"tag","action":"create","name":"dmz","apply":true}`)
+	if r.Status != result.Failed {
+		t.Errorf("a create the read-back does not show must fail: %s %s", r.Status, r.Finding)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -587,6 +588,38 @@ func planTag(ctx context.Context, s *fwd.Session, in editNetworkInput) (*network
 			cur = &tags[i]
 		}
 	}
+	if in.Action == "create" {
+		if cur != nil {
+			return &networkPlan{noop: fmt.Sprintf("tag %q already exists on network %s", in.Name, in.NetworkID)}, nil
+		}
+		var def struct {
+			Color string `json:"color"`
+		}
+		if len(in.Definition) > 0 {
+			if err := decodeDefinition(in.Definition, &def, "color (#rrggbb, optional)"); err != nil {
+				return nil, err
+			}
+		}
+		if def.Color != "" && !regexp.MustCompile(`^#[0-9a-fA-F]{6}$`).MatchString(def.Color) {
+			return nil, fmt.Errorf("%w: color %q must be #rrggbb", ErrInvalidInput, def.Color)
+		}
+		return &networkPlan{target: fmt.Sprintf("create tag %q on network %s (no devices carry it yet)", in.Name, in.NetworkID), action: "create_tag", before: nil, after: map[string]any{"name": in.Name, "color": def.Color}, reversible: true,
+			undo:   "delete the tag (object tag, action delete, confirm = the name); a tag with no devices loses no assignments",
+			limits: []string{"uses Forward's add-batch for tag definitions, which ignores a definition that already exists; put the tag on devices with edit-device-tags"},
+			do: func(ctx context.Context) error {
+				_, err := s.Client.DeviceTags.AddBatch(ctx, in.NetworkID, []forward.DeviceTag{{Name: in.Name, Color: def.Color}})
+				return err
+			},
+			verify: func(ctx context.Context) (bool, any, error) {
+				l, _, e := s.Client.DeviceTags.List(ctx, in.NetworkID, "")
+				for _, t := range l {
+					if t.Name == in.Name {
+						return true, nil, e
+					}
+				}
+				return false, map[string]any{"listed": false}, e
+			}}, nil
+	}
 	if cur == nil {
 		return nil, nil
 	}
@@ -631,7 +664,7 @@ func planTag(ctx context.Context, s *fwd.Session, in editNetworkInput) (*network
 				return true, nil, e
 			}}, nil
 	}
-	return nil, fmt.Errorf("%w: object tag takes action update or delete", ErrInvalidInput)
+	return nil, fmt.Errorf("%w: object tag takes action create, update or delete", ErrInvalidInput)
 }
 
 // planCollector attaches a registered collector to a network (action assign, definition {"username": "<collector username>"}). The SDK has no detach, so the undo is

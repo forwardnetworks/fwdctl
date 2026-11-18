@@ -21,7 +21,7 @@ A cluster groups devices at a location. `create` needs `location_id`, `name` and
 
 ## tag
 
-`update` renames a tag definition (its assignments move with it) or changes its color. `delete` removes the definition and takes the tag off every device across the network's whole timeline. Putting a tag on or off named devices is `edit-device-tags`.
+`create` makes a tag definition (`name`, optional `definition` {`color`: `#rrggbb`}); it is idempotent (an existing tag is reported as already there) and undone by `delete`, since a new tag has no devices. `update` renames a tag definition (its assignments move with it) or changes its color. `delete` removes the definition and takes the tag off every device across the network's whole timeline. Putting a tag on or off named devices is `edit-device-tags`.
 
 ## threat_exposure and asset_criticality (EXPERIMENTAL)
 Threat exposure is Forward's experimental feature, switched on by the organization property `THREAT_EXPOSURE` (an on-premises organization administrator or Forward support changes it; on SaaS only Forward support, through edit-org-property with org_id), gated by the security licence facet and the permissions `EDIT_THREAT_EXPOSURE`, `EVALUATE_THREAT_EXPOSURE` and `EDIT_ASSET_CRITICALITIES`; a build that does not serve its routes answers 404. Every answer says EXPERIMENTAL. Read the results with `inspect-vulnerabilities` option `threat_exposure_experimental`.

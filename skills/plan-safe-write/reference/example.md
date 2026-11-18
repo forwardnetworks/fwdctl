@@ -11,4 +11,4 @@ Illustrative: the shape of a good run, with results shortened.
 5. Apply once: the same call with `apply: true` -> `ok`, `mode: applied`; the skill read the tags back and both devices carry `edge`.
 6. Report: done, with the undo.
 
-If the person had said "tag them with a new tag called dmz", the skill would refuse (it never creates a tag; a tag definition cannot be removed through the API): say so and ask them to create the tag in Forward first.
+If the person had said "tag them with a new tag called dmz", the skill would refuse (it never creates a tag): say so, and create the definition first with `edit-network` (object `tag`, action `create`; a dry run first, undone by `delete`), then apply it with `edit-device-tags`.

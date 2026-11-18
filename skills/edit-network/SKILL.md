@@ -18,7 +18,7 @@ metadata:
 
 ## Intent
 
-Manage the objects around a network: the network itself, its locations and device clusters, its device tag definitions (rename or delete; a tag is created by putting it on a device), attaching a registered collector, and, experimental, threat exposure definitions and asset criticality. Putting tags on devices is `edit-device-tags`; this changes the definitions. It touches no device.
+Manage the objects around a network: the network itself, its locations and device clusters, its device tag definitions (create, rename or delete; `edit-device-tags` then puts a tag on devices), attaching a registered collector, and, experimental, threat exposure definitions and asset criticality. Putting tags on devices is `edit-device-tags`; this changes the definitions. It touches no device.
 
 ## Inputs
 

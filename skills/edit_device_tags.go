@@ -28,7 +28,7 @@ type editDeviceTagsInput struct {
 
 // editDeviceTags puts existing tags on devices or takes them off. It reads the current membership first, so it changes only the
 // device and tag pairs that differ (an add of a tag a device already has is not repeated, a removal of one it lacks is not sent), the
-// dry run lists exactly those, and the undo is the opposite action on exactly those. It never creates or deletes a tag definition.
+// dry run lists exactly those, and the undo is the opposite action on exactly those. It never creates or deletes a tag definition (edit-network does).
 func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (result.Result, error) {
 	var in editDeviceTagsInput
 	if err := json.Unmarshal(raw, &in); err != nil {
@@ -65,7 +65,7 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 	}
 	if in.Action == "add" && len(missing) > 0 {
-		return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("The network has no tag %s; this skill applies existing tags and never creates one", strings.Join(missing, ", ")), result.Deterministic, cx,
+		return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("The network has no tag %s; this skill applies existing tags and never creates one; create it first with edit-network (object tag, action create, name)", strings.Join(missing, ", ")), result.Deterministic, cx,
 			result.Options{Mode: mode, NextActions: next, Evidence: []result.Evidence{result.NewEvidence(result.EvState, "deviceTags", nil, map[string]any{"missing_tags": missing, "existing_tags": len(have)}, "")}, Limits: []string{"nothing was changed; create the tag in Forward first (a tag definition cannot be removed through the API, so this skill does not create them)"}})
 	}
 	// the pairs that actually change, per tag

@@ -121,7 +121,7 @@ Policy checks, evidence, a device or a site under review.
 - `inspect-platform`: Read how Forward is set up (credentials, jump servers, proxies, collectors, cloud setups, webhooks, licensing, backups, SAML, organizations), with every secret removed.
 - `edit-source` *(writes, dry run first, secrets from a file)*: Add CLI, SNMP and HTTP credentials (login, enable, expert and shell kinds), jump servers, proxies, devices (with the enable credential and BGP collection options) and endpoints (Linux hosts, SNMP and HTTP devices). Many at once from one file: `fwdctl source apply`.
 - `edit-platform` *(writes, dry run first)*: Change organization-wide admin settings: banners (custom banners; `inspect-platform` also reads the system announcement and critical states), webhooks, trusted certificates, device access labels, backups (cancel, delete), integrations (secrets from a file), collectors (register one, delete one), CLI endpoint profiles, collection settings, SAML, API token deletion, licensing, organizations and the CVE index.
-- `edit-network` *(writes, dry run first)*: Create, rename or delete a network; add locations and device clusters; rename or delete device tag definitions.
+- `edit-network` *(writes, dry run first)*: Create, rename or delete a network; add locations and device clusters; create, rename or delete device tag definitions.
 - `edit-alias` *(writes, dry run first)*: Create, replace or end an alias (a named group of hosts, devices, interfaces or headers that checks refer to by name); it applies from the snapshot it is put on.
 
 ### Health and collection

@@ -19,7 +19,7 @@ metadata:
 ## Intent
 
 Tags group devices for checks, searches and access rules. This skill adds a tag to devices or removes it, and nothing else: it never
-creates or deletes a tag definition (the API cannot remove one, so creating one could not be undone).
+creates or deletes a tag definition: `edit-network` (object `tag`, action `create`, `update` or `delete`) does, and a tag must exist before this skill applies it.
 
 ## Inputs
 
