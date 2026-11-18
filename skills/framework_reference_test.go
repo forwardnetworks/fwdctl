@@ -14,7 +14,19 @@ import (
 // an assistant to nothing, so every skill-shaped name in the table must exist; each mapped row has the five cells and a level of evidence or partial, and the page keeps its warning that the CSF
 // has no pass or fail.
 func TestNISTCSFReferenceNamesOnlyRealSkillsAndKeepsItsCaveats(t *testing.T) {
-	b, err := os.ReadFile("plan-compliance-audit/reference/nist-csf-2.md")
+	checkFrameworkReference(t, "plan-compliance-audit/reference/nist-csf-2.md", regexp.MustCompile(`^\| ([A-Z]{2}\.[A-Z]{2}-\d\d) \|`), 20,
+		[]string{"no pass or fail", "Never answer \"compliant with the CSF\"", "not evidenced by Forward", "ours, not NIST's", "topic: security"})
+}
+
+// The DORA reference has the same rules: every skill, kind, view and input it names exists, each row has five cells and a level, and the page keeps its caveats and its pointer to the features view.
+func TestDORAReferenceNamesOnlyRealSkillsAndKeepsItsCaveats(t *testing.T) {
+	checkFrameworkReference(t, "plan-compliance-audit/reference/dora.md", regexp.MustCompile(`^\| (\d+[^|]*?) \|`), 9,
+		[]string{"Never answer \"compliant with DORA\"", "not evidenced by Forward", "ours, not a regulator's", "topic: security", "our paraphrase"})
+}
+
+func checkFrameworkReference(t *testing.T, path string, rowRe *regexp.Regexp, minRows int, caveats []string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +38,6 @@ func TestNISTCSFReferenceNamesOnlyRealSkillsAndKeepsItsCaveats(t *testing.T) {
 	prefix := regexp.MustCompile(`^(inspect|investigate|check|plan|verify|compare|edit|find|author|validate)-[a-z-]+$`)
 	token := regexp.MustCompile("`([^`]+)`")
 	rows := 0
-	rowRe := regexp.MustCompile(`^\| ([A-Z]{2}\.[A-Z]{2}-\d\d) \|`)
 	for _, line := range strings.Split(text, "\n") {
 		m := rowRe.FindStringSubmatch(line)
 		if m == nil {
@@ -71,18 +82,18 @@ func TestNISTCSFReferenceNamesOnlyRealSkillsAndKeepsItsCaveats(t *testing.T) {
 			}
 		}
 	}
-	if rows < 20 {
-		t.Errorf("only %d mapped rows; the table is gone or the format changed", rows)
+	if rows < minRows {
+		t.Errorf("%s: only %d mapped rows; the table is gone or the format changed", path, rows)
 	}
-	for _, want := range []string{"no pass or fail", "Never answer \"compliant with the CSF\"", "not evidenced by Forward", "ours, not NIST's"} {
+	for _, want := range caveats {
 		if !strings.Contains(text, want) {
-			t.Errorf("the reference lost %q", want)
+			t.Errorf("%s lost %q", path, want)
 		}
 	}
 }
 
 // nonSkillNames are names a row may use that are not in a skill's schema: an NQE field of the data model.
-var nonSkillNames = map[string]bool{"device.services": true}
+var nonSkillNames = map[string]bool{"device.services": true, "reading-paths.md": true}
 
 func keys(m map[string]bool) []string {
 	var out []string

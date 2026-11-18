@@ -518,6 +518,11 @@
     "rival": "inspect-environment"
   },
   {
+    "query": "Which security and audit features are switched off in our organization, and what evidence does that cost us?",
+    "expect": "inspect-environment",
+    "rival": "plan-security-posture"
+  },
+  {
     "query": "Create a new empty network called staging",
     "expect": "edit-network",
     "rival": "edit-workspace"

@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
+	"github.com/forwardnetworks/fwdctl/knowledge"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 // cfgRoutes serves Forward's configuration API: /api/config answers by its filter (OFF = every property, the rest the subsets Forward defines) and /api/global-config the
@@ -263,5 +266,126 @@ func TestEnvironmentReportsTheLicenseTierAndMarksUnlicensedFeatures(t *testing.T
 	rows, _ = featureRows(t, r)
 	if rows["predict_modeling"]["licensed"] != true {
 		t.Errorf("NSP includes Predict: %v", rows["predict_modeling"])
+	}
+}
+
+// The features that unlock security and audit evidence are rows of the same table, tagged topic security, so an audit can read them and say which missing evidence an off property explains: an off
+// one carries what is missing and who may change it (a support-only property says so); a non-security row has no topic; a property the build does not return is said to be absent.
+func TestEnvironmentFeaturesTagSecurityRowsAndSayWhatMissingEvidenceAnOffOneExplains(t *testing.T) {
+	routes := cfgRoutes(
+		map[string]any{"cis_benchmarks": false, "threat_exposure": false, "nqe_device_services": true, "audit_logs_retention_days": 90, "copy_credentials": "DISABLED"},
+		map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{"cis_benchmarks": true})
+	r, _ := mustRun(t, "inspect-environment", routes, `{}`)
+	rows, f := featureRows(t, r)
+	cis := rows["cis_benchmarks"]
+	if cis["topic"] != "security" || cis["state"] != "off" || !strings.Contains(fmt.Sprint(cis["symptom_when_off"]), "not the same as no findings") || cis["who_can_change_it"] == nil {
+		t.Errorf("an off CIS feature says what evidence is missing: %v", cis)
+	}
+	if ds := rows["nqe_device_services"]; ds["topic"] != "security" || ds["state"] != "on" || ds["symptom_when_off"] != nil {
+		t.Errorf("an on security feature carries no symptom: %v", ds)
+	}
+	if rows["copy_credentials"]["topic"] != nil {
+		t.Errorf("copy_credentials is not a security-evidence feature: %v", rows["copy_credentials"])
+	}
+	if al := rows["audit_logs_retention_days"]; al["topic"] != "security" || al["state"] != "value" || al["value"] != float64(90) && al["value"] != "90" && fmt.Sprint(al["value"]) != "90" {
+		t.Errorf("audit log retention is a value: %v", al)
+	}
+	missing, _ := json.Marshal(f["not_defined_by_this_build"])
+	if !strings.Contains(string(missing), "snmp_trap_monitoring") || rows["snmp_trap_monitoring"] != nil {
+		t.Errorf("a property the build does not return is absent, not guessed: %s", missing)
+	}
+	// a support-only property says who can change it
+	routes = cfgRoutes(map[string]any{"snmp_trap_monitoring": false}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})
+	r, _ = mustRun(t, "inspect-environment", routes, `{}`)
+	rows, _ = featureRows(t, r)
+	if w := fmt.Sprint(rows["snmp_trap_monitoring"]["who_can_change_it"]); !strings.Contains(w, "Forward support or a Forward admin only") {
+		t.Errorf("snmp_trap_monitoring cannot be changed by an organization administrator: %v", rows["snmp_trap_monitoring"])
+	}
+}
+
+// Threat exposure needs the license's security facet (S): with a tier that lacks it the row says turning the property on would not make the calls work; with it the row is licensed.
+func TestEnvironmentMarksThreatExposureUnlicensedWithoutTheSecurityFacet(t *testing.T) {
+	routes := cfgRoutes(map[string]any{"threat_exposure": true, "edge_assets_in_sources": false},
+		map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NP", "licenseStatus": "ACTIVE"})
+	r, _ := mustRun(t, "inspect-environment", routes, `{}`)
+	rows, _ := featureRows(t, r)
+	te := rows["threat_exposure"]
+	if te["licensed"] != false || !strings.Contains(fmt.Sprint(te["licensed_note"]), "the organization property reads on, but license tier NP has no security facet") {
+		t.Errorf("an on threat exposure on a tier with no security facet: %v", te)
+	}
+	if rows["edge_assets_in_sources"]["licensed"] != nil {
+		t.Errorf("edge assets are not claimed licensed (not read from code): %v", rows["edge_assets_in_sources"])
+	}
+	routes["GET /api/config"] = cfgRoutes(map[string]any{"threat_exposure": false}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})["GET /api/config"]
+	r, _ = mustRun(t, "inspect-environment", routes, `{}`)
+	rows, _ = featureRows(t, r)
+	if n := fmt.Sprint(rows["threat_exposure"]["licensed_note"]); !strings.Contains(n, "off, and also unlicensed") || strings.Contains(n, "reads on") {
+		t.Errorf("an off threat exposure must not say its property reads on: %v", rows["threat_exposure"])
+	}
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	r, _ = mustRun(t, "inspect-environment", routes, `{}`)
+	rows, _ = featureRows(t, r)
+	if rows["threat_exposure"]["licensed"] != true || rows["threat_exposure"]["licensed_note"] != nil {
+		t.Errorf("NSP has the security facet: %v", rows["threat_exposure"])
+	}
+}
+
+// Every feature row names a property Forward defines (a renamed or retired property would read as not defined by this build forever), and every security row is a feature row.
+func TestEnvironmentFeatureListNamesOnlyPropertiesForwardDefines(t *testing.T) {
+	if len(knowledge.OrgPropertyNames()) == 0 {
+		t.Skip("this build carries no property table")
+	}
+	for _, name := range skills.FeatureProperties() {
+		if _, ok := knowledge.OrgPropertyInfo(name); !ok {
+			t.Errorf("%s is not an organization property in the table", name)
+		}
+	}
+	for name, la := range skills.FeatureLevels() {
+		info, ok := knowledge.OrgPropertyInfo(name)
+		if !ok {
+			continue
+		}
+		if info.Level != la[0] || info.Admin != la[1] {
+			t.Errorf("%s: the feature row says level %s, admin %s; Forward's table says level %s, admin %s", name, la[0], la[1], info.Level, info.Admin)
+		}
+	}
+	if n := len(skills.SecurityFeatureProperties()); n < 15 {
+		t.Errorf("only %d security rows: a name in the security set no longer matches a feature", n)
+	}
+}
+
+// The features reference is a markdown table: a blank line inside it ends the table and the rows after it render as text with pipes (also in the public distribution). Every row line of the
+// first table must follow another table line.
+func TestFeaturesReferenceTableHasNoBlankLineInsideIt(t *testing.T) {
+	b, err := os.ReadFile("inspect-environment/reference/features.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(b), "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, "| Feature | Property") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatal("the property-gated table header is gone")
+	}
+	rows := 0
+	for i := start + 1; i < len(lines); i++ {
+		if lines[i] == "" {
+			for j := i + 1; j < len(lines) && j < i+3; j++ {
+				if strings.HasPrefix(lines[j], "| ") && !strings.HasPrefix(lines[j], "| Feature | Probe") {
+					t.Errorf("line %d: a blank line ends the table above and line %d is a row without its header", i+1, j+1)
+				}
+			}
+			break
+		}
+		rows++
+	}
+	if rows < 18 {
+		t.Errorf("only %d table lines before the first blank line: the table was cut", rows)
 	}
 }

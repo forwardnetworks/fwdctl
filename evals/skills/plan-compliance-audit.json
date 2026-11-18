@@ -50,6 +50,15 @@
     "names the snapshot the evidence is from and the limits of each check it ran",
     "does not claim a subcategory is met from a check that matched nothing"
    ]
+  },
+  {
+   "query": "What network evidence can Forward give for DORA, and what is it missing in our organization?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads reference/dora.md and answers by article, never with one compliant or not compliant",
+    "separates evidence from partial and says what is not evidenced by Forward",
+    "checks inspect-environment (the feature rows with topic security) for an off org property that explains missing evidence"
+   ]
   }
  ],
  "measure": [

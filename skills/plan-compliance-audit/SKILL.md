@@ -35,7 +35,7 @@ Before you answer, take at least: the existing checks and their status (step 2) 
 
 ## Answering
 
-A table of rule, check, status, snapshot. A rule with no check, or a check that returned no rows because nothing matched its scope, is **unknown**, not compliant. Do not claim compliance with a framework Forward does not test (a check set is not a certification). For the NIST Cybersecurity Framework 2.0 ("NIST2"), [reference/nist-csf-2.md](reference/nist-csf-2.md) says which subcategories Forward can evidence and with which skill: answer by subcategory, never with one compliant or not.
+A table of rule, check, status, snapshot. A rule with no check, or a check that returned no rows because nothing matched its scope, is **unknown**, not compliant. Do not claim compliance with a framework Forward does not test (a check set is not a certification). For the NIST Cybersecurity Framework 2.0 ("NIST2") and for DORA, [reference/nist-csf-2.md](reference/nist-csf-2.md) and [reference/dora.md](reference/dora.md) say which subcategories or articles Forward can evidence and with which skill: answer by subcategory or article, never with one compliant or not. What Forward cannot show is often an organization property that is off: `inspect-environment` (the feature rows with `topic: security`) lists those, what each missing feature costs in evidence and who can change it; turning one on is `edit-org-property`.
 
 ## Worked example
 

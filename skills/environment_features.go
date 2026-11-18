@@ -66,7 +66,35 @@ var featureDefs = []featureDef{
 		"LOW_PRIORITY lets a reprocessed or invalidated snapshot wait behind other work, so it stays PROCESSING longer"},
 	{"allowed_onprem_collectors", "which kinds of on-premises collector may be used", "inspect-collection, edit-collection", "value", "BOTH", "ON_PREMISES", false,
 		"a collection cannot start until an allowed kind of collector is connected"},
+	// the features that unlock security and audit evidence (topic security, see securityFeatures); Level, Admin and the defaults are Forward's (OrgProperty.java on release/26.11.0-10, read from source)
+	{"cis_benchmarks", "CIS benchmark findings", "check-network-compliance, author-nqe-query", "flag", "BOTH", "ON_PREMISES", false,
+		"CIS benchmark results are not offered (the NQE fields network.cisDatabase and device.cisFindings are absent for the organization), so a question about CIS findings has no data, which is not the same as no findings"},
+	{"vulnerability_scanners_integration", "the vulnerability scanner integration (Tenable VM)", "inspect-vulnerabilities (view scanners), edit-source", "flag", "ORG", "ON_PREMISES", false,
+		"Forward documents the property as UI-gated: the scanner integration is not offered in the interface, so findings are Forward's own version and configuration match unless a scanner was set up another way"},
+	{"threat_exposure", "threat exposure (EXPERIMENTAL)", "inspect-vulnerabilities (input threat_exposure_experimental), edit-network", "flag", "ORG", "ON_PREMISES", false,
+		"Forward documents the property as UI-gated: threat exposure is not offered in the interface, and an older build answers 404; it also needs the license security facet, and its shapes change between builds"},
+	{"edge_assets_in_sources", "edge assets and their criticality (EXPERIMENTAL)", "inspect-vulnerabilities (input threat_exposure_experimental)", "flag", "ORG", "ON_PREMISES", false,
+		"Forward documents the property as UI-gated: inferred hosts cannot be added as edge assets with a criticality in the interface, so threat exposure has no business weight to use"},
+	{"nqe_device_services", "NQE exposes device DNS, log, NTP and TACACS server configuration (Forward 26.11)", "check-network-compliance, author-nqe-query, validate-nqe-query", "flag", "ORG", "ON_PREMISES", false,
+		"device.services is absent from the NQE model for the organization: a query over it fails with Record does not have field, so logging and TACACS evidence read from it is missing (the property exists from 26.11)"},
+	{"snmp_trap_monitoring", "live incident management from SNMP traps", "(no fwdctl skill reads these incidents yet)", "flag", "ORG", "NONE", false,
+		"traps do not raise incidents inside Forward"},
+	{"collector_health_monitoring", "collector health monitoring on a dashboard", "inspect-collection", "flag", "BOTH", "ON_PREMISES", false,
+		"collector health is not shown on the dashboard; inspect-collection still reads each collection's own state"},
+	{"audit_logs_retention_days", "how long Forward keeps its audit log records", "(audit records are not read by a fwdctl skill)", "value", "BOTH", "ANYWHERE", false,
+		"audit records older than this many days are deleted automatically, so older evidence of who changed what in Forward is gone unless it was exported"},
 }
+
+// securityFeatures are the properties of featureDefs that unlock security and audit evidence: their rows carry topic "security", so an audit (plan-compliance-audit, plan-security-posture, the NIST CSF
+// and DORA references) can read those rows and say which missing evidence an off property explains.
+var securityFeatures = map[string]bool{
+	"cis_benchmarks": true, "vulnerability_scanners_integration": true, "threat_exposure": true, "edge_assets_in_sources": true, "nqe_device_services": true, "snmp_trap_monitoring": true,
+	"collector_health_monitoring": true, "audit_logs_retention_days": true, "enable_cve_config_analysis": true, "auto_update_cve_index": true, "advanced_reachability_analysis": true,
+	"disable_flow_computation": true, "performance_data": true, "nqe_security_rules_panos": true, "nqe_security_rules_fortios": true, "predict_modeling": true,
+}
+
+// securityLicensed are the features that need the license's security facet (S): threat exposure needs it (skills/threat_exposure.go). Edge assets are used by threat exposure but are not claimed licensed here (not read from code).
+var securityLicensed = map[string]bool{"threat_exposure": true}
 
 // featureState says how a property's effective value reads for its feature.
 func featureState(d featureDef, v string) string {
@@ -155,6 +183,9 @@ func featuresBlock(c fwd.OrgConfig) (map[string]any, []string) {
 			_, o := c.Overridden[d.Property]
 			row["overridden_at_org"] = o
 		}
+		if securityFeatures[d.Property] {
+			row["topic"] = "security"
+		}
 		if d.Reprocess {
 			row["reprocess_to_apply"] = true
 		}
@@ -231,6 +262,17 @@ func applyLicense(ctx context.Context, s *fwd.Session, detail map[string]any, bl
 		if rows, ok := block["rows"].([]any); ok {
 			for _, r := range rows {
 				row, _ := r.(map[string]any)
+				if row != nil && securityLicensed[fmt.Sprint(row["property"])] {
+					row["licensed"] = facets["security"]
+					if !facets["security"] {
+						if row["state"] == "on" {
+							row["licensed_note"] = "the organization property reads on, but license tier " + ts.LicenseTier + " has no security facet (S), which threat exposure needs (a license limit, not a role)"
+						} else {
+							row["licensed_note"] = "off, and also unlicensed: license tier " + ts.LicenseTier + " has no security facet (S), which threat exposure needs, so turning the property on would not make it work"
+						}
+					}
+					continue
+				}
 				if row == nil || !strings.HasPrefix(fmt.Sprint(row["property"]), "predict_") {
 					continue
 				}
@@ -252,4 +294,33 @@ func applyLicense(ctx context.Context, s *fwd.Session, detail map[string]any, bl
 	limits = append(limits, "the license tier and status are Forward's (GET /api/licenses?view=status); reading the tier's letters as facets (N network, S security, P predict) is from a peer session's reading of Forward's source, not confirmed on a live Forward")
 	detail["license"] = lic
 	return limits
+}
+
+// FeatureProperties lists the organization property of every feature row (for tests that check them against Forward's table).
+func FeatureProperties() []string {
+	out := make([]string, 0, len(featureDefs))
+	for _, d := range featureDefs {
+		out = append(out, strings.ToUpper(d.Property))
+	}
+	return out
+}
+
+// SecurityFeatureProperties lists the properties whose rows carry topic security.
+func SecurityFeatureProperties() []string {
+	var out []string
+	for _, d := range featureDefs {
+		if securityFeatures[d.Property] {
+			out = append(out, d.Property)
+		}
+	}
+	return out
+}
+
+// FeatureLevels maps each feature property (upper case) to its declared level and org-admin configurability (for tests that check them against Forward's table).
+func FeatureLevels() map[string][2]string {
+	out := map[string][2]string{}
+	for _, d := range featureDefs {
+		out[strings.ToUpper(d.Property)] = [2]string{d.Level, d.Admin}
+	}
+	return out
 }

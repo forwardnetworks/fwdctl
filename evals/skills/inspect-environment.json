@@ -40,6 +40,16 @@
     "states the effective value, the default and whether the organization overrides it",
     "says who can change it (org_admin_configurability) and that a network-level override is not visible to the API"
    ]
+  },
+  {
+   "query": "Which security and audit features are switched off in our organization, and what evidence does that cost us?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "runs inspect-environment and reads the feature rows with topic security",
+    "for each off feature says what evidence is missing (symptom_when_off) and who can change it",
+    "notes a feature that reads on but lacks the license facet (licensed false)",
+    "does not turn anything on: edit-org-property is a separate, dry-run-first write"
+   ]
   }
  ],
  "measure": [
