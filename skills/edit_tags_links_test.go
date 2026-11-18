@@ -595,6 +595,9 @@ func TestEditDeviceTagsAppliesTheRestAndReportsEachRefusedDevice(t *testing.T) {
 		t.Errorf("the other devices must be tagged: %s", got)
 	}
 	ev := jsonOf(r)
+	if r.Evidence[0].Detail["changes"] == nil || strings.Contains(fmt.Sprint(r.Evidence[0].Detail["changes"]), "fw_vsys3") || !strings.Contains(fmt.Sprint(r.Evidence[0].Detail["planned"]), "fw_vsys3") {
+		t.Errorf("evidence changes lists what Forward accepted, planned what was asked: %v", r.Evidence[0].Detail)
+	}
 	if !strings.Contains(ev, `"parent_device":"fw"`) || !strings.Contains(strings.Join(r.Limits, " "), "staging instant") {
 		t.Errorf("a refused virtual device names its physical device, and the limits say when NQE shows the tag: %s | %v", ev, r.Limits)
 	}
@@ -622,13 +625,21 @@ func TestEditDeviceTagsParentDeviceMatchesByNameCaseByAliasAndKeepsTheRawValue(t
 		map[string]any{"name": "box", "physical": "box", "hostNames": []any{"corefw.example"}},
 		map[string]any{"name": "Core-FW", "physical": "Core-FW", "hostNames": []any{"corefw.example"}},
 		map[string]any{"name": "edge", "physical": "edge", "otherNames": []any{"uniq.example"}},
+		// a firewall and its virtual systems all carry the firewall's host name; the virtual systems' physical name is that host name
+		map[string]any{"name": "fw1", "physical": "fw1", "hostNames": []any{"fw-host"}},
+		map[string]any{"name": "fw1_vsys1", "physical": "fw-host", "hostNames": []any{"fw-host"}, "otherNames": []any{"fw-host"}},
+		map[string]any{"name": "fw1_vsys2", "physical": "fw-host", "hostNames": []any{"fw-host"}},
+		// two physical devices share a host name and a virtual system names it: still ambiguous
+		map[string]any{"name": "twinA", "physical": "twinA", "hostNames": []any{"twin-host"}},
+		map[string]any{"name": "twinB", "physical": "twinB", "hostNames": []any{"twin-host"}},
+		map[string]any{"name": "twin_vsys", "physical": "twin-host", "hostNames": []any{"twin-host"}},
 	}
-	routes, _ := tagRefusingRoutes("vs1", "vs2", "ap1", "vs3", "vs4")
+	routes, _ := tagRefusingRoutes("vs1", "vs2", "ap1", "vs3", "vs4", "fw1_vsys1", "twin_vsys")
 	routes["GET /api/networks/n1/snapshots"] = fwdtest.Snapshots(fwdtest.Snap("s1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"))
 	routes["POST /api/nqe"] = func(*http.Request, []byte) (int, any) {
 		return 200, map[string]any{"items": rows, "totalNumItems": len(rows)}
 	}
-	r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"add","devices":["vs1","vs2","ap1","vs3","vs4"],"tags":["lab"],"apply":true}`)
+	r, _ := mustRun(t, "edit-device-tags", routes, `{"network_id":"n1","action":"add","devices":["vs1","vs2","ap1","vs3","vs4","fw1_vsys1","twin_vsys"],"tags":["lab"],"apply":true}`)
 	var raw []map[string]string
 	for _, e := range r.Evidence {
 		b, _ := json.Marshal(e.Detail["refused"])
@@ -638,7 +649,7 @@ func TestEditDeviceTagsParentDeviceMatchesByNameCaseByAliasAndKeepsTheRawValue(t
 	for _, m := range raw {
 		got[m["device"]] = [2]string{m["parent_device"], m["physical_name"]}
 	}
-	want := map[string][2]string{"vs1": {"", "corefw.example"}, "vs2": {"", "ghost"}, "ap1": {"", ""}, "vs3": {"Core-FW", "core-fw"}, "vs4": {"edge", "uniq.example"}}
+	want := map[string][2]string{"vs1": {"", "corefw.example"}, "vs2": {"", "ghost"}, "ap1": {"", ""}, "vs3": {"Core-FW", "core-fw"}, "vs4": {"edge", "uniq.example"}, "fw1_vsys1": {"fw1", "fw-host"}, "twin_vsys": {"", "twin-host"}}
 	for d, w := range want {
 		if got[d] != w {
 			t.Errorf("%s: parent and raw physical name %v, want %v", d, got[d], w)

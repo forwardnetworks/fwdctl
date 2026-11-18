@@ -184,16 +184,27 @@ func editDeviceTags(ctx context.Context, s *fwd.Session, raw json.RawMessage) (r
 		}
 	}
 	applied := pairCount - len(refused)
+	// in an applied result the evidence's "changes" is what Forward accepted, not the plan (the plan stays in "planned")
+	accepted := []plan{}
+	for i, p := range plans {
+		if len(sent[i]) > 0 {
+			accepted = append(accepted, plan{p.Tag, sent[i]})
+		}
+	}
+	appliedEv := func(extra map[string]any) []result.Evidence {
+		extra["changes"], extra["planned"] = accepted, plans
+		return ev(extra)
+	}
 	extra := map[string]any{"applied_pairs": applied - len(notHeld), "refused": refused, "not_in_requested_state": notHeld}
 	if len(refused) > 0 || len(notHeld) > 0 {
 		limits = append(limits, "partly applied: the changes listed were made; the refused or unproven devices are in the evidence with the reason (and, for a virtual device, parent_device when the physical name matches a device Forward lists, and physical_name as recorded; an access point under a controller has no parent recorded), and the rest of the batch was applied",
 			"a tag set here is written at Forward's staging instant (after every existing snapshot), so NQE (device.tagNames) shows it only in a snapshot collected after the change; a snapshot already processed does not")
 		return result.Build(editDeviceTagsName, result.Failed, fmt.Sprintf("%s on %d device-tag pair(s) of %d: %d refused by Forward, %d accepted but not in the requested state; see the evidence for each device and reason",
 			in.Action, applied-len(notHeld), pairCount, len(refused), len(notHeld)), result.Deterministic, cx,
-			result.Options{Mode: result.ModeApplied, Changes: made, Evidence: ev(extra), Limits: limits, NextActions: next})
+			result.Options{Mode: result.ModeApplied, Changes: made, Evidence: appliedEv(extra), Limits: limits, NextActions: next})
 	}
 	return result.Build(editDeviceTagsName, result.OK, fmt.Sprintf("Applied: %s on %d tag(s)", in.Action, len(plans)), result.Deterministic, cx,
-		result.Options{Mode: result.ModeApplied, Changes: made, Evidence: ev(map[string]any{"held": true, "applied_pairs": applied}), Limits: limits, NextActions: next})
+		result.Options{Mode: result.ModeApplied, Changes: made, Evidence: appliedEv(map[string]any{"held": true, "applied_pairs": applied}), Limits: limits, NextActions: next})
 }
 
 func cleanNames(in []string) []string {
@@ -218,7 +229,7 @@ func quoteJoin(ss []string) string {
 
 // physicalParents maps a modeled device that is part of a physical one (a firewall virtual system, an access point listed under its controller) to the physical device, from the newest processed
 // snapshot's device.system.physicalName. That value is the raw name the parser recorded, not necessarily the name of a modeled device: it is matched to a device case-insensitively, by the
-// device's name, then by the names it is also known by (system.hostNames, system.otherNames). A value that matches no device is returned as the raw name with resolved false. It returns nothing
+// device's name, then by the names it is also known by (system.hostNames, system.otherNames; the candidates that are themselves children of a physical device are dropped, and it resolves only if exactly one is left). A value that matches no device is returned as the raw name with resolved false. It returns nothing
 // when the snapshot or the read is unavailable: the parent is a help, not part of the result.
 func physicalParents(ctx context.Context, s *fwd.Session, networkID string) map[string]physicalParent {
 	snap, err := resolveSnapshot(ctx, s, networkID, "")
@@ -235,18 +246,22 @@ func physicalParents(ctx context.Context, s *fwd.Session, networkID string) map[
 			byName[strings.ToLower(n)] = n
 		}
 	}
-	byAlias := map[string]string{} // a name the device is also known by -> device name; ambiguous aliases are dropped
+	child := map[string]bool{}       // a device that is part of another (its physical name differs from its own name)
+	byAlias := map[string][]string{} // a name the device is also known by -> the devices that carry it
 	for _, r := range rows {
 		n, _ := r["name"].(string)
+		if p, _ := r["physical"].(string); p != "" && p != n {
+			child[n] = true
+		}
+		seen := map[string]bool{}
 		for _, k := range []string{"hostNames", "otherNames"} {
 			list, _ := r[k].([]any)
 			for _, a := range list {
 				if as, _ := a.(string); as != "" {
 					key := strings.ToLower(as)
-					if prev, seen := byAlias[key]; seen && prev != n {
-						byAlias[key] = ""
-					} else {
-						byAlias[key] = n
+					if !seen[key] {
+						seen[key] = true
+						byAlias[key] = append(byAlias[key], n)
 					}
 				}
 			}
@@ -262,8 +277,18 @@ func physicalParents(ctx context.Context, s *fwd.Session, networkID string) map[
 		pp := physicalParent{Raw: p}
 		if d, ok := byName[strings.ToLower(p)]; ok && d != n {
 			pp.Device = d
-		} else if d := byAlias[strings.ToLower(p)]; d != "" && d != n {
-			pp.Device = d
+		} else if cands := byAlias[strings.ToLower(p)]; len(cands) > 0 {
+			// The virtual systems of a firewall carry the firewall's own host name, so an alias matches the physical device and all its sibling virtual systems. Drop the candidates that are
+			// themselves children (a physical name that differs from their own name) and the device itself; resolve only when exactly one remains.
+			var keep []string
+			for _, c := range cands {
+				if c != n && !child[c] {
+					keep = append(keep, c)
+				}
+			}
+			if len(keep) == 1 {
+				pp.Device = keep[0]
+			}
 		}
 		out[n] = pp
 	}
