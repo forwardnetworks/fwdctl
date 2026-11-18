@@ -176,6 +176,9 @@ func TestEditNQEQueriesApplyCommitsAllPathsOnceAndReturnsBothCommitIDs(t *testin
 	if r.Status != result.OK || d["previous_commit_id"] != "c1" || d["commit_id"] != "c2" || d["held"] != true || state["/Team/b"] != goodQueryB {
 		t.Fatalf("%s %s %v", r.Status, r.Finding, d)
 	}
+	if nh, ok := d["not_held"].([]string); !ok || nh == nil || len(nh) != 0 {
+		t.Errorf("on success not_held is an empty list, not null: %#v", d["not_held"])
+	}
 	commits := 0
 	for _, l := range *log {
 		if l == "commit" {
@@ -598,5 +601,46 @@ func TestEditNQEQueriesNeverTouchesADraftAtAnUnchangedPath(t *testing.T) {
 		if drafts["/Team/a"] != "my uncommitted draft" {
 			t.Errorf("%s: the draft at the unchanged path /Team/a was overwritten or removed: %q (log %v)", name, drafts["/Team/a"], *log)
 		}
+	}
+}
+
+// The refusal carries the conflicting drafts as a structured list (path and draft type), because a path can contain a comma and a sentence is not safely
+// parseable: each path comes back whole, in order, on a dry run with typecheck and on an apply.
+func TestEditNQEQueriesDraftConflictsAreAStructuredList(t *testing.T) {
+	for name, extra := range map[string]string{"apply": `,"apply":true`, "typecheck": `,"typecheck":true`} {
+		head := "c1"
+		routes, _, _ := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+		drafts["/Team/a"], drafts["/Team/new, with comma"] = "d1", "d2"
+		in := `{"changes":[{"path":"/Team/a","source":"` + goodQuery + `"},{"path":"/Team/b","source":"` + goodQueryB + `"},{"path":"/Team/new, with comma","source":"` + goodQuery + `"}],"message":"m"` + extra + `}`
+		r, _ := mustRun(t, "edit-nqe-query", routes, in)
+		j := jsonOf(r)
+		for _, want := range []string{`"path":"/Team/a"`, `"path":"/Team/new, with comma"`, `"draft_type":"QUERY_EDIT"`} {
+			if !strings.Contains(j, want) {
+				t.Errorf("%s: draft_conflicts holds %s: %s", name, want, j)
+			}
+		}
+		if strings.Contains(j, `"path":"/Team/b"`) {
+			t.Errorf("%s: a path with no draft is not a conflict: %s", name, j)
+		}
+	}
+}
+
+// When the commit succeeds but the library does not hold what was sent, the failure names the paths in the finding AND as a structured list
+// (not_held), because a path can contain a comma.
+func TestEditNQEQueriesNotHeldPathsAreAStructuredList(t *testing.T) {
+	head := "c1"
+	routes, _, _ := multiLibrary(&head, map[string]any{"newErrors": map[string]any{}})
+	routes["POST /api/nqe/repos/org/commits"] = func(r *http.Request, _ []byte) (int, any) { // succeeds, but applies nothing
+		if r.URL.Query().Get("dryRun") == "true" {
+			return 200, map[string]any{"newErrors": map[string]any{}}
+		}
+		head = "c2"
+		return 200, map[string]any{}
+	}
+	in := `{"changes":[{"path":"/Team/new, with comma","source":"` + goodQuery + `"},{"path":"/Team/b","source":"` + goodQueryB + `"}],"message":"m","apply":true}`
+	r, _ := mustRun(t, "edit-nqe-query", routes, in)
+	j := jsonOf(r)
+	if r.Status != result.Failed || !strings.Contains(j, `"not_held":["/Team/b","/Team/new, with comma"]`) {
+		t.Errorf("the paths the library does not hold are a structured, sorted list: %s %s", r.Status, j)
 	}
 }

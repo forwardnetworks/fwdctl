@@ -198,11 +198,11 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	var tc map[string]any
 	acknowledged := 0 // new typecheck errors the caller acknowledged by exact text; 0 when none
 	if in.Typecheck {
-		if mine, derr := s.DraftsAt(ctx, paths); derr != nil {
+		if conflicts, derr := s.DraftConflicts(ctx, paths); derr != nil {
 			return result.Result{}, fmt.Errorf("reading your uncommitted NQE changes failed, so nothing was staged: %w", derr)
-		} else if len(mine) > 0 {
+		} else if mine := draftPaths(conflicts); len(mine) > 0 {
 			return fail(fmt.Sprintf("you already have uncommitted changes in the NQE editor at %s; commit or discard them there first, because staging and cleaning up would overwrite or drop them. Nothing was changed", strings.Join(mine, ", ")),
-				map[string]any{"head_commit_id": head, "drafts_at": mine})
+				map[string]any{"head_commit_id": head, "drafts_at": mine, "draft_conflicts": conflicts})
 		}
 		// Baseline: the same queries at head, staged as they are, so errors that already exist (an importer broken by an earlier commit, a field a release removed) can be told from the ones this change adds.
 		var base map[string][]map[string]any
@@ -336,11 +336,11 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 	if h2, err := s.NQEHead(ctx); err != nil || h2 != basis {
 		return fail(fmt.Sprintf("The library head moved from %s while planning (now %s); nothing was committed", basis, h2), map[string]any{"head_commit_id": h2, "basis_commit_id": basis})
 	}
-	if mine, derr := s.DraftsAt(ctx, paths); derr != nil {
+	if conflicts, derr := s.DraftConflicts(ctx, paths); derr != nil {
 		return result.Result{}, fmt.Errorf("reading your uncommitted NQE changes failed, so nothing was staged: %w", derr)
-	} else if len(mine) > 0 {
+	} else if mine := draftPaths(conflicts); len(mine) > 0 {
 		return fail(fmt.Sprintf("you already have uncommitted changes in the NQE editor at %s; commit or discard them there first. Nothing was committed", strings.Join(mine, ", ")),
-			map[string]any{"head_commit_id": head, "drafts_at": mine})
+			map[string]any{"head_commit_id": head, "drafts_at": mine, "draft_conflicts": conflicts})
 	}
 	if err := s.AddOrgDirectories(ctx, newDirs); err != nil {
 		return result.Result{}, fmt.Errorf("staging the missing directories failed, nothing was committed: %w", err)
@@ -373,7 +373,7 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		changes[i].Applied = true
 	}
 	held := true
-	var bad []string
+	bad := []string{} // an empty list, not null, when everything is held
 	for _, c := range in.Changes {
 		if q, err := s.OrgQueryAt(ctx, c.Path, newHead); err != nil || q == nil || strings.TrimSpace(q.Source) != strings.TrimSpace(c.Source) {
 			held = false
@@ -381,7 +381,7 @@ func editNQEQueries(ctx context.Context, s *fwd.Session, in editNQEQueryInput) (
 		}
 	}
 	sort.Strings(bad)
-	ev := evd(map[string]any{"previous_commit_id": basis, "commit_id": newHead, "held": held, "typecheck": tc, "acknowledged_new_errors": acknowledged})
+	ev := evd(map[string]any{"previous_commit_id": basis, "commit_id": newHead, "held": held, "typecheck": tc, "acknowledged_new_errors": acknowledged, "not_held": bad})
 	if !held {
 		return result.Build(editNQEQueryName, result.Failed, fmt.Sprintf("Committed %s but the library does not hold the requested source at: %s", newHead, strings.Join(bad, ", ")), result.Deterministic, cx,
 			result.Options{Mode: result.ModeApplied, Changes: changes, Limits: limits, Evidence: ev})
@@ -480,4 +480,13 @@ func multisetDiff(expected, found []string) (missing, unexpected []string) {
 	sort.Strings(missing)
 	sort.Strings(unexpected)
 	return missing, unexpected
+}
+
+// draftPaths is the paths of a list of draft conflicts, in order.
+func draftPaths(cs []fwd.DraftConflict) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.Path)
+	}
+	return out
 }

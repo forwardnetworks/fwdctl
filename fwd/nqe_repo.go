@@ -233,9 +233,16 @@ func (s *Session) DiscardOrgDrafts(ctx context.Context, paths []string) error {
 	return err
 }
 
-// DraftsAt names the paths among paths where the caller already has an uncommitted change (an add, edit or delete), so a skill can refuse to stage over, or discard, work
-// that is not its own.
-func (s *Session) DraftsAt(ctx context.Context, paths []string) ([]string, error) {
+// DraftConflict is one uncommitted draft of the caller's at a path a call would stage: its path and the draft's type (QUERY_EDIT, QUERY_ADD, QUERY_DELETE, a directory
+// change, ...), so a caller can act on them without parsing a sentence (a path can contain a comma).
+type DraftConflict struct {
+	Path string `json:"path"`
+	Type string `json:"draft_type"`
+}
+
+// DraftConflicts lists the caller's own uncommitted drafts at paths, one entry per path a draft touches (a move touches two), sorted by path then type. A draft is matched by its own path, by its directory and
+// name, or by the path of the query it was edited from (an edit or a delete carries only that basis path).
+func (s *Session) DraftConflicts(ctx context.Context, paths []string) ([]DraftConflict, error) {
 	drafts, _, err := s.Client.NQERepository.ListDrafts(ctx)
 	if err != nil {
 		return nil, err
@@ -244,16 +251,40 @@ func (s *Session) DraftsAt(ctx context.Context, paths []string) ([]string, error
 	for _, p := range paths {
 		want[p] = true
 	}
-	var out []string
+	var out []DraftConflict
 	for _, d := range drafts {
-		for _, c := range []string{d.Path, d.Directory + d.Name} {
-			if c != "" && want[c] {
-				out = append(out, c)
+		// every distinct requested path the draft touches, once each: an edit that moves or renames a query touches both the path it came from (its basis)
+		// and the path it goes to, and the caller needs to hear about both
+		cands := []string{d.Path, d.Directory + d.Name}
+		if d.Basis != nil {
+			cands = append(cands, d.Basis.Path)
+		}
+		seen := map[string]bool{}
+		for _, c := range cands {
+			if c != "" && want[c] && !seen[c] {
+				seen[c] = true
+				out = append(out, DraftConflict{Path: c, Type: d.Type})
 			}
 		}
-		if d.Basis != nil && want[d.Basis.Path] {
-			out = append(out, d.Basis.Path)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
 		}
+		return out[i].Type < out[j].Type
+	})
+	return out, nil
+}
+
+// DraftsAt is the paths of DraftConflicts.
+func (s *Session) DraftsAt(ctx context.Context, paths []string) ([]string, error) {
+	cs, err := s.DraftConflicts(ctx, paths)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, c := range cs {
+		out = append(out, c.Path)
 	}
 	return out, nil
 }
