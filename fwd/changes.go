@@ -63,8 +63,8 @@ func (s *Session) PredictedSnapshot(ctx context.Context, networkID, changeSetID 
 type Connectivity struct {
 	// Settled is false when the computation did not finish in time; its zeros mean "not finished".
 	Settled bool
-	// Compared is false when zero subnet pairs were evaluated: "nothing changed" and "nothing was compared"
-	// look identical in the counts, and only TotalPairs tells them apart.
+	// Compared is false when zero subnet pairs were evaluated. Forward's v0.8.48 doc says a settled zero means no forwarding change, and zero locations only when there are no device
+	// subnets at all: the two look identical in the counts, so this code keeps reading zero as unmeasured, which errs on the side of never reporting a pass.
 	Compared       bool
 	NewlyIsolated  int64
 	NewlyConnected int64

@@ -68,7 +68,8 @@ func TestBlastRadiusUnsettledConnectivityIsALimitNotEvidence(t *testing.T) {
 
 func TestBlastRadiusZeroPairsComparedIsUnmeasuredNotNoChange(t *testing.T) {
 	r, _ := blast(t, changeFix{counts: map[string]int{"acl": 2}, conn: conn(false, 0, 0, 0)})
-	if !strings.Contains(strings.Join(r.Limits, " "), "no subnet pairs") || strings.Contains(r.Finding, "lost connectivity") {
+	l := strings.Join(r.Limits, " ")
+	if !strings.Contains(l, "zero subnet pairs") || !strings.Contains(l, "unmeasured") || !strings.Contains(l, "never as a pass") || strings.Contains(r.Finding, "lost connectivity") {
 		t.Fatalf("limits %v finding %q", r.Limits, r.Finding)
 	}
 }

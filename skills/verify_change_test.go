@@ -169,7 +169,7 @@ func TestVerifyChangePartialConnectivityIsNotEvidence(t *testing.T) {
 
 func TestVerifyChangeZeroPairsComparedIsUnmeasuredNotNoChange(t *testing.T) {
 	r, _ := verify(t, changeFix{conn: conn(false, 0, 0, 0)}, "")
-	if !strings.Contains(strings.Join(r.Limits, " "), "no subnet pairs") {
+	if l := strings.Join(r.Limits, " "); !strings.Contains(l, "zero subnet pairs") || !strings.Contains(l, "unmeasured") || !strings.Contains(l, "never as a pass") {
 		t.Errorf("limits %v", r.Limits)
 	}
 	for _, e := range r.Evidence {

@@ -1,7 +1,7 @@
 # edit-checks: inputs
 
 `network_id`, `action` (`create`, `deactivate`, or a ServiceNow incident action, below). For `create`: `definition` (Forward's check definition: a predefined check type, or an
-NQE query), optional `name` (NQE checks only: Forward names a predefined check itself and answers 400 if a name is sent, so a name with a predefined definition is refused in the dry run), `note`, `tags`, `priority`, `persistent`. For `deactivate`: `check_id`. Optional for both: `snapshot_id`
+NQE query), optional `name`, `note`, `tags`, `priority`, `persistent`. Forward's rules for the check type are applied in the dry run, before anything is sent (from Forward's NewNetworkCheck, read from its source on release/26.11.0-10 through the SDK; only the NQE refusals were seen on a live Forward, 26.10.6, the rest are unconfirmed): a predefined check takes no name; an NQE check takes a name only when it has `params` (and then requires one) and never a note or tags; `tags` are for existential, isolation and reachability checks only. For `deactivate`: `check_id`. Optional for both: `snapshot_id`
 (default the newest processed one), `apply` (default false). Find predefined types and existing checks with
 `inspect-checks`; validate an NQE query with `validate-nqe-query` first.
 

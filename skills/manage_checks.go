@@ -95,8 +95,11 @@ func createCheck(ctx context.Context, s *fwd.Session, in manageChecksInput, sn *
 			}
 		}
 	}
-	if ct, _ := in.Definition["checkType"].(string); strings.EqualFold(ct, "Predefined") && in.Name != "" {
-		return result.Result{}, fmt.Errorf("%w: a predefined check is named by Forward from its predefinedCheckType, and Forward answers 400 when a name is sent: leave name out (note, tags and priority are allowed)", ErrInvalidInput)
+	// Forward refuses some combinations of name, note and tags with a 400 that only the apply would show (NewNetworkCheck, read from Forward's source on release/26.11.0-10 by the SDK): a
+	// predefined check takes no name; an NQE check takes a name only when it has params (and then needs one) and never a note or tags; tags are for existential, isolation and reachability
+	// checks only. Say so in the dry run, before anything is sent.
+	if err := forward.ValidateNewCheck(forward.NewCheck{Definition: in.Definition, Name: in.Name, Note: in.Note, Tags: in.Tags, Priority: in.Priority}); err != nil {
+		return result.Result{}, fmt.Errorf("%w: %s; nothing was sent to Forward", ErrInvalidInput, strings.TrimPrefix(err.Error(), "forward: "))
 	}
 	if in.Name != "" {
 		names, err := s.AllChecks(ctx, sid, nil)
@@ -124,7 +127,7 @@ func createCheck(ctx context.Context, s *fwd.Session, in manageChecksInput, sn *
 	if !in.Apply {
 		return result.Build(manageChecksName, result.OK, fmt.Sprintf("Dry run: would create check %q on snapshot %s (%s). Nothing was changed; run again with apply=true to make it", in.Name, sid, scope),
 			result.Deterministic, cx, result.Options{Mode: result.ModeDryRun, Changes: []result.Change{ch}, Evidence: ev(result.ModeDryRun, nil), NextActions: next,
-				Limits: []string{"the definition is not validated until Forward evaluates it on apply"}})
+				Limits: []string{"the name, note and tags are checked against Forward's rules for the check type before anything is sent (rules read from Forward's source, not all confirmed on a live Forward); the definition itself is not validated until Forward evaluates it on apply"}})
 	}
 	nc := forward.NewCheck{Definition: in.Definition, Name: in.Name, Note: in.Note, Tags: in.Tags, Priority: in.Priority}
 	d, err := s.CreateCheck(ctx, sid, nc, in.Persistent)

@@ -253,15 +253,12 @@ func (s *Session) DraftConflicts(ctx context.Context, paths []string) ([]DraftCo
 	}
 	var out []DraftConflict
 	for _, d := range drafts {
-		// every distinct requested path the draft touches, once each: an edit that moves or renames a query touches both the path it came from (its basis)
-		// and the path it goes to, and the caller needs to hear about both
-		cands := []string{d.Path, d.Directory + d.Name}
-		if d.Basis != nil {
-			cands = append(cands, d.Basis.Path)
-		}
+		// every distinct requested path the draft touches, once each: an edit that moves or renames a query touches both the path it came from (its basis) and the path it goes to, and
+		// the caller needs to hear about both. The SDK says which (NQEDraftChange.Touches: the draft's own path, the path of its query after the edit, and the committed path it was based
+		// on); a permission draft has only a Directory.
 		seen := map[string]bool{}
-		for _, c := range cands {
-			if c != "" && want[c] && !seen[c] {
+		for _, c := range paths {
+			if c != "" && want[c] && !seen[c] && draftTouches(d, c) {
 				seen[c] = true
 				out = append(out, DraftConflict{Path: c, Type: d.Type})
 			}
@@ -274,6 +271,13 @@ func (s *Session) DraftConflicts(ctx context.Context, paths []string) ([]DraftCo
 		return out[i].Type < out[j].Type
 	})
 	return out, nil
+}
+
+// draftTouches says whether a draft concerns the query or directory at path. An edit or delete carries no path of its own, only its basis (the committed path) and, when it moves or renames
+// the query, a directory and a name: the SDK builds the path after the edit from those (a directory without its trailing slash included), where concatenating them would give "/Libq".
+// A permission draft names only a Directory. The shape of a moved or renamed edit comes from Forward's source (ChangeInfo.QueryEdit) and has not been read from a live response.
+func draftTouches(d forward.NQEDraftChange, path string) bool {
+	return d.Touches(path) || (d.Basis == nil && d.Path == "" && d.Directory == path)
 }
 
 // DraftsAt is the paths of DraftConflicts.
@@ -417,7 +421,7 @@ func (s *Session) DraftAt(ctx context.Context, path string) (*OrgDraft, error) {
 		return nil, err
 	}
 	for _, d := range list {
-		if d.Path == path || d.Directory+d.Name == path || (d.Basis != nil && d.Basis.Path == path) {
+		if draftTouches(d, path) {
 			out := &OrgDraft{Type: d.Type}
 			if q, _, gerr := s.Client.NQERepository.GetDraft(ctx, path); gerr == nil && q != nil {
 				out.Source = q.SourceCode

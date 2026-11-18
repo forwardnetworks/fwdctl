@@ -27,7 +27,8 @@ func mcRoutes(existing ...map[string]any) map[string]fwdtest.Handler {
 	}
 }
 
-const mcCreate = `{"network_id":"n1","action":"create","name":"no telnet","definition":{"checkType":"NQE","queryId":"Q1"}`
+// a named NQE check must be parameterized (Forward: "'name' required for parameterized NQE checks", and "not allowed" without params), so the fixture carries params
+const mcCreate = `{"network_id":"n1","action":"create","name":"no telnet","definition":{"checkType":"NQE","queryId":"Q1","params":{"port":23}}`
 
 func TestManageChecksDryRunWritesNothing(t *testing.T) {
 	for _, in := range []string{mcCreate + `}`, `{"network_id":"n1","action":"deactivate","check_id":"9"}`} {
@@ -102,7 +103,37 @@ func TestManageChecksRejectsBadInput(t *testing.T) {
 
 func TestEditChecksRefusesANameOnAPredefinedCheckBeforeAnythingIsSent(t *testing.T) {
 	_, srv, err := runSkill(t, "edit-checks", mcRoutes(), `{"network_id":"n1","action":"create","name":"loops","definition":{"checkType":"Predefined","predefinedCheckType":"LOOP"},"apply":true}`)
-	if err == nil || !strings.Contains(err.Error(), "leave name out") || writes(srv) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "Predefined check takes no name") || writes(srv) != 0 {
 		t.Fatalf("a predefined check takes no name: %v", err)
+	}
+}
+
+// Forward's NewNetworkCheck refuses some name, note and tags combinations with a 400 that only the apply would show; the dry run says so first and sends nothing (the rules are the SDK's
+// ValidateNewCheck, read from Forward's source): an NQE check takes a name only when it has params (and then requires one), never a note or tags; tags are for existential, isolation and
+// reachability checks only.
+func TestEditChecksAppliesForwardsFieldRulesInTheDryRunBeforeAnythingIsSent(t *testing.T) {
+	refused := map[string]struct{ body, want string }{
+		"non-parameterized NQE with a name": {`{"network_id":"n1","action":"create","name":"x","definition":{"checkType":"NQE","queryId":"Q1"}}`, "takes no name"},
+		"parameterized NQE without a name":  {`{"network_id":"n1","action":"create","definition":{"checkType":"NQE","queryId":"Q1","params":{"a":1}}}`, "requires a name"},
+		"NQE with a note":                   {`{"network_id":"n1","action":"create","definition":{"checkType":"NQE","queryId":"Q1"},"note":"n"}`, "takes no note"},
+		"predefined with tags":              {`{"network_id":"n1","action":"create","definition":{"checkType":"Predefined","predefinedCheckType":"LOOP"},"tags":["a"]}`, "tags are only allowed"},
+	}
+	for name, c := range refused {
+		for _, apply := range []string{"", `,"apply":true`} { // the dry run refuses too, not only the apply
+			body := strings.TrimSuffix(c.body, "}") + apply + "}"
+			_, srv, err := runSkill(t, "edit-checks", mcRoutes(), body)
+			if err == nil || !strings.Contains(err.Error(), c.want) || !strings.Contains(err.Error(), "nothing was sent to Forward") || writes(srv) != 0 {
+				t.Errorf("%s (apply %q): %v", name, apply, err)
+			}
+		}
+	}
+	for name, body := range map[string]string{
+		"existential with tags and a note":           `{"network_id":"n1","action":"create","definition":{"checkType":"Existential","filters":{"from":{"type":"HostFilter","values":["a"]},"to":{"type":"HostFilter","values":["b"]}}},"tags":["a"],"note":"n"}`,
+		"predefined with a note and no name":         `{"network_id":"n1","action":"create","definition":{"checkType":"Predefined","predefinedCheckType":"LOOP"},"note":"n"}`,
+		"non-parameterized NQE with no name or note": `{"network_id":"n1","action":"create","definition":{"checkType":"NQE","queryId":"Q1"}}`,
+	} {
+		if r, _, err := runSkill(t, "edit-checks", mcRoutes(), body); err != nil || r.Status != result.OK {
+			t.Errorf("%s is a valid combination and the dry run must plan it: %v %s", name, err, r.Status)
+		}
 	}
 }

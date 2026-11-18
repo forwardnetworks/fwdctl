@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.27.1
 
 require (
-	github.com/forwardnetworks/forward-go-sdk v0.8.42
+	github.com/forwardnetworks/forward-go-sdk v0.8.48
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	go.yaml.in/yaml/v3 v3.0.4

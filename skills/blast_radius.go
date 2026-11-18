@@ -96,7 +96,7 @@ func analyzeBlastRadius(ctx context.Context, s *fwd.Session, raw json.RawMessage
 	case !conn.Settled:
 		limits = append(limits, "the connectivity comparison did not settle in time; its counts are not evidence")
 	case !conn.Compared:
-		limits = append(limits, "no subnet pairs were compared (no locations defined?); connectivity impact is unmeasured")
+		limits = append(limits, "Forward reported zero subnet pairs for the connectivity comparison: that is a settled zero (no forwarding change in the pairs it computes) or no device subnets to compare, and the two look the same here, so connectivity impact is reported as unmeasured, never as a pass")
 	default:
 		measured = true
 		evidence = append(evidence, result.NewEvidence(result.EvPredict, "getSubnetConnectivityDiff", sid, map[string]any{
