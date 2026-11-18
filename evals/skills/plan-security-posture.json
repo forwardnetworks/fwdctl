@@ -65,6 +65,16 @@
    "expected_behavior": [
     "uses verify-change with expectations"
    ]
+  },
+  {
+   "query": "What can this toolkit actually do for our SOC, and what can't it do?",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads reference/soc-toolkit-map.md and answers by workflow: monitor, investigate, contain, recover, vulnerabilities, posture, evidence",
+    "names the skill for each covered question and says which are partial",
+    "says plainly what is a gap (SNMP trap incidents, shadowed firewall rules, device certificate expiry, wireless and NAC posture) and what is outside Forward (event logs, packets, threat intelligence, applying a change)",
+    "does not claim compliance or detection coverage it does not have"
+   ]
   }
  ],
  "measure": [

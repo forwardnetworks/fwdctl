@@ -30,6 +30,16 @@
     "rival": "inspect-history"
   },
   {
+    "query": "Users report the network is slow, help me triage this incident",
+    "expect": "plan-incident-triage",
+    "rival": "plan-security-posture"
+  },
+  {
+    "query": "What can forward-skills do for our SOC, and where are the gaps?",
+    "expect": "plan-security-posture",
+    "rival": "plan-compliance-audit"
+  },
+  {
     "query": "Which devices fail STIG Cat I, and how many findings are open?",
     "expect": "check-network-compliance",
     "rival": "plan-compliance-audit"

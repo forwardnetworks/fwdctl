@@ -50,4 +50,8 @@ Findings ranked by exposure (internet-reachable and known-exploited first), each
 
 ## Worked example
 
+## SOC toolkit map
+
+[reference/soc-toolkit-map.md](reference/soc-toolkit-map.md) maps SOC questions (monitor, investigate, contain, recover, vulnerabilities, posture, evidence) to the skill that answers each and says what is a gap or outside what Forward holds. Read it when asked what this toolkit can do for a SOC, which skill answers a SOC question, or what it cannot do.
+
 [reference/example.md](reference/example.md) shows a good run end to end (illustrative, results shortened). Read it when you are unsure what a finished answer looks like; where you cannot read files, run `fwdctl describe plan-security-posture reference/example.md`.
