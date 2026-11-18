@@ -7,7 +7,10 @@ import (
 	"testing"
 
 	"github.com/forwardnetworks/fwdctl/fwdtest"
+	"github.com/forwardnetworks/fwdctl/nqelint"
+	"github.com/forwardnetworks/fwdctl/nqeschema"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 const (
@@ -375,5 +378,92 @@ func TestVulnerabilitiesDevicesViewAllNullNamesTheCauses(t *testing.T) {
 	all := strings.Join(r.Limits, " ")
 	if !strings.Contains(all, "null on all 2 devices") || !strings.Contains(all, "internet node") || !strings.Contains(all, "flow computation disabled") {
 		t.Errorf("limits = %v", r.Limits)
+	}
+}
+
+// The one-CVE view says where the CVE's facts come from: whether CISA's KEV catalog lists it or only a vendor reports exploitation, each vendor advisory with its scores, and the CWE weaknesses.
+func sourcesRoutes(rows ...map[string]any) map[string]fwdtest.Handler {
+	routes := vulnRoutes(nil)
+	routes[vulnGet] = gotCVE(dev("r-hit", "VULNERABLE", "VULNERABLE"))
+	routes["POST /api/nqe"] = func(_ *http.Request, body []byte) (int, any) {
+		if !strings.Contains(string(body), "network.cveDatabase.cves") {
+			return 400, map[string]any{"message": "unexpected query"}
+		}
+		items := []any{}
+		for _, r := range rows {
+			if r != nil {
+				items = append(items, r)
+			}
+		}
+		return 200, map[string]any{"items": items, "totalNumItems": len(items)}
+	}
+	return routes
+}
+
+func vendorRow(exploit any) map[string]any {
+	return map[string]any{"kev": false, "kevUrl": nil, "weaknesses": []any{}, "vendor": "JUNIPER", "published": "2024-01-10", "url": "https://adv.example/1", "vendorExploit": exploit, "scoreV4": nil, "scoreV3": 9.8, "scoreV2": nil, "severity": "CRITICAL"}
+}
+
+func TestVulnerabilitiesOneCVESaysWhetherKEVOrAVendorMakesItKnownExploited(t *testing.T) {
+	kev := vendorRow(nil)
+	kev["kev"], kev["kevUrl"], kev["weaknesses"] = true, "https://cisa.example/x", []any{"CWE-306"}
+	r, _ := vuln(t, sourcesRoutes(kev), cveIn(""))
+	src, _ := r.Evidence[0].Detail["sources"].(map[string]any)
+	if src["known_exploit_basis"] != "cisa_kev" || src["cisa_kev_url"] != "https://cisa.example/x" || src["basis_note"] != nil {
+		t.Fatalf("KEV: %v", src)
+	}
+	adv, _ := src["vendor_advisories"].([]map[string]any)
+	if len(adv) != 1 || adv[0]["advisory_url"] != "https://adv.example/1" || adv[0]["published"] != "2024-01-10" {
+		t.Errorf("advisories: %v", src["vendor_advisories"])
+	}
+	if sc, _ := adv[0]["scores"].(map[string]float64); sc["cvss_v3"] != 9.8 || len(sc) != 1 {
+		t.Errorf("only the scores Forward has are listed: %v", adv[0]["scores"])
+	}
+	if !strings.Contains(jsonOf(r), "EPSS") {
+		t.Errorf("what Forward does not carry is said")
+	}
+	// a vendor reports exploitation but KEV does not list the CVE
+	vonly := vendorRow(true)
+	vonly["kevUrl"] = "https://cisa.example/stale" // a URL with no KEV entry is not shown as one
+	r, _ = vuln(t, sourcesRoutes(vonly), cveIn(""))
+	src, _ = r.Evidence[0].Detail["sources"].(map[string]any)
+	if src["known_exploit_basis"] != "vendor_advisory" || src["cisa_kev"] != false || src["cisa_kev_url"] != nil {
+		t.Fatalf("vendor only: %v", src)
+	}
+	// two vendors: both advisories are listed, a vendor with no scores has none listed
+	second := vendorRow(nil)
+	second["vendor"], second["scoreV3"], second["url"] = "OTHER", nil, "https://adv.example/2"
+	r, _ = vuln(t, sourcesRoutes(vendorRow(true), second), cveIn(""))
+	src, _ = r.Evidence[0].Detail["sources"].(map[string]any)
+	if adv, _ := src["vendor_advisories"].([]map[string]any); len(adv) != 2 || adv[1]["vendor"] != "OTHER" || adv[1]["scores"] != nil {
+		t.Fatalf("two vendors: %v", src["vendor_advisories"])
+	}
+	// neither, while Forward's flag (the fixture's hasCisaKevEntry) says exploited: the disagreement is shown, not hidden
+	r, _ = vuln(t, sourcesRoutes(vendorRow(nil)), cveIn(""))
+	src, _ = r.Evidence[0].Detail["sources"].(map[string]any)
+	if src["known_exploit_basis"] != "none" || src["basis_note"] == nil {
+		t.Fatalf("a flag with no source is called out: %v", src)
+	}
+}
+
+func TestVulnerabilitiesOneCVEKeepsItsAnswerWhenTheSourcesCannotBeRead(t *testing.T) {
+	routes := sourcesRoutes() // the CVE is not in the index NQE reads
+	r, _ := vuln(t, routes, cveIn(""))
+	if r.Status != result.Failed || r.Evidence[0].Detail["sources"] != nil || !strings.Contains(strings.Join(r.Limits, " "), "no vendor advisory in the CVE index NQE reads") {
+		t.Fatalf("%s %v %v", r.Status, r.Evidence[0].Detail["sources"], r.Limits)
+	}
+	routes["POST /api/nqe"] = fwdtest.Const(500, map[string]any{"message": "boom"})
+	r, _ = vuln(t, routes, cveIn(""))
+	if r.Status != result.Failed || !strings.Contains(strings.Join(r.Limits, " "), "could not be read") {
+		t.Fatalf("a failed read must not fail the CVE answer: %s %v", r.Status, r.Limits)
+	}
+}
+
+func TestVulnerabilitiesCVESourcesQueryLintsClean(t *testing.T) {
+	if !nqeschema.Available() {
+		t.Skip("this build carries no schema")
+	}
+	if ds := nqelint.LintWith(skills.CVESourcesQuery(), nqelint.Modules); len(ds) != 0 {
+		t.Errorf("sources query: %v", ds)
 	}
 }

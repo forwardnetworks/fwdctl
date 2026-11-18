@@ -34,7 +34,7 @@ Forward models the network from collected configuration and state. Everything be
 | Investigate | Who peers with whom, and which neighbors advertise or hold a prefix? | `inspect-bgp-neighbors` | partial | the sessions and prefix counts as modelled; a route hijack elsewhere on the internet is not visible. |
 | Investigate | A profile of a suspect device: identity, links, configuration, CVEs, performance | `plan-device-audit` | covered | the device as collected. |
 | Investigate | Which device, interface or host owns this IP? | `inspect-inventory` (kinds `ip_owner`, `hosts`, `devices`) | covered | hosts are the ones Forward has seen. |
-| Triage | Which devices does this CVE affect, and are they reachable? | `inspect-vulnerabilities`, `plan-vulnerability-response` | covered | a match by OS version and some configuration; reachable is not exploitable; a patch not yet collected is invisible. |
+| Triage | Which devices does this CVE affect, and are they reachable? | `inspect-vulnerabilities`, `plan-vulnerability-response` | covered | a match by OS version and some configuration; reachable is not exploitable; a patch not yet collected is invisible. Known-exploited is CISA KEV or a vendor's report (the one-CVE view says which, with the advisory and scores); Forward has no EPSS. |
 | Triage | What could a compromised device reach (blast radius)? | `investigate-reachability` (from the device's addresses), `inspect-topology` (kind `zones`) | partial | no single view from a device: `investigate-reachability` `matrix` checks many pairs in one request, but you choose the sources and destinations. |
 | Triage | A health problem of unknown cause | `plan-incident-triage` | covered | the network's health, not an application incident. |
 

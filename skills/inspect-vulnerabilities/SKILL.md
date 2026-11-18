@@ -46,6 +46,8 @@ What each input means, and the fields per object and action: `fwdctl run inspect
      platform).
 4. Order by severity, then known-exploited, then exposed device count, and report how many CVEs the filters left.
 
+**What `known_exploit` means.** Forward sets it when CISA's Known Exploited Vulnerabilities (KEV) catalog lists the CVE, or, if it does not, when a vendor's advisory reports exploitation. The one-CVE view (`cve_id`) adds a `sources` block that says which: `known_exploit_basis` (`cisa_kev`, `vendor_advisory` or `none`), the KEV URL, each vendor advisory (URL, publication date, CVSS v4, v3 and v2 base scores that Forward has, severity, whether the vendor reports exploitation) and the CWE weaknesses. If Forward's flag and the sources disagree, `basis_note` says so. Forward's model carries no EPSS and no KEV date added, due date or ransomware-use field: do not say a CVE has an EPSS or a KEV deadline. A CVE with no vendor advisory in the index shows no `sources`, and a limit says why.
+
 ## When `internet_addressable` is unavailable
 
 Forward refuses the filter with a reason; the skill answers **unknown** with a distinct reason and next step, never zero and never an error. It reads the organization's effective `DISABLE_FLOW_COMPUTATION` and `ADVANCED_REACHABILITY_ANALYSIS` to tell the cases apart:

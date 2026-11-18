@@ -264,6 +264,11 @@ func vulnOneCVE(ctx context.Context, s *fwd.Session, in vulnInput, cx result.Con
 		limits = append(limits, addressableCaveat)
 	}
 	detail := cveDetail(d.CVE, singleDescChars)
+	if src, note := cveSources(ctx, s, in, snapID, d.CVE.KnownExploit); src != nil {
+		detail["sources"] = src
+	} else if note != "" {
+		limits = append(limits, note)
+	}
 	if nilRows < len(d.Devices) {
 		detail["internet_addressable_devices"] = addressable
 	}
@@ -499,4 +504,107 @@ func advOrNotReported(v string) string {
 		return "not reported"
 	}
 	return v
+}
+
+// cveSourcesQuery reads where a CVE's facts come from in Forward's CVE index: whether CISA's Known Exploited Vulnerabilities (KEV) catalog lists it (and the entry's URL), each vendor's
+// advisory (URL, publication date, whether the vendor reports exploitation, the CVSS v2, v3 and v4 base scores and the severity), and the CWE weaknesses. Forward's model carries no EPSS
+// and no KEV date or ransomware field.
+const cveSourcesQuery = `@query
+query(cveId: String) =
+foreach cve in network.cveDatabase.cves
+where cve.cveId == cveId
+foreach v in cve.vendorInfos
+select {
+  kev: isPresent(cve.cisaKevEntry),
+  kevUrl: cve.cisaKevEntry?.url,
+  weaknesses: cve.weaknesses,
+  vendor: v.vendor,
+  published: v.publicationDate,
+  url: v.url,
+  vendorExploit: v.hasKnownExploit,
+  scoreV4: v.baseScoreV4,
+  scoreV3: v.baseScoreV3,
+  scoreV2: v.baseScoreV2,
+  severity: v.severity
+};
+`
+
+// cveSources reads the CVE's sources for the one-CVE view. known_exploit is Forward's flag (true when CISA's KEV catalog lists the CVE, or else when any vendor reports exploitation in its
+// advisory); this says which. It returns nil and a note when the read fails: the CVE answer stands without it.
+func cveSources(ctx context.Context, s *fwd.Session, in vulnInput, snapID string, flag bool) (map[string]any, string) {
+	out, err := s.RunNQE(ctx, in.NetworkID, fwd.NQERun{Query: cveSourcesQuery, Parameters: map[string]any{"cveId": in.CVEID}, SnapshotID: snapID, Limit: 200})
+	if err != nil {
+		return nil, "the CVE's sources (KEV, vendor advisories, scores) could not be read, so known_exploit is Forward's flag without its basis: " + err.Error()
+	}
+	if len(out.Items) == 0 {
+		return nil, "the CVE has no vendor advisory in the CVE index NQE reads (or is not in it), so the basis of known_exploit is not shown"
+	}
+	row := out.Items[0] // kev, kevUrl and weaknesses repeat on every row (one row per vendor advisory)
+	var kev bool
+	_ = json.Unmarshal(row["kev"], &kev)
+	var weaknesses []string
+	_ = json.Unmarshal(row["weaknesses"], &weaknesses)
+	type vendorRow struct {
+		Vendor        string   `json:"vendor"`
+		Published     string   `json:"published"`
+		URL           string   `json:"url"`
+		VendorExploit *bool    `json:"vendorExploit"`
+		ScoreV4       *float64 `json:"scoreV4"`
+		ScoreV3       *float64 `json:"scoreV3"`
+		ScoreV2       *float64 `json:"scoreV2"`
+		Severity      string   `json:"severity"`
+	}
+	var vendors []vendorRow
+	for _, it := range out.Items {
+		b, _ := json.Marshal(it)
+		var v vendorRow
+		if json.Unmarshal(b, &v) == nil {
+			vendors = append(vendors, v)
+		}
+	}
+	vendorExploit := false
+	advisories := make([]map[string]any, 0, len(vendors))
+	for _, v := range vendors {
+		a := map[string]any{"vendor": v.Vendor, "severity": v.Severity}
+		if v.URL != "" {
+			a["advisory_url"] = v.URL
+		}
+		if v.Published != "" {
+			a["published"] = v.Published
+		}
+		if v.VendorExploit != nil {
+			a["vendor_reports_exploitation"] = *v.VendorExploit
+			vendorExploit = vendorExploit || *v.VendorExploit
+		}
+		scores := map[string]float64{}
+		if v.ScoreV4 != nil {
+			scores["cvss_v4"] = *v.ScoreV4
+		}
+		if v.ScoreV3 != nil {
+			scores["cvss_v3"] = *v.ScoreV3
+		}
+		if v.ScoreV2 != nil {
+			scores["cvss_v2"] = *v.ScoreV2
+		}
+		if len(scores) > 0 {
+			a["scores"] = scores
+		}
+		advisories = append(advisories, a)
+	}
+	basis := "none"
+	switch {
+	case kev:
+		basis = "cisa_kev"
+	case vendorExploit:
+		basis = "vendor_advisory"
+	}
+	m := map[string]any{"known_exploit_basis": basis, "cisa_kev": kev, "vendor_advisories": advisories, "weaknesses": weaknesses,
+		"not_in_forward": "EPSS, and a KEV date added, due date or ransomware-use field"}
+	if u := asString(row, "kevUrl"); kev && u != "" {
+		m["cisa_kev_url"] = u
+	}
+	if flag != (basis != "none") {
+		m["basis_note"] = "Forward's known_exploit flag and the sources read here disagree; trust neither over the other and read the advisory"
+	}
+	return m, ""
 }
