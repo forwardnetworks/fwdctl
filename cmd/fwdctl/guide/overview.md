@@ -54,6 +54,7 @@ With an agent (Claude Code, Codex or Gemini) you ask in plain words and it picks
 | `fwdctl collector download` | Download the collector installer from the connected Forward (`--type linux`, `windows`, `osx`, or the headless archives). Registering and attaching a collector: `fwdctl describe edit-platform collectors`. |
 | `fwdctl wait snapshot` / `wait collector` | Block until a snapshot is processed, or a registered collector shows CONNECTED. |
 | `fwdctl device-file download` | Write one collected device file, whole and with no line cap, to a new local file (redacted by default; `--no-redact` writes it raw and unredacted). |
+| `fwdctl device-file export` | Write every collected file of every device (or the ones you name, or the files whose name matches `--files`) to a new folder, one folder per device, with a `manifest.json` listing each file's size, hash and what failed; `--dry-run` shows the plan and total size first. Redacted by default (secrets after a keyword on a line; NOT a secret inside an XML or JSON element, so review before sharing), a file over `--max-mib` is listed and not written. |
 | `fwdctl update` | Update fwdctl to the newest release (checksum verified). |
 | `fwdctl nqe lint [FILE]` | Check an NQE query offline: no Forward connection. See `fwdctl docs nqe`. |
 | `fwdctl context nqe <question>` | NQE worked examples nearest a question. |

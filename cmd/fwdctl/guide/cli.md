@@ -130,7 +130,7 @@ Examples:
 
 ## fwdctl device-file
 
-inspect-device-files shows a file in parts and cuts a long line at 400 characters. This command writes the whole file to a path you name, with no line cap, for the cases where the cut hides what you need (a very long list, a long policy line).
+inspect-device-files shows a file in parts and cuts a long line at 400 characters. download writes one whole file to a path you name, with no line cap, for the cases where the cut hides what you need (a very long list, a long policy line). export writes every collected file of every device (or the devices you name) to a new folder, one folder per device and a manifest, which is how to take the configs of a whole network: a platform that keeps several files (a Palo Alto firewall) gets them all.
 
 ```
 fwdctl device-file
@@ -140,6 +140,7 @@ Examples:
 
 ```
   fwdctl device-file download 12345 core-1 config.txt --out ./core-1.config.txt
+  fwdctl device-file export 12345 --out ./configs --dry-run
 ```
 
 ## fwdctl device-file download
@@ -172,6 +173,46 @@ Flags:
       --no-redact         write the file exactly as collected: UNREDACTED, may hold secrets
       --out string        the file to create (must not exist; mode 600)
       --snapshot string   snapshot id (default: the newest PROCESSED collected snapshot)
+```
+
+## fwdctl device-file export
+
+Writes the files Forward collected for the devices of one snapshot to DIR: DIR/DEVICE/FILE for each file, and DIR/manifest.json. The files come from the device's own file listing, so a platform that keeps several (a Palo Alto firewall or Panorama with its configuration and its command outputs, a vendor with extra show output) gets all of them under the names Forward stores them by, and a vendor that adds a file type later is covered with no change here. This is the raw collected text (the same files inspect-device-files reads), not the NQE model of the config.
+
+Devices: every device of the snapshot (the NQE name list), or only those you name with --device (repeat it). --files REGEX keeps only the files whose NAME matches (for example --files 'config', which also keeps ltm_config.txt and partition_config.txt, or --files 'config|panos|running|startup|candidate|policy'); without it every collected file is written, command outputs included, which can be large: run --dry-run first, it lists what would be written and the total size and writes nothing.
+
+DIR must not exist yet (an existing path is never touched); folders are created mode 700 and files mode 600. A device or file name is made safe for a path (anything outside letters, digits, dot, underscore and hyphen becomes _, a clash gets a short hash); manifest.json keeps the real names, the path written, size, line count, sha256, and how many lines were redacted.
+
+Limits: a file larger than --max-mib (default 64, at most 512) is NOT written (its manifest status is too_large), so a cut file is never mistaken for the whole one; the export refuses to start when the files to write total more than --max-total-mib (default 2048) by the listing, before anything is written. Downloads run --jobs at a time (default 4, at most 16).
+
+Redaction: by default a secret value (passwords, keys, SNMP communities and similar) that follows its keyword on the same line (password X, secret X, community X, key X) is replaced with <redacted>, best effort, the same line rules as inspect-device-files. It does NOT see a secret inside an XML or JSON element (for example a PAN-OS <phash> or <password> element), so treat an export of such files as unredacted and review it before sharing; --no-redact writes the files exactly as collected: a RAW export is UNREDACTED and can hold secrets, so treat the folder as sensitive. A session started with FWDCTL_FORCE_REDACT refuses --no-redact.
+
+Failures are listed, never hidden: a device with no files, a listing that failed, a file that failed or was too large each appear in the manifest and the summary, and the exit status is 1 (partial) when any did, 0 when every file was written. The last line on stdout is a JSON summary: status, out, snapshot_id, devices, files_written, bytes, redacted_lines, problems, manifest.
+
+```
+fwdctl device-file export NETWORK_ID --out DIR [--snapshot ID] [--device NAME]... [--files REGEX] [--dry-run] [--no-redact] [--max-mib N] [--max-total-mib N] [--jobs N] [flags]
+```
+
+Examples:
+
+```
+  fwdctl device-file export 12345 --out ./configs --dry-run
+  fwdctl device-file export 12345 --out ./configs --files 'config|panos|running|startup|candidate|policy'
+  fwdctl device-file export 12345 --out ./fw --device fw-1 --device fw-2
+```
+
+Flags:
+
+```
+      --device stringArray   a device to export (repeat for several); default: every device of the snapshot
+      --dry-run              list what would be written and the total size; write nothing
+      --files string         keep only the files whose name matches this regular expression (default: every collected file)
+      --jobs int             downloads at a time (1 to 16) (default 4)
+      --max-mib int          do not write a file larger than this many MiB (1 to 512); it is listed as too_large (default 64)
+      --max-total-mib int    refuse to start when the files to write total more than this many MiB by the listing (default 2048)
+      --no-redact            write the files exactly as collected: UNREDACTED, may hold secrets
+      --out string           the folder to create (must not exist; mode 700)
+      --snapshot string      snapshot id (default: the newest PROCESSED collected snapshot)
 ```
 
 ## fwdctl docs

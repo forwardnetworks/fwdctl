@@ -23,12 +23,14 @@ const (
 func (a *app) deviceFileCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "device-file",
-		Short: "download one collected device file whole, to a new local file",
-		Long: "inspect-device-files shows a file in parts and cuts a long line at 400 characters. This command writes the whole file to a path you name, with no line cap, " +
-			"for the cases where the cut hides what you need (a very long list, a long policy line).",
-		Example: "  fwdctl device-file download 12345 core-1 config.txt --out ./core-1.config.txt",
+		Short: "write collected device files to local files: one file whole (download), or every device's files (export)",
+		Long: "inspect-device-files shows a file in parts and cuts a long line at 400 characters. download writes one whole file to a path you name, with no line cap, " +
+			"for the cases where the cut hides what you need (a very long list, a long policy line). export writes every collected file of every device (or the devices you name) to a new folder, " +
+			"one folder per device and a manifest, which is how to take the configs of a whole network: a platform that keeps several files (a Palo Alto firewall) gets them all.",
+		Example: "  fwdctl device-file download 12345 core-1 config.txt --out ./core-1.config.txt\n  fwdctl device-file export 12345 --out ./configs --dry-run",
 	}
 	c.AddCommand(a.deviceFileDownloadCmd())
+	c.AddCommand(a.deviceFileExportCmd())
 	return c
 }
 

@@ -20,3 +20,7 @@ lines and every line returned costs tokens. Optional: `snapshot_id` (default new
 - Secret values after keywords such as `password`, `secret`, `community`, `key` are replaced with `<redacted>` on a best-effort basis; the limits say how many lines changed. `no_redact` turns it off.
 - A file is downloaded to 4 MiB at most before it is read or searched.
 - On a predicted snapshot, a read or a search of one file also says how many lines of it the prediction changed (`predicted_modified_lines`, with the `change_set_id` and `base_snapshot_id`), when Forward gives it (the org property `PREDICT_MODELING` on). Read from Forward's source via the SDK, not run live.
+
+## Every device's files
+
+This skill reads one device. To take the collected files of every device (or a few) to disk, with one folder per device and a manifest, use `fwdctl device-file export NETWORK_ID --out DIR` (`--dry-run` first, `--files REGEX` to keep the config files). A platform that keeps several files (seen on a live network: a firewall with `configuration.txt` plus `config_pushed_template.txt` and `config_pushed_shared_policy.txt`, an F5 with `ltm_config.txt` and `partition_config.txt`) gets all of them under Forward's own names. Redaction is the same line-based best effort as everywhere here: it does not see a secret inside an XML or JSON element, so review an export of such files before sharing it.
