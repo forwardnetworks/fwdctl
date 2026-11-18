@@ -35,7 +35,7 @@ Before you answer, take at least: the existing checks and their status (step 2) 
 
 ## Answering
 
-A table of rule, check, status, snapshot. A rule with no check, or a check that returned no rows because nothing matched its scope, is **unknown**, not compliant. Do not claim compliance with a framework Forward does not test (a check set is not a certification).
+A table of rule, check, status, snapshot. A rule with no check, or a check that returned no rows because nothing matched its scope, is **unknown**, not compliant. Do not claim compliance with a framework Forward does not test (a check set is not a certification). For the NIST Cybersecurity Framework 2.0 ("NIST2"), [reference/nist-csf-2.md](reference/nist-csf-2.md) says which subcategories Forward can evidence and with which skill: answer by subcategory, never with one compliant or not.
 
 ## Worked example
 

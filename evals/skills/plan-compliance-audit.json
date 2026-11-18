@@ -40,6 +40,16 @@
    "query": "Which checks failed right now?",
    "should_trigger": false,
    "note": "check-network-compliance"
+  },
+  {
+   "query": "Where do we stand against NIST CSF 2.0? Give me the evidence from the network.",
+   "should_trigger": true,
+   "expected_behavior": [
+    "reads reference/nist-csf-2.md and answers by subcategory, not with one compliant or not compliant",
+    "separates evidence from partial and says a subcategory not in the table is not evidenced by Forward",
+    "names the snapshot the evidence is from and the limits of each check it ran",
+    "does not claim a subcategory is met from a check that matched nothing"
+   ]
   }
  ],
  "measure": [
