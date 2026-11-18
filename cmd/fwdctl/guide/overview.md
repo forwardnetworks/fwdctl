@@ -59,7 +59,7 @@ With an agent (Claude Code, Codex or Gemini) you ask in plain words and it picks
 | `fwdctl nqe lint [FILE]` | Check an NQE query offline: no Forward connection. See `fwdctl docs nqe`. |
 | `fwdctl context nqe <question>` | NQE worked examples nearest a question. |
 | `fwdctl context schema <term>` | Real NQE field names and enum values matching a term. |
-| `fwdctl install claude` / `agents` | Put the skills where an agent loads them. See `fwdctl docs install`. |
+| `fwdctl install claude` / `agent-skills` / `agents` | Put the skills where an agent loads them: Claude Code's folder, the Agent Skills standard's `~/.agents/skills`, or an AGENTS.md section. See `fwdctl docs install`. |
 | `fwdctl docs [topic]` | This guide. |
 | `fwdctl version` | Release, commit and build date. |
 

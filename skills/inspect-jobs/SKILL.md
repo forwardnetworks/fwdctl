@@ -1,7 +1,8 @@
 ---
 name: inspect-jobs
-description: Lists Forward's active or completed backend jobs and flags ones running past a threshold as stuck. Use when Forward seems slow, before assuming a worker crashed.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Lists Forward's active or completed backend jobs and flags ones running past a threshold as stuck. Use when Forward seems slow, before assuming a worker crashed."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "investigate"
   summary: "see running or finished backend jobs"

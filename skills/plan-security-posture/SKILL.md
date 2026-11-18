@@ -1,7 +1,8 @@
 ---
 name: plan-security-posture
-description: Sequences security posture skills: failing checks, CVEs, internet exposure, zone isolation. Use for a security review or segmentation.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Sequences security posture skills: failing checks, CVEs, internet exposure, zone isolation. Use for a security review or segmentation."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "security"
   summary: "security review, zone isolation"

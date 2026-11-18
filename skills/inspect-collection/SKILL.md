@@ -1,7 +1,8 @@
 ---
 name: inspect-collection
-description: Reads collection state without diagnosing: running, what is collected, devices to migrate, discovery, connectivity tests. Use when asked if collection is healthy.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Reads collection state without diagnosing: running, what is collected, devices to migrate, discovery, connectivity tests. Use when asked if collection is healthy."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "snapshots"
   summary: "collection state, config, discovery"

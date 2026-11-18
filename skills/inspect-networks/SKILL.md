@@ -1,7 +1,8 @@
 ---
 name: inspect-networks
-description: Lists the networks the login can see, with ids and names; view workspaces summarises change workspaces. Use when the network id is unknown.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Lists the networks the login can see, with ids and names; view workspaces summarises change workspaces. Use when the network id is unknown."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "environment"
   summary: "list networks and workspaces"

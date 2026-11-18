@@ -1,7 +1,8 @@
 ---
 name: compare-nqe-results
-description: Shows which rows a saved NQE query gains, loses or changes between two snapshots. Use when asked what changed between two snapshots for one kind of data, or to diff a query before and after.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Shows which rows a saved NQE query gains, loses or changes between two snapshots. Use when asked what changed between two snapshots for one kind of data, or to diff a query before and after."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "nqe"
   summary: "query rows changed"

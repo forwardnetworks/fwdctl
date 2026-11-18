@@ -1,7 +1,8 @@
 ---
 name: edit-jobs
-description: Cancels active backend jobs running past a threshold instead of restarting the worker running them. Dry run unless apply is true. Use when a job looks stuck.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Cancels active backend jobs running past a threshold instead of restarting the worker running them. Dry run unless apply is true. Use when a job looks stuck."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "investigate"
   summary: "cancel jobs stuck past a threshold"

@@ -1,7 +1,8 @@
 ---
 name: edit-source
-description: Changes what is collected: devices, logins, jump servers, controller setups, command groups, discovery; tests devices. Dry run unless apply: true. Use when onboarding or fixing sources.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Changes what is collected: devices, logins, jump servers, controller setups, command groups, discovery; tests devices. Dry run unless apply: true. Use when onboarding or fixing sources."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "snapshots"
   summary: "sources: devices, logins, discovery"

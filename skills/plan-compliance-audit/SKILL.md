@@ -1,7 +1,8 @@
 ---
 name: plan-compliance-audit
-description: Sequences the skills that audit policy: checks, findings, new rules, history. Use when asked about compliance or audit evidence.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Sequences the skills that audit policy: checks, findings, new rules, history. Use when asked about compliance or audit evidence."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "compliance"
   summary: "policy audit evidence"

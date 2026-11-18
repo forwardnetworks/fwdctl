@@ -377,10 +377,10 @@ func (a *app) updateCmd() *cobra.Command {
 func (a *app) installCmd() *cobra.Command {
 	c := parent(&cobra.Command{
 		Use: "install", GroupID: "setup", Short: "put the skills where an agent loads them",
-		Example: "  fwdctl install claude\n  fwdctl install agents --file AGENTS.md\n  fwdctl install lsp",
-		Long:    "Install the skills for an agent: into Claude Code's skills directory, or as a managed section of an AGENTS.md / CLAUDE.md file. `install lsp` sets up the NQE language server for Claude Code without the skills.",
+		Example: "  fwdctl install claude\n  fwdctl install agent-skills\n  fwdctl install agents --file AGENTS.md\n  fwdctl install lsp",
+		Long:    "Install the skills for an agent: into Claude Code's skills directory, into the Agent Skills standard's cross-client folder (~/.agents/skills), or as a managed section of an AGENTS.md / CLAUDE.md file. `install lsp` sets up the NQE language server for Claude Code without the skills.",
 	})
-	var dir, file string
+	var dir, file, agentDir string
 	claude := &cobra.Command{
 		Use: "claude", Short: "write the skills where Claude Code loads them (default ~/.claude/skills)", Args: cobra.NoArgs,
 		Example: "  fwdctl install claude",
@@ -389,6 +389,17 @@ func (a *app) installCmd() *cobra.Command {
 		},
 	}
 	claude.Flags().StringVar(&dir, "dir", "", "directory to write the skills into (default ~/.claude/skills)")
+	agentSkills := &cobra.Command{
+		Use: "agent-skills", Short: "write the skills to the Agent Skills standard's cross-client location (default ~/.agents/skills)", Args: cobra.NoArgs,
+		Long: "Write every skill as <name>/SKILL.md (with its reference notes) under ~/.agents/skills, the cross-client convention of the Agent Skills standard (https://agentskills.io): agents that support the convention " +
+			"load skills from it (which ones do is theirs to say; `install claude` writes Claude Code's own folder). Use --dir for a project folder, for example <project>/.agents/skills. " +
+			"The SKILL.md files are valid against the specification (strict YAML frontmatter, name equal to the folder). Re-running rewrites each skill's SKILL.md and reference notes and deletes nothing: a folder of a skill renamed or retired since an earlier install, and an old reference note, stay until you remove them.",
+		Example: "  fwdctl install agent-skills\n  fwdctl install agent-skills --dir ./.agents/skills",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.exit(installRun("agent-skills", agentDir, "", a.out, a.err))
+		},
+	}
+	agentSkills.Flags().StringVar(&agentDir, "dir", "", "directory to write the skills into (default ~/.agents/skills)")
 	agents := &cobra.Command{
 		Use: "agents", Short: "add a managed skills section to an AGENTS.md / CLAUDE.md style file (stdout without --file)", Args: cobra.NoArgs,
 		Example: "  fwdctl install agents --file AGENTS.md",
@@ -406,7 +417,7 @@ func (a *app) installCmd() *cobra.Command {
 		},
 	}
 	lsp.Flags().StringVar(&dir, "dir", "", "directory to write the marketplace into (default ~/.claude/plugins-local)")
-	c.AddCommand(claude, agents, lsp)
+	c.AddCommand(claude, agentSkills, agents, lsp)
 	return c
 }
 

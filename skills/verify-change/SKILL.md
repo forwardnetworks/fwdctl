@@ -1,7 +1,8 @@
 ---
 name: verify-change
-description: Judges a change and Predict fit: verify, describe, impact, list, scope, preflight, paths. Use for: is a change safe, what a change set does, Predict fit, interesting paths.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Judges a change and Predict fit: verify, describe, impact, list, scope, preflight, paths. Use for: is a change safe, what a change set does, Predict fit, interesting paths."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "change"
   summary: "verify, scope, preflight a change"

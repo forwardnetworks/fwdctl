@@ -1,7 +1,8 @@
 ---
 name: inspect-environment
-description: Reports the Forward build, organization, login, license tier and which features are on (value, default, where set). Use when asked what version, license or features are enabled.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Reports the Forward build, organization, login, license tier and which features are on (value, default, where set). Use when asked what version, license or features are enabled."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "environment"
   summary: "Forward build, license, features"

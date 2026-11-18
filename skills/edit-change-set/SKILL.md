@@ -1,7 +1,8 @@
 ---
 name: edit-change-set
-description: Builds a Predict change set from CLI commands or BGP advertisements and optionally predicts it, touching no device. Dry run unless apply is true. Use when staging or testing a change.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Builds a Predict change set from CLI commands or BGP advertisements and optionally predicts it, touching no device. Dry run unless apply is true. Use when staging or testing a change."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "change"
   summary: "stage a Predict change set"

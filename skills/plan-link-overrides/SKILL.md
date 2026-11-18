@@ -1,7 +1,8 @@
 ---
 name: plan-link-overrides
-description: Sequences the skills that diagnose and fix missing or drifted link overrides. Use when a manual or suppressed link is missing.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Sequences the skills that diagnose and fix missing or drifted link overrides. Use when a manual or suppressed link is missing."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "edge-synthetic"
   summary: "missing or drifted overrides"

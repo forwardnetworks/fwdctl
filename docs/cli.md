@@ -233,7 +233,7 @@ Examples:
 
 ## fwdctl install
 
-Install the skills for an agent: into Claude Code's skills directory, or as a managed section of an AGENTS.md / CLAUDE.md file. `install lsp` sets up the NQE language server for Claude Code without the skills.
+Install the skills for an agent: into Claude Code's skills directory, into the Agent Skills standard's cross-client folder (~/.agents/skills), or as a managed section of an AGENTS.md / CLAUDE.md file. `install lsp` sets up the NQE language server for Claude Code without the skills.
 
 ```
 fwdctl install
@@ -243,8 +243,30 @@ Examples:
 
 ```
   fwdctl install claude
+  fwdctl install agent-skills
   fwdctl install agents --file AGENTS.md
   fwdctl install lsp
+```
+
+## fwdctl install agent-skills
+
+Write every skill as <name>/SKILL.md (with its reference notes) under ~/.agents/skills, the cross-client convention of the Agent Skills standard (https://agentskills.io): agents that support the convention load skills from it (which ones do is theirs to say; `install claude` writes Claude Code's own folder). Use --dir for a project folder, for example <project>/.agents/skills. The SKILL.md files are valid against the specification (strict YAML frontmatter, name equal to the folder). Re-running rewrites each skill's SKILL.md and reference notes and deletes nothing: a folder of a skill renamed or retired since an earlier install, and an old reference note, stay until you remove them.
+
+```
+fwdctl install agent-skills [flags]
+```
+
+Examples:
+
+```
+  fwdctl install agent-skills
+  fwdctl install agent-skills --dir ./.agents/skills
+```
+
+Flags:
+
+```
+      --dir string   directory to write the skills into (default ~/.agents/skills)
 ```
 
 ## fwdctl install agents

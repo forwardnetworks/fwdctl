@@ -1,7 +1,8 @@
 ---
 name: inspect-inventory
-description: Reads network contents: devices, interfaces, VLANs, VRFs, hosts, cloud, BGP families, routes; kind ip_owner finds an IP's interface. Use when asked how many devices exist or who owns an IP.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Reads network contents: devices, interfaces, VLANs, VRFs, hosts, cloud, BGP families, routes; kind ip_owner finds an IP's interface. Use when asked how many devices exist or who owns an IP."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "inventory-topology"
   summary: "devices, interfaces, BGP families, IP owner"

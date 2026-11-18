@@ -1,7 +1,8 @@
 ---
 name: edit-device-tags
-description: Puts existing tags on devices or takes them off, after showing the pairs that change. Dry run unless apply is true. Use when asked to tag, label or group devices, or remove a tag.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Puts existing tags on devices or takes them off, after showing the pairs that change. Dry run unless apply is true. Use when asked to tag, label or group devices, or remove a tag."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "inventory-topology"
   summary: "tag or untag devices"

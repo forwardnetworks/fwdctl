@@ -13,9 +13,9 @@ import (
 var completionCommands = []string{"list", "describe", "run", "context", "nqe", "install", "docs", "update", "which", "login", "whoami", "completion", "version", "help"}
 
 var completionSub = map[string][]string{
-	"nqe":        {"lint", "fmt", "lsp", "complete", "hover", "features"},
+	"nqe":        {"lint", "fmt", "lsp", "complete", "hover", "features", "bundle", "compare", "diff", "explain", "export", "metrics", "pack", "run", "synthesize", "template"},
 	"context":    {"nqe", "schema"},
-	"install":    {"claude", "agents", "lsp"},
+	"install":    {"claude", "agent-skills", "agents", "lsp"},
 	"docs":       {"overview", "skills", "nqe", "install", "troubleshooting"},
 	"completion": {"bash", "zsh", "fish", "powershell"},
 }

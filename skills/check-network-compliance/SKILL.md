@@ -1,7 +1,8 @@
 ---
 name: check-network-compliance
-description: Decides whether the network satisfies a policy using Forward's checks and NQE violation queries; view read lists existing checks. Use when asked if the network is compliant or breaks a rule.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Decides whether the network satisfies a policy using Forward's checks and NQE violation queries; view read lists existing checks. Use when asked if the network is compliant or breaks a rule."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "compliance"
   summary: "policy checks and violations"

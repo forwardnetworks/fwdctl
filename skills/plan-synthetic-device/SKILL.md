@@ -1,7 +1,8 @@
 ---
 name: plan-synthetic-device
-description: Sequences the skills that model an uncollected segment as a synthetic device. Use when a path dead-ends at the edge.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Sequences the skills that model an uncollected segment as a synthetic device. Use when a path dead-ends at the edge."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "edge-synthetic"
   summary: "model an uncollected segment"

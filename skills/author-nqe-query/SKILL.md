@@ -1,7 +1,8 @@
 ---
 name: author-nqe-query
-description: Guides an NQE question from words to a saved query: find, write, lint, run, keep. Use when writing, fixing, checking or saving an NQE query, or when one fails to compile.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Guides an NQE question from words to a saved query: find, write, lint, run, keep. Use when writing, fixing, checking or saving an NQE query, or when one fails to compile."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "nqe"
   summary: "write NQE queries"

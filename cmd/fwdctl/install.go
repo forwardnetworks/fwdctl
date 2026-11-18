@@ -316,7 +316,7 @@ func installLSP(dir string) (string, error) {
 	return dir, nil
 }
 
-// installRun writes the skills for an agent: kind "claude" into dir (default ~/.claude/skills), kind "agents" into file (printed without one), kind "lsp" the NQE language server plugin into dir.
+// installRun writes the skills for an agent: kind "claude" into dir (default ~/.claude/skills), kind "agent-skills" into dir (default ~/.agents/skills, the Agent Skills standard's cross-client folder), kind "agents" into file (printed without one), kind "lsp" the NQE language server plugin into dir.
 func installRun(kind, dir, file string, stdout, stderr io.Writer) int {
 	if kind == "lsp" {
 		target, err := installLSP(dir)
@@ -333,7 +333,7 @@ func installRun(kind, dir, file string, stdout, stderr io.Writer) int {
 		return usage
 	}
 	switch kind {
-	case "claude":
+	case "claude", "agent-skills":
 		target := dir
 		if target == "" {
 			home, err := os.UserHomeDir()
@@ -342,6 +342,9 @@ func installRun(kind, dir, file string, stdout, stderr io.Writer) int {
 				return usage
 			}
 			target = filepath.Join(home, ".claude", "skills")
+			if kind == "agent-skills" {
+				target = filepath.Join(home, ".agents", "skills")
+			}
 		}
 		written, err := installClaude(target, all)
 		if err != nil {

@@ -1,7 +1,8 @@
 ---
 name: plan-change-review
-description: Sequences predict, check and reach for a change, and the evidence around a maintenance window. Use when asked if a change is safe.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Sequences predict, check and reach for a change, and the evidence around a maintenance window. Use when asked if a change is safe."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "change"
   summary: "change safety, window evidence"

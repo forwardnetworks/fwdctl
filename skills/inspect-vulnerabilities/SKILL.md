@@ -1,7 +1,8 @@
 ---
 name: inspect-vulnerabilities
-description: Finds which CVEs expose the network, which devices a CVE affects, or which CVEs affect a device, from Forward's detection. Use when asked about vulnerabilities, a named CVE or patching.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Finds which CVEs expose the network, which devices a CVE affects, or which CVEs affect a device, from Forward's detection. Use when asked about vulnerabilities, a named CVE or patching."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "security"
   summary: "CVEs and affected devices"

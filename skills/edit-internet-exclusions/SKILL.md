@@ -1,7 +1,8 @@
 ---
 name: edit-internet-exclusions
-description: Changes the public subnets excluded from the internet node, showing before and after. Dry run unless apply is true. Use when internal public prefixes count as internet.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Changes the public subnets excluded from the internet node, showing before and after. Dry run unless apply is true. Use when internal public prefixes count as internet."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "edge-synthetic"
   summary: "internet node exclusions"

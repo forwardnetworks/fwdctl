@@ -1,7 +1,8 @@
 ---
 name: find-nqe-query
-description: Searches the saved NQE query library for queries relevant to a question and returns ids, paths and intent. Use before writing a query from scratch, or to get a query id for a check.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Searches the saved NQE query library for queries relevant to a question and returns ids, paths and intent. Use before writing a query from scratch, or to get a query id for a check."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "nqe"
   summary: "search saved queries"

@@ -1,7 +1,8 @@
 ---
 name: inspect-topology
-description: Reads layout: links, sites, tags, aliases, link overrides (compare_to_snapshot_id diffs two snapshots); kind external shows the internet node, L3 VPNs. Use when asked what a device links to.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Reads layout: links, sites, tags, aliases, link overrides (compare_to_snapshot_id diffs two snapshots); kind external shows the internet node, L3 VPNs. Use when asked what a device links to."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "inventory-topology"
   summary: "links, sites, tags, overrides"

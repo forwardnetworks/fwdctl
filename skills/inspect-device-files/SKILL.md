@@ -1,7 +1,8 @@
 ---
 name: inspect-device-files
-description: Reads the raw configuration and command output collected from one device by listing files, reading a window or regex search. Use when asked what a device's actual config or show output says.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Reads the raw configuration and command output collected from one device by listing files, reading a window or regex search. Use when asked what a device's actual config or show output says."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "inventory-topology"
   summary: "raw device config and output"

@@ -1,7 +1,8 @@
 ---
 name: edit-workspace
-description: Makes a temporary workspace network, adds endpoints to a workspace, or deletes one. Dry run unless apply is true. Use when trying a collection change away from the production network.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Makes a temporary workspace network, adds endpoints to a workspace, or deletes one. Dry run unless apply is true. Use when trying a collection change away from the production network."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "snapshots"
   summary: "temporary workspace network"

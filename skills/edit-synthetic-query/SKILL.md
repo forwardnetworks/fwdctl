@@ -1,7 +1,8 @@
 ---
 name: edit-synthetic-query
-description: Attaches a saved NQE query to a synthetic node so Forward generates its connections from the rows, or detaches it. Dry run unless apply is true. Use when driving a node from a query.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Attaches a saved NQE query to a synthetic node so Forward generates its connections from the rows, or detaches it. Dry run unless apply is true. Use when driving a node from a query."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "edge-synthetic"
   summary: "query-driven synthetic node"

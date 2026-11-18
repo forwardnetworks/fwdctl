@@ -1,7 +1,8 @@
 ---
 name: edit-snapshot
-description: Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import. Dry run unless apply. Use when labeling or removing one.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Changes a snapshot or retention: note, reprocess, invalidate, (un)favorite, delete, retention, export, import. Dry run unless apply. Use when labeling or removing one."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "snapshots"
   summary: "note, reprocess, delete"

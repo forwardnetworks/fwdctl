@@ -1,7 +1,8 @@
 ---
 name: inspect-access
-description: Shows this login's Forward roles and what they allow, explains a refused operation, lists users and groups, reads the audit log. Read-only. Use when access or a 403 is the question.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Shows this login's Forward roles and what they allow, explains a refused operation, lists users and groups, reads the audit log. Read-only. Use when access or a 403 is the question."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "access"
   summary: "roles, users, groups, audit"

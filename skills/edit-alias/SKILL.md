@@ -1,7 +1,8 @@
 ---
 name: edit-alias
-description: Manages a named alias of hosts, devices, interfaces or headers that checks use: put, replace or end. Dry run unless apply is true. Use when a check needs a named group.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Manages a named alias of hosts, devices, interfaces or headers that checks use: put, replace or end. Dry run unless apply is true. Use when a check needs a named group."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "inventory-topology"
   summary: "aliases"

@@ -343,8 +343,24 @@ func Run(ctx context.Context, name string, s *fwd.Session, in json.RawMessage) (
 	return r, nil
 }
 
-// parseSkill reads `---` frontmatter and the body. The parser is hand-rolled on purpose (descriptions are
-// prose with colons and quotes, which a strict YAML load rejects); it splits on the FIRST colon of a line.
+// unquoteYAMLValue reads one frontmatter value the way YAML does: a double-quoted value is unescaped (\" and \\ and the other escapes), a single-quoted one has its doubled apostrophe folded to one, and a plain value is
+// returned as it is. SKILL.md files are strict YAML (the Agent Skills specification: description and compatibility are quoted, because prose holds colons), and this keeps the hand-rolled reader
+// (which splits a line on its first colon) giving the same text a YAML parser gives.
+func unquoteYAMLValue(v string) string {
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		if u, err := strconv.Unquote(v); err == nil {
+			return u
+		}
+		return strings.ReplaceAll(strings.ReplaceAll(v[1:len(v)-1], `\"`, `"`), `\\`, `\`)
+	}
+	if len(v) >= 2 && v[0] == '\'' && v[len(v)-1] == '\'' {
+		return strings.ReplaceAll(v[1:len(v)-1], "''", "'")
+	}
+	return v
+}
+
+// parseSkill reads `---` frontmatter and the body. The parser is hand-rolled and lenient (it splits on the FIRST colon of a line, so an old plain-prose value still loads); the files themselves are
+// strict YAML, which skills/spec_test.go enforces with a real YAML parser.
 func parseSkill(name, src string) (Meta, error) {
 	m := Meta{Name: name}
 	src = strings.ReplaceAll(src, "\r\n", "\n")
@@ -363,7 +379,7 @@ func parseSkill(name, src string) (Meta, error) {
 		if line == "" || strings.HasPrefix(line, "#") || i < 0 {
 			continue
 		}
-		k, v := strings.TrimSpace(line[:i]), strings.Trim(strings.TrimSpace(line[i+1:]), `"`)
+		k, v := strings.TrimSpace(line[:i]), unquoteYAMLValue(strings.TrimSpace(line[i+1:]))
 		if strings.HasPrefix(raw, " ") || strings.HasPrefix(raw, "\t") {
 			if inMetadata { // a key nested under metadata:
 				switch k {

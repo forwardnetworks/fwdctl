@@ -3,6 +3,7 @@
 *Experimental: a dogfooding project, not an official Forward Networks release or product.*
 
     fwdctl install claude [--dir DIR]       # writes <dir>/<skill>/SKILL.md; default ~/.claude/skills
+    fwdctl install agent-skills [--dir DIR] # writes <dir>/<skill>/SKILL.md; default ~/.agents/skills, the Agent Skills standard's cross-client folder
     fwdctl install agents [--file FILE]     # adds a managed block (rules and a compact skill list) to AGENTS.md or CLAUDE.md (stdout without --file)
 
 The agent reads each skill's description to decide when to use it, then runs it through `fwdctl run`. The skills themselves (the
@@ -16,6 +17,10 @@ Re-running is safe: `install claude` rewrites the skill files and `install agent
 
 The repository is also a Claude Code plugin: `/plugin marketplace add forwardnetworks/forward-skills`, then
 `/plugin install forward-skills@forward-skills`. The plugin carries the skills and needs no binary to install; the `fwdctl` binary has to be on `PATH` only to run them.
+
+## Any agent that follows the Agent Skills standard
+
+The skills are in the open Agent Skills format (<https://agentskills.io>): a folder per skill with a `SKILL.md` whose frontmatter is strict YAML (`name` equal to the folder, a quoted `description` and `compatibility`, string-valued `metadata`) and its notes beside it. A test checks every `SKILL.md` against the specification with a real YAML parser. `fwdctl install agent-skills` writes them to `~/.agents/skills`, the standard's cross-client convention (agents that support it load skills from there; which ones do is theirs to say, and `fwdctl install claude` writes Claude Code's own folder). Use `--dir <project>/.agents/skills` for one project. Re-running rewrites each skill's files and deletes nothing, so a folder of a skill renamed or retired since an earlier install stays until you remove it. An agent loads only each skill's name and description at start and reads the rest when it uses the skill. `fwdctl` must be on `PATH` and logged in, because the skills run it.
 
 ## Codex plugin
 

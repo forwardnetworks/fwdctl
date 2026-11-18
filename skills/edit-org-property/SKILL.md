@@ -1,7 +1,8 @@
 ---
 name: edit-org-property
-description: Lists Forward's org properties with value, who may change them and risk, and sets or clears one. Dry run unless apply is true. Use when changing an org-wide Forward setting.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Lists Forward's org properties with value, who may change them and risk, and sets or clears one. Dry run unless apply is true. Use when changing an org-wide Forward setting."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "access"
   summary: "change an org-wide setting"

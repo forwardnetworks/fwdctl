@@ -1,7 +1,8 @@
 ---
 name: plan-safe-write
-description: States the protocol every edit skill follows: plan, show, approve, apply once, verify, keep the undo. Use before any edit-* skill.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "States the protocol every edit skill follows: plan, show, approve, apply once, verify, keep the undo. Use before any edit-* skill."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "environment"
   summary: "edit protocol; read first"

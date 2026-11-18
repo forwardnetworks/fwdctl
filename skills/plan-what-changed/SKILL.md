@@ -1,7 +1,8 @@
 ---
 name: plan-what-changed
-description: Sequences the skills that answer what changed and when. Use when asked what changed or when something started.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Sequences the skills that answer what changed and when. Use when asked what changed or when something started."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "change"
   summary: "what changed and when"

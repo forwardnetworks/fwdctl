@@ -1,7 +1,8 @@
 ---
 name: edit-link-overrides
-description: Adds or removes a snapshot's manual and suppressed links, showing the change. Dry run unless apply is true. Use when adding an undiscovered link, ignoring a wrong one or undoing an override.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Adds or removes a snapshot's manual and suppressed links, showing the change. Dry run unless apply is true. Use when adding an undiscovered link, ignoring a wrong one or undoing an override."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "edge-synthetic"
   summary: "add or remove link overrides"

@@ -1,7 +1,8 @@
 ---
 name: plan-incident-triage
-description: Sequences the skills that check network health or triage an outage of unknown cause. Use for a health check or what is wrong now.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Sequences the skills that check network health or triage an outage of unknown cause. Use for a health check or what is wrong now."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "investigate"
   summary: "health check, outage triage"

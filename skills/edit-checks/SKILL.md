@@ -1,7 +1,8 @@
 ---
 name: edit-checks
-description: Creates one check on a snapshot, deactivates one, or raises, links or closes a check's ServiceNow incident. Dry run unless apply. Use when asked to add, switch off or ticket a policy check.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Creates one check on a snapshot, deactivates one, or raises, links or closes a check's ServiceNow incident. Dry run unless apply. Use when asked to add, switch off or ticket a policy check."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "compliance"
   summary: "create, deactivate or ticket checks"

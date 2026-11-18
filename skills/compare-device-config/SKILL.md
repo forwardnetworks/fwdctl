@@ -1,7 +1,8 @@
 ---
 name: compare-device-config
-description: Shows which devices' config files changed between two snapshots and the lines added or removed on one device. Use when asked what changed in a device's config or which were reconfigured.
-compatibility: Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment.
+description: "Shows which devices' config files changed between two snapshots and the lines added or removed on one device. Use when asked what changed in a device's config or which were reconfigured."
+compatibility: "Reading the skill needs nothing. To run its analyses against Forward: the fwdctl binary on PATH and FORWARD_URL, FORWARD_USERNAME and FORWARD_PASSWORD in the environment."
+license: Proprietary
 metadata:
   cluster: "change"
   summary: "config lines changed"
