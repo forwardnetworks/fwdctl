@@ -19,6 +19,10 @@ Reports checks without evaluating a policy. Give `snapshot_id` (default newest p
 
 The ServiceNow incidents Forward has linked to the snapshot's active checks: check id, number, state and when the state last changed (all Forward sends). Give `snapshot_id` (default newest processed), optionally `check_id` (that check only, each incident also read from ServiceNow for its URL, impact and urgency, with Forward's work-note update history; at most 10), `limit`, `offset`. **unknown** when the org has no ServiceNow integration; an empty list covers only incidents Forward linked, not ones raised in ServiceNow by hand. On a predicted snapshot Forward serves them only when the org property PREDICT_UNSANDBOXED is on. Preview routes, source-read, not yet run against a live ServiceNow. Raising, linking and closing them is `edit-checks`.
 
+## view permissive_rules
+
+PAN-OS firewall rules that permit "any" source, "any" destination or any service, from the same ACL entries as `shadowed_rules`. Give `network_id`, optionally `snapshot_id` and `limit` (default 25). No policy is used. Result: `failed` (confidence `inferred`) with the candidates, `unknown` when none is found. What it means: `reference/permissive-rules.md`.
+
 ## view shadowed_rules
 
 Zone-based firewall rules covered by one earlier rule on the same device, from the ACL entries Forward models. Give `network_id`, optionally `snapshot_id` (default newest processed) and `limit` (findings shown, default 25; the rest are declared omitted). No policy, check or query input is used. The result is `failed` (confidence `inferred`) when there are candidates, with each rule, the covering rule, their positions and `redundant` or `ineffective`; `unknown` when there are none or no rules exist. What is analyzed, what is skipped and why, and how to read a candidate: `reference/shadowed-rules.md`.

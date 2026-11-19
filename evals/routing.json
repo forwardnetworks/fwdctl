@@ -35,6 +35,11 @@
     "rival": "plan-security-posture"
   },
   {
+    "query": "Which firewall rules allow any source to any destination, any-any rules on our Palo Alto firewalls?",
+    "expect": "check-network-compliance",
+    "rival": "plan-security-posture"
+  },
+  {
     "query": "Users report the network is slow, help me triage this incident",
     "expect": "plan-incident-triage",
     "rival": "plan-security-posture"

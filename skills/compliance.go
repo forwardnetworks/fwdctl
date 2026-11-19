@@ -76,8 +76,10 @@ func checkNetworkCompliance(ctx context.Context, s *fwd.Session, raw json.RawMes
 		return checkIncidents(ctx, s, raw)
 	case "shadowed_rules":
 		return shadowedRules(ctx, s, in)
+	case "permissive_rules":
+		return permissiveRules(ctx, s, in)
 	default:
-		return result.Result{}, fmt.Errorf("%w: view must be evaluate, read, incidents or shadowed_rules", ErrInvalidInput)
+		return result.Result{}, fmt.Errorf("%w: view must be evaluate, read, incidents, shadowed_rules or permissive_rules", ErrInvalidInput)
 	}
 	useChecks := in.UseChecks || len(in.CheckIDs) > 0
 	if !useChecks && in.NQE == nil {

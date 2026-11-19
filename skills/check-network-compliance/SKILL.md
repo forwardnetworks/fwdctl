@@ -37,7 +37,7 @@ What each input means, and the fields per object and action: `fwdctl run check-n
 4. Decide across all policies: any violation is **failed**; otherwise any not-evaluated policy
    is **unknown**; otherwise **ok**.
 
-**view shadowed_rules** finds zone-based firewall rules covered by an earlier rule (no policy needed; `reference/shadowed-rules.md`). **view incidents** lists the ServiceNow incidents linked to the snapshot's checks (`check_id` for one check's, read from ServiceNow; `reference/inputs.md`). **view read** reports checks without evaluating a policy (`check_id`, `statuses`, `catalogue`, `limit`, `offset`; the fields and status rules are in `reference/inputs.md`, printed by `fwdctl run check-network-compliance --help`). **ERROR and TIMEOUT are not policy failures: they mean Forward produced no verdict, so they count as not evaluated, and when they are all there is the result is unknown.**
+**view permissive_rules** finds PAN-OS firewall rules that permit any source, any destination or any service (no policy needed; `reference/permissive-rules.md`). **view shadowed_rules** finds zone-based firewall rules covered by an earlier rule (no policy needed; `reference/shadowed-rules.md`). **view incidents** lists the ServiceNow incidents linked to the snapshot's checks (`check_id` for one check's, read from ServiceNow; `reference/inputs.md`). **view read** reports checks without evaluating a policy (`check_id`, `statuses`, `catalogue`, `limit`, `offset`; the fields and status rules are in `reference/inputs.md`, printed by `fwdctl run check-network-compliance --help`). **ERROR and TIMEOUT are not policy failures: they mean Forward produced no verdict, so they count as not evaluated, and when they are all there is the result is unknown.**
 
 ## Evidence
 
@@ -60,6 +60,7 @@ Run `fwdctl run check-network-compliance --help` for the inputs and an example, 
 
 Read the file you need, when you need it (where you cannot read files: `fwdctl describe check-network-compliance reference/<file>`).
 
+- [reference/permissive-rules.md](reference/permissive-rules.md): view `permissive_rules`, which PAN-OS firewall rules permit any source, any destination or any service
 - [reference/shadowed-rules.md](reference/shadowed-rules.md): view `shadowed_rules`, which zone-based firewall rules an earlier rule covers (redundant or ineffective), what the model does and does not hold, why a finding is a candidate and "none found" is unknown. Read when asked which firewall rules are shadowed, redundant or can be removed.
 - [reference/library-queries.md](reference/library-queries.md): Forward's saved STIG (Cat I, II, III), CIS and unused-firewall-rule queries: their ids, columns and what a row is, how to count (`fwdctl nqe run --query-id ... --count-by Outcome`), how to find what is new since a snapshot, and when an empty or zero result is unknown. Read when asked which devices fail STIG or CIS, or which firewall rules are unused.
 - [reference/stig-results.md](reference/stig-results.md): reading STIG and other catalog-query results (rows that are not violations, zero rows, counting devices). Read when an `nqe` result says the rows are not all violations.

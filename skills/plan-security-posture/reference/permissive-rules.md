@@ -1,6 +1,6 @@
 # Finding permissive ACL rules across devices
 
-Read when the question is "which devices have an any-to-any permit". A hit is a lead: read the rule and the object it sits in before reporting it.
+Read when the question is "which devices have an any-to-any permit". For PAN-OS rules use `check-network-compliance` view `permissive_rules` instead; this query reads rule text. A hit is a lead: read the rule and the object it sits in before reporting it.
 
 This query matches the text of the rule's configuration line, so it sees the rule syntax that spells `permit <protocol> any any` (Cisco IOS, IOS-XE, NX-OS and ASA style, Arista EOS). Vendors that store rules as structured objects (PAN-OS, FortiOS, Junos policies) do not match and are not covered: say so, and read those with `inspect-device-files` (`fwdctl describe inspect-device-files reference/footguns.md`). A device with no match is "not found by this query", never "clean".
 
