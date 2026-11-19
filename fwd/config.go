@@ -2,6 +2,7 @@ package fwd
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -140,4 +141,28 @@ func (s *Session) EffectiveOrgConfigFor(ctx context.Context, orgID string) (map[
 		return nil, err
 	}
 	return propertyStrings(p), nil
+}
+
+// predictFlagProperties are the Forward org properties that say which Predict models are on. They are the only properties a network-limited session (FWDCTL_ALLOW_NETWORKS) may read, one at a time
+// (GET /api/config/{PROPERTY}); the whole map (GET /api/config) also holds the organization's IP allow-list and password policy and stays refused there. Unexported so no importer can widen the guard.
+var predictFlagProperties = []string{"PREDICT_MODELING", "PREDICT_MODEL_BGP", "PREDICT_MODEL_OSPF", "PREDICT_MODEL_CONFIG", "PREDICT_MODEL_CROSS_PROTOCOL", "PREDICT_MODEL_ISIS", "PREDICT_MODEL_OMP", "PREDICT_MODEL_EXT_ADV", "FIREWALL_PREDICT"}
+
+// PredictFlagProperties returns a copy of the Predict flag property names (upper case, as Forward spells them).
+func PredictFlagProperties() []string { return slices.Clone(predictFlagProperties) }
+
+// PredictFlags reads the Predict flags one property at a time. The names are lower case, as OrgConfig.Effective has them. A flag that could not be read is absent and named in errs with Forward's reason;
+// a property this Forward does not define (an older release) is absent and not an error: the caller's release default says so.
+func (s *Session) PredictFlags(ctx context.Context) (values map[string]string, errs map[string]string) {
+	values, errs = map[string]string{}, map[string]string{}
+	for _, name := range predictFlagProperties {
+		raw, _, err := s.Client.Properties.CurrentValue(ctx, forward.OrgProperty(name))
+		if err != nil {
+			if !forward.IsUnknownOrgProperty(err) {
+				errs[strings.ToLower(name)] = err.Error()
+			}
+			continue
+		}
+		values[strings.ToLower(name)] = forward.PropertyValueString(raw)
+	}
+	return values, errs
 }

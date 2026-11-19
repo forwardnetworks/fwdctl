@@ -48,7 +48,7 @@ func (t readOnlyGuard) RoundTrip(r *http.Request) (*http.Response, error) {
 
 // networkGuard is Config.AllowNetworks: every request must name only allowed networks, or snapshots of them, before it is sent. It is deny by
 // default: a route that is not scoped to a network (users, organisations, integrations, collectors, the NQE library) is refused, except the few
-// that hold no network data (the version, the current user, the NQE schema, and one CVE index read: a CVE's detection logic). The network list is answered with the allowed networks only.
+// that hold no network data (the version, the current user, the NQE schema, one CVE index read: a CVE's detection logic, and the value of one Predict flag). The network list is answered with the allowed networks only.
 type networkGuard struct {
 	next    http.RoundTripper
 	allowed map[string]bool
@@ -142,6 +142,12 @@ func (g *networkGuard) RoundTrip(r *http.Request) (*http.Response, error) {
 		case len(rest) == 2 && rest[1] == "schema" && r.Method == http.MethodGet:
 		default:
 			return nil, g.refuse(r, "this NQE route is not scoped to a network")
+		}
+	case "config":
+		// One organization-level read a network-limited session may make: the value of one Predict flag (GET /api/config/{PROPERTY}, no query). The whole map (GET /api/config) also holds the
+		// organization's IP allow-list and password policy, any other property is not the session's business, and a write is never allowed.
+		if len(rest) != 2 || r.Method != http.MethodGet || r.URL.RawQuery != "" || !slices.Contains(predictFlagProperties, rest[1]) {
+			return nil, g.refuse(r, "this organization setting is not readable from a network-limited session")
 		}
 	case "cves":
 		// The one organization-level route a network-limited session may read: a CVE's configuration detection logic, which belongs to the CVE index, not to a network. Exactly GET

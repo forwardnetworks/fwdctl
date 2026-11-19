@@ -103,6 +103,23 @@ func buildScope(ctx context.Context, s *fwd.Session, networkID, snapshotID strin
 	d["license"] = lic
 
 	cfg := s.OrgConfig(ctx)
+	if cfg.Effective == nil {
+		// The whole property map was refused or failed (a network-limited session may not read it: it also holds the organization's IP allow-list and password policy). Read just the Predict flags,
+		// one property at a time; a value read this way is still read from the tenant.
+		vals, errs := s.PredictFlags(ctx)
+		if len(vals) > 0 {
+			cfg.Effective = vals
+			limits = append(limits, "the organization's whole property map could not be read here, so each Predict flag was read on its own (GET /api/config/{property})")
+		}
+		if len(errs) > 0 {
+			names := make([]string, 0, len(errs))
+			for n := range errs {
+				names = append(names, n)
+			}
+			sort.Strings(names)
+			limits = append(limits, fmt.Sprintf("%d Predict flag(s) could not be read from the tenant (%s; first reason: %s) and show the release default, not the organization's value", len(errs), strings.Join(names, ", "), errs[names[0]]))
+		}
+	}
 	release := ""
 	if v, verr := s.Version(ctx); verr == nil && v != nil {
 		release = firstNonEmpty(releaseOf(v.Release), releaseOf(v.Version))

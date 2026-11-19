@@ -406,3 +406,75 @@ func TestAllowNetworksLetsTheCVEDetectionLogicRouteThroughAndNothingElseUnderCVE
 		}
 	}
 }
+
+// A network-limited session may read the value of one Predict flag, and nothing else under /api/config: the whole map also holds the organization's IP allow-list and password policy.
+func TestAllowNetworksReadsOnlyThePredictFlagsOneAtATime(t *testing.T) {
+	ok := fwdtest.Const(200, map[string]any{"predict_model_config": true})
+	routes := map[string]fwdtest.Handler{
+		"GET /api/config":                         ok,
+		"GET /api/config/ALLOWED_IPS":             ok,
+		"GET /api/config/predict_model_config":    ok,
+		"PUT /api/config/PREDICT_MODEL_CONFIG":    ok,
+		"DELETE /api/config/PREDICT_MODEL_CONFIG": ok,
+		"POST /api/config/PREDICT_MODEL_CONFIG":   ok,
+		"GET /api/config/PREDICT_MODEL_CONFIG/x":  ok,
+		"GET /api/orgs/7/config":                  ok,
+		"GET /api/orgs/7/config/PREDICT_MODELING": ok,
+		"GET /api/global-config":                  ok,
+		"GET /api/config/PREDICT_MODEL_CONFIG":    ok,
+	}
+	nine := []string{"PREDICT_MODELING", "PREDICT_MODEL_BGP", "PREDICT_MODEL_OSPF", "PREDICT_MODEL_CONFIG", "PREDICT_MODEL_CROSS_PROTOCOL", "PREDICT_MODEL_ISIS", "PREDICT_MODEL_OMP", "PREDICT_MODEL_EXT_ADV", "FIREWALL_PREDICT"}
+	for _, n := range nine {
+		routes["GET /api/config/"+n] = ok
+	}
+	for _, p := range []string{"GET /api/config/PREDICT_MODELING;x=1", "GET /api/config/PREDICT_MODELING.json", "HEAD /api/config/PREDICT_MODELING", "GET /api/config/PREDICT_MODELING%2Fx"} {
+		routes[p] = ok
+	}
+	s, srv := fwdtest.NewWith(t, routes, func(c *fwd.Config) { c.AllowNetworks = []string{"n1"} })
+	send := func(method, path string) error {
+		req, err := s.Client.NewRequest(context.Background(), method, path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = s.Client.Do(req, nil)
+		return err
+	}
+	for _, n := range nine {
+		if err := send("GET", "/api/config/"+n); err != nil {
+			t.Errorf("reading %s must pass: %v", n, err)
+		}
+	}
+	if got := fwd.PredictFlagProperties(); strings.Join(got, ",") != strings.Join(nine, ",") {
+		t.Errorf("the allow list is exactly the nine Predict flags: %v", got)
+	}
+	fwd.PredictFlagProperties()[0] = "ALLOWED_IPS" // a returned copy: changing it must not widen the guard
+	if err := send("GET", "/api/config/ALLOWED_IPS"); !errors.Is(err, fwd.ErrGuardRefused) {
+		t.Errorf("the allow list cannot be changed from outside: %v", err)
+	}
+	for _, c := range []struct{ method, path string }{
+		{"GET", "/api/config"},
+		{"GET", "/api/config?filter=OFF"},
+		{"GET", "/api/config/ALLOWED_IPS"},
+		{"GET", "/api/config/predict_model_config"}, // the SDK sends the upper-case enum name; anything else is not the route
+		{"GET", "/api/config/PREDICT_MODEL_CONFIG?x=1"},
+		{"GET", "/api/config/PREDICT_MODEL_CONFIG/x"},
+		{"GET", "/api/config/PREDICT_MODELING;x=1"},
+		{"GET", "/api/config/PREDICT_MODELING.json"},
+		{"GET", "/api/config/PREDICT_MODELING%2Fx"},
+		{"HEAD", "/api/config/PREDICT_MODELING"},
+		{"PUT", "/api/config/PREDICT_MODEL_CONFIG"},
+		{"POST", "/api/config/PREDICT_MODEL_CONFIG"},
+		{"DELETE", "/api/config/PREDICT_MODEL_CONFIG"},
+		{"GET", "/api/orgs/7/config"},
+		{"GET", "/api/orgs/7/config/PREDICT_MODELING"},
+		{"GET", "/api/global-config"},
+	} {
+		before := len(srv.Calls())
+		if err := send(c.method, c.path); !errors.Is(err, fwd.ErrGuardRefused) {
+			t.Errorf("%s %s: err = %v, want a guard refusal", c.method, c.path, err)
+		}
+		if len(srv.Calls()) != before {
+			t.Errorf("%s %s: a refused request was sent", c.method, c.path)
+		}
+	}
+}

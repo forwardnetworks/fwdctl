@@ -1,14 +1,18 @@
 package skills_test
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/forwardnetworks/fwdctl/fwd"
 	"github.com/forwardnetworks/fwdctl/fwdtest"
 	"github.com/forwardnetworks/fwdctl/result"
+	"github.com/forwardnetworks/fwdctl/skills"
 )
 
 const (
@@ -681,5 +685,163 @@ func TestVerifyChangeVerifyStillNeedsExpect(t *testing.T) {
 	_, srv, err := runSkill(t, "verify-change", changeFix{}.routes(), `{"network_id":"n1","before_snapshot_id":"b1","after_snapshot_id":"a1","expectations":[{"dst_ip":"10.0.1.1"}]}`)
 	if err == nil || !strings.Contains(err.Error(), "expect is required") || len(srv.Calls()) != 0 {
 		t.Fatalf("err %v, %d calls", err, len(srv.Calls()))
+	}
+}
+
+// A network-limited session cannot read the whole property map (GET /api/config). The preflight then reads each Predict flag on its own, and a flag it reads is still "read from the tenant", spelled exactly
+// so (a peer's runner accepts a flag only when every entry carries that source).
+func TestScopeReadsThePredictFlagsOneAtATimeWhenTheWholeMapIsRefused(t *testing.T) {
+	routes := cfgRoutes(nil, nil, nil, nil, nil) // every whole-map view answers 403
+	routes["GET /api/version"] = fwdtest.Const(200, map[string]any{"version": "26.11.0", "release": "26.11.0-14", "build": "b"})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	routes[snapsPath] = ready("s1")
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{})
+	var asked []string
+	one := func(name string, v any, status int) {
+		routes["GET /api/config/"+name] = func(*http.Request, []byte) (int, any) {
+			asked = append(asked, name)
+			if status != 200 {
+				return status, map[string]any{"message": "boom"}
+			}
+			return 200, map[string]any{strings.ToLower(name): v}
+		}
+	}
+	one("PREDICT_MODELING", true, 200)
+	one("PREDICT_MODEL_CONFIG", true, 200)
+	one("PREDICT_MODEL_OSPF", false, 200)
+	one("PREDICT_MODEL_BGP", nil, 400) // a flag that cannot be read falls back to the release default and says so
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
+	var d map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["scope"].(map[string]any); ok {
+			d = v
+		}
+	}
+	flags := map[string]map[string]any{}
+	for _, f := range d["flags"].([]map[string]any) {
+		flags[f["property"].(string)] = f
+	}
+	if f := flags["predict_model_config"]; f["value"] != true || f["source"] != "read from the tenant" {
+		t.Errorf("a flag read on its own is read from the tenant, verbatim: %v", f)
+	}
+	if f := flags["predict_model_ospf"]; f["value"] != false || f["source"] != "read from the tenant" {
+		t.Errorf("an off flag is read too: %v", f)
+	}
+	if f := flags["predict_model_bgp"]; !strings.Contains(fmt.Sprint(f["source"]), "not read from the tenant") {
+		t.Errorf("a flag that could not be read is a release default, not the tenant's value: %v", f)
+	}
+	lim := strings.Join(r.Limits, " ")
+	if !strings.Contains(lim, "each Predict flag was read on its own") || !strings.Contains(lim, "6 Predict flag(s) could not be read from the tenant (") || !strings.Contains(lim, "predict_model_bgp") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+	if len(asked) < 4 {
+		t.Errorf("each flag is asked for on its own: %v", asked)
+	}
+	// when the whole map IS readable, no per-flag request is made
+	asked = nil
+	routes2 := cfgRoutes(map[string]any{"predict_modeling": true}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})
+	routes2["GET /api/version"] = routes["GET /api/version"]
+	routes2["GET /api/licenses"] = routes["GET /api/licenses"]
+	routes2[snapsPath], routes2[nqePath] = routes[snapsPath], routes[nqePath]
+	routes2["GET /api/config/PREDICT_MODELING"] = routes["GET /api/config/PREDICT_MODELING"]
+	mustRun(t, "verify-change", routes2, `{"network_id":"n1","view":"scope"}`)
+	if len(asked) != 0 {
+		t.Errorf("the whole map was readable: no single-property read is needed: %v", asked)
+	}
+}
+
+func TestPredictFlagNamesAreTheGuardsAllowList(t *testing.T) {
+	up := map[string]bool{}
+	for _, n := range skills.PredictFlagOrder() {
+		up[strings.ToUpper(n)] = true
+	}
+	have := map[string]bool{}
+	for _, n := range fwd.PredictFlagProperties() {
+		have[n] = true
+	}
+	for n := range up {
+		if !have[n] {
+			t.Errorf("the preflight reads %s, which the guard would refuse", n)
+		}
+	}
+	for n := range have {
+		if !up[n] {
+			t.Errorf("the guard allows %s, which the preflight does not read: an allowance nothing uses", n)
+		}
+	}
+}
+
+// Every single-property read fails: the flags show the release default, the limit names them and why, and it does not claim they were read on their own.
+func TestScopeSaysWhichPredictFlagsCouldNotBeReadOnTheirOwnEither(t *testing.T) {
+	routes := cfgRoutes(nil, nil, nil, nil, nil)
+	routes["GET /api/version"] = fwdtest.Const(200, map[string]any{"version": "26.11.0", "release": "26.11.0-14", "build": "b"})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	routes[snapsPath] = ready("s1")
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{})
+	for _, n := range fwd.PredictFlagProperties() {
+		routes["GET /api/config/"+n] = fwdtest.Const(403, map[string]any{"message": "forbidden by test"})
+	}
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
+	lim := strings.Join(r.Limits, " ")
+	if strings.Contains(lim, "each Predict flag was read on its own") || !strings.Contains(lim, "9 Predict flag(s) could not be read from the tenant (") || !strings.Contains(lim, "forbidden by test") || !strings.Contains(lim, "show the release default") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+	// a property this Forward does not define is not an error: its row says it does not exist
+	routes["GET /api/config/PREDICT_MODEL_ISIS"] = fwdtest.Const(400, map[string]any{"message": "No enum constant com.forwardnetworks.cv.config.OrgProperty.PREDICT_MODEL_ISIS"})
+	r, _ = mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
+	if lim := strings.Join(r.Limits, " "); !strings.Contains(lim, "8 Predict flag(s) could not be read") || strings.Contains(lim, "predict_model_isis") {
+		t.Errorf("an unknown property is not counted as a failed read: %v", r.Limits)
+	}
+}
+
+// With the network guard on, the whole map is refused by the guard itself and the single reads pass it: one run proves both.
+func TestScopeUnderTheNetworkGuardReadsThePredictFlagsOneAtATime(t *testing.T) {
+	routes := cfgRoutes(map[string]any{"predict_modeling": false}, nil, nil, nil, nil) // a whole-map read would say false: it must never be used
+	routes["GET /api/version"] = fwdtest.Const(200, map[string]any{"version": "26.11.0", "release": "26.11.0-14", "build": "b"})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	routes["GET /api/networks/n1/snapshots"] = ready("s1")
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{})
+	routes["GET /api/config/PREDICT_MODEL_CONFIG"] = fwdtest.Const(200, map[string]any{"predict_model_config": true})
+	sess, srv := fwdtest.NewWith(t, routes, func(c *fwd.Config) { c.AllowNetworks = []string{"n1"} })
+	r, err := skills.Run(context.Background(), "verify-change", sess, json.RawMessage(`{"network_id":"n1","view":"scope"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d map[string]any
+	for _, e := range r.Evidence {
+		if v, ok := e.Detail["scope"].(map[string]any); ok {
+			d = v
+		}
+	}
+	got := map[string]any{}
+	for _, f := range d["flags"].([]map[string]any) {
+		if f["property"] == "predict_model_config" {
+			got = f
+		}
+	}
+	if got["value"] != true || got["source"] != "read from the tenant" {
+		t.Errorf("the flag is read on its own under the guard: %v", got)
+	}
+	for _, c := range srv.Calls() {
+		if c.Path == "/api/config" {
+			t.Errorf("the whole map must never reach Forward from a guarded session")
+		}
+	}
+}
+
+// A readable but empty property map is an answer (every flag takes its release default); it is not a refusal, so no per-flag read is made.
+func TestScopeDoesNotReadFlagsOneAtATimeWhenTheWholeMapIsReadableButEmpty(t *testing.T) {
+	routes := cfgRoutes(map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{})
+	routes["GET /api/version"] = fwdtest.Const(200, map[string]any{"version": "26.11.0", "release": "26.11.0-14", "build": "b"})
+	routes["GET /api/licenses"] = fwdtest.Const(200, map[string]any{"licenseTier": "NSP", "licenseStatus": "ACTIVE"})
+	routes[snapsPath] = ready("s1")
+	routes[nqePath] = invNQE(map[string]fwdtest.Handler{})
+	asked := 0
+	for _, n := range fwd.PredictFlagProperties() {
+		routes["GET /api/config/"+n] = func(*http.Request, []byte) (int, any) { asked++; return 200, map[string]any{} }
+	}
+	r, _ := mustRun(t, "verify-change", routes, `{"network_id":"n1","view":"scope"}`)
+	if asked != 0 || strings.Contains(strings.Join(r.Limits, " "), "read on its own") {
+		t.Errorf("an empty map is not a refusal: %d per-flag reads, %v", asked, r.Limits)
 	}
 }

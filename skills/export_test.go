@@ -42,3 +42,6 @@ func ShadowCountsQuery() string { return shadowCountsQuery }
 
 // CVESourcesQuery exposes the one-CVE sources query to the external tests.
 func CVESourcesQuery() string { return cveSourcesQuery }
+
+// PredictFlagOrder exposes the preflight's flag names to the external tests.
+func PredictFlagOrder() []string { return predictFlagOrder }
