@@ -182,6 +182,16 @@ func BustCache(string, string) (string, error) { return "", ErrNotInThisBuild }
 // QueryParams finds nothing in this build.
 func QueryParams(string) []string { return nil }
 
+// QueryParam is one parameter of a query's @query declaration (this build cannot read it).
+type QueryParam struct {
+	Name    string
+	Type    string
+	Example any
+}
+
+// QueryParamSpecs finds nothing in this build: the query language tooling is not part of the public source.
+func QueryParamSpecs(string) ([]QueryParam, error) { return nil, nil }
+
 // DecoratorColumn is one column a decorator joins on or shows (the check does not run in this build).
 type DecoratorColumn struct {
 	Name, Type, Role string

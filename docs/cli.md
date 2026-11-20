@@ -758,6 +758,21 @@ Flags:
       --typecheck                have Forward typecheck the changed queries and their importers before committing
 ```
 
+## fwdctl nqe params
+
+Read the @query declaration of a query file and print a JSON object with one entry per parameter, each an example value of its declared type (an empty string, 0, false, an empty list, or an object of examples for a record), ready to fill in and pass to nqe run, nqe compare or nqe diff with --params. The declared types are printed to stderr, one per line, so stdout stays valid JSON. Offline: no Forward connection. A query with no @query declaration has no parameters and prints {}.
+
+```
+fwdctl nqe params FILE
+```
+
+Examples:
+
+```
+  fwdctl nqe params query.nqe > params.json   # then fill the values in
+  fwdctl nqe run --network 123 --file query.nqe --params params.json
+```
+
 ## fwdctl nqe run
 
 Run an NQE query on Forward and print the rows (stdout), with timing and scope on stderr. Every row is fetched, paged for you (up to --max), or with --limit/--offset ONE page.

@@ -199,7 +199,7 @@ func httpClient(cfg Config, timeout time.Duration) (*http.Client, error) {
 // NewSession builds a session.
 func NewSession(cfg Config) (*Session, error) {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
-		return nil, fmt.Errorf("FORWARD_URL is required (for example https://fwd.app)")
+		return nil, fmt.Errorf("FORWARD_URL is required (for example https://fwd.app); a token file in netrc format carries the host, so --token-file FILE (before or after the command) or fwdctl login --file FILE works without it")
 	}
 	if cfg.Username == "" || cfg.Password == "" {
 		return nil, fmt.Errorf("FORWARD_USERNAME and FORWARD_PASSWORD are required")

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ func (a *app) nqeCmd() *cobra.Command {
 		Long: "NQE (Network Query Engine) tools. Write NQE with real field names: fwdctl context schema NAME, then fwdctl nqe lint FILE, in any language. Offline, no Forward connection: lint, fmt, lsp, complete, hover, template. Connected: run, bundle, synthesize.\n" +
 			"Before a connected command: FORWARD_URL, FORWARD_USERNAME, FORWARD_PASSWORD (or fwdctl login). Long queries: FORWARD_TIMEOUT, FORWARD_NQE_MODE, FORWARD_NQE_WAIT (fwdctl docs troubleshooting).",
 	})
-	c.AddCommand(a.nqeDiff(), a.nqeCompare(), a.nqeExplain(), a.nqeMetrics(), a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
+	c.AddCommand(a.nqeParams(), a.nqeDiff(), a.nqeCompare(), a.nqeExplain(), a.nqeMetrics(), a.nqeLint(), a.nqeFmt(), a.nqeLSP(), a.nqePos("complete", "what could be written at a position"), a.nqePos("hover", "what is at a position: its type and documentation"),
 		a.nqeTemplate(), a.nqeFeatures(), a.nqeRun(), a.nqeBundle(), a.nqeExport(), a.nqePack(), a.nqeSynth())
 	return c
 }
@@ -534,4 +535,38 @@ func escapeRawControlsInStrings(b []byte) []byte {
 		return b
 	}
 	return append(out, b[last:]...)
+}
+
+func (a *app) nqeParams() *cobra.Command {
+	c := &cobra.Command{
+		Use: "params FILE", Short: "print a parameters file for a query, from its declared @query signature",
+		Example: "  fwdctl nqe params query.nqe > params.json   # then fill the values in\n  fwdctl nqe run --network 123 --file query.nqe --params params.json",
+		Long:    "Read the @query declaration of a query file and print a JSON object with one entry per parameter, each an example value of its declared type (an empty string, 0, false, an empty list, or an object of examples for a record), ready to fill in and pass to nqe run, nqe compare or nqe diff with --params. The declared types are printed to stderr, one per line, so stdout stays valid JSON. Offline: no Forward connection. A query with no @query declaration has no parameters and prints {}.",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			b, err := os.ReadFile(args[0])
+			if err != nil {
+				fmt.Fprintf(a.err, "error: %v\n", err)
+				return a.exit(64)
+			}
+			ps, err := nqelint.QueryParamSpecs(string(b))
+			if err != nil {
+				fmt.Fprintf(a.err, "error: the query does not parse: %v\n", err)
+				return a.exit(1)
+			}
+			obj := make(map[string]any, len(ps))
+			for _, p := range ps {
+				obj[p.Name] = p.Example
+				t := p.Type
+				if t == "" {
+					t = "(untyped)"
+				}
+				fmt.Fprintf(a.err, "%s: %s\n", p.Name, t)
+			}
+			out, _ := json.MarshalIndent(obj, "", "  ")
+			fmt.Fprintln(a.out, string(out))
+			return a.exit(0)
+		},
+	}
+	return c
 }

@@ -262,3 +262,58 @@ func TestNQEParamsTakeTypedJSONAndFileThenFlags(t *testing.T) {
 		t.Error("a --param without = must be refused")
 	}
 }
+
+// nqe params prints a parameters file from the declared @query signature: one entry per parameter with an example of its type; the types go to stderr so stdout stays valid JSON.
+func TestNQEParamsPrintsASkeletonFromTheDeclaredSignature(t *testing.T) {
+	dir := t.TempDir()
+	f := dir + "/q.nqe"
+	src := "@query\nq(site: String, limit: Integer, strict: Bool, names: List<String>, opts: {a: String, b: Integer}) =\nforeach d in network.devices\nselect { n: d.name };\n"
+	if err := os.WriteFile(f, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if code := run([]string{"nqe", "params", f}, strings.NewReader(""), &out, &errb, nil); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("stdout must be JSON: %v %q", err, out.String())
+	}
+	if got["site"] != "" || got["limit"] != float64(0) || got["strict"] != false {
+		t.Errorf("examples by type: %v", got)
+	}
+	if l, ok := got["names"].([]any); !ok || len(l) != 0 {
+		t.Errorf("a list parameter starts empty: %v", got["names"])
+	}
+	if o, ok := got["opts"].(map[string]any); !ok || o["a"] != "" || o["b"] != float64(0) {
+		t.Errorf("a record parameter is an object of examples: %v", got["opts"])
+	}
+	for _, want := range []string{"site: String", "limit: Integer", "strict: Bool", "names: List<String>"} {
+		if !strings.Contains(errb.String(), want) {
+			t.Errorf("the declared type %q is on stderr: %q", want, errb.String())
+		}
+	}
+}
+
+func TestNQEParamsHandlesNoSignatureAndBadInput(t *testing.T) {
+	dir := t.TempDir()
+	plain := dir + "/plain.nqe"
+	os.WriteFile(plain, []byte("foreach d in network.devices\nselect { n: d.name }\n"), 0o644)
+	var out, errb bytes.Buffer
+	if code := run([]string{"nqe", "params", plain}, strings.NewReader(""), &out, &errb, nil); code != 0 || strings.TrimSpace(out.String()) != "{}" {
+		t.Errorf("a query with no @query has no parameters: %d %q", code, out.String())
+	}
+	bad := dir + "/bad.nqe"
+	os.WriteFile(bad, []byte("@query\nq(x: String) = foreach d in"), 0o644)
+	out.Reset()
+	errb.Reset()
+	if code := run([]string{"nqe", "params", bad}, strings.NewReader(""), &out, &errb, nil); code != 1 || out.Len() != 0 {
+		t.Errorf("a query that does not parse is exit 1 with nothing on stdout: %d %q", code, out.String())
+	}
+	if code := run([]string{"nqe", "params", dir + "/missing.nqe"}, strings.NewReader(""), &out, &errb, nil); code != 64 {
+		t.Errorf("a missing file is bad usage: %d", code)
+	}
+	if code := run([]string{"nqe", "params"}, strings.NewReader(""), &out, &errb, nil); code == 0 {
+		t.Errorf("a file is required")
+	}
+}
