@@ -167,12 +167,17 @@ func snapshotImport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 		Files                []string `json:"files"`
 		ExcludeFailedDevices bool     `json:"exclude_failed_devices"`
 		SkipProcessing       bool     `json:"skip_processing"`
+		// MergeIntoLatest merges the ONE ZIP into the network's latest snapshot and creates a NEW snapshot (Forward: POST ...?action=merge): NONE, REPLACE_EXISTING or PRESERVE_EXISTING.
+		MergeIntoLatest string `json:"merge_into_latest"`
 	}
-	if err := decodeDefinition(in.Definition, &def, "files (one or more .zip paths), exclude_failed_devices, skip_processing"); err != nil {
+	if err := decodeDefinition(in.Definition, &def, "files (one or more .zip paths), exclude_failed_devices, skip_processing, merge_into_latest (NONE, REPLACE_EXISTING or PRESERVE_EXISTING: merge ONE zip into the network's latest snapshot)"); err != nil {
 		return result.Result{}, err
 	}
 	if len(def.Files) == 0 {
 		return result.Result{}, fmt.Errorf("%w: import needs definition.files", ErrInvalidInput)
+	}
+	if def.MergeIntoLatest != "" {
+		return snapshotMergeImport(ctx, s, in, def.Files, def.MergeIntoLatest, def.ExcludeFailedDevices, def.SkipProcessing)
 	}
 	var total int64
 	for _, f := range def.Files {
@@ -213,7 +218,9 @@ func snapshotImport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 		files = append(files, forward.SnapshotUploadFile{Name: filepath.Base(f), Reader: meter.Reader(fh)})
 	}
 	before := map[string]bool{}
+	listedBefore := false
 	if ex, lerr := s.Snapshots(ctx, in.NetworkID); lerr == nil {
+		listedBefore = true
 		for _, x := range ex {
 			before[string(x.ID)] = true
 		}
@@ -228,7 +235,10 @@ func snapshotImport(ctx context.Context, s *fwd.Session, in editSnapshotInput) (
 		}
 		// A gateway or client timeout on a large upload says nothing about whether Forward kept the file: look for the new snapshot
 		// before reporting, and never invite a blind retry (it would add a duplicate).
-		found := waitForNewSnapshot(ctx, s, in.NetworkID, before)
+		var found *forward.Snapshot
+		if listedBefore { // with no list of the snapshots that existed, an old one cannot be told from the new one
+			found = waitForNewSnapshot(ctx, s, in.NetworkID, before)
+		}
 		if found == nil {
 			return result.NewUnknown(editSnapshotName, fmt.Sprintf("The upload ended with an error (%v) and no new snapshot has appeared yet; it may still have been accepted", err), fwd.Context(in.NetworkID, nil),
 				[]string{fmt.Sprintf("sent %d bytes in %s before the error; a 502/503/504 or a timeout does not mean Forward discarded the file", total, took),
@@ -301,4 +311,155 @@ func waitForNewSnapshot(ctx context.Context, s *fwd.Session, networkID string, b
 		}
 		time.Sleep(importPollEvery)
 	}
+}
+
+// snapshotMergeImport is import with merge_into_latest: ONE snapshot ZIP is merged with the network's latest snapshot and Forward creates a NEW snapshot (it never overwrites). With NONE Forward answers
+// 409 and creates nothing when a device is in both, naming them; with REPLACE_EXISTING the ZIP's data wins for a device in both, with PRESERVE_EXISTING the network's does (locations and tags follow). A
+// full snapshot of a workspace collides with its parent on synthetic objects (400): export only the devices the parent lacks. Source-read (SDK v0.8.59, tested with fakes), not run live.
+func snapshotMergeImport(ctx context.Context, s *fwd.Session, in editSnapshotInput, files []string, mergeType string, excludeFailed, skipProcessing bool) (result.Result, error) {
+	var mt forward.SnapshotMergeType
+	switch mergeType {
+	case "NONE":
+		mt = forward.SnapshotMergeNone
+	case "REPLACE_EXISTING":
+		mt = forward.SnapshotMergeReplaceExisting
+	case "PRESERVE_EXISTING":
+		mt = forward.SnapshotMergePreserveExisting
+	default:
+		return result.Result{}, fmt.Errorf("%w: merge_into_latest is NONE, REPLACE_EXISTING or PRESERVE_EXISTING", ErrInvalidInput)
+	}
+	if len(files) != 1 {
+		return result.Result{}, fmt.Errorf("%w: merge_into_latest takes exactly ONE zip in definition.files (Forward's merge route takes one file); to combine several, import them together first", ErrInvalidInput)
+	}
+	if excludeFailed || skipProcessing {
+		return result.Result{}, fmt.Errorf("%w: exclude_failed_devices and skip_processing do not apply to merge_into_latest (the merge route has no such options)", ErrInvalidInput)
+	}
+	st, err := os.Stat(files[0])
+	if err != nil || st.IsDir() {
+		return result.Result{}, fmt.Errorf("%w: %s is not a readable file", ErrInvalidInput, files[0])
+	}
+	if st.Size() == 0 {
+		return result.Result{}, fmt.Errorf("%w: %s is empty", ErrInvalidInput, files[0])
+	}
+	cx := result.Context{NetworkID: in.NetworkID, State: "current"}
+	mode := result.ModeDryRun
+	if in.Apply {
+		mode = result.ModeApplied
+	}
+	// the snapshot the merge would start from: the newest PROCESSED snapshot that is not a prediction (what Forward's own "latest processed" is; whether the merge uses exactly that is Forward's decision)
+	existing, lerr := s.Snapshots(ctx, in.NetworkID)
+	listed := lerr == nil
+	before := map[string]bool{}
+	for i := range existing {
+		before[string(existing[i].ID)] = true
+	}
+	var latest *forward.Snapshot
+	if listed {
+		for i := range existing {
+			if !existing[i].Predicted() && existing[i].State == "PROCESSED" && !existing[i].IsDraft {
+				latest = &existing[i]
+				break
+			}
+		}
+	}
+	after := map[string]any{"file": files[0], "bytes": st.Size(), "note": in.Note, "merge_type": mergeType}
+	if latest != nil {
+		after["latest_processed_snapshot"] = string(latest.ID)
+	}
+	ch := result.Change{Action: "merge_snapshot_into_latest", Target: fmt.Sprintf("%s into the latest snapshot of network %s (%s)", filepath.Base(files[0]), in.NetworkID, mergeType), After: after, Reversible: true,
+		Undo: "delete the new snapshot once it has processed (edit-snapshot action delete, confirm = its id; a snapshot that is still processing cannot be deleted); the snapshots that existed are not changed. Whether the merge also moves device locations or tags in the network, which deleting the snapshot would not undo, is not verified"}
+	limits := []string{
+		"the merge creates a NEW snapshot from the ZIP and the network's latest snapshot; no existing snapshot is changed or overwritten",
+		mergeLimit(mergeType),
+		"the ZIP's contents are not read here: which devices conflict is not known until Forward answers, and a full workspace snapshot collides with its parent on synthetic objects (L3 VPN, L2 VPN, intranet nodes, WAN circuits, encryptors, the internet node) with a 400; export only the devices the parent lacks to avoid that (see reference/transfer.md)",
+		"the merged snapshot carries device data, not collection sources: the network cannot collect those devices until their sources exist there",
+		"read from Forward's source and the SDK (v0.8.59, tested with fakes); this merge has not been run against a live Forward by this skill",
+	}
+	switch {
+	case !listed:
+		limits = append(limits, "the network's snapshots could not be listed ("+lerr.Error()+"), so the snapshot the merge would start from is not shown")
+	case latest == nil:
+		limits = append(limits, "no processed, non-predicted snapshot was found in the listing: with no snapshot to merge with, Forward decides what happens")
+	default:
+		limits = append(limits, "latest_processed_snapshot is the newest processed snapshot that is not a prediction; whether the merge uses exactly that one is Forward's decision")
+	}
+	ev := func(extra map[string]any) []result.Evidence {
+		d := map[string]any{"action": "import", "mode": mode, "after": after}
+		for k, v := range extra {
+			d[k] = v
+		}
+		return []result.Evidence{result.NewEvidence(result.EvState, "editSnapshot", nil, d, "")}
+	}
+	if !in.Apply {
+		return result.Build(editSnapshotName, result.OK, fmt.Sprintf("Dry run: would merge %s (%d bytes) into the latest snapshot of network %s as a NEW snapshot (%s). Nothing was uploaded%s; run again with apply=true", filepath.Base(files[0]), st.Size(), in.NetworkID, mergeType, map[bool]string{true: " and the ZIP was not read, so conflicts are not known: with NONE Forward refuses if any device is in both, and with no conflict it merges", false: ""}[mergeType == "NONE"]), result.Deterministic, cx,
+			result.Options{Mode: mode, Changes: []result.Change{ch}, Evidence: ev(nil), Limits: limits, NextActions: []string{"inspect-snapshots", "inspect-inventory"}})
+	}
+	fh, err := os.Open(files[0])
+	if err != nil {
+		return result.Result{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	defer fh.Close()
+	meter := s.NewMeter("merge", st.Size())
+	started := time.Now()
+	res, _, err := s.Client.Snapshots.MergeIntoLatest(ctx, in.NetworkID, forward.SnapshotUploadFile{Name: filepath.Base(files[0]), Reader: meter.Reader(fh)}, forward.SnapshotMergeOptions{Note: in.Note, MergeType: mt, Timeout: -1})
+	meter.Done()
+	took := time.Since(started).Round(time.Second)
+	if err != nil {
+		var er *forward.ErrorResponse
+		if errors.Is(err, forward.ErrSnapshotMergeConflict) && errors.As(err, &er) {
+			names := er.ConflictDevices
+			shown, cutNames := result.Cap(names, 100, "conflicting devices", "the total is complete; list the rest by comparing the two device lists (inspect-inventory kind devices)")
+			if len(names) == 0 {
+				return result.Result{}, fmt.Errorf("Forward answered 409 (conflict) without naming devices; nothing is known to have been created: %w", err)
+			}
+			return result.Build(editSnapshotName, result.Failed, fmt.Sprintf("Forward refused the merge: %d device(s) are in both the ZIP and the latest snapshot, and merge_into_latest is NONE. Nothing was created", len(names)), result.Deterministic, cx,
+				result.Options{Mode: mode, Omitted: cutNames, Limits: append(limits, "nothing was uploaded into the network: a refused NONE merge creates no snapshot", "choose PRESERVE_EXISTING (keep the network's data for those devices) or REPLACE_EXISTING (the ZIP's data wins), or drop those devices from the export"),
+					Evidence: ev(map[string]any{"conflicting_devices": shown, "conflicting_devices_total": len(names), "intended": after}), NextActions: []string{"inspect-snapshots"}})
+		}
+		accepted := res != nil // the SDK returns a result with an error when Forward answered 202 but gave no snapshot id
+		if !accepted && !uploadOutcomeUnknown(err) {
+			return result.Result{}, fmt.Errorf("the merge failed, nothing is known to have been created (%d bytes, %s): %w", st.Size(), took, err)
+		}
+		var found *forward.Snapshot
+		if listed {
+			found = waitForNewSnapshot(ctx, s, in.NetworkID, before)
+		}
+		if found == nil {
+			why := "the upload ended with an error (" + err.Error() + ") and no new snapshot has appeared yet; it may still have been accepted"
+			if accepted {
+				why = "Forward accepted the merge (202) but gave no snapshot id (" + err.Error() + ") and no new snapshot has appeared yet"
+			}
+			notes := []string{"do NOT retry yet: run inspect-snapshots for a new snapshot (UNPACKING, PROCESSING or PROCESSED) first; a blind retry would add a duplicate merge", "for a large file raise the client timeout (FORWARD_TIMEOUT=600s or more); a 503 can also be Forward refusing for low disk or backup space, in which case nothing was created"}
+			if !listed {
+				notes = append(notes, "the network's snapshots could not be listed before the upload, so a new snapshot cannot be told from an old one: check inspect-snapshots by hand")
+			}
+			return result.NewUnknown(editSnapshotName, "The merge: "+why, fwd.Context(in.NetworkID, nil), notes, result.Options{Mode: mode, NextActions: []string{"inspect-snapshots"}})
+		}
+		res = &forward.SnapshotMergeResult{Snapshot: found, ID: forward.Identifier(found.ID)}
+		limits = append(limits, fmt.Sprintf("the upload call ended with an error (%v) after %s, but Forward had accepted the file: this snapshot appeared while the skill waited; it was not retried", err, took))
+	}
+	id := string(res.ID)
+	state := ""
+	if res.Snapshot != nil {
+		state = res.Snapshot.State
+		if id == "" {
+			id = string(res.Snapshot.ID)
+		}
+	}
+	ch.Applied = true
+	ch.After = map[string]any{"snapshot_id": id, "state": state, "merge_type": mergeType}
+	ch.Undo = fmt.Sprintf("delete snapshot %s (edit-snapshot action delete, confirm = %s)", id, id)
+	limits = append(limits, fmt.Sprintf("uploaded %d bytes in %s; the new snapshot then processes in Forward: inspect-snapshots shows its state", st.Size(), took))
+	return result.Build(editSnapshotName, result.OK, fmt.Sprintf("Merged %s into the latest snapshot as new snapshot %s (state %s, %s)", filepath.Base(files[0]), id, state, mergeType), result.Deterministic, cx,
+		result.Options{Mode: mode, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"snapshot_id": id, "state": state}), Limits: limits, NextActions: []string{"inspect-snapshots", "inspect-inventory"}})
+}
+
+func mergeLimit(mergeType string) string {
+	switch mergeType {
+	case "REPLACE_EXISTING":
+		return "REPLACE_EXISTING: for a device in both, the ZIP's data replaces the network's in the new snapshot (Forward's source says locations and tags follow the ZIP)"
+	case "PRESERVE_EXISTING":
+		return "PRESERVE_EXISTING: for a device in both, the network's own data is kept in the new snapshot"
+	}
+	return "NONE: Forward refuses with a 409 naming the devices when any device is in both, and creates nothing; with no conflict the merge goes ahead and creates the snapshot"
 }

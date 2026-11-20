@@ -11,7 +11,7 @@
 | `unfavorite` | | clears the favorite flag, so retention may thin it | `favorite` |
 | `delete` | `confirm` = `snapshot_id` | removes the snapshot and its model | **none** |
 | `export` | `snapshot_id`, `definition` {`path`, `only_config`, `include_devices`, `exclude_devices`, `select` {`vendor`, `os`} or {`query`} or {`query_id`, `commit_id`} with `as`, `obfuscate_names`}, `secret_file` or `secret_env` (obfuscation key) | writes the snapshot (or some devices) to a new ZIP file here; never overwrites; nothing changes in Forward | delete the file |
-| `import` | `definition` {`files`, `exclude_failed_devices`, `skip_processing`}, `note` (no `snapshot_id`) | uploads ZIP files as a new snapshot of the network | `delete` the new snapshot |
+| `import` | `definition` {`files`, `exclude_failed_devices`, `skip_processing`, `merge_into_latest`}, `note` (no `snapshot_id`) | uploads ZIP files as a new snapshot of the network; with `merge_into_latest` (`NONE`, `REPLACE_EXISTING` or `PRESERVE_EXISTING`) ONE zip is merged with the network's latest snapshot into a NEW snapshot | `delete` the new snapshot |
 | `retention_policy` | `definition`, `confirm` = `network_id` | sets how Forward thins the network's snapshots (on-premises only) | set the old values back; snapshots already cleaned are gone |
 
 `definition` for `retention_policy`: any of `enabled`, `lastWeek`, `lastMonth`, `lastQuarter`, `lastYear`, `older` (granularity `ALL`, `ONE_PER_DAY`, `ONE_PER_TWO_DAYS`, `ONE_PER_WEEK`, `ONE_PER_TWO_WEEKS`, `ONE_PER_MONTH`, `ONE_PER_QUARTER`, `NONE`); fields left out keep their current value. Forward's allowed combinations are in `reference/retention.md`.

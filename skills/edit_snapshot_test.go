@@ -3,6 +3,7 @@ package skills_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -340,5 +341,247 @@ func TestEditSnapshotFavoriteIsAllowedWhileProcessingAndDestructiveActionsAreNot
 		if r.Status != result.Failed || writes(srv) != 0 || !strings.Contains(r.Finding, "Refused") {
 			t.Errorf("%s while PROCESSING must stay refused: %s %s", body, r.Status, r.Finding)
 		}
+	}
+}
+
+// import with merge_into_latest merges ONE zip with the network's latest snapshot and creates a NEW snapshot (Forward: POST ...?action=merge&mergeType=...).
+func mergeZip(t *testing.T) string {
+	f := t.TempDir() + "/m.zip"
+	if err := os.WriteFile(f, []byte("PK\x03\x04data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func mergeBody(f, mt string, extra string) string {
+	return `{"network_id":"n1","action":"import","note":"merge","definition":{"files":["` + f + `"],"merge_into_latest":"` + mt + `"` + extra + `}`
+}
+
+func TestEditSnapshotMergeIntoLatestDryRunUploadsNothingAndNamesTheLatestSnapshot(t *testing.T) {
+	f := mergeZip(t)
+	uploaded := false
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                         ready("s1"),
+		"POST /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) { uploaded = true; return 202, map[string]any{"id": "m1"} },
+	}
+	r, srv := mustRun(t, "edit-snapshot", routes, mergeBody(f, "PRESERVE_EXISTING", "")+`}`)
+	if uploaded || writes(srv) != 0 || r.Mode != result.ModeDryRun || !strings.Contains(r.Finding, "NEW snapshot") || !strings.Contains(r.Finding, "PRESERVE_EXISTING") || !strings.Contains(jsonOf(r), `"latest_processed_snapshot":"s1"`) {
+		t.Fatalf("dry run: %s %s", r.Mode, r.Finding)
+	}
+	lim := strings.Join(r.Limits, " ")
+	if !strings.Contains(lim, "network's own data is kept") || !strings.Contains(lim, "not read here") || !strings.Contains(lim, "synthetic objects") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+}
+
+func TestEditSnapshotMergeIntoLatestSendsTheMergeActionAndTypeAndReportsTheNewSnapshot(t *testing.T) {
+	f := mergeZip(t)
+	var q map[string][]string
+	routes := map[string]fwdtest.Handler{
+		snapsPath: ready("s1"),
+		"POST /api/networks/n1/snapshots": func(r *http.Request, _ []byte) (int, any) {
+			q = r.URL.Query()
+			return 202, map[string]any{"id": "m1", "state": "UNPACKING"}
+		},
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, mergeBody(f, "REPLACE_EXISTING", "")+`,"apply":true}`)
+	if r.Status != result.OK || q["action"] == nil || q["action"][0] != "merge" || q["mergeType"] == nil || q["mergeType"][0] != "REPLACE_EXISTING" || !strings.Contains(r.Changes[0].Undo, "m1") || !r.Changes[0].Applied {
+		t.Fatalf("%s %s query=%v", r.Status, r.Finding, q)
+	}
+}
+
+func TestEditSnapshotMergeIntoLatestNoneConflictIsAFailedResultNamingTheDevicesAndCreatesNothing(t *testing.T) {
+	f := mergeZip(t)
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                         ready("s1"),
+		"POST /api/networks/n1/snapshots": fwdtest.Const(409, map[string]any{"message": "Conflicting devices", "conflictDevices": []string{"edge1", "edge2"}}),
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, mergeBody(f, "NONE", "")+`,"apply":true}`)
+	if r.Status != result.Failed || !strings.Contains(r.Finding, "2 device(s) are in both") || !strings.Contains(jsonOf(r), "edge1") || !strings.Contains(jsonOf(r), "edge2") || !strings.Contains(strings.Join(r.Limits, " "), "PRESERVE_EXISTING") {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+	if len(r.Changes) != 0 {
+		t.Errorf("nothing was created: an applied result lists no change: %+v", r.Changes)
+	}
+}
+
+func TestEditSnapshotMergeIntoLatestRefusesWhatDoesNotApply(t *testing.T) {
+	f := mergeZip(t)
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1")}
+	for name, in := range map[string]string{
+		"bad type":        mergeBody(f, "REPLACE", "") + `}`,
+		"lower case":      mergeBody(f, "none", "") + `}`,
+		"two files":       `{"network_id":"n1","action":"import","definition":{"files":["` + f + `","` + f + `"],"merge_into_latest":"NONE"}}`,
+		"exclude failed":  mergeBody(f, "NONE", `,"exclude_failed_devices":true`) + `}`,
+		"skip processing": mergeBody(f, "NONE", `,"skip_processing":true`) + `}`,
+		"missing file":    `{"network_id":"n1","action":"import","definition":{"files":["/nonexistent.zip"],"merge_into_latest":"NONE"}}`,
+	} {
+		if _, srv, err := runSkill(t, "edit-snapshot", routes, in); err == nil || writes(srv) != 0 {
+			t.Errorf("%s must be refused before any write", name)
+		}
+	}
+	empty := t.TempDir() + "/e.zip"
+	os.WriteFile(empty, nil, 0o600)
+	if _, _, err := runSkill(t, "edit-snapshot", routes, mergeBody(empty, "NONE", "")+`}`); err == nil {
+		t.Errorf("an empty file is refused")
+	}
+}
+
+func TestEditSnapshotMergeIntoLatestARealRefusalIsStillAnError(t *testing.T) {
+	f := mergeZip(t)
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                         ready("s1"),
+		"POST /api/networks/n1/snapshots": fwdtest.Const(400, map[string]any{"message": "connection names are not unique"}),
+	}
+	if _, _, err := runSkill(t, "edit-snapshot", routes, mergeBody(f, "PRESERVE_EXISTING", "")+`,"apply":true}`); err == nil || !strings.Contains(err.Error(), "nothing is known to have been created") {
+		t.Errorf("a 400 is an error that says nothing was created: %v", err)
+	}
+}
+
+// A Predict snapshot is not the network's latest collected snapshot: the dry run names the newest one that is not predicted.
+func TestEditSnapshotMergeIntoLatestDryRunSkipsPredictedSnapshotsWhenNamingTheLatest(t *testing.T) {
+	f := mergeZip(t)
+	routes := map[string]fwdtest.Handler{
+		snapsPath: fwdtest.Snapshots(fwdtest.Snap("pred9", "PROCESSED", "PREDICT", "2026-09-03T00:00:00.000Z"), fwdtest.Snap("real2", "PROCESSED", "COLLECTION", "2026-09-02T00:00:00.000Z"), fwdtest.Snap("real1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z")),
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, mergeBody(f, "NONE", "")+`}`)
+	if !strings.Contains(jsonOf(r), `"latest_processed_snapshot":"real2"`) {
+		t.Errorf("the newest non-predicted snapshot is named: %s", jsonOf(r))
+	}
+}
+
+func mergeSnaps(extra ...any) map[string]any {
+	l := []any{map[string]any{"id": "old1", "state": "PROCESSED", "processingTrigger": "COLLECTION"}}
+	return map[string]any{"snapshots": append(l, extra...)}
+}
+
+func TestEditSnapshotMergeIntoLatestGatewayTimeoutThatKeptTheFileReportsTheNewSnapshot(t *testing.T) {
+	defer skills.ImportPollHooks(time.Millisecond, 200*time.Millisecond)()
+	f := mergeZip(t)
+	uploaded := false
+	routes := map[string]fwdtest.Handler{
+		"POST /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) {
+			uploaded = true
+			return 504, map[string]any{"message": "stream timeout"}
+		},
+		"GET /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) {
+			if !uploaded {
+				return 200, mergeSnaps()
+			}
+			return 200, mergeSnaps(map[string]any{"id": "new9", "state": "UNPACKING"})
+		},
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, mergeBody(f, "PRESERVE_EXISTING", "")+`,"apply":true}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "new9") || !strings.Contains(strings.Join(r.Limits, " "), "not retried") {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}
+
+func TestEditSnapshotMergeIntoLatestTimeoutWithNoNewSnapshotIsUnknownAndMentionsLowDisk(t *testing.T) {
+	defer skills.ImportPollHooks(time.Millisecond, 20*time.Millisecond)()
+	f := mergeZip(t)
+	routes := map[string]fwdtest.Handler{
+		"POST /api/networks/n1/snapshots": fwdtest.Const(503, map[string]any{"message": "Could not create new snapshot, not enough disk space"}),
+		"GET /api/networks/n1/snapshots":  fwdtest.Const(200, mergeSnaps()),
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, mergeBody(f, "NONE", "")+`,"apply":true}`)
+	if r.Status != result.Unknown || !strings.Contains(strings.Join(r.Limits, " "), "do NOT retry") || !strings.Contains(strings.Join(r.Limits, " "), "low disk") {
+		t.Fatalf("%s %s %v", r.Status, r.Finding, r.Limits)
+	}
+}
+
+// When the snapshots could not be listed before the upload, an existing snapshot cannot be told from a new one: an ambiguous error is unknown, never an old snapshot reported as the result.
+func TestEditSnapshotAmbiguousUploadWithNoBeforeListIsUnknownNotAnOldSnapshot(t *testing.T) {
+	defer skills.ImportPollHooks(time.Millisecond, 20*time.Millisecond)()
+	f := mergeZip(t)
+	listed := 0
+	routes := map[string]fwdtest.Handler{
+		"POST /api/networks/n1/snapshots": fwdtest.Const(504, map[string]any{"message": "stream timeout"}),
+		"GET /api/networks/n1/snapshots": func(*http.Request, []byte) (int, any) {
+			listed++
+			if listed == 1 {
+				return 500, map[string]any{"message": "list failed"}
+			}
+			return 200, mergeSnaps()
+		},
+	}
+	for name, in := range map[string]string{"merge": mergeBody(f, "NONE", "") + `,"apply":true}`, "import": `{"network_id":"n1","action":"import","apply":true,"definition":{"files":["` + f + `"]}}`} {
+		listed = 0
+		r, _ := mustRun(t, "edit-snapshot", routes, in)
+		if r.Status != result.Unknown || strings.Contains(r.Finding, "old1") {
+			t.Errorf("%s: an old snapshot must not be reported as the new one: %s %s", name, r.Status, r.Finding)
+		}
+	}
+}
+
+func TestEditSnapshotMergeIntoLatestSendsPreserveExistingTheNoteAndNoTimeLimit(t *testing.T) {
+	f := mergeZip(t)
+	var q map[string][]string
+	routes := map[string]fwdtest.Handler{
+		snapsPath: ready("s1"),
+		"POST /api/networks/n1/snapshots": func(r *http.Request, _ []byte) (int, any) {
+			q = r.URL.Query()
+			return 202, map[string]any{"id": "m1", "state": "UNPACKING"}
+		},
+	}
+	r, _ := mustRun(t, "edit-snapshot", routes, mergeBody(f, "PRESERVE_EXISTING", "")+`,"apply":true}`)
+	if r.Status != result.OK || q["mergeType"] == nil || q["mergeType"][0] != "PRESERVE_EXISTING" || q["note"] == nil || q["note"][0] != "merge" {
+		t.Fatalf("%s query=%v", r.Status, q)
+	}
+}
+
+func TestEditSnapshotMergeIntoLatestCapsTheConflictListAndRefusesAnEmptyOne(t *testing.T) {
+	f := mergeZip(t)
+	var names []string
+	for i := 0; i < 130; i++ {
+		names = append(names, fmt.Sprintf("dev%03d", i))
+	}
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), "POST /api/networks/n1/snapshots": fwdtest.Const(409, map[string]any{"message": "Conflicting devices", "conflictDevices": names})}
+	r, _ := mustRun(t, "edit-snapshot", routes, mergeBody(f, "NONE", "")+`,"apply":true}`)
+	if !strings.Contains(jsonOf(r), `"conflicting_devices_total":130`) || strings.Contains(jsonOf(r), "dev100") || !strings.Contains(jsonOf(r), "dev099") || len(r.Omitted) == 0 {
+		t.Errorf("100 shown of 130, declared: omitted=%v", r.Omitted)
+	}
+	routes["POST /api/networks/n1/snapshots"] = fwdtest.Const(409, map[string]any{"message": "Conflicting devices"})
+	if _, _, err := runSkill(t, "edit-snapshot", routes, mergeBody(f, "NONE", "")+`,"apply":true}`); err == nil {
+		t.Errorf("a 409 naming no device is not reported as 0 conflicts")
+	}
+}
+
+func TestEditSnapshotMergeIntoLatestDryRunSaysItCannotKnowConflictsForNone(t *testing.T) {
+	f := mergeZip(t)
+	r, _ := mustRun(t, "edit-snapshot", map[string]fwdtest.Handler{snapsPath: ready("s1")}, mergeBody(f, "NONE", "")+`}`)
+	if !strings.Contains(r.Finding, "ZIP was not read") {
+		t.Errorf("the NONE dry run says conflicts are not known: %s", r.Finding)
+	}
+	r, _ = mustRun(t, "edit-snapshot", map[string]fwdtest.Handler{snapsPath: fwdtest.Const(500, map[string]any{"message": "x"})}, mergeBody(f, "NONE", "")+`}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "could not be listed") {
+		t.Errorf("a failed listing is said, not 'no snapshot': %v", r.Limits)
+	}
+}
+
+// The snapshot a merge starts from is the newest PROCESSED one: a snapshot still unpacking or a draft is not it.
+func TestEditSnapshotMergeIntoLatestNamesTheNewestProcessedSnapshotNotAnUnpackingOne(t *testing.T) {
+	f := mergeZip(t)
+	routes := map[string]fwdtest.Handler{snapsPath: fwdtest.Snapshots(
+		fwdtest.Snap("unpack9", "UNPACKING", "COLLECTION", "2026-09-04T00:00:00.000Z"),
+		fwdtest.Snap("done2", "PROCESSED", "COLLECTION", "2026-09-02T00:00:00.000Z"),
+		fwdtest.Snap("done1", "PROCESSED", "COLLECTION", "2026-09-01T00:00:00.000Z"))}
+	r, _ := mustRun(t, "edit-snapshot", routes, mergeBody(f, "NONE", "")+`}`)
+	if !strings.Contains(jsonOf(r), `"latest_processed_snapshot":"done2"`) {
+		t.Errorf("%s", jsonOf(r))
+	}
+}
+
+// Forward answered 202 but gave neither a Location header nor a snapshot id: the merge was accepted, so this is not a plain failure and not a pass.
+func TestEditSnapshotMergeIntoLatestAcceptedWithNoSnapshotIdIsUnknownNotAFailure(t *testing.T) {
+	defer skills.ImportPollHooks(time.Millisecond, 20*time.Millisecond)()
+	f := mergeZip(t)
+	routes := map[string]fwdtest.Handler{
+		"POST /api/networks/n1/snapshots": fwdtest.Const(202, map[string]any{}),
+		"GET /api/networks/n1/snapshots":  fwdtest.Const(200, mergeSnaps()),
+	}
+	r, _, err := runSkill(t, "edit-snapshot", routes, mergeBody(f, "NONE", "")+`,"apply":true}`)
+	if err != nil || r.Status != result.Unknown || !strings.Contains(r.Finding, "accepted the merge (202)") {
+		t.Errorf("%v %s %s", err, r.Status, r.Finding)
 	}
 }
