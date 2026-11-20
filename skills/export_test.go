@@ -45,3 +45,6 @@ func CVESourcesQuery() string { return cveSourcesQuery }
 
 // PredictFlagOrder exposes the preflight's flag names to the external tests.
 func PredictFlagOrder() []string { return predictFlagOrder }
+
+// InventoryServicesQuery exposes the device services query of inspect-inventory kind services to the external tests.
+func InventoryServicesQuery() string { return invServicesRows }

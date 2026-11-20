@@ -3,6 +3,8 @@ package skills
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -181,9 +183,29 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 			Controller     string                     `json:"controller"`
 			ManagedDevice  string                     `json:"managed_device"`
 			Set            forward.ClassicDevicePatch `json:"set"`
+			// AddManagedDevice and AddController append ONE member: the skill reads the live list, appends it and writes the whole list, so nothing is restated by hand.
+			AddManagedDevice *forward.ManagedDevice    `json:"add_managed_device"`
+			AddController    *forward.ControllerDevice `json:"add_controller"`
+			// ReplaceClassic deletes the classic device that has the added member's name first (Forward refuses a member whose name a classic device uses).
+			ReplaceClassic bool `json:"replace_classic"`
+			// RemoveManagedDevice and RemoveController delete ONE member by name with Forward's single-member route; the other members are not touched.
+			RemoveManagedDevice string `json:"remove_managed_device"`
+			RemoveController    string `json:"remove_controller"`
 		}
-		if err := decodeDefinition(in.Definition, &def, "controller or managed_device (the name of ONE member) with set {name, host, type, port, cliCredentialId, cliCredential2Id, cliCredential3Id, httpCredentialId, collect, note, ...} changes just that member in place (a rename keeps its test result); or controllers (REPLACES the whole controller list: read the live list first and restate it, Forward refuses an empty one) or managedDevices (REPLACES the managed device list), collector_id (move the whole setup to that collector), clear_collector (unpin it: the network's default collector applies)"); err != nil {
+		if err := decodeDefinition(in.Definition, &def, "add_managed_device or add_controller (ONE member to append; replace_classic deletes the classic device of the same name first), remove_managed_device or remove_controller (a member name), or controller or managed_device (the name of ONE member) with set {name, host, type, port, cliCredentialId, cliCredential2Id, cliCredential3Id, httpCredentialId, collect, note, ...} changes just that member in place (a rename keeps its test result); or controllers (REPLACES the whole controller list: read the live list first and restate it, Forward refuses an empty one) or managedDevices (REPLACES the managed device list), collector_id (move the whole setup to that collector), clear_collector (unpin it: the network's default collector applies)"); err != nil {
 			return nil, err
+		}
+		if def.ReplaceClassic && def.AddManagedDevice == nil && def.AddController == nil {
+			return nil, fmt.Errorf("%w: replace_classic belongs to add_managed_device or add_controller", ErrInvalidInput)
+		}
+		if (def.AddManagedDevice != nil || def.AddController != nil || def.RemoveManagedDevice != "" || def.RemoveController != "") && (def.Controller != "" || def.ManagedDevice != "") {
+			return nil, fmt.Errorf("%w: an add or remove cannot be combined with a member change (controller or managed_device with set): run them separately", ErrInvalidInput)
+		}
+		if def.RemoveManagedDevice != "" || def.RemoveController != "" {
+			return planControllerMemberRemove(ctx, s, in, c, def.RemoveManagedDevice, def.RemoveController, def.AddManagedDevice != nil || def.AddController != nil || def.ManagedDevices != nil || def.Controllers != nil || def.CollectorID != "" || def.ClearCollector || def.Controller != "" || def.ManagedDevice != "" || def.ReplaceClassic)
+		}
+		if def.AddManagedDevice != nil || def.AddController != nil {
+			return planControllerMemberAdd(ctx, s, in, c, def.AddManagedDevice, def.AddController, def.ReplaceClassic, def.ManagedDevices != nil || def.Controllers != nil || def.CollectorID != "" || def.ClearCollector || def.Controller != "" || def.ManagedDevice != "")
 		}
 		if def.Controller != "" || def.ManagedDevice != "" {
 			return planControllerMemberPatch(ctx, s, in, c, def.Controller, def.ManagedDevice, def.Set, def.ManagedDevices != nil || def.Controllers != nil || def.CollectorID != "" || def.ClearCollector)
@@ -398,5 +420,308 @@ func planControllerMemberPatch(ctx context.Context, s *fwd.Session, in editSourc
 			}
 			_, _, err := s.Client.ControllerManagedSetups.PatchManagedDevice(ctx, in.NetworkID, c.Name, name, set)
 			return err
+		}}, nil
+}
+
+// planControllerMemberAdd appends ONE managed device or controller to a live setup. Forward has no single-member add (POST on a member path is only action=test), so the whole list is written; the skill
+// reads the live list itself, so the caller restates nothing, and after the write it reads the setup again and checks that every member that was not touched is identical to what was read and that the
+// added member kept what was sent (collect included). A member whose name a classic device uses is refused by Forward at apply ("Device name(s) already used"): the dry run checks that too, and with
+// replace_classic it deletes that classic device first (not atomic: if the add then fails the classic device is gone, and its full definition is in the result).
+func planControllerMemberAdd(ctx context.Context, s *fwd.Session, in editSourceInput, c *forward.ControllerManagedSetup, md *forward.ManagedDevice, ctl *forward.ControllerDevice, replaceClassic, mixed bool) (*networkPlan, error) {
+	if (md != nil) == (ctl != nil) {
+		return nil, fmt.Errorf("%w: give add_managed_device or add_controller (one member), not both", ErrInvalidInput)
+	}
+	if mixed {
+		return nil, fmt.Errorf("%w: an add cannot be combined with managedDevices, controllers, collector_id, clear_collector or a member change: run them separately", ErrInvalidInput)
+	}
+	name, kind := "", "managed device"
+	if md != nil {
+		name = md.Name
+		if md.CLICredentialID == "" && md.HTTPCredentialID == "" {
+			return nil, fmt.Errorf("%w: managed device %q has no cliCredentialId (or httpCredentialId): a member inherits nothing from the controller, so without its own login it cannot be collected", ErrInvalidInput, name)
+		}
+	} else {
+		name, kind = ctl.Name, "controller"
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("%w: the added member needs a name", ErrInvalidInput)
+	}
+	for _, m := range c.ManagedDevices {
+		if strings.EqualFold(m.Name, name) {
+			return nil, fmt.Errorf("%w: setup %q already has a managed device named %q", ErrInvalidInput, c.Name, name)
+		}
+	}
+	for _, m := range c.Controllers {
+		if strings.EqualFold(m.Name, name) {
+			return nil, fmt.Errorf("%w: setup %q already has a controller named %q", ErrInvalidInput, c.Name, name)
+		}
+	}
+	classic, _, cerr := s.Client.ClassicDevices.List(ctx, in.NetworkID)
+	if cerr != nil {
+		return nil, cerr
+	}
+	var clash map[string]any
+	classicName := ""
+	for _, d := range classic {
+		if strings.EqualFold(d.Name, name) {
+			classicName = d.Name
+			clash = map[string]any{"name": d.Name}
+			if g, _ := fwd.Generic(d); g != nil {
+				if m, ok := g.(map[string]any); ok {
+					clash = m
+				}
+			}
+			if len(d.Raw) > 0 {
+				clash["raw"] = d.Raw // the complete wire object: what recreating it needs
+			}
+		}
+	}
+	if clash != nil && !replaceClassic {
+		return nil, fmt.Errorf("%w: a classic device named %q exists, and Forward refuses a member whose name a classic device uses (400 \"Device name(s) already used\") at apply. Delete the classic device first (edit-source classic_device delete) or set replace_classic to delete it as part of this add", ErrInvalidInput, name)
+	}
+	if clash == nil && replaceClassic {
+		return nil, fmt.Errorf("%w: replace_classic is set but no classic device is named %q", ErrInvalidInput, name)
+	}
+	// the new whole list
+	var patch forward.ControllerManagedSetupPatch
+	before, _ := fwd.Generic(map[string]any{"managed_devices": len(c.ManagedDevices), "controllers": len(c.Controllers)})
+	var added any
+	if md != nil {
+		all := append(append([]forward.ManagedDevice{}, c.ManagedDevices...), *md)
+		patch.ManagedDevices = &all
+		added, _ = fwd.Generic(*md)
+	} else {
+		all := append(append([]forward.ControllerDevice{}, c.Controllers...), *ctl)
+		patch.Controllers = &all
+		added, _ = fwd.Generic(*ctl)
+	}
+	untouched := len(c.ManagedDevices) + len(c.Controllers)
+	setupName := c.Name
+	snapshotBefore := map[string]any{}
+	for _, m := range c.ManagedDevices {
+		g, _ := fwd.Generic(m)
+		snapshotBefore["m:"+strings.ToLower(m.Name)] = g
+	}
+	for _, m := range c.Controllers {
+		g, _ := fwd.Generic(m)
+		snapshotBefore["c:"+strings.ToLower(m.Name)] = g
+	}
+	limits := []string{
+		fmt.Sprintf("Forward has no single-member add, so the whole list is written; this read the live list (%d members) and appended one, and after the write it reads the setup again and checks that each of the %d other members is identical to what was read, in the fields this SDK models", untouched, untouched),
+		"the SDK documents that a list read back and re-sent keeps every property it models EXCEPT a managed device's hidden concurrency setting and its attribution (who and when): a whole-list write may reset those on every member, and this check cannot see them (changing one member in place with managed_device and set does not have this effect)",
+		"between the read and the write another change could be overwritten: the apply reads the setup again first and stops, writing nothing, if any member differs from the plan's read; a change in the instant between that check and the write is not caught",
+		"name matching: a classic device is matched to the member name ignoring case here; whether Forward compares names exactly or ignoring case is not verified (the migrate path says the same), and a name used by another setup's member or another source type is not checked",
+		"a duplicate name among this setup's members and the network's classic devices was checked; a duplicate name among the network's other source types, and a duplicate host, were not (Forward refuses the name at apply; a duplicate host was not refused in a field test)",
+		"read from Forward's source and a field report, not run by this skill against a live Forward",
+	}
+	action := "add_controller_setup_member"
+	target := fmt.Sprintf("add %s %q to controller setup %s (the other %d members are written back as read)", kind, name, setupName, untouched)
+	confirm := ""
+	undo := "remove the member again (update with remove_" + strings.ReplaceAll(kind, " ", "_") + " and confirm = its name)"
+	if clash != nil {
+		confirm = name
+		target += fmt.Sprintf(" AFTER deleting the classic device %q", name)
+		undo = "none for the classic device: its definition is in the before state; recreate it with edit-source classic_device create. The added member can be removed again"
+		limits = append(limits, "replace_classic is NOT atomic: the classic device is deleted first, then the member is added; if the add fails the classic device stays deleted (its full definition is returned) and the device is not collected until it is recreated or added again; its per-device tags, test results and settings that classic_device create does not take are lost")
+		before, _ = fwd.Generic(map[string]any{"managed_devices": len(c.ManagedDevices), "controllers": len(c.Controllers), "classic_device_to_delete": clash})
+	}
+	return &networkPlan{target: target, action: action, before: before, after: added, reversible: clash == nil, confirm: confirm, undo: undo, limits: limits,
+		do: func(ctx context.Context) error {
+			// the plan was built from a read a moment ago: read the setup again and stop if anyone changed it, so a concurrent change is not overwritten by the whole-list write
+			if l, _, rerr := s.Client.ControllerManagedSetups.List(ctx, in.NetworkID); rerr == nil {
+				for _, x := range l {
+					if !strings.EqualFold(x.Name, setupName) {
+						continue
+					}
+					now := map[string]any{}
+					for _, m := range x.ManagedDevices {
+						g, _ := fwd.Generic(m)
+						now["m:"+strings.ToLower(m.Name)] = g
+					}
+					for _, m := range x.Controllers {
+						g, _ := fwd.Generic(m)
+						now["c:"+strings.ToLower(m.Name)] = g
+					}
+					if !reflect.DeepEqual(now, snapshotBefore) {
+						return fmt.Errorf("setup %q changed since it was read (another change added, removed or edited a member): nothing was written; run the dry run again", setupName)
+					}
+				}
+			}
+			if clash != nil {
+				if _, err := s.Client.ClassicDevices.Delete(ctx, in.NetworkID, classicName); err != nil {
+					return fmt.Errorf("deleting the classic device %q failed, nothing was added: %w", classicName, err)
+				}
+			}
+			if _, _, err := s.Client.ControllerManagedSetups.Patch(ctx, in.NetworkID, setupName, patch); err != nil {
+				if clash != nil {
+					return &partialApplyError{msg: fmt.Sprintf("the classic device %q WAS deleted but adding the member failed: %v. Recreate the classic device from detail.classic_device_deleted (edit-source classic_device create), or run the add again after fixing the cause", classicName, err),
+						detail: map[string]any{"classic_device_deleted": clash, "add_error": err.Error()}}
+				}
+				return err
+			}
+			return nil
+		},
+		verify: func(ctx context.Context) (bool, any, error) {
+			l, _, err := s.Client.ControllerManagedSetups.List(ctx, in.NetworkID)
+			if err != nil {
+				return false, nil, err
+			}
+			for _, x := range l {
+				if !strings.EqualFold(x.Name, setupName) {
+					continue
+				}
+				now := map[string]any{}
+				for _, m := range x.ManagedDevices {
+					g, _ := fwd.Generic(m)
+					now["m:"+strings.ToLower(m.Name)] = g
+				}
+				for _, m := range x.Controllers {
+					g, _ := fwd.Generic(m)
+					now["c:"+strings.ToLower(m.Name)] = g
+				}
+				var changed []string
+				for k, v := range snapshotBefore {
+					if !reflect.DeepEqual(v, now[k]) {
+						changed = append(changed, k)
+					}
+				}
+				sort.Strings(changed)
+				key := "m:" + strings.ToLower(name)
+				if md == nil {
+					key = "c:" + strings.ToLower(name)
+				}
+				got, found := now[key]
+				if !found {
+					return false, map[string]any{"added_member_present": false}, nil
+				}
+				var sentCollect *bool
+				if md != nil {
+					sentCollect = md.Collect
+				} else {
+					sentCollect = ctl.Collect
+				}
+				if sentCollect != nil {
+					gm, _ := got.(map[string]any)
+					read := true // Forward treats an absent collect as true
+					if v, ok := gm["collect"].(bool); ok {
+						read = v
+					}
+					if read != *sentCollect {
+						return false, map[string]any{"added_member_collect_sent": *sentCollect, "added_member_collect_read_back": gm["collect"]}, nil
+					}
+				}
+				if len(changed) > 0 {
+					return false, map[string]any{"members_that_changed_in_the_write": changed}, nil
+				}
+				return true, nil, nil
+			}
+			return false, map[string]any{"setup_present": false}, nil
+		}}, nil
+}
+
+// planControllerMemberRemove deletes ONE managed device or controller by name (Forward's single-member DELETE). The other members, their tests and tags are not touched. Forward refuses to remove the
+// last controller (400, read from its source) and the SDK treats a missing member as success, so the dry run checks the member exists.
+func planControllerMemberRemove(ctx context.Context, s *fwd.Session, in editSourceInput, c *forward.ControllerManagedSetup, managed, controller string, mixed bool) (*networkPlan, error) {
+	if (managed != "") == (controller != "") {
+		return nil, fmt.Errorf("%w: give remove_managed_device or remove_controller (one member name), not both", ErrInvalidInput)
+	}
+	if mixed {
+		return nil, fmt.Errorf("%w: a remove cannot be combined with an add, a whole-list update, collector_id or a member change: run them separately", ErrInvalidInput)
+	}
+	kind, name := "managed device", managed
+	var before any
+	if managed != "" {
+		for _, d := range c.ManagedDevices {
+			if strings.EqualFold(d.Name, managed) {
+				name = d.Name
+				before, _ = fwd.Generic(d)
+			}
+		}
+	} else {
+		kind, name = "controller", controller
+		for _, d := range c.Controllers {
+			if strings.EqualFold(d.Name, controller) {
+				name = d.Name
+				before, _ = fwd.Generic(d)
+			}
+		}
+		if before != nil && len(c.Controllers) == 1 {
+			return nil, fmt.Errorf("%w: %q is the only controller of setup %q and Forward refuses to leave a setup with no controller (delete the setup instead)", ErrInvalidInput, name, c.Name)
+		}
+	}
+	if before == nil {
+		return nil, fmt.Errorf("%w: setup %q has no %s named %q", ErrInvalidInput, c.Name, kind, name)
+	}
+	if managed != "" && len(c.ManagedDevices) == 1 {
+		return nil, fmt.Errorf("%w: %q is the only managed device of setup %q and the SDK documents that removing the last managed device is a 400 (delete the setup, or add another member first)", ErrInvalidInput, name, c.Name)
+	}
+	setupName := c.Name
+	untouched := len(c.ManagedDevices) + len(c.Controllers) - 1
+	others := map[string]any{}
+	for _, m := range c.ManagedDevices {
+		if managed != "" && strings.EqualFold(m.Name, name) {
+			continue
+		}
+		g, _ := fwd.Generic(m)
+		others["m:"+strings.ToLower(m.Name)] = g
+	}
+	for _, m := range c.Controllers {
+		if controller != "" && strings.EqualFold(m.Name, name) {
+			continue
+		}
+		g, _ := fwd.Generic(m)
+		others["c:"+strings.ToLower(m.Name)] = g
+	}
+	return &networkPlan{target: fmt.Sprintf("remove %s %q from controller setup %s (the other %d members are not touched)", kind, name, setupName, untouched), action: "remove_controller_setup_member", before: before, reversible: false, confirm: name,
+		undo: "add it back with add_managed_device or add_controller using the before values; its last connectivity test result and per-device tags are not restored",
+		limits: []string{"uses Forward's single-member DELETE (SDK v0.8.56), read from Forward's source and not run by this skill against a live Forward; a member that does not exist is a success there, so the dry run checks that it exists",
+			"the device is no longer collected through the setup; if it is a managed device its data leaves the next snapshot",
+			"after the delete the setup is read again and each of the other members must be identical to what was read"},
+		do: func(ctx context.Context) error {
+			if managed != "" {
+				_, err := s.Client.ControllerManagedSetups.DeleteManagedDevice(ctx, in.NetworkID, setupName, name)
+				return err
+			}
+			_, err := s.Client.ControllerManagedSetups.DeleteController(ctx, in.NetworkID, setupName, name)
+			return err
+		},
+		verify: func(ctx context.Context) (bool, any, error) {
+			l, _, err := s.Client.ControllerManagedSetups.List(ctx, in.NetworkID)
+			if err != nil {
+				return false, nil, err
+			}
+			for _, x := range l {
+				if !strings.EqualFold(x.Name, setupName) {
+					continue
+				}
+				now := map[string]any{}
+				for _, m := range x.ManagedDevices {
+					g, _ := fwd.Generic(m)
+					now["m:"+strings.ToLower(m.Name)] = g
+				}
+				for _, m := range x.Controllers {
+					g, _ := fwd.Generic(m)
+					now["c:"+strings.ToLower(m.Name)] = g
+				}
+				key := "m:" + strings.ToLower(name)
+				if controller != "" {
+					key = "c:" + strings.ToLower(name)
+				}
+				if _, still := now[key]; still {
+					return false, map[string]any{"member_still_present": true}, nil
+				}
+				var changed []string
+				for k, v := range others {
+					if !reflect.DeepEqual(v, now[k]) {
+						changed = append(changed, k)
+					}
+				}
+				sort.Strings(changed)
+				if len(changed) > 0 {
+					return false, map[string]any{"members_that_changed": changed}, nil
+				}
+				return true, nil, nil
+			}
+			return false, map[string]any{"setup_present": false}, nil
 		}}, nil
 }

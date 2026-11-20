@@ -64,8 +64,10 @@ func controllerSetupRows(setups []forward.ControllerManagedSetup, in collectionC
 		for _, m := range st.ManagedDevices {
 			add(m.Name, "managed", controllerEntry{m.Host, m.Type, m.Port, string(m.CLICredentialID), string(m.CLICredential2ID), string(m.CLICredential3ID), string(m.HTTPCredentialID), string(m.SNMPCredentialID), string(m.JumpServerID)}, m.Collect, m.TestResult)
 		}
-		shown, nDevs := result.CapRow(devs, 100)
-		row := map[string]any{"name": st.Name, "controllers": len(st.Controllers), "managed_devices": len(st.ManagedDevices), "tests": tests, "devices": shown, "devices_total": nDevs}
+		shown, capped := result.Cap(devs, 100, "members of setup "+st.Name, "devices_total is complete; the list shows the first 100 members, controllers first")
+		omitted = append(omitted, capped...)
+		nDevs := len(devs)
+		row := map[string]any{"name": st.Name, "controllers": len(st.Controllers), "managed_devices": len(st.ManagedDevices), "tests": tests, "devices": shown, "devices_total": nDevs, "devices_capped": len(capped) > 0}
 		if c := string(st.CollectorID); c != "" {
 			row["collector_id"] = c
 		}

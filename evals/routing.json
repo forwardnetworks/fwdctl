@@ -35,6 +35,11 @@
     "rival": "plan-security-posture"
   },
   {
+    "query": "Which of our devices have no syslog or TACACS server configured, and do they all use the same NTP servers?",
+    "expect": "inspect-inventory",
+    "rival": "check-network-compliance"
+  },
+  {
     "query": "Which firewall rules allow any source to any destination, any-any rules on our Palo Alto firewalls?",
     "expect": "check-network-compliance",
     "rival": "plan-security-posture"

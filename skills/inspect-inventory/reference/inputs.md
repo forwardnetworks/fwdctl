@@ -18,6 +18,7 @@
 | `cloud_accounts` | one row per cloud account: name, id, cloud, **collected** (true/false), cloud setup, VPC, subnet and instance counts | `account` |
 | `cloud_coverage` | the coverage roll-up: per cloud setup the accounts, how many were collected, VPC, subnet and instance totals, and for each account that was NOT collected its id and what the setup records about it (an Azure subscription's last connectivity test, an AWS member account's enabled flag and last error, a C2S portal list); counts of each reason; the first 25 uncollected accounts per setup | none |
 | `endpoints` | the network endpoints rolled up by profile: endpoints, collected, not collected (with the result), the first 25 not collected, configured endpoints switched off | `name` (profile name contains) |
+| `services` | which physical devices have no DNS, syslog, TACACS+ or NTP server configured, and which server sets are in use, from `device.services` (Forward 26.11, organization property `NQE_DEVICE_SERVICES`); takes no filter |
 | `lifecycle` | OS support dates rolled up by vendor and OS: support ended, ending within 12 months, later, no record; the oldest 25 devices past support | none |
 | `cloud` | account, cloud, whether the account was collected, VPC name and id, regions, CIDR blocks, subnet and instance counts | `account`, `name` (VPC) |
 | `cloud_subnets` | per VPC: subnet name and id, region, zone, addresses, interface count, route table | `account`, `name` (VPC) |
