@@ -26,13 +26,15 @@ A secret (a password, SNMP community string, SSH key) is never put in the input.
 
 ## Inputs
 
-What each input means, and the fields per object and action: `fwdctl run edit-source --help`, or `reference/inputs.md`, `reference/inventory.md` (many items from one file: `fwdctl source apply`), `reference/objects.md`, `reference/sdwan-controller-mode.md` (flipping an SD-WAN network to controller-mode collection: read the migration view, compute edge coverage, controller-only dry run, checks and undo; source-read, untested).
+What each input means, and the fields per object and action: `fwdctl run edit-source --help`, or `reference/inputs.md`, `reference/inventory.md` (many items from one file: `fwdctl source apply`), `reference/objects.md`, `reference/workspace-to-parent.md` (a workspace cannot be merged into its parent; a manual recipe to move its sources), `reference/sdwan-controller-mode.md` (flipping an SD-WAN network to controller-mode collection: read the migration view, compute edge coverage, controller-only dry run, checks and undo; source-read, untested).
 
 ## Dry run
 
 Without `apply: true` nothing changes, and no secret file is read. The result shows the object with `<secret>` where the secret goes, the undo, and the exact `confirm` when needed. With `apply: true` the secret is read, sent once, and the object is read back by name.
 
 ## Limits
+
+Editing sources while a collection is running is safe: a field test replaced a controller setup's controller list, deleted 176 classic devices and replaced its managed-device list during a running collection, and no task was cancelled or failed. The devices changed may not be in that run's snapshot: read it.
 
 The SDK has no proxy delete; a jump server changes with `update` (Forward re-handles the devices that go through it); a credential is changed in place with `update` (the fields given change, the rest stay; a secret is optional). A credential is attached to devices by `autoAssociate` or in the device configuration; this skill does not attach it.
 

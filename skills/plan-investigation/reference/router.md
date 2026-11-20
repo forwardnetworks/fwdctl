@@ -64,6 +64,7 @@ The symptom table of `plan-investigation`: a question or symptom on the left, th
 | Write an NQE decorator: extra columns shown on Forward's device, host, interface or path views (join columns, their types, a host decorator keyed by IP) | `author-nqe-query` (`reference/decorators.md`) to write it; `edit-platform` area `decorators` to create or change it; `inspect-platform` area `decorators` to list and check them |
 | Tag devices or take a tag off them | `edit-device-tags` (dry run first) |
 | Try a collection change away from production (a temporary workspace network, endpoints added to it, delete it afterwards) | `edit-workspace` (dry run first) |
+| Merge or promote a workspace into the main network, copy a workspace's sources to the parent, move what was built in a workspace to production | `edit-workspace` (a workspace cannot be merged: it says so) and `edit-source` reference `workspace-to-parent.md` (the manual recipe) |
 | What can this login do, why was I refused (403, permission denied), who has access, which users or groups exist | `inspect-access` |
 | Create or disable a user, make someone org admin, give a user or group a role on a network, define an access group | `edit-access` (dry run first) |
 | Upload a dataset (CSV/JSON/XML/YAML/TEXT) for NQE to join, or attach/detach one on a network | `edit-data-file` (dry run first) |

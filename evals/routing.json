@@ -35,6 +35,11 @@
     "rival": "plan-security-posture"
   },
   {
+    "query": "Can we merge a workspace network into the main network so it is processed with the rest?",
+    "expect": "edit-workspace",
+    "rival": "edit-source"
+  },
+  {
     "query": "Which of our devices have no syslog or TACACS server configured, and do they all use the same NTP servers?",
     "expect": "inspect-inventory",
     "rival": "check-network-compliance"

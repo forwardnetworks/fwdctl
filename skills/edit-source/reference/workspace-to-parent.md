@@ -1,0 +1,26 @@
+# Moving a workspace's sources to its parent network
+
+Read when someone asks "can we merge a workspace into the main network", "promote a workspace", or "copy what we built in the workspace to production". **A workspace cannot be merged into its parent.** Forward has no merge or promote, and nothing is synced between the two in either direction: data collected in a workspace does not refresh the parent, and the parent's snapshots never include the workspace's. Sources can be copied parent to workspace (`edit-workspace` create_workspace), never the other way. What follows is a **manual recipe**: you recreate the workspace's sources in the parent with the skills below, one item at a time, each with its own dry run, and collect in the parent so Forward processes them into its model. Nothing here merges snapshots. Field-derived, from one SD-WAN case; the edit-source add and remove actions have not been run against a live Forward.
+
+## Order
+
+1. **Read both networks** (counts and names only if the data is sensitive): `inspect-collection` view `config` on the workspace and on the parent (classic devices, controller-managed setups with their members, collect flags, collectors and credential ids); `inspect-platform` area `controller_setups` for every setup; `inspect-inventory` kind `devices` for the devices Forward has modelled; the device tags (`edit-device-tags` dry run reads them). Note what is only in the workspace.
+2. **Check what the parent already holds.** A device name must be unique across ALL of a network's collection sources, and a host and port must be unique among devices: Forward refuses a duplicate of either (400 "Device name(s) already used", 400 "Duplicate devices: [a, b] have host: x, port: default"). The dry run of `controller_setup` update with `add_managed_device` checks a member's name and its host and port against the setup's members and the network's classic devices; it does not check other setups or other source types.
+3. **Credentials exist in the parent.** Logins are credential ids; a workspace's ids are its own unless the org property `COPY_CREDENTIALS` carried them. Read the parent's credentials (`inspect-platform` area credentials) and map each id; a member with no usable `cliCredentialId` cannot be collected.
+4. **Controller setups first.** An existing setup in the parent: add the new members one at a time with `edit-source` object `controller_setup` action `update`, definition `add_managed_device` or `add_controller` (the skill reads the live list and writes it back with one member added, then re-reads and checks every other member). A new setup: `create`, with the controllers' MANAGEMENT addresses (the host Forward logs in to), not the control addresses a vEdge reports. If a classic device in the parent has the name of a member you are adding, the add is refused (Forward does not allow it): delete the classic device first with `classic_device` action `delete` (keep its definition from the dry run's before state), or use `replace_classic` on the add (confirm = the name; not atomic: if the add then fails the classic device is gone and its full definition is in the result).
+5. **Classic devices** that are not part of a setup: `classic_device` action `create`, one at a time or `fwdctl source apply` for many.
+6. **Collect flags.** A member added by `update` keeps `collect: false`; a `migrate` that creates a setup dropped it in a field report. After adding, read `inspect-collection` view `config` and compare each device's collect flag with the workspace's.
+7. **Tags** follow device names: `edit-device-tags` (the tag must exist: `edit-network` object `tag` action `create`). They are written at the newest processed snapshot by default.
+8. **Schedules and custom command groups** are not copied by any skill here: read them in the workspace (`inspect-collection`, `inspect-platform`) and recreate them in the parent with `edit-collection` and `edit-source` (custom command groups); say which were not moved.
+9. **Collect in the parent.** `edit-collection` (a dry run first). Forward processes the new sources into a snapshot; check `inspect-collection` and `inspect-snapshots` for failures before relying on the model. Changing sources while a collection is running is safe (a field test edited a setup's controllers and 100+ members during a running workspace collection with no cancelled or failed task), but the devices you changed may not be in that run's snapshot: read the snapshot to see.
+10. **Delete the workspace** only when the parent is verified (`edit-workspace` delete_workspace, `confirm` = its name).
+
+## What this recipe cannot do
+
+- It does not move snapshots, history, checks, change sets or NQE results: only sources.
+- It cannot copy a workspace's credentials (secrets are never readable) or its collector assignments.
+- A cross-network diff-and-apply is not a skill: the failures (duplicate names and hosts, missing credentials) are per item, so apply stays per item with its own dry run and before state.
+
+## Undo
+
+Each add has an undo (`remove_managed_device` / `remove_controller` with `confirm`; `classic_device` delete; the tag actions). A classic device deleted for a replace is recreated from the before state with `classic_device` action `create`; its per-device tags and test results are not restored.

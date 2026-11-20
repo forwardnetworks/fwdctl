@@ -104,7 +104,7 @@ func planControllerSetup(ctx context.Context, s *fwd.Session, in editSourceInput
 			return nil, err
 		}
 		if strings.TrimSpace(def.Name) == "" || len(def.Controllers) == 0 {
-			return nil, fmt.Errorf("%w: migrate needs name and at least one controller", ErrInvalidInput)
+			return nil, fmt.Errorf("%w: migrate needs definition.name (the new setup's name, inside definition, not the top-level name) and at least one controller in definition.controllers", ErrInvalidInput)
 		}
 		if find(def.Name) != nil {
 			return nil, fmt.Errorf("%w: a controller-managed setup named %q already exists; migrate creates the setup", ErrInvalidInput, def.Name)
@@ -460,6 +460,46 @@ func planControllerMemberAdd(ctx context.Context, s *fwd.Session, in editSourceI
 	if cerr != nil {
 		return nil, cerr
 	}
+	// Forward refuses two members with the same host and port ("Duplicate devices: [a, b] have host: x, port: default", seen live), so the dry run checks that too: against the setup's own
+	// members and the network's classic devices (the classic device this add replaces is not a duplicate of itself).
+	var newHost string
+	var newPort *int32
+	if md != nil {
+		newHost, newPort = md.Host, md.Port
+	} else {
+		newHost, newPort = ctl.Host, ctl.Port
+	}
+	samePort := func(a, b *int32) bool {
+		pa, pb := int32(0), int32(0)
+		if a != nil {
+			pa = *a
+		}
+		if b != nil {
+			pb = *b
+		}
+		return pa == pb
+	}
+	if h := strings.TrimSpace(newHost); h != "" {
+		var dups []string
+		for _, m := range c.ManagedDevices {
+			if strings.EqualFold(m.Host, h) && samePort(m.Port, newPort) {
+				dups = append(dups, m.Name)
+			}
+		}
+		for _, m := range c.Controllers {
+			if strings.EqualFold(m.Host, h) && samePort(m.Port, newPort) {
+				dups = append(dups, m.Name)
+			}
+		}
+		for _, d := range classic {
+			if strings.EqualFold(d.Host, h) && samePort(d.Port, newPort) && !(replaceClassic && strings.EqualFold(d.Name, name)) {
+				dups = append(dups, d.Name+" (classic device)")
+			}
+		}
+		if len(dups) > 0 {
+			return nil, fmt.Errorf("%w: host %q (same port) is already used by %s: Forward refuses two devices with the same host and port (400 \"Duplicate devices\")", ErrInvalidInput, h, strings.Join(dups, ", "))
+		}
+	}
 	var clash map[string]any
 	classicName := ""
 	for _, d := range classic {
@@ -511,7 +551,7 @@ func planControllerMemberAdd(ctx context.Context, s *fwd.Session, in editSourceI
 		"the SDK documents that a list read back and re-sent keeps every property it models EXCEPT a managed device's hidden concurrency setting and its attribution (who and when): a whole-list write may reset those on every member, and this check cannot see them (changing one member in place with managed_device and set does not have this effect)",
 		"between the read and the write another change could be overwritten: the apply reads the setup again first and stops, writing nothing, if any member differs from the plan's read; a change in the instant between that check and the write is not caught",
 		"name matching: a classic device is matched to the member name ignoring case here; whether Forward compares names exactly or ignoring case is not verified (the migrate path says the same), and a name used by another setup's member or another source type is not checked",
-		"a duplicate name among this setup's members and the network's classic devices was checked; a duplicate name among the network's other source types, and a duplicate host, were not (Forward refuses the name at apply; a duplicate host was not refused in a field test)",
+		"a duplicate name among this setup's members and the network's classic devices was checked; a duplicate name among the network's other source types was not (Forward refuses it at apply); the host and port were checked against this setup's members and the network's classic devices, not against other setups",
 		"read from Forward's source and a field report, not run by this skill against a live Forward",
 	}
 	action := "add_controller_setup_member"

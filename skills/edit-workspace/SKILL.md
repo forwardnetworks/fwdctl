@@ -22,6 +22,8 @@ A workspace is a separate network under a production one, with its own sources, 
 collection change (a new endpoint profile, an extra OID) be tried on a handful of sources without collecting the whole production network, which `edit-collection` would do.
 This skill creates one, adds endpoints to it, and deletes it. It never touches a network that is not a workspace.
 
+**A workspace cannot be merged into its parent, and nothing is synced either way.** Forward has no merge or promote: data collected in a workspace does not refresh the parent, and the parent's snapshots never include the workspace's. Sources can be copied parent to workspace (create_workspace), never the other way. To keep what you built in a workspace, recreate its sources in the parent by hand: `edit-source` `reference/workspace-to-parent.md`.
+
 ## Inputs
 
 What each input means, and the fields per object and action: `fwdctl run edit-workspace --help`, or `reference/inputs.md`.

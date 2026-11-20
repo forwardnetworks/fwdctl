@@ -318,3 +318,53 @@ func TestReplaceClassicDeletesTheClassicDeviceUnderItsStoredSpelling(t *testing.
 		t.Errorf("%s deleted=%q", r.Status, deleted)
 	}
 }
+
+// Forward refuses two devices with the same host and port, not only the same name; the dry run checks both against the setup's members and the network's classic devices.
+func TestAddMemberRefusesADuplicateHostAndPortAmongMembersAndClassicDevices(t *testing.T) {
+	w := newCtlAddWorld()
+	mk := func(host, port string) string {
+		p := ""
+		if port != "" {
+			p = `,"port":` + port
+		}
+		return `{"network_id":"n1","object":"controller_setup","action":"update","name":"sdwan","definition":{"add_managed_device":{"name":"edge9","type":"viptela","host":"` + host + `","cliCredentialId":"L1"` + p + `}}}`
+	}
+	for name, in := range map[string]string{
+		"a managed member's host": mk("192.0.2.21", ""),
+		"in another case":         mk("192.0.2.21", ""),
+		"a controller's host":     mk("192.0.2.10", ""),
+		"a classic device's host": mk("192.0.2.31", ""),
+		"a port equal to default": mk("192.0.2.21", "0"),
+	} {
+		_, _, err := runSkill(t, "edit-source", w.routes(), in)
+		if err == nil || !strings.Contains(err.Error(), "already used by") {
+			t.Errorf("%s: must be refused as a duplicate host: %v", name, err)
+		}
+	}
+	// the same host on a different port is a different device
+	if r, _ := mustRun(t, "edit-source", w.routes(), mk("192.0.2.21", "8443")); r.Mode != result.ModeDryRun {
+		t.Errorf("a different port is allowed: %s", r.Finding)
+	}
+	// replace_classic: the classic device being replaced shares its own host and is not a duplicate of itself
+	in := `{"network_id":"n1","object":"controller_setup","action":"update","name":"sdwan","definition":{"add_managed_device":{"name":"old1","type":"viptela","host":"192.0.2.31","cliCredentialId":"L1"},"replace_classic":true}}`
+	if r, _ := mustRun(t, "edit-source", w.routes(), in); r.Mode != result.ModeDryRun {
+		t.Errorf("the replaced classic device's own host is not a duplicate: %s", r.Finding)
+	}
+}
+
+func TestMigrateErrorNamesTheDefinitionName(t *testing.T) {
+	var posted string
+	_, _, err := runSkill(t, "edit-source", migrateRoutes(&posted), `{"network_id":"n1","object":"controller_setup","action":"migrate","name":"sdwan","definition":{"controllers":[{"name":"ctl","host":"192.0.2.10","cliCredentialId":"L1"}]}}`)
+	if err == nil || !strings.Contains(err.Error(), "definition.name") {
+		t.Errorf("the error says where the name goes: %v", err)
+	}
+}
+
+func TestAddMemberHostComparisonIgnoresCase(t *testing.T) {
+	w := newCtlAddWorld()
+	w.setup["managedDevices"].([]any)[1].(map[string]any)["host"] = "Edge2.Example.COM"
+	_, _, err := runSkill(t, "edit-source", w.routes(), `{"network_id":"n1","object":"controller_setup","action":"update","name":"sdwan","definition":{"add_managed_device":{"name":"edge9","type":"viptela","host":"edge2.example.com","cliCredentialId":"L1"}}}`)
+	if err == nil || !strings.Contains(err.Error(), "already used by edge2") {
+		t.Errorf("a host differing only in case is the same host: %v", err)
+	}
+}
