@@ -276,3 +276,32 @@ func TestInspectSnapshotsDetailSearchesEveryChangeSet(t *testing.T) {
 		t.Fatalf("the prediction under the 41st change set must be found: %s %v", r.Finding, r.Limits)
 	}
 }
+
+// A snapshot that failed AT the creation stage has no readable reason: Forward's exceptions route refuses it, with or without the permission, so the answer says the application logs are the only source and
+// gives what to search for.
+func TestInspectSnapshotsSaysNoReasonIsAvailableForASnapshotThatFailedAtCreation(t *testing.T) {
+	start := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC).UnixMilli()
+	routes := map[string]fwdtest.Handler{
+		snapsPath:                          fwdtest.Snapshots(fwdtest.Snap("sf", "FAILED", "COLLECTION", "2026-11-20T12:01:00.000Z")),
+		"GET /api/snapshots/sf/metrics":    fwdtest.Const(200, map[string]any{}),
+		"GET /api/snapshots/sf/exceptions": fwdtest.Const(400, map[string]any{"message": "The snapshot you are attempting to access failed to process successfully"}),
+		"GET /api/snapshots/sf/progress": fwdtest.Const(200, map[string]any{"networkId": "n1", "snapshotId": "sf", "done": true, "stages": []any{
+			map[string]any{"stage": "CREATION", "operationState": "FAILED", "startedAt": start, "updatedAt": start + 40000, "numObjects": 5700},
+			map[string]any{"stage": "REACHABILITY", "operationState": "FAILED"}}}),
+	}
+	r, _ := mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1","snapshot_id":"sf"}`)
+	l := strings.Join(r.Limits, " | ")
+	if !strings.Contains(l, "failed AT the creation stage (started at 2026-11-20T12:00:00Z)") || !strings.Contains(l, "NO reason is available from the API") || !strings.Contains(l, "application logs are the only source") || !strings.Contains(l, "snapshot sf") {
+		t.Errorf("limits: %s", l)
+	}
+	if !strings.Contains(l, "Forward refuses them (400) until the creation stage has completed") || strings.Contains(l, "lacks the DEBUG_SNAPSHOTS permission") {
+		t.Errorf("a 400 from the exceptions route is Forward's answer, not a missing permission: %s", l)
+	}
+	// a snapshot that failed at a LATER stage does not get the creation message
+	routes["GET /api/snapshots/sf/progress"] = fwdtest.Const(200, map[string]any{"done": true, "stages": []any{map[string]any{"stage": "CREATION", "operationState": "SUCCEEDED", "startedAt": start}, map[string]any{"stage": "REACHABILITY", "operationState": "FAILED"}}})
+	routes["GET /api/snapshots/sf/exceptions"] = fwdtest.Const(200, []any{})
+	r, _ = mustRun(t, "inspect-snapshots", routes, `{"network_id":"n1","snapshot_id":"sf"}`)
+	if strings.Contains(strings.Join(r.Limits, " | "), "failed AT the creation stage") {
+		t.Errorf("a later-stage failure is not a creation failure: %v", r.Limits)
+	}
+}

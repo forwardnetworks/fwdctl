@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -186,6 +187,9 @@ func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInpu
 		detail["processing"] = p
 		limits = append(limits, more...)
 		if sn.State == "FAILED" {
+			if when, ok := failedAtCreation(p); ok {
+				limits = append(limits, "this snapshot failed AT the creation stage"+when+": Forward stores no reason and its exceptions route refuses a snapshot whose creation stage did not complete (400 \"failed to process successfully\"), so NO reason is available from the API, with or without DEBUG_SNAPSHOTS; the application logs are the only source: search them for snapshot "+sid+" around the creation start time")
+			}
 			limits = append(limits, "Forward stores no failure reason for a snapshot (a predicted one carries only its base, change set, commit and name): processing shows the stage that failed; the exception text above appears only with the DEBUG_SNAPSHOTS permission and a snapshot whose creation stage completed, so a snapshot that failed earlier shows none")
 		}
 	}
@@ -201,6 +205,8 @@ func snapshotDetail(ctx context.Context, s *fwd.Session, in inspectSnapshotsInpu
 	}
 	ex, readable, xerr := s.SnapshotExceptions(ctx, sid)
 	switch {
+	case xerr != nil && strings.Contains(xerr.Error(), "failed to process successfully"):
+		limits = append(limits, "exceptions cannot be read for this snapshot: Forward refuses them (400) until the creation stage has completed, and this snapshot failed before that; this is Forward's answer, not a missing permission, and their absence is not health")
 	case xerr != nil:
 		limits = append(limits, "exceptions could not be read, so their absence is not health: "+xerr.Error())
 	case !readable:
@@ -473,3 +479,18 @@ func advancedLimits(ctx context.Context, s *fwd.Session, win []map[string]any, b
 
 // staleAfterUpgradeLimit is said for a snapshot that reads UNPROCESSED. Measured by another session: after a Forward upgrade, snapshots made by the old build read UNPROCESSED with no processing running until they are reprocessed.
 const staleAfterUpgradeLimit = "UNPROCESSED with nothing processing it is also what snapshots from an older Forward build look like after a Forward upgrade (measured by another session): reprocess the snapshot with edit-snapshot (dry run first) before reading it"
+
+// failedAtCreation says, from the processing detail (the stages with their states), whether the CREATION stage is the one that FAILED, and returns " (started at T)" when Forward gave the start time.
+func failedAtCreation(p any) (string, bool) {
+	m, _ := p.(map[string]any)
+	stages, _ := m["stages"].([]map[string]any)
+	for _, st := range stages {
+		if st["stage"] == "CREATION" && st["state"] == "FAILED" {
+			if t, ok := st["started_at"].(string); ok && t != "" {
+				return " (started at " + t + ")", true
+			}
+			return "", true
+		}
+	}
+	return "", false
+}

@@ -373,7 +373,7 @@ func snapshotMergeImport(ctx context.Context, s *fwd.Session, in editSnapshotInp
 		mergeLimit(mergeType),
 		"the ZIP's contents are not read here: which devices conflict is not known until Forward answers, and a full workspace snapshot collides with its parent on synthetic objects (L3 VPN, L2 VPN, intranet nodes, WAN circuits, encryptors, the internet node) with a 400; export only the devices the parent lacks to avoid that (see reference/transfer.md)",
 		"the merged snapshot carries device data, not collection sources: the network cannot collect those devices until their sources exist there",
-		"Forward can ACCEPT a merge (202, a new snapshot in state UNPACKING) and the new snapshot can still end FAILED at its creation stage with no stored reason: read inspect-snapshots (or fwdctl wait snapshot) after the apply before relying on it. A field test on one 26.10.5 tenant failed this way for every merge tried (a 371-device zip, and three single-device zips, into a workspace) although the same zip imported on its own processed fine; a merge into the latest snapshot has not completed successfully live on that build, and the cause is not known",
+		"Forward can ACCEPT a merge (202, a new snapshot in state UNPACKING) and the new snapshot can still end FAILED at its creation stage with no stored reason: read inspect-snapshots (or fwdctl wait snapshot) after the apply before relying on it. A field test on one 26.11.1-01 tenant failed this way for every merge tried (a 371-device zip, and three single-device zips, into a workspace) although the same zip imported on its own processed fine; a merge into the latest snapshot has not completed successfully live on that build, and the cause is not known",
 		"read from Forward's source and the SDK (v0.8.59, tested with fakes); a successful merge has not been seen live by this skill",
 	}
 	switch {
@@ -451,7 +451,7 @@ func snapshotMergeImport(ctx context.Context, s *fwd.Session, in editSnapshotInp
 	ch.After = map[string]any{"snapshot_id": id, "state": state, "merge_type": mergeType}
 	ch.Undo = fmt.Sprintf("delete snapshot %s (edit-snapshot action delete, confirm = %s)", id, id)
 	limits = append(limits, fmt.Sprintf("uploaded %d bytes in %s; the new snapshot then processes in Forward: inspect-snapshots shows its state", st.Size(), took))
-	limits = append(limits, "the merge was ACCEPTED: this does not say the new snapshot will process. Check inspect-snapshots (or fwdctl wait snapshot) until it is PROCESSED; a merged snapshot has ended FAILED at creation on a 26.10.5 tenant")
+	limits = append(limits, "the merge was ACCEPTED: this does not say the new snapshot will process. Check inspect-snapshots (or fwdctl wait snapshot) until it is PROCESSED; a merged snapshot has ended FAILED at creation on a 26.11.1-01 tenant")
 	return result.Build(editSnapshotName, result.OK, fmt.Sprintf("Merged %s into the latest snapshot as new snapshot %s (state %s, %s): accepted, not yet processed", filepath.Base(files[0]), id, state, mergeType), result.Deterministic, cx,
 		result.Options{Mode: mode, Changes: []result.Change{ch}, Evidence: ev(map[string]any{"snapshot_id": id, "state": state}), Limits: limits, NextActions: []string{"inspect-snapshots", "inspect-inventory"}})
 }
