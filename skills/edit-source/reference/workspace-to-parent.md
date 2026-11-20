@@ -6,6 +6,19 @@ Read when someone asks "can we merge a workspace into the main network", "promot
 
 A merge of a full workspace snapshot collides with its parent: a workspace copies its parent's synthetic objects (L3 VPN, L2 VPN, intranet nodes, WAN circuits, encryptors, internet nodes) and Forward refuses a merge when connection names are not unique, or when a name is used by a device or synthetic object in more than one ZIP (400). Workaround at the export step: `edit-snapshot` export with `include_devices` of ONLY the devices the parent lacks drops the synthetic objects (measured on one case: 371 of 468 workspace devices were not in the parent's latest; the export had zero L3VPN, L2VPN, intranet, WAN circuit or internet entries, 30 MB, 8,231 entries, 9 seconds). Find the devices the parent lacks with `inspect-inventory` kind `devices` on both networks (a name comparison). Then merge that ZIP (`edit-snapshot` import, `merge_into_latest`) with PRESERVE_EXISTING (keep the parent's data for a device in both) or REPLACE_EXISTING (the ZIP's data wins).
 
+### The working snapshot route: export both, import both
+
+Because `merge_into_latest` has failed at creation on a current release (see `edit-snapshot` reference transfer.md), the route that has WORKED live (one SD-WAN case, release 26.11.1-01) uses plain `edit-snapshot` import with several zips, which Forward merges into one new snapshot:
+1. `edit-snapshot` export of the **full parent snapshot** (it was 518 MB for 1,134 devices, under 2 minutes: thousands of devices are not tens of GB).
+2. `edit-snapshot` export of the **workspace snapshot with `include_devices` of only the devices the parent lacks** (it was 30 MB for 365 devices; no synthetic objects, so no collision).
+3. `edit-snapshot` import of **both zips together** (no `merge_into_latest`) into the parent as a NEW snapshot (523 MB uploaded in about 6 minutes, processed in about 12). Result: 1,499 devices = 1,134 + 365, none lost, none extra, and the synthetic objects (2 L3 VPN, 1 internet node) not duplicated.
+4. Verify by comparing device names against the parent's snapshot before the import (`inspect-inventory` kind `devices`): nothing lost, nothing extra.
+Gotchas, all from that case:
+- **Compare hosts, not only names.** The first attempt LOST 6 real devices: the workspace held misspelled duplicate entries for 6 devices (the same host as a parent device under a different name), the zip merge treated each pair as ONE device and kept the workspace's name, silently dropping the parent's. When choosing the workspace devices to export, exclude any that share a host with a parent device under a different name, and check the device names after the import.
+- **An upload can reach 100% and end with "unexpected EOF"** while Forward keeps the file: the skill answers unknown with no snapshot yet; wait and run `inspect-snapshots` (the snapshot appeared a few minutes later). Do not retry blindly: that adds a duplicate.
+- A flawed snapshot is removed with `edit-snapshot` action `delete` (`confirm` = its id).
+- Merged **vEdges carry no `sdwan_omp_routes.txt`** when that command is disabled org-wide, the same as in the workspace; edges and vSmarts keep theirs.
+
 ## Order
 
 1. **Read both networks** (counts and names only if the data is sensitive): `inspect-collection` view `config` on the workspace and on the parent (classic devices, controller-managed setups with their members, collect flags, collectors and credential ids); `inspect-platform` area `controller_setups` for every setup; `inspect-inventory` kind `devices` for the devices Forward has modelled; the device tags (`edit-device-tags` dry run reads them). Note what is only in the workspace.
