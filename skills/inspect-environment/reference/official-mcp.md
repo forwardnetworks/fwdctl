@@ -11,9 +11,9 @@ Streamable HTTP at `<forward-host>/api/mcp`, stateless, on SaaS and self-hosted.
 ## What the MCP carries and what it does not (reported)
 Read-only tools: paths, device, interface, VLAN, VRF, host, cloud object, subnet locations, device vulnerabilities, a vulnerability, network complexity, plus NQE, NQE generation and documentation search (the last three need AI enabled for the org).
 
-fwdctl covers what the MCP does not: listing networks and snapshots (`inspect-networks`, `inspect-snapshots`), checks and compliance (`check-network-compliance`), diffs (`compare-device-config`, `compare-nqe-results`), device files and configuration (`inspect-device-files`), topology (`inspect-topology`), collection (`inspect-collection`, `investigate-collection-failure`), Predict (`verify-change`, `edit-change-set`) and every change (`edit-*`, dry run first). Paths overlap with `investigate-reachability`, devices and interfaces with `inspect-inventory`, vulnerabilities with `inspect-vulnerabilities`, and NQE with the nqe skills and `fwdctl nqe`.
+The toolkit (fwdctl) covers what the MCP does not: listing networks and snapshots (`inspect-networks`, `inspect-snapshots`), checks and compliance (`check-network-compliance`), diffs (`compare-device-config`, `compare-nqe-results`), device files and configuration (`inspect-device-files`), topology (`inspect-topology`), collection (`inspect-collection`, `investigate-collection-failure`), Predict (`verify-change`, `edit-change-set`) and every change (`edit-*`, dry run first). Paths overlap with `investigate-reachability`, devices and interfaces with `inspect-inventory`, vulnerabilities with `inspect-vulnerabilities`, and NQE with the nqe skills and `fwdctl nqe`.
 
-fwdctl does not print the endpoint URL or a ready-to-paste client config; build it from the Forward host in your login and the token's access key and secret, and never paste the secret into a result or a repository.
+The toolkit (fwdctl) does not print the endpoint URL or a ready-to-paste client config; build it from the Forward host in your login and the token's access key and secret, and never paste the secret into a result or a repository.
 
 ## What a live test found (reported by a field session; read-only calls against one internal build, 1.0.0-261024; not re-run here)
 

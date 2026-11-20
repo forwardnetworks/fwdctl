@@ -149,7 +149,7 @@ func (a *app) newRoot() *cobra.Command {
 
 	root.AddCommand(a.listCmd(), a.describeCmd(), a.runCmd(), a.whichCmd(), a.contextCmd())
 	root.AddCommand(a.nqeCmd(), a.waitCmd(), a.collectorCmd(), a.sourceCmd(), a.deviceFileCmd())
-	root.AddCommand(a.installCmd(), a.loginCmd(), a.whoamiCmd(), a.updateCmd(), a.docsCmd(), a.versionCmd())
+	root.AddCommand(a.installCmd(), a.loginCmd(), a.whoamiCmd(), a.updateCmd(), a.docsCmd(), a.versionCmd(), a.commandsCmd())
 	root.AddCommand(a.manCmd())
 	root.SetCompletionCommandGroupID("setup")
 	root.SetHelpCommand(a.helpCmd(root))

@@ -56,6 +56,20 @@ Flags:
       --type string        package: linux (.sh installer), windows (.exe), osx (.dmg), headless-linux (.tar.gz) or headless-windows (.zip) (default "linux")
 ```
 
+## fwdctl commands
+
+Print JSON: every fwdctl command with its class (local: no Forward connection; read: asks Forward and changes nothing; write: changes Forward; local-write: changes this machine; runner: runs a named skill; group), whether it writes local files and whether its output can contain secrets, and every skill with its class (read or write), effect (network, snapshot or org), reversibility and secrets flag. For a host that exposes fwdctl and must decide how to classify each command: diff this against its own mapping. Offline.
+
+```
+fwdctl commands
+```
+
+Examples:
+
+```
+  fwdctl commands > fwdctl-commands.json
+```
+
 ## fwdctl context
 
 NQE authoring aids: worked examples closest to a question, or real field names matching a term.

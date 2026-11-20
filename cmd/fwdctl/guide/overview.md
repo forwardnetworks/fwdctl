@@ -62,6 +62,7 @@ With an agent (Claude Code, Codex or Gemini) you ask in plain words and it picks
 | `fwdctl install claude` / `agent-skills` / `agents` | Put the skills where an agent loads them: Claude Code's folder, the Agent Skills standard's `~/.agents/skills`, or an AGENTS.md section. See `fwdctl docs install`. |
 | `fwdctl docs [topic]` | This guide. |
 | `fwdctl version` | Release, commit and build date. |
+| `fwdctl commands` | Every command and skill as JSON with its class (local, read, write, local-write, runner), whether it writes local files and whether its output can hold secrets: for a host that exposes fwdctl. Offline. |
 
 ## Exit status
 
