@@ -64,6 +64,7 @@
             "definition",
             "status",
             "critical_assets",
+            "resolve",
             "direct",
             "transitive",
             "edge_assets"

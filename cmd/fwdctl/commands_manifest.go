@@ -30,6 +30,8 @@ type cmdClass struct {
 var commandClasses = map[string]cmdClass{
 	"collector":               {Class: "group"},
 	"commands":                {Class: "local", Note: "this manifest; offline"},
+	"edge-assets":             {Class: "group"},
+	"edge-assets check":       {Class: "local", Note: "reads a snapshot package or edge-assets.txt and prints what Forward would ignore; offline, never writes"},
 	"collector download":      {Class: "read", WritesLocal: true, Note: "downloads the collector installer to a local file"},
 	"context":                 {Class: "group"},
 	"context nqe":             {Class: "local", Note: "NQE language help; offline"},

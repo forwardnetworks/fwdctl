@@ -1,0 +1,22 @@
+edge_assets 1 {
+  name 2: "synthetic-web-01"
+  ips 3 {
+    address 1: "\012\000\000\001"
+  }
+}
+edge_assets 1 {
+  name 2: "synthetic-fw-01"
+  mac_address 4 {
+    addr 1: 2199023255553
+  }
+}
+edge_assets 1 {
+  name 2: "synthetic-cloud-01"
+  cloud_host_id 5: "i-0123456789abcdef0"
+}
+edge_assets 1 {
+  name 2: "synthetic-dup-mac-01"
+  mac_address 4 {
+    addr 1: 2199023255553
+  }
+}

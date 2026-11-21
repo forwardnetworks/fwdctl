@@ -136,3 +136,41 @@ func TestEdgeAssetsViewNamesNoIncludedAssetsAndCapsTheListedNames(t *testing.T) 
 		t.Errorf("limits: %v", r.Limits)
 	}
 }
+
+func TestThreatExposureResolveShowsWhatADefinitionSelectsAndWritesNothing(t *testing.T) {
+	routes := teRoutes()
+	var posted string
+	routes["GET /api/networks/n1/threat-exposure-definitions/d1"] = fwdtest.Const(200, map[string]any{"id": "d1", "name": "internet to crown jewels", "maxDurationSeconds": 600,
+		"exposurePoints": []any{map[string]any{"exposurePoint": "INTERNET", "level": "HIGH"}}, "criticalities": []any{"CROWN_JEWEL"}})
+	routes["POST /api/networks/n1/threat-exposure-definitions"] = func(r *http.Request, b []byte) (int, any) {
+		posted = r.URL.RawQuery + " " + string(b)
+		return 200, map[string]any{"rows": []any{map[string]any{"asset": "db01"}}, "assets": 1}
+	}
+	r := teRun(t, routes, `{"view":"resolve","definition_id":"d1"}`)
+	if r.Status != result.OK || !strings.Contains(jsonOf(r), "db01") || !strings.Contains(posted, "action=resolve") || !strings.Contains(posted, "snapshotId=s1") || !strings.Contains(posted, "CROWN_JEWEL") || !strings.Contains(posted, "internet to crown jewels") {
+		t.Fatalf("%s %s posted=%s", r.Status, r.Finding, posted)
+	}
+	if !strings.Contains(strings.Join(r.Limits, " "), "writes nothing") || !strings.Contains(strings.Join(r.Limits, " "), "not among them") {
+		t.Errorf("limits: %v", r.Limits)
+	}
+	if _, _, err := runSkill(t, "inspect-vulnerabilities", routes, `{"network_id":"n1","snapshot_id":"s1","threat_exposure_experimental":{"view":"resolve"}}`); err == nil {
+		t.Errorf("resolve needs a definition_id")
+	}
+}
+
+func TestEdgeAssetsViewWarnsWhenTwoIncludedAssetsShareAMAC(t *testing.T) {
+	routes := teRoutes()
+	routes["GET /api/networks/n1/edge-assets"] = fwdtest.Const(200, map[string]any{"edgeAssets": []any{
+		map[string]any{"name": "a", "include": true, "macAddress": "02:00:00:00:00:01", "includedInLatestSnapshot": true},
+		map[string]any{"name": "b", "include": true, "macAddress": "02:00:00:00:00:01", "includedInLatestSnapshot": true},
+		map[string]any{"name": "c", "include": true, "macAddress": "02:00:00:00:00:02", "includedInLatestSnapshot": true},
+		map[string]any{"name": "e", "include": true, "macAddress": "02:00:00:00:00:AA", "includedInLatestSnapshot": true},
+		map[string]any{"name": "f", "include": true, "macAddress": "02:00:00:00:00:aa", "includedInLatestSnapshot": true},
+		map[string]any{"name": "d", "include": false, "macAddress": "02:00:00:00:00:02", "includedInLatestSnapshot": false},
+	}})
+	r := teRun(t, routes, `{"view":"edge_assets"}`)
+	d := jsonOf(r)
+	if !strings.Contains(d, `"edge_assets_sharing_a_mac"`) || !strings.Contains(d, "02:00:00:00:00:01") || strings.Contains(d, `"mac":"02:00:00:00:00:02"`) || !strings.Contains(d, `"mac":"02:00:00:00:00:aa"`) || !strings.Contains(strings.Join(r.Limits, " "), "Forward maps NEITHER asset") {
+		t.Errorf("only an included pair that shares a MAC: %s %v", d, r.Limits)
+	}
+}

@@ -245,6 +245,35 @@ Examples:
   fwdctl docs cli
 ```
 
+## fwdctl edge-assets
+
+The edge assets of a network travel inside a snapshot package as edge-assets.txt. A package import KEEPS the package's own file (it does not save the network's current assets), so for a network that cannot be collected again the fix for assets missing from its snapshot is to edit that file and import the package as a new snapshot. The file is NUMBERED text-proto: every field carries its name and its number.
+
+```
+fwdctl edge-assets
+```
+
+Examples:
+
+```
+  fwdctl edge-assets check snapshot.zip
+```
+
+## fwdctl edge-assets check
+
+Reads a snapshot package (a .zip: its edge-assets.txt is found inside) or an edge-assets.txt and prints JSON: each asset with its name, addresses, MAC and cloud host id decoded, and the problems. It flags a field written by name only (Forward ignores it: no error, the asset never appears), assets that share a MAC address (a live report says Forward maps neither), an asset with no name or nothing to map it by, a duplicate name and an address that is not 4 or 16 bytes. Exit status 0 when nothing is flagged, 1 when something is, 64 for a file that cannot be read or parsed. Offline and read-only: it never writes the package; importing is a separate edit-snapshot write. The layout is from a file Forward imported and processed; that a flagged item is dropped by Forward is a field report, not verified by this tool.
+
+```
+fwdctl edge-assets check FILE
+```
+
+Examples:
+
+```
+  fwdctl edge-assets check snapshot.zip
+  fwdctl edge-assets check edge-assets.txt
+```
+
 ## fwdctl install
 
 Install the skills for an agent: into Claude Code's skills directory, into the Agent Skills standard's cross-client folder (~/.agents/skills), or as a managed section of an AGENTS.md / CLAUDE.md file. `install lsp` sets up the NQE language server for Claude Code without the skills.

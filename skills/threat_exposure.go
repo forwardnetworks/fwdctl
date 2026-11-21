@@ -42,7 +42,7 @@ func parseThreatExposure(raw json.RawMessage, in vulnInput) (threatExposureInput
 	}
 	switch t.View {
 	case "definitions", "edge_assets":
-	case "definition", "status", "critical_assets":
+	case "definition", "status", "critical_assets", "resolve":
 		if strings.TrimSpace(t.DefinitionID) == "" {
 			return threatExposureInput{}, false, fmt.Errorf("%w: threat_exposure_experimental view %s needs definition_id (view definitions lists them)", ErrInvalidInput, t.View)
 		}
@@ -51,7 +51,7 @@ func parseThreatExposure(raw json.RawMessage, in vulnInput) (threatExposureInput
 			return threatExposureInput{}, false, fmt.Errorf("%w: threat_exposure_experimental view %s needs definition_id and asset_id (view critical_assets gives the asset ids)", ErrInvalidInput, t.View)
 		}
 	default:
-		return threatExposureInput{}, false, fmt.Errorf("%w: threat_exposure_experimental.view is definitions, definition, status, critical_assets, direct, transitive or edge_assets", ErrInvalidInput)
+		return threatExposureInput{}, false, fmt.Errorf("%w: threat_exposure_experimental.view is definitions, definition, status, critical_assets, resolve, direct, transitive or edge_assets", ErrInvalidInput)
 	}
 	if in.CVEID != "" || in.Device != "" || in.View != "" || in.MinSeverity != "" || in.KnownExploitedOnly || in.InternetAddressable != nil {
 		return threatExposureInput{}, false, fmt.Errorf("%w: threat_exposure_experimental is a different question from the CVE inputs; give one", ErrInvalidInput)
@@ -107,6 +107,19 @@ func threatExposure(ctx context.Context, s *fwd.Session, in vulnInput, t threatE
 		}
 		detail["definition"] = d
 		finding = fmt.Sprintf("Threat exposure definition %s (%s) (EXPERIMENTAL)", d.ID, d.Name)
+	case "resolve":
+		// what a saved definition selects on this snapshot (its exposure points and the critical assets that match), read now: a POST that evaluates and stores nothing
+		d, _, err := te.GetDefinition(ctx, in.NetworkID, t.DefinitionID)
+		if err != nil {
+			return fail(err)
+		}
+		out, _, err := te.ResolveDefinition(ctx, in.NetworkID, snapID, forward.NewThreatExposureDefinition{Name: d.Name, ExposurePoints: d.ExposurePoints, Locations: d.Locations, Criticalities: d.Criticalities, Subnets: d.Subnets, MaxDurationSeconds: d.MaxDurationSeconds})
+		if err != nil {
+			return fail(err)
+		}
+		detail["resolved"] = json.RawMessage(out)
+		finding = fmt.Sprintf("What definition %s (%s) selects on snapshot %s (EXPERIMENTAL)", d.ID, d.Name, snapID)
+		limits = append(limits, "resolve previews the definition on this snapshot and writes nothing: it shows the exposure points and the critical assets (edge assets with a criticality that are IN this snapshot) the definition matches; an edge asset added after the snapshot was created is not among them (see view edge_assets). The snapshot must be processed to the reachability stage. Forward's body is passed through unchanged")
 	case "status":
 		out, _, err := te.Status(ctx, in.NetworkID, t.DefinitionID, snapID)
 		if err != nil {
@@ -160,6 +173,26 @@ func threatExposure(ctx context.Context, s *fwd.Session, in vulnInput, t threatE
 			}
 		}
 		detail["edge_assets_with_criticality"] = withCrit
+		// Forward maps edge assets to hosts by cloud host id, then MAC, then IP, and a MAC two assets share maps neither (a peer's live report: silently ignored)
+		byMAC := map[string][]string{}
+		for _, a := range assets {
+			if a.Include && strings.TrimSpace(a.MACAddress) != "" {
+				k := strings.ToLower(strings.TrimSpace(a.MACAddress))
+				byMAC[k] = append(byMAC[k], a.Name)
+			}
+		}
+		var dupMACs []map[string]any
+		for mac, names := range byMAC {
+			if len(names) > 1 {
+				sort.Strings(names)
+				dupMACs = append(dupMACs, map[string]any{"mac": mac, "assets": names})
+			}
+		}
+		if len(dupMACs) > 0 {
+			sort.Slice(dupMACs, func(i, j int) bool { return dupMACs[i]["mac"].(string) < dupMACs[j]["mac"].(string) })
+			detail["edge_assets_sharing_a_mac"] = dupMACs
+			limits = append(limits, fmt.Sprintf("%d MAC address(es) are shared by more than one included edge asset: a peer's live report says Forward maps NEITHER asset when a MAC is duplicated (no error, the asset never appears in the model); the report was on a snapshot package's file, so whether the same holds for assets added in the interface is not verified", len(dupMACs)))
+		}
 		detail["edge_assets_not_in_latest_snapshot"] = len(late)
 		if len(late) > 0 {
 			sort.Strings(late)
