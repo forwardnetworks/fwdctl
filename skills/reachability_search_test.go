@@ -163,3 +163,68 @@ func TestReachabilitySearchExplainTraceRefusedStopsTracing(t *testing.T) {
 		t.Errorf("a refused trace stops tracing and leaves the search answer: %s %d %v", r.Status, len(r.Evidence), r.Limits)
 	}
 }
+
+// With from, Forward takes src_ip as the packet header only: an empty answer for a search that gave both says so.
+func TestReachabilityEmptyAnswerWithFromAndSrcIPExplainsWhatSrcIPMeans(t *testing.T) {
+	answer := map[string]any{"totalResults": map[string]any{"value": 0, "type": "EXACT"}, "facets": map[string]any{"pathGroups": []any{}}}
+	routes := map[string]fwdtest.Handler{snapsPath: ready("s1"), "POST /api/networks/n1/trace-facets": func(*http.Request, []byte) (int, any) { return 200, answer },
+		pathsPath: fwdtest.Const(200, pathsBody(false, "EXACT"))}
+	for name, in := range map[string]string{
+		"search form": `{"network_id":"n1","from":"vd1","src_ip":"192.0.2.10","dst_ip":"198.51.100.1","through":["ingress:vd1 p200.1904"]}`,
+		"plain":       `{"network_id":"n1","from":"vd1","src_ip":"192.0.2.10","dst_ip":"198.51.100.1"}`,
+	} {
+		r, _ := mustRun(t, "investigate-reachability", routes, in)
+		if !strings.Contains(strings.Join(r.Limits, " "), "src_ip as the packet's source header only") {
+			t.Errorf("%s: %v", name, r.Limits)
+		}
+	}
+	r0, _ := mustRun(t, "investigate-reachability", routes, `{"network_id":"n1","from":"vd1","dst_ip":"198.51.100.1"}`)
+	if strings.Contains(strings.Join(r0.Limits, " "), "source header only") {
+		t.Errorf("from alone has no src_ip to explain: %v", r0.Limits)
+	}
+	r, _ := mustRun(t, "investigate-reachability", routes, `{"network_id":"n1","src_ip":"192.0.2.10","dst_ip":"198.51.100.1"}`)
+	if strings.Contains(strings.Join(r.Limits, " "), "source header only") {
+		t.Errorf("src_ip alone is resolved to a location: no note: %v", r.Limits)
+	}
+}
+
+// An empty search with src_ip and no from says where Forward located the source: a source on the internet node cannot enter by a partner link, which a through hop on that link then never matches.
+func TestReachabilityEmptySearchSaysWhereTheSourceWasLocated(t *testing.T) {
+	empty := map[string]any{"totalResults": map[string]any{"value": 0, "type": "EXACT"}, "facets": map[string]any{"pathGroups": []any{}}}
+	located := func(kind string) map[string]any {
+		b := pathsBody(false, "EXACT")
+		b["srcIpLocationType"] = kind
+		return b
+	}
+	routes := func(kind string) map[string]fwdtest.Handler {
+		return map[string]fwdtest.Handler{snapsPath: ready("s1"), "POST /api/networks/n1/trace-facets": fwdtest.Const(200, empty), pathsPath: fwdtest.Const(200, located(kind))}
+	}
+	in := `{"network_id":"n1","src_ip":"192.0.2.10","dst_ip":"198.51.100.1","through":["ingress:vd1 p200.1904"]}`
+	r, _ := mustRun(t, "investigate-reachability", routes("INTERNET"), in)
+	l := strings.Join(r.Limits, " | ")
+	if !strings.Contains(l, "source address was treated as an internet address") || !strings.Contains(l, "located on the INTERNET node") || !strings.Contains(l, "partner or private link") {
+		t.Errorf("%v", r.Limits)
+	}
+	r, _ = mustRun(t, "investigate-reachability", routes("INTERFACE"), in)
+	if strings.Contains(strings.Join(r.Limits, " | "), "located on the INTERNET node") {
+		t.Errorf("a source located on an interface gets no internet note: %v", r.Limits)
+	}
+	// leaving alone (no through hop): the internet location is said, but no through-hop explanation
+	r, _ = mustRun(t, "investigate-reachability", routes("INTERNET"), `{"network_id":"n1","src_ip":"192.0.2.10","dst_ip":"198.51.100.1","leaving":{"at":"vd1 p200.1904"}}`)
+	l2 := strings.Join(r.Limits, " | ")
+	if !strings.Contains(l2, "source address was treated as an internet address") || strings.Contains(l2, "a through hop that enters by any other interface") {
+		t.Errorf("no through hop, no through explanation: %v", r.Limits)
+	}
+	// with from, the source is a header: no location is read
+	r, _ = mustRun(t, "investigate-reachability", routes("INTERNET"), `{"network_id":"n1","from":"vd1","src_ip":"192.0.2.10","dst_ip":"198.51.100.1","through":["ingress:vd1 p200.1904"]}`)
+	if strings.Contains(strings.Join(r.Limits, " | "), "located on the INTERNET node") {
+		t.Errorf("with from the source is not located: %v", r.Limits)
+	}
+	// the plain search failing is said, and the empty answer stays
+	bad := routes("INTERNET")
+	bad[pathsPath] = fwdtest.Const(500, map[string]any{"message": "boom"})
+	r, _ = mustRun(t, "investigate-reachability", bad, in)
+	if !strings.HasPrefix(r.Finding, "No path matches") || !strings.Contains(strings.Join(r.Limits, " | "), "could not be read") {
+		t.Errorf("%s %v", r.Finding, r.Limits)
+	}
+}

@@ -1,6 +1,7 @@
 package skills_test
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -82,5 +83,56 @@ func TestThreatExposureOnAnOlderBuildAndBadInput(t *testing.T) {
 		if _, _, err := runSkill(t, "inspect-vulnerabilities", teRoutes(), `{"network_id":"n1","snapshot_id":"s1","threat_exposure_experimental":`+bad+`}`); err == nil {
 			t.Errorf("should be refused: %s", bad)
 		}
+	}
+}
+
+// Forward copies edge assets into a snapshot only when the snapshot is CREATED; a reprocess re-reads what was stored then. An included asset listed with includedInLatestSnapshot false is invisible to threat
+// exposure on the latest snapshot, and the answer says so with the remedy (a new snapshot; reprocess does not add them).
+func TestEdgeAssetsViewCountsTheOnesNotInTheLatestSnapshotAndGivesTheRemedy(t *testing.T) {
+	routes := teRoutes()
+	routes["GET /api/networks/n1/edge-assets"] = fwdtest.Const(200, map[string]any{"edgeAssets": []any{
+		map[string]any{"name": "old-gw", "include": true, "criticality": "CRITICAL_INFRA", "includedInLatestSnapshot": true},
+		map[string]any{"name": "new-db", "include": true, "criticality": "CROWN_JEWEL", "includedInLatestSnapshot": false},
+		map[string]any{"name": "new-app", "include": true, "includedInLatestSnapshot": false},
+		map[string]any{"name": "off", "include": false, "criticality": "CROWN_JEWEL", "includedInLatestSnapshot": false},
+	}})
+	r := teRun(t, routes, `{"view":"edge_assets"}`)
+	if r.Status != result.OK || !strings.Contains(r.Finding, "4 edge asset(s)") || !strings.Contains(r.Finding, "2 of them (1 with a criticality) are NOT in the latest snapshot") {
+		t.Fatalf("%s %s", r.Status, r.Finding)
+	}
+	d := jsonOf(r)
+	if !strings.Contains(d, `"edge_assets_not_in_latest_snapshot":2`) || !strings.Contains(d, `"edge_assets_with_criticality":3`) || !strings.Contains(d, "new-db") || !strings.Contains(d, "new-app") {
+		t.Errorf("counts and names: %s", d)
+	}
+	if strings.Contains(strings.Join(r.Evidence[0].Detail["edge_assets_not_in_latest_snapshot_names"].([]string), ","), "off") {
+		t.Errorf("an asset that is not included is never copied into a snapshot and is not the finding")
+	}
+	l := strings.Join(r.Limits, " ")
+	if !strings.Contains(l, "reprocessing does NOT add them") || !strings.Contains(l, "Create a NEW snapshot") || !strings.Contains(l, "not verified") {
+		t.Errorf("the remedy and what is unverified are said: %v", r.Limits)
+	}
+	// all in the latest snapshot: no finding about it
+	routes["GET /api/networks/n1/edge-assets"] = fwdtest.Const(200, map[string]any{"edgeAssets": []any{map[string]any{"name": "a", "include": true, "includedInLatestSnapshot": true}}})
+	r = teRun(t, routes, `{"view":"edge_assets"}`)
+	if strings.Contains(r.Finding, "NOT in the latest snapshot") || strings.Contains(strings.Join(r.Limits, " "), "reprocessing does NOT add them") {
+		t.Errorf("nothing to say when every asset is in: %s", r.Finding)
+	}
+}
+
+func TestEdgeAssetsViewNamesNoIncludedAssetsAndCapsTheListedNames(t *testing.T) {
+	routes := teRoutes()
+	var assets []any
+	for i := 0; i < 60; i++ {
+		assets = append(assets, map[string]any{"name": fmt.Sprintf("a%02d", i), "include": true, "includedInLatestSnapshot": false})
+	}
+	routes["GET /api/networks/n1/edge-assets"] = fwdtest.Const(200, map[string]any{"edgeAssets": assets})
+	r := teRun(t, routes, `{"view":"edge_assets"}`)
+	if len(r.Omitted) == 0 || !strings.Contains(jsonOf(r), `"edge_assets_not_in_latest_snapshot":60`) {
+		t.Errorf("60 not included, 50 names shown, the cut declared: %v", r.Omitted)
+	}
+	routes["GET /api/networks/n1/edge-assets"] = fwdtest.Const(200, map[string]any{"edgeAssets": []any{map[string]any{"name": "x", "include": false, "includedInLatestSnapshot": false}}})
+	r = teRun(t, routes, `{"view":"edge_assets"}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "no edge asset is marked include") {
+		t.Errorf("limits: %v", r.Limits)
 	}
 }

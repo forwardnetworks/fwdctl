@@ -195,6 +195,13 @@ func checkDetail(ctx context.Context, s *fwd.Session, in inspectChecksInput, sid
 			}
 		}
 	}
+	if d.Status == "FAIL" && (d.Diagnosis == nil || (len(d.Diagnosis.Details) == 0 && strings.TrimSpace(d.Diagnosis.Summary) == "")) {
+		n := ""
+		if d.NumViolations != nil {
+			n = fmt.Sprintf(" (%d violation(s) counted)", *d.NumViolations)
+		}
+		limits = append(limits, "Forward returned NO diagnosis for this failing check"+n+": no reason, no violating flow and no first drop point are available from the check route, so this skill cannot say why it fails (seen live for an Existential check). To find the cause, replay the check's own headers and start location with investigate-reachability (explain trace), changing one thing at a time")
+	}
 	if d.Outdated != nil && *d.Outdated {
 		limits = append(limits, "the result was computed against an older definition of this check")
 	}

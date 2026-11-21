@@ -329,6 +329,12 @@ func reachabilitySearch(ctx context.Context, s *fwd.Session, in reachabilityInpu
 		finding = "No matching path was found, but Forward did not report a complete search (a timeout, a capped count or no total); that is not proof there is none"
 	case len(all) == 0:
 		finding = "No path matches this query in the snapshot (from, through and leaving as given)"
+		if in.From != "" && in.SrcIP != "" {
+			limits = append(limits, fromSrcIPNote)
+		}
+		if in.From == "" && in.SrcIP != "" && in.DstIP != "" {
+			limits = append(limits, sourceLocationNote(ctx, s, in, snapshotID)...)
+		}
 		limits = append(limits, "no match means no modelled flow takes this route in this snapshot; a hop or location named in another form (an interface name, a VRF) matches nothing, so check the names with inspect-inventory before reading it as unreachable")
 	default:
 		finding = fmt.Sprintf("%d distinct device path(s) match: %s", len(all), strings.Join(parts, ", "))
@@ -395,4 +401,22 @@ func searchTraces(ctx context.Context, s *fwd.Session, networkID, snapshotID str
 	ev := result.NewEvidence(result.EvPath, "trace", sid, map[string]any{"preview": true, "paths": paths, "traced": len(paths) - failed, "distinct_paths": total, "truncated": total > len(paths),
 		"timed_out": facets.TimedOut, "file_lines_base": 0}, fmt.Sprintf("%d path(s) traced", len(paths)-failed))
 	return &ev, limits
+}
+
+// sourceLocationNote says where Forward located a source address given WITHOUT from, when a search came back empty: the search form does not report it, and a through hop that enters by an interface the source
+// can never arrive on (a source located on the internet node, a hop that is a partner link) matches nothing, which reads like "no path" and hides the cause. One plain path search (no through) reads it; a
+// failed read says so and changes nothing else.
+func sourceLocationNote(ctx context.Context, s *fwd.Session, in reachabilityInput, snapshotID string) []string {
+	doc, err := s.SearchPaths(ctx, in.NetworkID, fwd.PathQuery{DstIP: in.DstIP, SrcIP: in.SrcIP, Protocol: protocolText(in.Protocol), SrcPort: in.SrcPort, DstPort: in.DstPort, SnapshotID: snapshotID, MaxResults: 1, WithNetworkFunctions: true})
+	if err != nil {
+		return []string{"where src_ip was located could not be read (a plain path search without through failed: " + err.Error() + ")"}
+	}
+	var out []string
+	if l := locationLimit("source", doc.SrcLocationType); l != "" {
+		out = append(out, l)
+	}
+	if doc.SrcLocationType == "INTERNET" && len(in.Through) > 0 {
+		out = append(out, "src_ip was located on the INTERNET node, so the flow enters the network from its internet edge: a through hop that enters by any other interface (a partner or private link whose far side is not a device in the snapshot) cannot match, which is why this search is empty. A source behind such a link has no location in the model; to test traffic that arrives there, start the flow ON that interface with from (the source then rides as a header, see src_ip with from)")
+	}
+	return out
 }

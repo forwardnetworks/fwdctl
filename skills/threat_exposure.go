@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	forward "github.com/forwardnetworks/forward-go-sdk"
@@ -68,6 +69,7 @@ var threatExposureLimits = []string{
 func threatExposure(ctx context.Context, s *fwd.Session, in vulnInput, t threatExposureInput, cx result.Context, snapID string) (result.Result, error) {
 	te := s.Client.ThreatExposure
 	limits := append([]string(nil), threatExposureLimits...)
+	var omitted []result.Omission
 	detail := map[string]any{"experimental": true, "view": t.View, "snapshot_id": snapID}
 	fail := func(err error) (result.Result, error) {
 		if errors.Is(err, forward.ErrEndpointNotServed) {
@@ -142,8 +144,36 @@ func threatExposure(ctx context.Context, s *fwd.Session, in vulnInput, t threatE
 		detail["edge_assets"] = assets
 		finding = fmt.Sprintf("%d edge asset(s) (EXPERIMENTAL)", len(assets))
 		limits = append(limits, "edge assets are created in Forward from inferred hosts; their criticality (BUSINESS_CRITICAL, CRITICAL_INFRA, CROWN_JEWEL) is what a threat exposure definition selects on")
+		// An asset is copied into a snapshot only when the snapshot is CREATED (Forward: SnapshotCreationStarter.saveEdgeAssets writes the included assets, when EDGE_ASSETS_IN_SOURCES is on, as a stored file);
+		// a reprocess re-reads that stored file. An asset added or changed later is listed with includedInLatestSnapshot false, and threat exposure on that snapshot cannot see it.
+		var late []string
+		withCrit, lateCrit := 0, 0
+		for _, a := range assets {
+			if a.Criticality != "" {
+				withCrit++
+			}
+			if a.Include && !a.IncludedInLatestSnapshot {
+				late = append(late, a.Name)
+				if a.Criticality != "" {
+					lateCrit++
+				}
+			}
+		}
+		detail["edge_assets_with_criticality"] = withCrit
+		detail["edge_assets_not_in_latest_snapshot"] = len(late)
+		if len(late) > 0 {
+			sort.Strings(late)
+			shown, om := result.Cap(late, 50, "edge assets not in the latest snapshot", "the count is complete; list them all from detail.edge_assets (includedInLatestSnapshot false)")
+			detail["edge_assets_not_in_latest_snapshot_names"] = shown
+			omitted = append(omitted, om...)
+			finding = fmt.Sprintf("%d edge asset(s) (EXPERIMENTAL); %d of them (%d with a criticality) are NOT in the latest snapshot, so threat exposure cannot see them", len(assets), len(late), lateCrit)
+			limits = append(limits, fmt.Sprintf("%d included edge asset(s) were added or changed after the latest snapshot was created: Forward copies edge assets into a snapshot only when the snapshot is CREATED, and a reprocess re-reads what was stored then, so reprocessing does NOT add them. Create a NEW snapshot (a new collection) to include them; threat exposure on the latest snapshot reports no critical assets in scope until then, and the interface does not say why. Whether importing a snapshot package keeps the package's own edge-assets file or saves the network's current ones is not verified", len(late)))
+		}
+		if !a0IncludeAny(assets) && len(assets) > 0 {
+			limits = append(limits, "no edge asset is marked include: only included assets are copied into a snapshot (and only while the organization property EDGE_ASSETS_IN_SOURCES is on at snapshot creation)")
+		}
 	}
-	return result.Build(vulnerabilitiesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits,
+	return result.Build(vulnerabilitiesName, result.OK, finding, result.Deterministic, cx, result.Options{Limits: limits, Omitted: omitted,
 		Evidence: []result.Evidence{result.NewEvidence(result.EvState, "threatExposureExperimental", &snapID, detail, "EXPERIMENTAL")}, NextActions: []string{"inspect-vulnerabilities"}})
 }
 
@@ -152,4 +182,14 @@ func threatLimit(n int) int {
 		return 50
 	}
 	return min(n, 1000)
+}
+
+// a0IncludeAny says whether any edge asset is marked include (matched to hosts in later snapshots).
+func a0IncludeAny(assets []forward.EdgeAsset) bool {
+	for _, a := range assets {
+		if a.Include {
+			return true
+		}
+	}
+	return false
 }

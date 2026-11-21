@@ -564,3 +564,27 @@ func TestInspectPlatformOrganizationsFallsBackToTheCurrentOne(t *testing.T) {
 		t.Errorf("%s %s %v", r.Status, b, r.Limits)
 	}
 }
+
+// A failing check with no diagnosis (seen live for an Existential check: the route returned only the count) is said plainly: nothing says why, and the skill must not imply a reason exists.
+func TestInspectChecksSaysAFailingCheckHasNoDiagnosisAndNotWhenItHasOne(t *testing.T) {
+	route := func(body map[string]any) map[string]fwdtest.Handler {
+		return map[string]fwdtest.Handler{snapsPath: ready1(), "GET /api/snapshots/s1/checks/5": fwdtest.Const(200, body)}
+	}
+	r, _ := mustRun(t, "inspect-checks", route(map[string]any{"id": "5", "name": "exists", "status": "FAIL", "numViolations": 1}), `{"network_id":"n1","check_id":"5"}`)
+	l := strings.Join(r.Limits, " ")
+	if r.Status != result.Failed || !strings.Contains(l, "NO diagnosis for this failing check (1 violation(s) counted)") || !strings.Contains(l, "cannot say why it fails") {
+		t.Errorf("%s %v", r.Status, r.Limits)
+	}
+	r, _ = mustRun(t, "inspect-checks", route(map[string]any{"id": "5", "name": "exists", "status": "FAIL", "numViolations": 1, "diagnosis": map[string]any{}}), `{"network_id":"n1","check_id":"5"}`)
+	if !strings.Contains(strings.Join(r.Limits, " "), "NO diagnosis") {
+		t.Errorf("an empty diagnosis object is no diagnosis: %v", r.Limits)
+	}
+	r, _ = mustRun(t, "inspect-checks", route(map[string]any{"id": "5", "name": "exists", "status": "FAIL", "numViolations": 1, "diagnosis": map[string]any{"details": []any{map[string]any{"query": "flow x"}}}}), `{"network_id":"n1","check_id":"5"}`)
+	if strings.Contains(strings.Join(r.Limits, " "), "NO diagnosis") {
+		t.Errorf("a check that has one: %v", r.Limits)
+	}
+	r, _ = mustRun(t, "inspect-checks", route(map[string]any{"id": "5", "name": "ok", "status": "PASS"}), `{"network_id":"n1","check_id":"5"}`)
+	if strings.Contains(strings.Join(r.Limits, " "), "NO diagnosis") {
+		t.Errorf("a passing check needs none: %v", r.Limits)
+	}
+}

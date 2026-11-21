@@ -22,7 +22,7 @@
     "from": {
       "type": "string",
       "minLength": 1,
-      "description": "a device name to start the flow on (any of its interfaces); to start from one interface or subnet give src_ip"
+      "description": "a device name to start the flow on (any of its interfaces). With from, src_ip is only the packet's source header (Forward does not resolve it to a location); to start where an address is located give src_ip alone"
     },
     "protocol": {
       "type": [

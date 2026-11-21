@@ -418,6 +418,9 @@ func investigateReachability(ctx context.Context, s *fwd.Session, raw json.RawMe
 	}
 	if len(doc.Paths) == 0 {
 		limits = append(limits, "the search returned no paths; the source or destination may not be locatable in the model")
+		if in.From != "" && in.SrcIP != "" {
+			limits = append(limits, fromSrcIPNote)
+		}
 		return result.NewUnknown(reachabilityName, "The path search returned no paths, so reachability is undetermined", cx, limits,
 			result.Options{NextActions: []string{"investigate-collection-failure"}})
 	}
@@ -647,3 +650,7 @@ func locationLimit(end, kind string) string {
 	}
 	return ""
 }
+
+// fromSrcIPNote is said when a search with BOTH from and src_ip finds nothing: with from, Forward uses src_ip only as the packet's source header (its path-search API: "if this is specified, then the srcIp will be
+// considered as a packet header only, else the srcIp will be resolved to specific location(s)"), so the flow starts on the named device whatever the address is, and nothing says the address is located on or behind it.
+const fromSrcIPNote = "from and src_ip were both given: with from, Forward treats src_ip as the packet's source header only and starts the flow on that device (it does not resolve src_ip to a location), so a source address the device would not accept or has no policy for (a reverse-path check, a source-address object) can leave no path; to start where an address is located, give src_ip alone; to start on a device whatever the source address, give from without src_ip and set the header with the other inputs"
